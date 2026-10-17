@@ -394,10 +394,12 @@ public struct StatusBarView: View {
             .help("Word Count & Document Statistics")
         }
         .padding(.horizontal, 14)
-        .padding(.vertical, 6)
+        .frame(height: 30)
         .background(viewModel.theme.editorBackgroundColor)
         .overlay(alignment: .top) {
-            Divider().overlay(viewModel.theme.borderColor)
+            Rectangle()
+                .fill(viewModel.theme.borderColor)
+                .frame(height: 1)
         }
     }
 

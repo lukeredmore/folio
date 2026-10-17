@@ -28,7 +28,7 @@ public final class EditorWorkspaceViewModel: ObservableObject {
     @Published public var sourceCodeMode: Bool = false
     @Published public var focusMode: Bool = false
     @Published public var typewriterMode: Bool = false
-    @Published public var spellCheckEnabled: Bool = true
+    @Published public var spellCheckEnabled: Bool = false
 
     // MARK: - Sidebar & Panels
     @Published public var showSidebar: Bool = true
@@ -83,8 +83,26 @@ public final class EditorWorkspaceViewModel: ObservableObject {
         )
         self.headings = analysis.headings
 
-        let cwdURL = URL(fileURLWithPath: FileManager.default.currentDirectoryPath)
-        self.loadWorkspaceFolder(cwdURL)
+        let cwdPath = FileManager.default.currentDirectoryPath
+        let initialWorkspaceURL: URL
+        if cwdPath == "/" || cwdPath.isEmpty {
+            let bundleURL = Bundle.main.bundleURL
+            if bundleURL.pathExtension == "app" {
+                let parentDir = bundleURL.deletingLastPathComponent()
+                if parentDir.path != "/" && parentDir.path != "/Applications" {
+                    initialWorkspaceURL = parentDir
+                } else {
+                    initialWorkspaceURL = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first
+                        ?? FileManager.default.homeDirectoryForCurrentUser
+                }
+            } else {
+                initialWorkspaceURL = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first
+                    ?? FileManager.default.homeDirectoryForCurrentUser
+            }
+        } else {
+            initialWorkspaceURL = URL(fileURLWithPath: cwdPath)
+        }
+        self.loadWorkspaceFolder(initialWorkspaceURL)
     }
 
     deinit {

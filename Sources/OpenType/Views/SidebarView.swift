@@ -73,9 +73,6 @@ public struct SidebarView: View {
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
 
-            Divider()
-                .overlay(viewModel.theme.borderColor)
-
             // Bottom Sidebar Footer Bar
             sidebarFooter
         }
@@ -407,8 +404,14 @@ public struct SidebarView: View {
             .buttonStyle(.plain)
             .help("Switch between File Tree and File List view")
         }
-        .padding(.horizontal, 10)
-        .padding(.vertical, 7)
+        .padding(.horizontal, 12)
+        .frame(height: 30)
+        .background(viewModel.theme.sidebarBackgroundColor)
+        .overlay(alignment: .top) {
+            Rectangle()
+                .fill(viewModel.theme.borderColor)
+                .frame(height: 1)
+        }
     }
 }
 

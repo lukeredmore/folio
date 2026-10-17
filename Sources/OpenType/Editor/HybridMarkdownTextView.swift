@@ -16,13 +16,36 @@ public final class HybridMarkdownTextView: NSTextView {
 
     public var onToggleCheckboxAtCharacterIndex: ((Int) -> Void)?
 
-    private static let autoPairs: [Character: Character] = [
-        "(": ")",
-        "[": "]",
-        "{": "}",
-        "\"": "\"",
-        "`": "`"
-    ]
+    private static func languageAccentColor(for rawLang: String, isDark: Bool) -> NSColor {
+        switch rawLang.lowercased().trimmingCharacters(in: .whitespaces) {
+        case "swift":
+            return NSColor(srgbRed: 0.94, green: 0.32, blue: 0.22, alpha: 1.0)
+        case "python", "py":
+            return NSColor(srgbRed: 0.22, green: 0.46, blue: 0.67, alpha: 1.0)
+        case "javascript", "js", "jsx":
+            return isDark
+                ? NSColor(srgbRed: 0.95, green: 0.82, blue: 0.22, alpha: 1.0)
+                : NSColor(srgbRed: 0.78, green: 0.58, blue: 0.04, alpha: 1.0)
+        case "typescript", "ts", "tsx":
+            return NSColor(srgbRed: 0.19, green: 0.47, blue: 0.78, alpha: 1.0)
+        case "rust", "rs":
+            return NSColor(srgbRed: 0.85, green: 0.45, blue: 0.24, alpha: 1.0)
+        case "go", "golang":
+            return NSColor(srgbRed: 0.0, green: 0.68, blue: 0.85, alpha: 1.0)
+        case "json", "jsonc", "yaml", "yml", "toml":
+            return NSColor(srgbRed: 0.20, green: 0.65, blue: 0.45, alpha: 1.0)
+        case "bash", "sh", "zsh", "shell":
+            return NSColor(srgbRed: 0.26, green: 0.68, blue: 0.34, alpha: 1.0)
+        case "html", "xml", "css", "scss":
+            return NSColor(srgbRed: 0.86, green: 0.30, blue: 0.42, alpha: 1.0)
+        case "sql":
+            return NSColor(srgbRed: 0.28, green: 0.52, blue: 0.88, alpha: 1.0)
+        default:
+            return isDark
+                ? NSColor.white.withAlphaComponent(0.65)
+                : NSColor.black.withAlphaComponent(0.55)
+        }
+    }
 
     public override func drawBackground(in rect: NSRect) {
         super.drawBackground(in: rect)
@@ -44,7 +67,7 @@ public final class HybridMarkdownTextView: NSTextView {
             lineRect.origin.y += origin.y
             lineRect.size.width = max(lineRect.size.width, contentWidth)
 
-            guard lineRect.intersects(rect) else { continue }
+            guard lineRect.insetBy(dx: -20, dy: -40).intersects(rect) else { continue }
 
             switch dec.kind {
             case .headingUnderline(let level):
@@ -76,17 +99,42 @@ public final class HybridMarkdownTextView: NSTextView {
                 path.fill()
 
                 if !language.isEmpty {
+                    let accent = Self.languageAccentColor(for: language, isDark: currentTheme.isDark)
                     let badgeAttrs: [NSAttributedString.Key: Any] = [
                         .font: NSFont.monospacedSystemFont(ofSize: 10.5, weight: .semibold),
-                        .foregroundColor: currentTheme.secondaryTextNSColor.withAlphaComponent(0.85)
+                        .foregroundColor: accent
                     ]
                     let badgeStr = language.uppercased() as NSString
                     let badgeSize = badgeStr.size(withAttributes: badgeAttrs)
-                    let badgePoint = NSPoint(
-                        x: origin.x + contentWidth - badgeSize.width - 10,
-                        y: lineRect.minY + (lineRect.height - badgeSize.height) / 2.0
+                    let pillPadH: CGFloat = 7.0
+                    let pillPadV: CGFloat = 2.0
+                    let dotSpace: CGFloat = 10.0
+                    let pillW = badgeSize.width + pillPadH * 2 + dotSpace
+                    let pillH = badgeSize.height + pillPadV * 2
+                    let pillRect = NSRect(
+                        x: origin.x + contentWidth - pillW - 8.0,
+                        y: lineRect.minY + (lineRect.height - pillH) * 0.5,
+                        width: pillW,
+                        height: pillH
                     )
-                    badgeStr.draw(at: badgePoint, withAttributes: badgeAttrs)
+                    accent.withAlphaComponent(currentTheme.isDark ? 0.16 : 0.10).setFill()
+                    NSBezierPath(roundedRect: pillRect, xRadius: 4, yRadius: 4).fill()
+
+                    // Small language accent dot
+                    let dotRect = NSRect(
+                        x: pillRect.minX + pillPadH,
+                        y: pillRect.midY - 3.0,
+                        width: 6.0,
+                        height: 6.0
+                    )
+                    accent.setFill()
+                    NSBezierPath(ovalIn: dotRect).fill()
+
+                    let textPoint = NSPoint(
+                        x: pillRect.minX + pillPadH + dotSpace,
+                        y: pillRect.minY + pillPadV
+                    )
+                    badgeStr.draw(at: textPoint, withAttributes: badgeAttrs)
                 }
 
             case .codeFenceBody:
@@ -100,11 +148,59 @@ public final class HybridMarkdownTextView: NSTextView {
                 let path = NSBezierPath(roundedRect: boxRect, xRadius: 6, yRadius: 6)
                 path.fill()
 
-            case .mathBlockStart, .mathBlockBody, .mathBlockEnd:
-                let mathBg = currentTheme.codeBackgroundNSColor.withAlphaComponent(0.65)
-                mathBg.setFill()
-                let boxRect = NSRect(x: origin.x, y: lineRect.minY - 1, width: contentWidth, height: lineRect.height + 2)
-                boxRect.fill()
+            case .mathBlockStart(let isActive), .mathBlockBody(let isActive), .mathBlockEnd(let isActive):
+                if isActive {
+                    let mathBg = currentTheme.codeBackgroundNSColor.withAlphaComponent(0.70)
+                    mathBg.setFill()
+                    let boxRect = NSRect(x: origin.x, y: lineRect.minY - 1, width: contentWidth, height: lineRect.height + 2)
+                    boxRect.fill()
+                }
+
+            case .mathBlockRendered(let latex, let fullBlockRange, let dimFactor):
+                let blockGlyphs = layoutManager.glyphRange(forCharacterRange: fullBlockRange, actualCharacterRange: nil)
+                guard blockGlyphs.location != NSNotFound else { continue }
+                var blockRect = layoutManager.boundingRect(forGlyphRange: blockGlyphs, in: textContainer)
+                blockRect.origin.x = origin.x
+                blockRect.origin.y += origin.y
+                blockRect.size.width = contentWidth
+
+                // Subtle card background for display math block
+                let cardBg = currentTheme.codeBackgroundNSColor.withAlphaComponent(currentTheme.isDark ? 0.45 : 0.50)
+                cardBg.setFill()
+                let cardPath = NSBezierPath(roundedRect: blockRect.insetBy(dx: 0, dy: 2), xRadius: 8, yRadius: 8)
+                cardPath.fill()
+
+                let node = LaTeXMathRenderer.parse(latex)
+                let mathBox = LaTeXMathRenderer.layout(
+                    node: node,
+                    baseFontSize: currentTheme.baseFontSize,
+                    isDisplayStyle: true
+                )
+                let startX = origin.x + max(12.0, (contentWidth - mathBox.width) * 0.5)
+                let baselineY = blockRect.midY + (mathBox.ascent - mathBox.descent) * 0.5
+                let mathColor = currentTheme.headingNSColor.withAlphaComponent(dimFactor)
+                mathBox.drawBox(startX, baselineY, mathColor)
+
+            case .inlineMathRendered(let latex, let mathRange, let fontSize, let dimFactor):
+                let mathGlyphs = layoutManager.glyphRange(forCharacterRange: mathRange, actualCharacterRange: nil)
+                guard mathGlyphs.location != NSNotFound else { continue }
+                var mathRect = layoutManager.boundingRect(forGlyphRange: mathGlyphs, in: textContainer)
+                mathRect.origin.x += origin.x
+                mathRect.origin.y += origin.y
+
+                let lineFrag = layoutManager.lineFragmentRect(forGlyphAt: mathGlyphs.location, effectiveRange: nil)
+                let glyphLoc = layoutManager.location(forGlyphAt: mathGlyphs.location)
+                let baselineY = origin.y + lineFrag.minY + glyphLoc.y
+
+                let node = LaTeXMathRenderer.parse(latex)
+                let mathBox = LaTeXMathRenderer.layout(
+                    node: node,
+                    baseFontSize: fontSize,
+                    isDisplayStyle: false
+                )
+                let drawX = mathRect.minX + max(1.0, (mathRect.width - mathBox.width) * 0.5)
+                let mathColor = currentTheme.headingNSColor.withAlphaComponent(dimFactor)
+                mathBox.drawBox(drawX, baselineY, mathColor)
 
             case .horizontalRule:
                 let hrColor = currentTheme.isDark
@@ -115,45 +211,69 @@ public final class HybridMarkdownTextView: NSTextView {
                 let hrRect = NSRect(x: origin.x, y: midY - 1.0, width: contentWidth, height: 2.0)
                 NSBezierPath(roundedRect: hrRect, xRadius: 1.0, yRadius: 1.0).fill()
 
-            case .tableHeaderRow:
-                let headerBg = currentTheme.isDark
+            case let .tableRow(isHeader, isSeparator, isFirstRow, isLastRow, bodyRowIndex, tableWidth, columnDividers):
+                let effectiveWidth = min(contentWidth, max(tableWidth, 240.0))
+                let rowRect = NSRect(x: origin.x, y: lineRect.minY, width: effectiveWidth, height: lineRect.height)
+                let outerBorderColor = currentTheme.isDark
+                    ? NSColor.white.withAlphaComponent(0.14)
+                    : NSColor.black.withAlphaComponent(0.11)
+                let innerGridColor = currentTheme.isDark
                     ? NSColor.white.withAlphaComponent(0.08)
-                    : NSColor.black.withAlphaComponent(0.05)
-                headerBg.setFill()
-                let rowRect = NSRect(x: origin.x, y: lineRect.minY, width: contentWidth, height: lineRect.height)
-                rowRect.fill()
+                    : NSColor.black.withAlphaComponent(0.065)
 
-                let borderColor = currentTheme.isDark
-                    ? NSColor.white.withAlphaComponent(0.18)
-                    : NSColor.black.withAlphaComponent(0.15)
-                borderColor.setStroke()
-                let borderPath = NSBezierPath(rect: rowRect)
-                borderPath.lineWidth = 1.0
-                borderPath.stroke()
+                if isSeparator {
+                    // Draw crisp horizontal separator line between header and body
+                    let headerDividerColor = currentTheme.isDark
+                        ? NSColor.white.withAlphaComponent(0.18)
+                        : NSColor.black.withAlphaComponent(0.15)
+                    headerDividerColor.setFill()
+                    NSRect(x: origin.x, y: rowRect.midY - 0.5, width: effectiveWidth, height: 1.0).fill()
 
-            case .tableSeparatorRow:
-                let sepColor = currentTheme.linkNSColor.withAlphaComponent(0.45)
-                sepColor.setFill()
-                let sepRect = NSRect(x: origin.x, y: lineRect.midY - 0.75, width: contentWidth, height: 1.5)
-                sepRect.fill()
+                    // Left and right outer borders across separator
+                    outerBorderColor.setFill()
+                    NSRect(x: rowRect.minX, y: rowRect.minY, width: 1.0, height: rowRect.height).fill()
+                    NSRect(x: rowRect.maxX - 1.0, y: rowRect.minY, width: 1.0, height: rowRect.height).fill()
+                    continue
+                }
 
-            case .tableBodyRow(let rowIndex):
-                if rowIndex % 2 == 1 {
+                // Background tint for header or alternating body rows
+                if isHeader {
+                    let headerBg = currentTheme.isDark
+                        ? NSColor.white.withAlphaComponent(0.06)
+                        : NSColor.black.withAlphaComponent(0.038)
+                    headerBg.setFill()
+                    rowRect.fill()
+                } else if bodyRowIndex % 2 == 1 {
                     let stripeBg = currentTheme.isDark
-                        ? NSColor.white.withAlphaComponent(0.035)
-                        : NSColor.black.withAlphaComponent(0.022)
+                        ? NSColor.white.withAlphaComponent(0.025)
+                        : NSColor.black.withAlphaComponent(0.016)
                     stripeBg.setFill()
-                    let rowRect = NSRect(x: origin.x, y: lineRect.minY, width: contentWidth, height: lineRect.height)
                     rowRect.fill()
                 }
-                let borderColor = currentTheme.isDark
-                    ? NSColor.white.withAlphaComponent(0.12)
-                    : NSColor.black.withAlphaComponent(0.10)
-                borderColor.setStroke()
-                let rowRect = NSRect(x: origin.x, y: lineRect.minY, width: contentWidth, height: lineRect.height)
-                let borderPath = NSBezierPath(rect: rowRect)
-                borderPath.lineWidth = 0.75
-                borderPath.stroke()
+
+                // Subtle vertical column dividers
+                innerGridColor.setFill()
+                for divX in columnDividers where divX < effectiveWidth - 4.0 {
+                    let colLineRect = NSRect(x: origin.x + divX, y: rowRect.minY, width: 1.0, height: rowRect.height)
+                    colLineRect.fill()
+                }
+
+                // Subtle horizontal divider at the bottom of each non-last body row
+                if !isHeader && !isLastRow {
+                    innerGridColor.setFill()
+                    NSRect(x: rowRect.minX, y: rowRect.maxY - 0.5, width: effectiveWidth, height: 0.75).fill()
+                }
+
+                // Outer table frame edges (top on first row, bottom on last row, left & right on all rows)
+                outerBorderColor.setFill()
+                NSRect(x: rowRect.minX, y: rowRect.minY, width: 1.0, height: rowRect.height).fill()
+                NSRect(x: rowRect.maxX - 1.0, y: rowRect.minY, width: 1.0, height: rowRect.height).fill()
+                if isFirstRow {
+                    NSRect(x: rowRect.minX, y: rowRect.minY, width: effectiveWidth, height: 1.0).fill()
+                }
+                if isLastRow {
+                    NSRect(x: rowRect.minX, y: rowRect.maxY - 1.0, width: effectiveWidth, height: 1.0).fill()
+                }
             }
         }
     }
@@ -201,7 +321,6 @@ public final class HybridMarkdownTextView: NSTextView {
                 let prefix = String(fullLine[prefixMatch])
                 let remainder = String(fullLine[prefixMatch.upperBound...]).trimmingCharacters(in: .whitespacesAndNewlines)
                 if remainder.isEmpty {
-                    // Empty task item -> clear prefix and exit list
                     if shouldChangeText(in: lineRange, replacementString: "\n") {
                         replaceCharacters(in: lineRange, with: "\n")
                         didChangeText()
@@ -457,7 +576,20 @@ public struct HybridMarkdownEditorRepresentable: NSViewRepresentable {
                 selectedRange: sel
             )
 
+            // Clear any spellchecker squiggles on code/math/table decorations
+            if let lm = textView.layoutManager {
+                let fullRange = NSRange(location: 0, length: (storage.string as NSString).length)
+                if !viewModel.spellCheckEnabled {
+                    lm.removeTemporaryAttribute(.spellingState, forCharacterRange: fullRange)
+                } else {
+                    for dec in analysis.decorations {
+                        lm.removeTemporaryAttribute(.spellingState, forCharacterRange: dec.lineRange)
+                    }
+                }
+            }
+
             textView.lineDecorations = analysis.decorations
+            textView.needsDisplay = true
             lastTheme = viewModel.theme
             lastSourceMode = viewModel.sourceCodeMode
             lastFocusMode = viewModel.focusMode

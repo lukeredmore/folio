@@ -42,7 +42,112 @@ final class OpenTypeTests: XCTestCase {
         XCTAssertTrue(analysis.decorations.contains(where: { $0.kind == .blockquote(nestLevel: 1) }))
         XCTAssertTrue(analysis.decorations.contains(where: { $0.kind == .horizontalRule }))
         XCTAssertTrue(analysis.decorations.contains(where: { $0.kind == .codeFenceStart(language: "swift") }))
-        XCTAssertTrue(analysis.decorations.contains(where: { $0.kind == .tableHeaderRow }))
+        XCTAssertTrue(analysis.decorations.contains(where: {
+            if case .tableRow(let isHeader, _, let isFirst, _, _, _, _) = $0.kind {
+                return isHeader && isFirst
+            }
+            return false
+        }))
+    }
+
+    func testMultiBacktickInlineCodeDoesNotLeakIntoSurroundingText() {
+        let sample = #"> **Seamless Live Rendering**: Place your cursor on any line to reveal and edit its raw Markdown tokens (`#`, `**`, `` ` ``, `[link](url)`). Move the cursor away and the syntax markers collapse cleanly into live typography—with zero WebView overhead."#
+        let storage = NSTextStorage(string: sample)
+        _ = MarkdownLiveStyler.applyStyles(
+            to: storage,
+            theme: .daylight,
+            sourceCodeMode: false,
+            focusMode: false,
+            selectedRange: NSRange(location: sample.count, length: 0)
+        )
+
+        // The comma/space ", " between `` ` `` and `[link](url)` and the trailing prose must NOT have inlineCodeNSColor
+        let proseRange = (sample as NSString).range(of: "Move the cursor away")
+        XCTAssertNotEqual(proseRange.location, NSNotFound)
+        let fg = storage.attribute(.foregroundColor, at: proseRange.location, effectiveRange: nil) as? NSColor
+        let bg = storage.attribute(.backgroundColor, at: proseRange.location, effectiveRange: nil) as? NSColor
+        XCTAssertNil(bg, "Prose outside backtick spans must not receive inline code background color")
+        XCTAssertNotEqual(fg, EditorTheme.daylight.inlineCodeNSColor, "Prose outside backtick spans must not receive red inline code color")
+    }
+
+    func testLaTeXMathRendererLayoutAndDecorations() {
+        let node = LaTeXMathRenderer.parse(#"\nabla \cdot \mathbf{E} = \frac{\rho}{\varepsilon_0}"#)
+        let box = LaTeXMathRenderer.layout(node: node, baseFontSize: 18, isDisplayStyle: true)
+        XCTAssertGreaterThan(box.width, 60)
+        XCTAssertGreaterThan(box.ascent, 12)
+        XCTAssertGreaterThan(box.descent, 6)
+
+        let sample = """
+        First line here.
+        Inline math $\\nabla \\cdot \\mathbf{E} = \\frac{\\rho}{\\varepsilon_0}$ here.
+
+        $$
+        \\mathcal{L}_{\\text{OpenType}} = \\int_{-\\infty}^{\\infty} e^{-x^2} dx
+        $$
+        """
+        let storage = NSTextStorage(string: sample)
+        let analysis = MarkdownLiveStyler.applyStyles(
+            to: storage,
+            theme: .daylight,
+            sourceCodeMode: false,
+            focusMode: false,
+            selectedRange: NSRange(location: 0, length: 0)
+        )
+
+        XCTAssertTrue(analysis.decorations.contains(where: {
+            if case .inlineMathRendered(let latex, _, _, _) = $0.kind {
+                return latex.contains("nabla")
+            }
+            return false
+        }), "Inactive line with $...$ should produce an inlineMathRendered decoration")
+
+        XCTAssertTrue(analysis.decorations.contains(where: {
+            if case .mathBlockRendered(let latex, _, _) = $0.kind {
+                return latex.contains("int")
+            }
+            return false
+        }), "Inactive $$...$$ block should produce a mathBlockRendered decoration")
+    }
+
+    func testCodeFenceLanguageSwitchChangesHighlighting() {
+        let swiftCode = """
+        ```swift
+        def hello():
+            let x = 1
+        ```
+        """
+        let pythonCode = """
+        ```python
+        def hello():
+            let x = 1
+        ```
+        """
+        let swiftStorage = NSTextStorage(string: swiftCode)
+        _ = MarkdownLiveStyler.applyStyles(
+            to: swiftStorage,
+            theme: .daylight,
+            sourceCodeMode: false,
+            focusMode: false,
+            selectedRange: NSRange(location: 0, length: 0)
+        )
+
+        let pyStorage = NSTextStorage(string: pythonCode)
+        _ = MarkdownLiveStyler.applyStyles(
+            to: pyStorage,
+            theme: .daylight,
+            sourceCodeMode: false,
+            focusMode: false,
+            selectedRange: NSRange(location: 0, length: 0)
+        )
+
+        let swiftDefLoc = (swiftCode as NSString).range(of: "def").location
+        let pyDefLoc = (pythonCode as NSString).range(of: "def").location
+
+        let swiftDefColor = swiftStorage.attribute(.foregroundColor, at: swiftDefLoc, effectiveRange: nil) as? NSColor
+        let pyDefColor = pyStorage.attribute(.foregroundColor, at: pyDefLoc, effectiveRange: nil) as? NSColor
+
+        // In Python, `def` is a keyword; in Swift, `def` is plain text
+        XCTAssertNotEqual(swiftDefColor, pyDefColor)
     }
 
     func testActiveLineRevealsSyntaxWhileInactiveLineCollapsesSyntax() {
