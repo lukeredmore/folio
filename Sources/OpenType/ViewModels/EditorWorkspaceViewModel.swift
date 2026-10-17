@@ -23,8 +23,15 @@ public final class EditorWorkspaceViewModel: ObservableObject {
     @Published public var currentFileURL: URL?
     @Published public var isDirty: Bool = false
 
-    // MARK: - Editor Modes & Theme
+    // MARK: - Editor Modes, Theme & Typography
     @Published public var theme: EditorTheme = .daylight
+    @Published public var typography: EditorTypographySettings = .default {
+        didSet {
+            if let encoded = try? JSONEncoder().encode(typography) {
+                UserDefaults.standard.set(encoded, forKey: Self.typographyDefaultsKey)
+            }
+        }
+    }
     @Published public var sourceCodeMode: Bool = false
     @Published public var focusMode: Bool = false
     @Published public var typewriterMode: Bool = false
@@ -42,6 +49,7 @@ public final class EditorWorkspaceViewModel: ObservableObject {
     @Published public var quickOpenQuery: String = ""
     @Published public var showWordCountPopover: Bool = false
     @Published public var showInsertTableSheet: Bool = false
+    @Published public var showSettingsModal: Bool = false
     @Published public var showFindReplaceBar: Bool = false
     @Published public var findQuery: String = ""
     @Published public var replaceQuery: String = ""
@@ -66,10 +74,19 @@ public final class EditorWorkspaceViewModel: ObservableObject {
 
     public weak var activeTextView: HybridMarkdownTextView?
 
+    private static let typographyDefaultsKey = "OpenType.EditorTypographySettings.v2"
+
     private var fileWatchSource: DispatchSourceFileSystemObject?
     private var fileWatchDescriptor: Int32 = -1
 
     public init() {
+        if let data = UserDefaults.standard.data(forKey: Self.typographyDefaultsKey),
+           let decoded = try? JSONDecoder().decode(EditorTypographySettings.self, from: data) {
+            self.typography = decoded
+        } else {
+            self.typography = .default
+        }
+
         let initialContent = Self.defaultWelcomeDocument
         self.markdownText = initialContent
         self.stats = DocumentStats.compute(for: initialContent)
@@ -77,6 +94,7 @@ public final class EditorWorkspaceViewModel: ObservableObject {
         let analysis = MarkdownLiveStyler.applyStyles(
             to: NSTextStorage(string: initialContent),
             theme: .daylight,
+            typography: self.typography,
             sourceCodeMode: false,
             focusMode: false,
             selectedRange: NSRange(location: 0, length: 0)
@@ -107,6 +125,10 @@ public final class EditorWorkspaceViewModel: ObservableObject {
 
     deinit {
         stopWatchingCurrentFile()
+    }
+
+    public func resetTypographyToDefaults() {
+        typography = .default
     }
 
     // MARK: - Document Title

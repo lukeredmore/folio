@@ -7,6 +7,10 @@ public final class HybridMarkdownTextView: NSTextView {
         didSet { needsDisplay = true }
     }
 
+    public var typographySettings: EditorTypographySettings = .default {
+        didSet { needsDisplay = true }
+    }
+
     public var lineDecorations: [LineDecoration] = [] {
         didSet { needsDisplay = true }
     }
@@ -67,15 +71,24 @@ public final class HybridMarkdownTextView: NSTextView {
             lineRect.origin.y += origin.y
             lineRect.size.width = max(lineRect.size.width, contentWidth)
 
-            guard lineRect.insetBy(dx: -20, dy: -40).intersects(rect) else { continue }
+            guard lineRect.insetBy(dx: -20, dy: -50).intersects(rect) else { continue }
 
             switch dec.kind {
             case .headingUnderline(let level):
                 let borderColor = currentTheme.isDark
                     ? NSColor.white.withAlphaComponent(level == 1 ? 0.16 : 0.10)
-                    : NSColor.black.withAlphaComponent(level == 1 ? 0.12 : 0.08)
+                    : NSColor.black.withAlphaComponent(level == 1 ? 0.11 : 0.075)
                 borderColor.setFill()
-                let underlineY = lineRect.maxY - (level == 1 ? 4.0 : 3.0)
+
+                let lastGlyphIndex = max(glyphRange.location, NSMaxRange(glyphRange) - 1)
+                let lineFrag = layoutManager.lineFragmentRect(forGlyphAt: lastGlyphIndex, effectiveRange: nil)
+                let glyphLoc = layoutManager.location(forGlyphAt: lastGlyphIndex)
+                let baselineY = origin.y + lineFrag.minY + glyphLoc.y
+                let hFont = currentTheme.headingFont(level: level, scale: typographySettings.fontSizeScale)
+                let descenderDepth = abs(hFont.descender)
+                let offset = typographySettings.headingUnderlineOffset * (level == 1 ? 1.0 : 0.85)
+                let underlineY = baselineY + descenderDepth + offset
+
                 let underlineRect = NSRect(x: origin.x, y: underlineY, width: contentWidth, height: level == 1 ? 1.5 : 1.0)
                 underlineRect.fill()
 
@@ -173,7 +186,7 @@ public final class HybridMarkdownTextView: NSTextView {
                 let node = LaTeXMathRenderer.parse(latex)
                 let mathBox = LaTeXMathRenderer.layout(
                     node: node,
-                    baseFontSize: currentTheme.baseFontSize,
+                    baseFontSize: currentTheme.baseFontSize * typographySettings.fontSizeScale,
                     isDisplayStyle: true
                 )
                 let startX = origin.x + max(12.0, (contentWidth - mathBox.width) * 0.5)
@@ -205,11 +218,12 @@ public final class HybridMarkdownTextView: NSTextView {
             case .horizontalRule:
                 let hrColor = currentTheme.isDark
                     ? NSColor.white.withAlphaComponent(0.18)
-                    : NSColor.black.withAlphaComponent(0.14)
+                    : NSColor.black.withAlphaComponent(0.13)
                 hrColor.setFill()
-                let midY = lineRect.midY
-                let hrRect = NSRect(x: origin.x, y: midY - 1.0, width: contentWidth, height: 2.0)
-                NSBezierPath(roundedRect: hrRect, xRadius: 1.0, yRadius: 1.0).fill()
+                let lineFrag = layoutManager.lineFragmentRect(forGlyphAt: glyphRange.location, effectiveRange: nil)
+                let midY = origin.y + lineFrag.minY + lineFrag.height * 0.5 + 2.0
+                let hrRect = NSRect(x: origin.x, y: midY - 0.75, width: contentWidth, height: 1.5)
+                NSBezierPath(roundedRect: hrRect, xRadius: 0.75, yRadius: 0.75).fill()
 
             case let .tableRow(isHeader, isSeparator, isFirstRow, isLastRow, bodyRowIndex, tableWidth, columnDividers):
                 let effectiveWidth = min(contentWidth, max(tableWidth, 240.0))
@@ -447,6 +461,7 @@ public struct HybridMarkdownEditorRepresentable: NSViewRepresentable {
 
         // Set initial text and apply styling
         textView.string = viewModel.markdownText
+        textView.typographySettings = viewModel.typography
         context.coordinator.updateInsets(for: scrollView, textView: textView, theme: viewModel.theme)
         context.coordinator.restyle(textView: textView)
 
@@ -470,6 +485,7 @@ public struct HybridMarkdownEditorRepresentable: NSViewRepresentable {
         textView.backgroundColor = viewModel.theme.editorBackgroundNSColor
         textView.insertionPointColor = viewModel.theme.linkNSColor
         textView.currentTheme = viewModel.theme
+        textView.typographySettings = viewModel.typography
         textView.isTypewriterMode = viewModel.typewriterMode
         textView.isSourceCodeMode = viewModel.sourceCodeMode
         textView.isContinuousSpellCheckingEnabled = viewModel.spellCheckEnabled
@@ -485,6 +501,7 @@ public struct HybridMarkdownEditorRepresentable: NSViewRepresentable {
             context.coordinator.isProgrammaticUpdate = false
             context.coordinator.restyle(textView: textView)
         } else if context.coordinator.lastTheme != viewModel.theme ||
+                  context.coordinator.lastTypography != viewModel.typography ||
                   context.coordinator.lastSourceMode != viewModel.sourceCodeMode ||
                   context.coordinator.lastFocusMode != viewModel.focusMode {
             context.coordinator.restyle(textView: textView)
@@ -512,6 +529,7 @@ public struct HybridMarkdownEditorRepresentable: NSViewRepresentable {
         var isRestyling = false
 
         var lastTheme: EditorTheme?
+        var lastTypography: EditorTypographySettings?
         var lastSourceMode: Bool?
         var lastFocusMode: Bool?
         var lastActiveLineRange: NSRange?
@@ -528,7 +546,7 @@ public struct HybridMarkdownEditorRepresentable: NSViewRepresentable {
 
         func updateInsets(for scrollView: NSScrollView, textView: HybridMarkdownTextView, theme: EditorTheme) {
             let totalWidth = scrollView.bounds.width
-            let maxWrite = theme.maxWriteWidth
+            let maxWrite = viewModel.typography.maxColumnWidth
             let horizontalPad = max(44.0, floor((totalWidth - maxWrite) / 2.0))
             let newInset = NSSize(width: horizontalPad, height: 42.0)
             if textView.textContainerInset != newInset {
@@ -571,6 +589,7 @@ public struct HybridMarkdownEditorRepresentable: NSViewRepresentable {
             let analysis = MarkdownLiveStyler.applyStyles(
                 to: storage,
                 theme: viewModel.theme,
+                typography: viewModel.typography,
                 sourceCodeMode: viewModel.sourceCodeMode,
                 focusMode: viewModel.focusMode,
                 selectedRange: sel
@@ -591,6 +610,7 @@ public struct HybridMarkdownEditorRepresentable: NSViewRepresentable {
             textView.lineDecorations = analysis.decorations
             textView.needsDisplay = true
             lastTheme = viewModel.theme
+            lastTypography = viewModel.typography
             lastSourceMode = viewModel.sourceCodeMode
             lastFocusMode = viewModel.focusMode
 

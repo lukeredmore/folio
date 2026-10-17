@@ -68,6 +68,7 @@ public final class MarkdownLiveStyler {
     public static func applyStyles(
         to storage: NSTextStorage,
         theme: EditorTheme,
+        typography: EditorTypographySettings = .default,
         sourceCodeMode: Bool,
         focusMode: Bool,
         selectedRange: NSRange
@@ -84,21 +85,25 @@ public final class MarkdownLiveStyler {
 
         storage.beginEditing()
 
+        let effectiveBaseSize = theme.baseFontSize * typography.fontSizeScale
+
         // Base paragraph style
         let baseParagraph = NSMutableParagraphStyle()
-        baseParagraph.lineSpacing = 4.5
-        baseParagraph.paragraphSpacing = 8.0
+        baseParagraph.lineHeightMultiple = typography.lineHeightMultiple
+        baseParagraph.lineSpacing = typography.lineSpacing
+        baseParagraph.paragraphSpacing = typography.paragraphSpacing
         if theme == .classic || theme == .modernist {
             baseParagraph.alignment = .justified
         }
 
-        let baseFont = sourceCodeMode ? theme.codeFont(size: theme.baseFontSize) : theme.bodyFont(size: theme.baseFontSize)
+        let baseFont = sourceCodeMode ? theme.codeFont(size: effectiveBaseSize) : theme.bodyFont(size: effectiveBaseSize)
         let baseColor = theme.textNSColor
 
         storage.setAttributes([
             .font: baseFont,
             .foregroundColor: baseColor,
-            .paragraphStyle: baseParagraph
+            .paragraphStyle: baseParagraph,
+            .kern: sourceCodeMode ? 0.0 : typography.characterSpacing
         ], range: fullRange)
 
         var headings: [OutlineHeading] = []
@@ -136,7 +141,7 @@ public final class MarkdownLiveStyler {
                     )
                     storage.addAttribute(
                         .font,
-                        value: NSFont.monospacedSystemFont(ofSize: theme.baseFontSize, weight: .bold),
+                        value: NSFont.monospacedSystemFont(ofSize: effectiveBaseSize, weight: .bold),
                         range: contentRange
                     )
                 } else if dimFactor < 1.0 {
@@ -154,8 +159,9 @@ public final class MarkdownLiveStyler {
             // 1. Check Code Fence (```)
             let trimmedLine = lineText.trimmingCharacters(in: .whitespaces)
             if trimmedLine.hasPrefix("```") {
-                let codeMono = theme.codeFont(size: theme.baseFontSize * 0.88)
+                let codeMono = theme.codeFont(size: effectiveBaseSize * 0.88)
                 storage.addAttribute(.font, value: codeMono, range: contentRange)
+                storage.addAttribute(.kern, value: 0.0, range: contentRange)
                 storage.addAttribute(
                     .foregroundColor,
                     value: theme.markdownTokenNSColor.withAlphaComponent(isActiveLine ? 0.9 : 0.45 * dimFactor),
@@ -178,9 +184,9 @@ public final class MarkdownLiveStyler {
 
             if inCodeFence {
                 decorations.append(LineDecoration(lineRange: lineRange, kind: .codeFenceBody))
-                let codeMono = theme.codeFont(size: theme.baseFontSize * 0.90)
+                let codeMono = theme.codeFont(size: effectiveBaseSize * 0.90)
                 let codePara = NSMutableParagraphStyle()
-                codePara.lineSpacing = 3.0
+                codePara.lineSpacing = max(2.5, typography.lineSpacing * 0.55)
                 codePara.paragraphSpacing = 1.5
                 codePara.firstLineHeadIndent = 14.0
                 codePara.headIndent = 14.0
@@ -188,7 +194,8 @@ public final class MarkdownLiveStyler {
                 storage.addAttributes([
                     .font: codeMono,
                     .foregroundColor: theme.textNSColor.withAlphaComponent(dimFactor),
-                    .paragraphStyle: codePara
+                    .paragraphStyle: codePara,
+                    .kern: 0.0
                 ], range: lineRange)
 
                 highlightCodeLine(
@@ -256,7 +263,7 @@ public final class MarkdownLiveStyler {
 
                     if isMathBlockActive {
                         // Cursor is inside the math block: show editable syntax-highlighted LaTeX source
-                        let mathMono = theme.codeFont(size: theme.baseFontSize * 0.92)
+                        let mathMono = theme.codeFont(size: effectiveBaseSize * 0.92)
                         let mathPara = NSMutableParagraphStyle()
                         mathPara.lineSpacing = 3.5
                         mathPara.paragraphSpacing = 2.0
@@ -265,7 +272,8 @@ public final class MarkdownLiveStyler {
                         storage.addAttributes([
                             .font: mathMono,
                             .foregroundColor: theme.textNSColor,
-                            .paragraphStyle: mathPara
+                            .paragraphStyle: mathPara,
+                            .kern: 0.0
                         ], range: mLine.lineRange)
 
                         if t.hasPrefix("$$") {
@@ -280,7 +288,7 @@ public final class MarkdownLiveStyler {
                         mathPara.lineSpacing = 4.0
                         mathPara.paragraphSpacing = 4.0
                         storage.addAttributes([
-                            .font: theme.bodyFont(size: theme.baseFontSize),
+                            .font: theme.bodyFont(size: effectiveBaseSize),
                             .foregroundColor: NSColor.clear,
                             .paragraphStyle: mathPara
                         ], range: mLine.lineRange)
@@ -304,6 +312,12 @@ public final class MarkdownLiveStyler {
             if contentRange.length >= 3,
                hrRegex.firstMatch(in: string, options: [], range: contentRange) != nil {
                 decorations.append(LineDecoration(lineRange: lineRange, kind: .horizontalRule))
+                let hrPara = NSMutableParagraphStyle()
+                hrPara.minimumLineHeight = 28.0
+                hrPara.maximumLineHeight = 28.0
+                hrPara.paragraphSpacingBefore = 8.0 * typography.headingSpacingScale
+                hrPara.paragraphSpacing = 8.0 * typography.headingSpacingScale
+                storage.addAttribute(.paragraphStyle, value: hrPara, range: lineRange)
                 styleSyntaxToken(
                     in: storage,
                     range: contentRange,
@@ -331,10 +345,25 @@ public final class MarkdownLiveStyler {
                     lineNumber: lineNumber
                 ))
 
-                let hFont = theme.headingFont(level: level)
+                let hFont = theme.headingFont(level: level, scale: typography.fontSizeScale)
+                let hScale = typography.headingSpacingScale
                 let hPara = NSMutableParagraphStyle()
-                hPara.paragraphSpacingBefore = level == 1 ? 14.0 : (level == 2 ? 11.0 : 8.0)
-                hPara.paragraphSpacing = level <= 2 ? 10.0 : 6.0
+                hPara.lineHeightMultiple = max(1.12, typography.lineHeightMultiple * 0.95)
+                hPara.lineSpacing = max(2.0, typography.lineSpacing * 0.6)
+                switch level {
+                case 1:
+                    hPara.paragraphSpacingBefore = 20.0 * hScale
+                    hPara.paragraphSpacing = (typography.showHeadingUnderlines ? 22.0 : 14.0) * hScale
+                case 2:
+                    hPara.paragraphSpacingBefore = 18.0 * hScale
+                    hPara.paragraphSpacing = (typography.showHeadingUnderlines ? 18.0 : 12.0) * hScale
+                case 3:
+                    hPara.paragraphSpacingBefore = 14.0 * hScale
+                    hPara.paragraphSpacing = 10.0 * hScale
+                default:
+                    hPara.paragraphSpacingBefore = 10.0 * hScale
+                    hPara.paragraphSpacing = 8.0 * hScale
+                }
                 if (theme == .classic && level <= 3) || (theme == .modernist && level == 1) {
                     hPara.alignment = .center
                 }
@@ -342,7 +371,8 @@ public final class MarkdownLiveStyler {
                 storage.addAttributes([
                     .font: hFont,
                     .foregroundColor: theme.headingNSColor.withAlphaComponent(dimFactor),
-                    .paragraphStyle: hPara
+                    .paragraphStyle: hPara,
+                    .kern: typography.headingCharacterSpacing
                 ], range: lineRange)
 
                 let prefixRange = NSRange(location: hashesRange.location, length: hashesRange.length + spaceRange.length)
@@ -354,7 +384,7 @@ public final class MarkdownLiveStyler {
                     dimFactor: dimFactor
                 )
 
-                if level <= 2 {
+                if level <= 2 && typography.showHeadingUnderlines {
                     decorations.append(LineDecoration(lineRange: lineRange, kind: .headingUnderline(level: level)))
                 }
 
@@ -386,14 +416,16 @@ public final class MarkdownLiveStyler {
                 let bqPara = NSMutableParagraphStyle()
                 bqPara.firstLineHeadIndent = CGFloat(nestLevel) * 16.0
                 bqPara.headIndent = CGFloat(nestLevel) * 16.0
-                bqPara.lineSpacing = 4.5
-                bqPara.paragraphSpacing = 6.0
+                bqPara.lineHeightMultiple = typography.lineHeightMultiple
+                bqPara.lineSpacing = typography.lineSpacing
+                bqPara.paragraphSpacing = max(4.0, typography.paragraphSpacing * 0.65)
 
-                let bqFont = theme.bodyFont(size: theme.baseFontSize, italic: theme == .parchment || theme == .editorial)
+                let bqFont = theme.bodyFont(size: effectiveBaseSize, italic: theme == .parchment || theme == .editorial)
                 storage.addAttributes([
                     .font: bqFont,
                     .foregroundColor: theme.blockquoteTextNSColor.withAlphaComponent(dimFactor),
-                    .paragraphStyle: bqPara
+                    .paragraphStyle: bqPara,
+                    .kern: typography.characterSpacing
                 ], range: lineRange)
 
                 styleSyntaxToken(
@@ -466,8 +498,9 @@ public final class MarkdownLiveStyler {
                 let listPara = NSMutableParagraphStyle()
                 listPara.firstLineHeadIndent = 10.0
                 listPara.headIndent = 28.0
-                listPara.lineSpacing = 4.5
-                listPara.paragraphSpacing = 4.0
+                listPara.lineHeightMultiple = typography.lineHeightMultiple
+                listPara.lineSpacing = typography.lineSpacing
+                listPara.paragraphSpacing = max(3.0, typography.paragraphSpacing * 0.45)
                 storage.addAttribute(.paragraphStyle, value: listPara, range: lineRange)
 
                 styleSyntaxToken(
@@ -479,7 +512,7 @@ public final class MarkdownLiveStyler {
                 )
 
                 storage.addAttributes([
-                    .font: NSFont.monospacedSystemFont(ofSize: theme.baseFontSize * 0.92, weight: .bold),
+                    .font: NSFont.monospacedSystemFont(ofSize: effectiveBaseSize * 0.92, weight: .bold),
                     .foregroundColor: (isChecked ? theme.linkNSColor : theme.secondaryTextNSColor).withAlphaComponent(dimFactor)
                 ], range: boxRange)
 
@@ -517,12 +550,13 @@ public final class MarkdownLiveStyler {
                 let listPara = NSMutableParagraphStyle()
                 listPara.firstLineHeadIndent = 8.0
                 listPara.headIndent = 24.0
-                listPara.lineSpacing = 4.5
-                listPara.paragraphSpacing = 4.0
+                listPara.lineHeightMultiple = typography.lineHeightMultiple
+                listPara.lineSpacing = typography.lineSpacing
+                listPara.paragraphSpacing = max(3.0, typography.paragraphSpacing * 0.45)
                 storage.addAttribute(.paragraphStyle, value: listPara, range: lineRange)
 
                 storage.addAttributes([
-                    .font: theme.bodyFont(size: theme.baseFontSize, bold: true),
+                    .font: theme.bodyFont(size: effectiveBaseSize, bold: true),
                     .foregroundColor: theme.linkNSColor.withAlphaComponent(dimFactor)
                 ], range: markerRange)
 

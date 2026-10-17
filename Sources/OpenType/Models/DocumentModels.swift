@@ -108,3 +108,53 @@ public struct WorkspaceSearchMatch: Identifiable, Equatable {
     public let lineSnippet: String
     public let matchRangeInFile: NSRange
 }
+
+public struct EditorTypographySettings: Equatable, Codable {
+    /// Multiplier applied to the theme's base font size (0.80 ... 1.50)
+    public var fontSizeScale: CGFloat = 1.0
+    /// Line height multiple applied to body and list paragraphs (1.0 ... 2.0)
+    public var lineHeightMultiple: CGFloat = 1.24
+    /// Extra line spacing (leading) in points between lines in a paragraph (0 ... 18)
+    public var lineSpacing: CGFloat = 6.0
+    /// Spacing in points after each body paragraph (2 ... 28)
+    public var paragraphSpacing: CGFloat = 12.0
+    /// Character spacing (kerning/tracking) in points for body text (-0.5 ... 2.5)
+    public var characterSpacing: CGFloat = 0.15
+    /// Character spacing (kerning/tracking) in points for headings (-0.5 ... 3.0)
+    public var headingCharacterSpacing: CGFloat = 0.55
+    /// Multiplier for spacing above and below headings (0.6 ... 2.0)
+    public var headingSpacingScale: CGFloat = 1.15
+    /// Vertical offset in points below heading descenders for H1/H2 underlines (2 ... 16)
+    public var headingUnderlineOffset: CGFloat = 8.0
+    /// Whether to draw horizontal underlines beneath H1 and H2 headings
+    public var showHeadingUnderlines: Bool = true
+    /// Maximum readable column width in points (560 ... 1280)
+    public var maxColumnWidth: CGFloat = 860.0
+
+    public init(
+        fontSizeScale: CGFloat = 1.0,
+        lineHeightMultiple: CGFloat = 1.24,
+        lineSpacing: CGFloat = 6.0,
+        paragraphSpacing: CGFloat = 12.0,
+        characterSpacing: CGFloat = 0.15,
+        headingCharacterSpacing: CGFloat = 0.55,
+        headingSpacingScale: CGFloat = 1.15,
+        headingUnderlineOffset: CGFloat = 8.0,
+        showHeadingUnderlines: Bool = true,
+        maxColumnWidth: CGFloat = 860.0
+    ) {
+        self.fontSizeScale = fontSizeScale
+        self.lineHeightMultiple = lineHeightMultiple
+        self.lineSpacing = lineSpacing
+        self.paragraphSpacing = paragraphSpacing
+        self.characterSpacing = characterSpacing
+        self.headingCharacterSpacing = headingCharacterSpacing
+        self.headingSpacingScale = headingSpacingScale
+        self.headingUnderlineOffset = headingUnderlineOffset
+        self.showHeadingUnderlines = showHeadingUnderlines
+        self.maxColumnWidth = maxColumnWidth
+    }
+
+    public static let `default` = EditorTypographySettings()
+}
+

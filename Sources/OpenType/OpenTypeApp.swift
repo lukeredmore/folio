@@ -73,6 +73,14 @@ struct OpenTypeApp: App {
         .windowStyle(.titleBar)
         .windowToolbarStyle(.unifiedCompact(showsTitle: true))
         .commands {
+            // MARK: - App Settings (Cmd+,)
+            CommandGroup(replacing: .appSettings) {
+                Button("Settings...") {
+                    viewModel.showSettingsModal.toggle()
+                }
+                .keyboardShortcut(",", modifiers: [.command])
+            }
+
             // MARK: - File Menu
             CommandGroup(replacing: .newItem) {
                 Button("New") {

@@ -176,11 +176,11 @@ public enum EditorTheme: String, CaseIterable, Identifiable {
         }
     }
 
-    public func bodyFont(size: CGFloat, bold: Bool = false, italic: Bool = false) -> NSFont {
+    public func bodyFont(size: CGFloat, bold: Bool = false, italic: Bool = false, semibold: Bool = false) -> NSFont {
         let familyCandidates: [String]
         switch self {
         case .daylight, .midnight:
-            familyCandidates = [] // system sans-serif ("SF Pro", -apple-system, Helvetica Neue)
+            familyCandidates = [] // system sans-serif
         case .parchment:
             familyCandidates = ["PT Serif", "Georgia", "Times New Roman"]
         case .editorial:
@@ -191,6 +191,18 @@ public enum EditorTheme: String, CaseIterable, Identifiable {
             familyCandidates = ["Avenir Next", "Century Gothic", "Helvetica Neue"]
         }
 
+        if familyCandidates.isEmpty {
+            let weight: NSFont.Weight = semibold ? .semibold : (bold ? .bold : .regular)
+            let sysFont = NSFont.systemFont(ofSize: size, weight: weight)
+            if italic {
+                let desc = sysFont.fontDescriptor.withSymbolicTraits(
+                    sysFont.fontDescriptor.symbolicTraits.union(.italic)
+                )
+                return NSFont(descriptor: desc, size: size) ?? NSFontManager.shared.convert(sysFont, toHaveTrait: .italicFontMask)
+            }
+            return sysFont
+        }
+
         var baseFont: NSFont?
         for family in familyCandidates {
             if let f = NSFont(name: family, size: size) {
@@ -198,34 +210,35 @@ public enum EditorTheme: String, CaseIterable, Identifiable {
                 break
             }
         }
-        if baseFont == nil {
-            baseFont = NSFont.systemFont(ofSize: size, weight: bold ? .bold : .regular)
+        guard let resolvedFont = baseFont else {
+            return NSFont.systemFont(ofSize: size, weight: semibold ? .semibold : (bold ? .bold : .regular))
         }
 
         var traits: NSFontTraitMask = []
-        if bold { traits.insert(.boldFontMask) }
+        if bold || semibold { traits.insert(.boldFontMask) }
         if italic { traits.insert(.italicFontMask) }
 
-        if !traits.isEmpty, let f = baseFont {
-            return NSFontManager.shared.convert(f, toHaveTrait: traits)
+        if !traits.isEmpty {
+            return NSFontManager.shared.convert(resolvedFont, toHaveTrait: traits)
         }
-        return baseFont ?? NSFont.systemFont(ofSize: size)
+        return resolvedFont
     }
 
-    public func headingFont(level: Int) -> NSFont {
+    public func headingFont(level: Int, scale: CGFloat = 1.0) -> NSFont {
         let multipliers: [Int: CGFloat] = [
-            1: 2.15,
-            2: 1.68,
-            3: 1.38,
-            4: 1.16,
-            5: 1.02,
-            6: 0.94
+            1: 1.95,
+            2: 1.52,
+            3: 1.26,
+            4: 1.10,
+            5: 1.00,
+            6: 0.92
         ]
         let mult = multipliers[level] ?? 1.0
-        let size = round(baseFontSize * mult)
-        let isBold = (self != .classic && self != .modernist) || level >= 4
+        let size = round(baseFontSize * scale * mult)
+        let useSemibold = (self == .daylight || self == .midnight)
+        let isBold = !useSemibold && ((self != .classic && self != .modernist) || level >= 4)
         let isItalic = (self == .classic && level == 3)
-        return bodyFont(size: size, bold: isBold, italic: isItalic)
+        return bodyFont(size: size, bold: isBold, italic: isItalic, semibold: useSemibold)
     }
 
     public func codeFont(size: CGFloat? = nil) -> NSFont {

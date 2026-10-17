@@ -370,6 +370,24 @@ public struct StatusBarView: View {
             .fixedSize()
             .help("Switch Theme")
 
+            // Typography & Layout Settings button
+            Button {
+                viewModel.showSettingsModal.toggle()
+            } label: {
+                HStack(spacing: 4) {
+                    Image(systemName: "slider.horizontal.3")
+                        .font(.system(size: 11))
+                    Text("Settings")
+                        .font(.system(size: 11))
+                }
+                .foregroundColor(viewModel.showSettingsModal ? viewModel.theme.linkColor : viewModel.theme.secondaryTextColor)
+            }
+            .buttonStyle(.plain)
+            .popover(isPresented: $viewModel.showSettingsModal, arrowEdge: .top) {
+                EditorSettingsView(viewModel: viewModel)
+            }
+            .help("Typography & Editor Settings (Cmd+,)")
+
             // Right: Word Count Popover button
             Button {
                 viewModel.showWordCountPopover.toggle()
@@ -422,3 +440,171 @@ public struct StatusBarView: View {
         .buttonStyle(.plain)
     }
 }
+
+public struct EditorSettingsView: View {
+    @ObservedObject var viewModel: EditorWorkspaceViewModel
+
+    public init(viewModel: EditorWorkspaceViewModel) {
+        self.viewModel = viewModel
+    }
+
+    public var body: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            HStack {
+                Label("Typography & Layout Settings", systemImage: "textformat.size")
+                    .font(.system(size: 13.5, weight: .semibold))
+                Spacer()
+                Button("Reset Defaults") {
+                    viewModel.resetTypographyToDefaults()
+                }
+                .controlSize(.small)
+            }
+
+            Divider()
+
+            // Section 1: Body Typography
+            VStack(alignment: .leading, spacing: 8) {
+                Text("BODY TYPOGRAPHY")
+                    .font(.system(size: 10, weight: .bold))
+                    .foregroundColor(.secondary)
+
+                settingSliderRow(
+                    title: "Font Size Scale",
+                    valueText: "\(Int(round(viewModel.typography.fontSizeScale * 100)))%",
+                    value: $viewModel.typography.fontSizeScale,
+                    range: 0.80...1.50,
+                    step: 0.05
+                )
+
+                settingSliderRow(
+                    title: "Line Height",
+                    valueText: String(format: "%.2f×", viewModel.typography.lineHeightMultiple),
+                    value: $viewModel.typography.lineHeightMultiple,
+                    range: 1.00...1.80,
+                    step: 0.02
+                )
+
+                settingSliderRow(
+                    title: "Line Spacing",
+                    valueText: String(format: "%.1f pt", viewModel.typography.lineSpacing),
+                    value: $viewModel.typography.lineSpacing,
+                    range: 0.0...16.0,
+                    step: 0.5
+                )
+
+                settingSliderRow(
+                    title: "Paragraph Spacing",
+                    valueText: String(format: "%.1f pt", viewModel.typography.paragraphSpacing),
+                    value: $viewModel.typography.paragraphSpacing,
+                    range: 2.0...28.0,
+                    step: 1.0
+                )
+
+                settingSliderRow(
+                    title: "Character Spacing",
+                    valueText: String(format: "%+.2f pt", viewModel.typography.characterSpacing),
+                    value: $viewModel.typography.characterSpacing,
+                    range: -0.50...2.50,
+                    step: 0.05
+                )
+            }
+
+            Divider()
+
+            // Section 2: Headings & Horizontal Rules
+            VStack(alignment: .leading, spacing: 8) {
+                Text("TITLES & HORIZONTAL LINES")
+                    .font(.system(size: 10, weight: .bold))
+                    .foregroundColor(.secondary)
+
+                settingSliderRow(
+                    title: "Title Letter Spacing",
+                    valueText: String(format: "%+.2f pt", viewModel.typography.headingCharacterSpacing),
+                    value: $viewModel.typography.headingCharacterSpacing,
+                    range: -0.50...3.00,
+                    step: 0.05
+                )
+
+                settingSliderRow(
+                    title: "Title Vertical Spacing",
+                    valueText: String(format: "%.2f×", viewModel.typography.headingSpacingScale),
+                    value: $viewModel.typography.headingSpacingScale,
+                    range: 0.60...2.00,
+                    step: 0.05
+                )
+
+                settingSliderRow(
+                    title: "Underline Offset",
+                    valueText: String(format: "%.1f pt", viewModel.typography.headingUnderlineOffset),
+                    value: $viewModel.typography.headingUnderlineOffset,
+                    range: 2.0...16.0,
+                    step: 0.5
+                )
+
+                Toggle("Show H1 / H2 Heading Underlines", isOn: $viewModel.typography.showHeadingUnderlines)
+                    .font(.system(size: 12))
+            }
+
+            Divider()
+
+            // Section 3: Page Layout & Editor Options
+            VStack(alignment: .leading, spacing: 8) {
+                Text("PAGE LAYOUT & EDITOR")
+                    .font(.system(size: 10, weight: .bold))
+                    .foregroundColor(.secondary)
+
+                settingSliderRow(
+                    title: "Max Column Width",
+                    valueText: "\(Int(viewModel.typography.maxColumnWidth)) px",
+                    value: $viewModel.typography.maxColumnWidth,
+                    range: 560.0...1280.0,
+                    step: 20.0
+                )
+
+                HStack {
+                    Toggle("Continuous Spellcheck", isOn: $viewModel.spellCheckEnabled)
+                        .font(.system(size: 12))
+                    Spacer()
+                    Picker("Theme", selection: $viewModel.theme) {
+                        ForEach(EditorTheme.allCases) { themeOption in
+                            Text(themeOption.rawValue).tag(themeOption)
+                        }
+                    }
+                    .labelsHidden()
+                    .frame(width: 120)
+                }
+            }
+        }
+        .padding(16)
+        .frame(width: 390)
+    }
+
+    private func settingSliderRow(
+        title: String,
+        valueText: String,
+        value: Binding<CGFloat>,
+        range: ClosedRange<CGFloat>,
+        step: CGFloat
+    ) -> some View {
+        HStack(spacing: 10) {
+            Text(title)
+                .font(.system(size: 12))
+                .frame(width: 135, alignment: .leading)
+
+            Slider(
+                value: Binding<Double>(
+                    get: { Double(value.wrappedValue) },
+                    set: { value.wrappedValue = CGFloat($0) }
+                ),
+                in: Double(range.lowerBound)...Double(range.upperBound),
+                step: Double(step)
+            )
+
+            Text(valueText)
+                .font(.system(size: 11.5, design: .monospaced))
+                .foregroundColor(.secondary)
+                .frame(width: 58, alignment: .trailing)
+        }
+    }
+}
+

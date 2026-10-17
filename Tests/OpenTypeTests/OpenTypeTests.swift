@@ -192,4 +192,49 @@ final class OpenTypeTests: XCTestCase {
         XCTAssertTrue(EditorTheme.midnight.isDark)
         XCTAssertFalse(EditorTheme.daylight.isDark)
     }
+
+    func testTypographySettingsCustomization() {
+        let sample = "# Main Title\n\nBody paragraph text.\n\n---\n"
+        let storage = NSTextStorage(string: sample)
+        let customTypo = EditorTypographySettings(
+            fontSizeScale: 1.15,
+            lineHeightMultiple: 1.40,
+            lineSpacing: 9.0,
+            paragraphSpacing: 16.0,
+            characterSpacing: 0.45,
+            headingCharacterSpacing: 0.85,
+            headingSpacingScale: 1.25,
+            headingUnderlineOffset: 10.0,
+            showHeadingUnderlines: true,
+            maxColumnWidth: 920.0
+        )
+
+        let analysis = MarkdownLiveStyler.applyStyles(
+            to: storage,
+            theme: .daylight,
+            typography: customTypo,
+            sourceCodeMode: false,
+            focusMode: false,
+            selectedRange: NSRange(location: 20, length: 0)
+        )
+
+        let titleLoc = (sample as NSString).range(of: "Main Title").location
+        let titleKern = storage.attribute(.kern, at: titleLoc, effectiveRange: nil) as? CGFloat
+        XCTAssertEqual(titleKern ?? 0.0, 0.85, accuracy: 0.01)
+
+        let bodyLoc = (sample as NSString).range(of: "Body paragraph").location
+        let bodyKern = storage.attribute(.kern, at: bodyLoc, effectiveRange: nil) as? CGFloat
+        XCTAssertEqual(bodyKern ?? 0.0, 0.45, accuracy: 0.01)
+
+        let bodyPara = storage.attribute(.paragraphStyle, at: bodyLoc, effectiveRange: nil) as? NSParagraphStyle
+        XCTAssertEqual(bodyPara?.lineSpacing ?? 0.0, 9.0, accuracy: 0.01)
+        XCTAssertEqual(bodyPara?.lineHeightMultiple ?? 0.0, 1.40, accuracy: 0.01)
+
+        let hrLoc = (sample as NSString).range(of: "---").location
+        let hrPara = storage.attribute(.paragraphStyle, at: hrLoc, effectiveRange: nil) as? NSParagraphStyle
+        XCTAssertEqual(hrPara?.minimumLineHeight ?? 0.0, 28.0, accuracy: 0.01)
+
+        XCTAssertTrue(analysis.decorations.contains(where: { $0.kind == .headingUnderline(level: 1) }))
+    }
 }
+
