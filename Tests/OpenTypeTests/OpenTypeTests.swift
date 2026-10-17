@@ -43,8 +43,8 @@ final class OpenTypeTests: XCTestCase {
         XCTAssertTrue(analysis.decorations.contains(where: { $0.kind == .horizontalRule }))
         XCTAssertTrue(analysis.decorations.contains(where: { $0.kind == .codeFenceStart(language: "swift") }))
         XCTAssertTrue(analysis.decorations.contains(where: {
-            if case .tableRow(let isHeader, _, let isFirst, _, _, _, _) = $0.kind {
-                return isHeader && isFirst
+            if case .tableRow(let isHeader, _, let isFirst, _, _, let offsetX, let tableWidth, _) = $0.kind {
+                return isHeader && isFirst && offsetX >= 0 && tableWidth >= 600
             }
             return false
         }))

@@ -18,6 +18,7 @@ public enum BlockDecorationKind: Equatable {
     case mathBlockEnd(isActive: Bool)
     case mathBlockRendered(latex: String, fullBlockRange: NSRange, dimFactor: CGFloat)
     case inlineMathRendered(latex: String, range: NSRange, fontSize: CGFloat, dimFactor: CGFloat)
+    case inlineCode(range: NSRange, fontSize: CGFloat, dimFactor: CGFloat)
     case horizontalRule
     case tableRow(
         isHeader: Bool,
@@ -25,6 +26,7 @@ public enum BlockDecorationKind: Equatable {
         isFirstRow: Bool,
         isLastRow: Bool,
         bodyRowIndex: Int,
+        tableOffsetX: CGFloat,
         tableWidth: CGFloat,
         columnDividers: [CGFloat]
     )
@@ -71,7 +73,8 @@ public final class MarkdownLiveStyler {
         typography: EditorTypographySettings = .default,
         sourceCodeMode: Bool,
         focusMode: Bool,
-        selectedRange: NSRange
+        selectedRange: NSRange,
+        containerWidth: CGFloat = 0
     ) -> MarkdownDocumentAnalysis {
         let string = storage.string
         let nsString = string as NSString
@@ -86,6 +89,7 @@ public final class MarkdownLiveStyler {
         storage.beginEditing()
 
         let effectiveBaseSize = theme.baseFontSize * typography.fontSizeScale
+        let effectiveContainerWidth = containerWidth > 200 ? containerWidth : typography.maxColumnWidth
 
         // Base paragraph style
         let baseParagraph = NSMutableParagraphStyle()
@@ -160,14 +164,29 @@ public final class MarkdownLiveStyler {
             let trimmedLine = lineText.trimmingCharacters(in: .whitespaces)
             if trimmedLine.hasPrefix("```") {
                 let codeMono = theme.codeFont(size: effectiveBaseSize * 0.88)
-                storage.addAttribute(.font, value: codeMono, range: contentRange)
-                storage.addAttribute(.kern, value: 0.0, range: contentRange)
-                storage.addAttribute(
-                    .foregroundColor,
-                    value: theme.markdownTokenNSColor.withAlphaComponent(isActiveLine ? 0.9 : 0.45 * dimFactor),
-                    range: contentRange
-                )
-                if !inCodeFence {
+                let isFenceStart = !inCodeFence
+                let fenceRowHeight: CGFloat = 26.0
+                let fencePara = NSMutableParagraphStyle()
+                fencePara.lineSpacing = 0.0
+                fencePara.paragraphSpacingBefore = 0.0
+                fencePara.paragraphSpacing = isFenceStart ? 0.0 : typography.paragraphSpacing
+                fencePara.firstLineHeadIndent = 14.0
+                fencePara.headIndent = 14.0
+                fencePara.minimumLineHeight = fenceRowHeight
+                fencePara.maximumLineHeight = fenceRowHeight
+
+                let fenceNaturalHeight = codeMono.ascender + abs(codeMono.descender)
+                let fenceBaselineShift = max(0.0, floor((fenceRowHeight - fenceNaturalHeight) * 0.5))
+
+                storage.addAttributes([
+                    .font: codeMono,
+                    .foregroundColor: theme.markdownTokenNSColor.withAlphaComponent(isActiveLine ? 0.9 : 0.45 * dimFactor),
+                    .paragraphStyle: fencePara,
+                    .baselineOffset: fenceBaselineShift,
+                    .kern: 0.0
+                ], range: lineRange)
+
+                if isFenceStart {
                     inCodeFence = true
                     let lang = String(trimmedLine.dropFirst(3)).trimmingCharacters(in: .whitespaces)
                     currentFenceLanguage = lang.lowercased()
@@ -187,7 +206,7 @@ public final class MarkdownLiveStyler {
                 let codeMono = theme.codeFont(size: effectiveBaseSize * 0.90)
                 let codePara = NSMutableParagraphStyle()
                 codePara.lineSpacing = max(2.5, typography.lineSpacing * 0.55)
-                codePara.paragraphSpacing = 1.5
+                codePara.paragraphSpacing = 0.0
                 codePara.firstLineHeadIndent = 14.0
                 codePara.headIndent = 14.0
 
@@ -478,6 +497,8 @@ public final class MarkdownLiveStyler {
                     string: string,
                     nsString: nsString,
                     theme: theme,
+                    typography: typography,
+                    containerWidth: effectiveContainerWidth,
                     focusMode: focusMode,
                     decorations: &decorations
                 )
@@ -671,7 +692,8 @@ public final class MarkdownLiveStyler {
                 if c == 32 || c == 9 { contentEnd -= 1 } else { break }
             }
 
-            let leadingRange = NSRange(location: pipePos, length: contentStart - pipePos)
+            let startLoc = (i == 0) ? contentRange.location : pipePos
+            let leadingRange = NSRange(location: startLoc, length: contentStart - startLoc)
             let cellRange = NSRange(location: contentStart, length: contentEnd - contentStart)
             let trailingRange = NSRange(location: contentEnd, length: nextPipePos - contentEnd)
             cells.append(ParsedTableCell(
@@ -692,11 +714,14 @@ public final class MarkdownLiveStyler {
         string: String,
         nsString: NSString,
         theme: EditorTheme,
+        typography: EditorTypographySettings,
+        containerWidth: CGFloat,
         focusMode: Bool,
         decorations: inout [LineDecoration]
     ) {
         guard !rows.isEmpty else { return }
 
+        let effectiveBaseSize = theme.baseFontSize * typography.fontSizeScale
         let parsedRows: [ParsedTableRow?] = rows.map { parseTableRowCells(nsString: nsString, contentRange: $0.contentRange) }
         let numCols = parsedRows.compactMap({ $0?.cells.count }).max() ?? 1
 
@@ -719,6 +744,7 @@ public final class MarkdownLiveStyler {
 
         // First pass: style text & inline Markdown inside each row and measure natural cell widths
         var measuredWidths: [[CGFloat]] = Array(repeating: Array(repeating: 0, count: numCols), count: rows.count)
+        var inlineTableDecorations: [LineDecoration] = []
 
         for (rIdx, row) in rows.enumerated() {
             let dimFactor: CGFloat = (focusMode && !row.isActive) ? 0.30 : 1.0
@@ -726,13 +752,21 @@ public final class MarkdownLiveStyler {
 
             if row.isSeparator {
                 if row.isActive {
+                    let activeMono = theme.codeFont(size: effectiveBaseSize * 0.88)
+                    let activeRowHeight: CGFloat = 26.0
                     let activePara = NSMutableParagraphStyle()
-                    activePara.lineSpacing = 2.0
+                    activePara.lineSpacing = 0.0
                     activePara.paragraphSpacing = 0.0
+                    activePara.minimumLineHeight = activeRowHeight
+                    activePara.maximumLineHeight = activeRowHeight
+                    let naturalH = activeMono.ascender + abs(activeMono.descender)
+                    let shift = max(0.0, floor((activeRowHeight - naturalH) * 0.5))
                     storage.addAttributes([
-                        .font: theme.codeFont(size: theme.baseFontSize * 0.88),
+                        .font: activeMono,
                         .foregroundColor: theme.markdownTokenNSColor.withAlphaComponent(0.9 * dimFactor),
-                        .paragraphStyle: activePara
+                        .paragraphStyle: activePara,
+                        .baselineOffset: shift,
+                        .kern: 0.0
                     ], range: row.lineRange)
                 } else {
                     // Collapse separator row on inactive line into a clean hairline
@@ -744,7 +778,9 @@ public final class MarkdownLiveStyler {
                     storage.addAttributes([
                         .font: NSFont.systemFont(ofSize: 0.5),
                         .foregroundColor: NSColor.clear,
-                        .paragraphStyle: collapsedPara
+                        .paragraphStyle: collapsedPara,
+                        .baselineOffset: 0.0,
+                        .kern: 0.0
                     ], range: row.lineRange)
                 }
                 continue
@@ -752,20 +788,27 @@ public final class MarkdownLiveStyler {
 
             let cellFont: NSFont
             if row.isActive {
-                cellFont = theme.codeFont(size: theme.baseFontSize * 0.90)
+                cellFont = theme.codeFont(size: effectiveBaseSize * 0.90)
             } else {
-                cellFont = theme.bodyFont(size: theme.baseFontSize * 0.93, bold: isHeader)
+                cellFont = theme.bodyFont(size: effectiveBaseSize * 0.93, bold: isHeader)
             }
 
+            let rowHeight: CGFloat = 32.0
             let rowPara = NSMutableParagraphStyle()
             rowPara.lineSpacing = 0.0
             rowPara.paragraphSpacing = 0.0
-            rowPara.minimumLineHeight = 26.0
+            rowPara.minimumLineHeight = rowHeight
+            rowPara.maximumLineHeight = rowHeight
+
+            let naturalFontHeight = cellFont.ascender + abs(cellFont.descender)
+            let baselineShift = max(0.0, floor((rowHeight - naturalFontHeight) * 0.5))
 
             storage.addAttributes([
                 .font: cellFont,
                 .foregroundColor: (isHeader ? theme.headingNSColor : theme.textNSColor).withAlphaComponent(dimFactor),
-                .paragraphStyle: rowPara
+                .paragraphStyle: rowPara,
+                .baselineOffset: baselineShift,
+                .kern: 0.0
             ], range: row.lineRange)
 
             guard let parsed = parsedRows[rIdx] else { continue }
@@ -780,7 +823,7 @@ public final class MarkdownLiveStyler {
                         isActiveLine: row.isActive,
                         theme: theme,
                         dimFactor: dimFactor,
-                        decorations: &decorations
+                        decorations: &inlineTableDecorations
                     )
                     let cellAttr = storage.attributedSubstring(from: cell.contentRange)
                     measuredWidths[rIdx][cIdx] = ceil(cellAttr.size().width)
@@ -804,11 +847,14 @@ public final class MarkdownLiveStyler {
             return max(72.0, maxCellW + cellHorizontalPadding * 2.0)
         }
 
-        let minTableWidth = min(640.0, theme.maxWriteWidth * 0.88)
         let naturalSum = colWidths.reduce(0, +)
-        if naturalSum < minTableWidth && naturalSum > 0 {
-            let scale = minTableWidth / naturalSum
+        if naturalSum > 0 && abs(naturalSum - containerWidth) > 1.0 {
+            let scale = containerWidth / naturalSum
             colWidths = colWidths.map { floor($0 * scale) }
+            let scaledSum = colWidths.reduce(0, +)
+            if numCols > 0 && scaledSum != containerWidth {
+                colWidths[numCols - 1] += (containerWidth - scaledSum)
+            }
         }
 
         var colStartX: [CGFloat] = Array(repeating: 0, count: numCols)
@@ -818,6 +864,7 @@ public final class MarkdownLiveStyler {
             runningX += colWidths[cIdx]
         }
         let totalTableWidth = runningX
+        let tableOffsetX = max(0.0, floor((containerWidth - totalTableWidth) * 0.5))
         let columnDividerX = Array(colStartX.dropFirst())
 
         // Second pass: apply exact .kern alignment to inactive non-separator rows and emit decorations
@@ -839,6 +886,7 @@ public final class MarkdownLiveStyler {
                     isFirstRow: isFirst,
                     isLastRow: isLast,
                     bodyRowIndex: currentBodyIdx,
+                    tableOffsetX: tableOffsetX,
                     tableWidth: totalTableWidth,
                     columnDividers: columnDividerX
                 )
@@ -885,16 +933,19 @@ public final class MarkdownLiveStyler {
                     alignOffset = max(cellHorizontalPadding, colW - cellW - cellHorizontalPadding)
                 }
 
-                let targetCellStartX = colStartX[cIdx] + alignOffset
+                let targetCellStartX = tableOffsetX + colStartX[cIdx] + alignOffset
                 let deltaKern = max(2.0, targetCellStartX - currentCursorX)
 
-                // Apply deltaKern to the pipe character at the start of this cell's leadingDelimiterRange
+                // Apply deltaKern to the first character at the start of this cell's leadingDelimiterRange
                 let pipeCharRange = NSRange(location: cell.leadingDelimiterRange.location, length: 1)
                 storage.addAttribute(.kern, value: deltaKern, range: pipeCharRange)
 
                 currentCursorX = targetCellStartX + cellW
             }
         }
+
+        // Append inline decorations (inline code pills, inline math) after tableRow backgrounds so they render on top
+        decorations.append(contentsOf: inlineTableDecorations)
     }
 
     // MARK: - Inline Markdown Styling
@@ -938,11 +989,15 @@ public final class MarkdownLiveStyler {
                 }
             }
 
+            let codeFontSize = fontSize * 0.88
             storage.addAttributes([
-                .font: theme.codeFont(size: fontSize * 0.88),
-                .foregroundColor: theme.inlineCodeNSColor.withAlphaComponent(dimFactor),
-                .backgroundColor: theme.codeBackgroundNSColor.withAlphaComponent(dimFactor)
+                .font: theme.codeFont(size: codeFontSize),
+                .foregroundColor: theme.inlineCodeNSColor.withAlphaComponent(dimFactor)
             ], range: innerRange)
+            decorations.append(LineDecoration(
+                lineRange: innerRange,
+                kind: .inlineCode(range: innerRange, fontSize: codeFontSize, dimFactor: dimFactor)
+            ))
             styleSyntaxToken(in: storage, range: openRange, isActiveLine: isActiveLine, theme: theme, dimFactor: dimFactor)
             styleSyntaxToken(in: storage, range: closeRange, isActiveLine: isActiveLine, theme: theme, dimFactor: dimFactor)
         }
