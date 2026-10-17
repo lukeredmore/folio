@@ -165,7 +165,7 @@ public final class MarkdownLiveStyler {
             if trimmedLine.hasPrefix("```") {
                 let codeMono = theme.codeFont(size: effectiveBaseSize * 0.88)
                 let isFenceStart = !inCodeFence
-                let fenceRowHeight: CGFloat = 26.0
+                let fenceRowHeight: CGFloat = 23.0
                 let fencePara = NSMutableParagraphStyle()
                 fencePara.lineSpacing = 0.0
                 fencePara.paragraphSpacingBefore = 0.0
@@ -175,14 +175,11 @@ public final class MarkdownLiveStyler {
                 fencePara.minimumLineHeight = fenceRowHeight
                 fencePara.maximumLineHeight = fenceRowHeight
 
-                let fenceNaturalHeight = codeMono.ascender + abs(codeMono.descender)
-                let fenceBaselineShift = max(0.0, floor((fenceRowHeight - fenceNaturalHeight) * 0.5))
-
                 storage.addAttributes([
                     .font: codeMono,
                     .foregroundColor: theme.markdownTokenNSColor.withAlphaComponent(isActiveLine ? 0.9 : 0.45 * dimFactor),
                     .paragraphStyle: fencePara,
-                    .baselineOffset: fenceBaselineShift,
+                    .baselineOffset: 0.0,
                     .kern: 0.0
                 ], range: lineRange)
 
@@ -204,16 +201,21 @@ public final class MarkdownLiveStyler {
             if inCodeFence {
                 decorations.append(LineDecoration(lineRange: lineRange, kind: .codeFenceBody))
                 let codeMono = theme.codeFont(size: effectiveBaseSize * 0.90)
+                let bodyRowHeight: CGFloat = 22.0
                 let codePara = NSMutableParagraphStyle()
-                codePara.lineSpacing = max(2.5, typography.lineSpacing * 0.55)
+                codePara.lineSpacing = 0.0
+                codePara.paragraphSpacingBefore = 0.0
                 codePara.paragraphSpacing = 0.0
                 codePara.firstLineHeadIndent = 14.0
                 codePara.headIndent = 14.0
+                codePara.minimumLineHeight = bodyRowHeight
+                codePara.maximumLineHeight = bodyRowHeight
 
                 storage.addAttributes([
                     .font: codeMono,
                     .foregroundColor: theme.textNSColor.withAlphaComponent(dimFactor),
                     .paragraphStyle: codePara,
+                    .baselineOffset: 0.0,
                     .kern: 0.0
                 ], range: lineRange)
 

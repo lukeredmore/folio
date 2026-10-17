@@ -20,6 +20,35 @@ public final class HybridMarkdownTextView: NSTextView {
 
     public var onToggleCheckboxAtCharacterIndex: ((Int) -> Void)?
 
+    private static let supportedCodeFenceLanguages: [(id: String, title: String, aliases: [String])] = [
+        ("swift", "Swift", ["swift"]),
+        ("python", "Python", ["python", "py"]),
+        ("javascript", "JavaScript", ["javascript", "js", "jsx"]),
+        ("typescript", "TypeScript", ["typescript", "ts", "tsx"]),
+        ("rust", "Rust", ["rust", "rs"]),
+        ("go", "Go", ["go", "golang"]),
+        ("c", "C", ["c", "h"]),
+        ("cpp", "C++", ["cpp", "c++", "hpp"]),
+        ("objc", "Objective-C", ["objc", "objective-c"]),
+        ("bash", "Shell / Bash", ["bash", "sh", "zsh", "shell"]),
+        ("json", "JSON", ["json", "jsonc"]),
+        ("yaml", "YAML", ["yaml", "yml"]),
+        ("toml", "TOML", ["toml"]),
+        ("html", "HTML / XML", ["html", "xml", "svg"]),
+        ("css", "CSS / SCSS", ["css", "scss"]),
+        ("sql", "SQL", ["sql"])
+    ]
+
+    private final class CodeFenceLanguageActionPayload: NSObject {
+        let lineRange: NSRange
+        let languageId: String
+
+        init(lineRange: NSRange, languageId: String) {
+            self.lineRange = lineRange
+            self.languageId = languageId
+        }
+    }
+
     private static func languageAccentColor(for rawLang: String, isDark: Bool) -> NSColor {
         switch rawLang.lowercased().trimmingCharacters(in: .whitespaces) {
         case "swift":
@@ -36,11 +65,13 @@ public final class HybridMarkdownTextView: NSTextView {
             return NSColor(srgbRed: 0.85, green: 0.45, blue: 0.24, alpha: 1.0)
         case "go", "golang":
             return NSColor(srgbRed: 0.0, green: 0.68, blue: 0.85, alpha: 1.0)
+        case "c", "h", "cpp", "c++", "hpp", "objc", "objective-c":
+            return NSColor(srgbRed: 0.58, green: 0.28, blue: 0.78, alpha: 1.0)
         case "json", "jsonc", "yaml", "yml", "toml":
             return NSColor(srgbRed: 0.20, green: 0.65, blue: 0.45, alpha: 1.0)
         case "bash", "sh", "zsh", "shell":
             return NSColor(srgbRed: 0.26, green: 0.68, blue: 0.34, alpha: 1.0)
-        case "html", "xml", "css", "scss":
+        case "html", "xml", "svg", "css", "scss":
             return NSColor(srgbRed: 0.86, green: 0.30, blue: 0.42, alpha: 1.0)
         case "sql":
             return NSColor(srgbRed: 0.28, green: 0.52, blue: 0.88, alpha: 1.0)
@@ -49,6 +80,89 @@ public final class HybridMarkdownTextView: NSTextView {
                 ? NSColor.white.withAlphaComponent(0.65)
                 : NSColor.black.withAlphaComponent(0.55)
         }
+    }
+
+    private static func languageMenuDotImage(for rawLang: String, isDark: Bool) -> NSImage {
+        let size = NSSize(width: 8, height: 8)
+        let img = NSImage(size: size)
+        img.lockFocus()
+        languageAccentColor(for: rawLang, isDark: isDark).setFill()
+        NSBezierPath(ovalIn: NSRect(origin: .zero, size: size)).fill()
+        img.unlockFocus()
+        return img
+    }
+
+    private struct CodeFenceBadgeGeometry {
+        let pillRect: NSRect
+        let dotRect: NSRect
+        let textPoint: NSPoint
+        let chevronCenter: NSPoint
+        let badgeString: NSString
+        let badgeAttributes: [NSAttributedString.Key: Any]
+        let accent: NSColor
+    }
+
+    private func computeCodeFenceBadgeGeometry(
+        for lineRange: NSRange,
+        language: String,
+        layoutManager: NSLayoutManager,
+        origin: NSPoint,
+        contentWidth: CGFloat
+    ) -> CodeFenceBadgeGeometry? {
+        let glyphRange = layoutManager.glyphRange(forCharacterRange: lineRange, actualCharacterRange: nil)
+        guard glyphRange.location != NSNotFound else { return nil }
+
+        let firstFrag = layoutManager.lineFragmentRect(forGlyphAt: glyphRange.location, effectiveRange: nil)
+        let glyphLoc = layoutManager.location(forGlyphAt: glyphRange.location)
+        let baselineY = origin.y + firstFrag.minY + glyphLoc.y
+        let codeMono = currentTheme.codeFont(size: currentTheme.baseFontSize * typographySettings.fontSizeScale * 0.88)
+        let textVisualMidY = baselineY - (codeMono.ascender + codeMono.descender) * 0.5
+
+        let trimmedLang = language.trimmingCharacters(in: .whitespaces)
+        let labelText = trimmedLang.isEmpty ? "PLAIN TEXT" : trimmedLang.uppercased()
+        let accent = Self.languageAccentColor(for: trimmedLang, isDark: currentTheme.isDark)
+        let badgeAttrs: [NSAttributedString.Key: Any] = [
+            .font: NSFont.monospacedSystemFont(ofSize: 10.5, weight: .semibold),
+            .foregroundColor: accent
+        ]
+        let badgeStr = labelText as NSString
+        let badgeSize = badgeStr.size(withAttributes: badgeAttrs)
+
+        let pillPadH: CGFloat = 7.5
+        let pillPadV: CGFloat = 2.5
+        let dotSpace: CGFloat = 10.0
+        let chevronSpace: CGFloat = 12.0
+        let pillW = badgeSize.width + pillPadH * 2 + dotSpace + chevronSpace
+        let pillH = badgeSize.height + pillPadV * 2
+        let pillRect = NSRect(
+            x: origin.x + contentWidth - pillW - 8.0,
+            y: floor(textVisualMidY - pillH * 0.5),
+            width: pillW,
+            height: pillH
+        )
+        let dotRect = NSRect(
+            x: pillRect.minX + pillPadH,
+            y: pillRect.midY - 3.0,
+            width: 6.0,
+            height: 6.0
+        )
+        let textPoint = NSPoint(
+            x: pillRect.minX + pillPadH + dotSpace,
+            y: pillRect.minY + pillPadV
+        )
+        let chevronCenter = NSPoint(
+            x: pillRect.maxX - pillPadH - 3.0,
+            y: pillRect.midY + 0.5
+        )
+        return CodeFenceBadgeGeometry(
+            pillRect: pillRect,
+            dotRect: dotRect,
+            textPoint: textPoint,
+            chevronCenter: chevronCenter,
+            badgeString: badgeStr,
+            badgeAttributes: badgeAttrs,
+            accent: accent
+        )
     }
 
     public override func drawBackground(in rect: NSRect) {
@@ -63,9 +177,95 @@ public final class HybridMarkdownTextView: NSTextView {
         let origin = self.textContainerOrigin
         let contentWidth = self.bounds.width - origin.x * 2
 
-        for dec in lineDecorations {
+        for (decIdx, dec) in lineDecorations.enumerated() {
+            if case .codeFenceBody = dec.kind { continue }
+            if case .codeFenceEnd = dec.kind { continue }
+
             let glyphRange = layoutManager.glyphRange(forCharacterRange: dec.lineRange, actualCharacterRange: nil)
             guard glyphRange.location != NSNotFound else { continue }
+
+            if case .codeFenceStart(let language) = dec.kind {
+                var endDecIdx = decIdx
+                var scanIdx = decIdx + 1
+                while scanIdx < lineDecorations.count {
+                    switch lineDecorations[scanIdx].kind {
+                    case .codeFenceBody:
+                        endDecIdx = scanIdx
+                        scanIdx += 1
+                    case .codeFenceEnd:
+                        endDecIdx = scanIdx
+                        scanIdx = lineDecorations.count
+                    default:
+                        scanIdx = lineDecorations.count
+                    }
+                }
+
+                let firstFrag = layoutManager.lineFragmentRect(forGlyphAt: glyphRange.location, effectiveRange: nil)
+                let endRange = lineDecorations[endDecIdx].lineRange
+                let endGlyphs = layoutManager.glyphRange(forCharacterRange: endRange, actualCharacterRange: nil)
+                let lastGlyphIdx = endGlyphs.location != NSNotFound
+                    ? max(endGlyphs.location, NSMaxRange(endGlyphs) - 1)
+                    : max(glyphRange.location, NSMaxRange(glyphRange) - 1)
+                let lastFrag = layoutManager.lineFragmentRect(forGlyphAt: lastGlyphIdx, effectiveRange: nil)
+
+                let fenceTop = origin.y + firstFrag.minY - 2.0
+                let fenceBottom = origin.y + lastFrag.maxY + 2.0
+                let unifiedFenceRect = NSRect(
+                    x: origin.x,
+                    y: fenceTop,
+                    width: contentWidth,
+                    height: max(24.0, fenceBottom - fenceTop)
+                )
+
+                guard unifiedFenceRect.insetBy(dx: -20, dy: -50).intersects(rect) else { continue }
+
+                currentTheme.codeBackgroundNSColor.setFill()
+                let cardPath = NSBezierPath(roundedRect: unifiedFenceRect, xRadius: 7.0, yRadius: 7.0)
+                cardPath.fill()
+
+                let cardBorderColor = currentTheme.isDark
+                    ? NSColor.white.withAlphaComponent(0.08)
+                    : NSColor.black.withAlphaComponent(0.06)
+                cardBorderColor.setStroke()
+                let strokePath = NSBezierPath(roundedRect: unifiedFenceRect.insetBy(dx: 0.5, dy: 0.5), xRadius: 7.0, yRadius: 7.0)
+                strokePath.lineWidth = 1.0
+                strokePath.stroke()
+
+                if let badge = computeCodeFenceBadgeGeometry(
+                    for: dec.lineRange,
+                    language: language,
+                    layoutManager: layoutManager,
+                    origin: origin,
+                    contentWidth: contentWidth
+                ) {
+                    badge.accent.withAlphaComponent(currentTheme.isDark ? 0.16 : 0.10).setFill()
+                    let pillPath = NSBezierPath(roundedRect: badge.pillRect, xRadius: 4.5, yRadius: 4.5)
+                    pillPath.fill()
+
+                    badge.accent.withAlphaComponent(currentTheme.isDark ? 0.30 : 0.22).setStroke()
+                    let pillBorder = NSBezierPath(roundedRect: badge.pillRect.insetBy(dx: 0.5, dy: 0.5), xRadius: 4.5, yRadius: 4.5)
+                    pillBorder.lineWidth = 1.0
+                    pillBorder.stroke()
+
+                    badge.accent.setFill()
+                    NSBezierPath(ovalIn: badge.dotRect).fill()
+
+                    badge.badgeString.draw(at: badge.textPoint, withAttributes: badge.badgeAttributes)
+
+                    // Draw crisp downward dropdown chevron (▾)
+                    let chevron = NSBezierPath()
+                    chevron.move(to: NSPoint(x: badge.chevronCenter.x - 2.8, y: badge.chevronCenter.y - 1.4))
+                    chevron.line(to: NSPoint(x: badge.chevronCenter.x, y: badge.chevronCenter.y + 1.6))
+                    chevron.line(to: NSPoint(x: badge.chevronCenter.x + 2.8, y: badge.chevronCenter.y - 1.4))
+                    chevron.lineWidth = 1.35
+                    chevron.lineCapStyle = .round
+                    chevron.lineJoinStyle = .round
+                    badge.accent.withAlphaComponent(0.85).setStroke()
+                    chevron.stroke()
+                }
+                continue
+            }
+
             var lineRect = layoutManager.boundingRect(forGlyphRange: glyphRange, in: textContainer)
             lineRect.origin.x += origin.x
             lineRect.origin.y += origin.y
@@ -105,61 +305,8 @@ public final class HybridMarkdownTextView: NSTextView {
                     NSBezierPath(roundedRect: barRect, xRadius: 1.5, yRadius: 1.5).fill()
                 }
 
-            case .codeFenceStart(let language):
-                currentTheme.codeBackgroundNSColor.setFill()
-                let boxRect = NSRect(x: origin.x, y: lineRect.minY, width: contentWidth, height: lineRect.height + 2)
-                let path = NSBezierPath(roundedRect: boxRect, xRadius: 6, yRadius: 6)
-                path.fill()
-
-                if !language.isEmpty {
-                    let accent = Self.languageAccentColor(for: language, isDark: currentTheme.isDark)
-                    let badgeAttrs: [NSAttributedString.Key: Any] = [
-                        .font: NSFont.monospacedSystemFont(ofSize: 10.5, weight: .semibold),
-                        .foregroundColor: accent
-                    ]
-                    let badgeStr = language.uppercased() as NSString
-                    let badgeSize = badgeStr.size(withAttributes: badgeAttrs)
-                    let pillPadH: CGFloat = 7.0
-                    let pillPadV: CGFloat = 2.0
-                    let dotSpace: CGFloat = 10.0
-                    let pillW = badgeSize.width + pillPadH * 2 + dotSpace
-                    let pillH = badgeSize.height + pillPadV * 2
-                    let pillRect = NSRect(
-                        x: origin.x + contentWidth - pillW - 8.0,
-                        y: lineRect.minY + (lineRect.height - pillH) * 0.5,
-                        width: pillW,
-                        height: pillH
-                    )
-                    accent.withAlphaComponent(currentTheme.isDark ? 0.16 : 0.10).setFill()
-                    NSBezierPath(roundedRect: pillRect, xRadius: 4, yRadius: 4).fill()
-
-                    // Small language accent dot
-                    let dotRect = NSRect(
-                        x: pillRect.minX + pillPadH,
-                        y: pillRect.midY - 3.0,
-                        width: 6.0,
-                        height: 6.0
-                    )
-                    accent.setFill()
-                    NSBezierPath(ovalIn: dotRect).fill()
-
-                    let textPoint = NSPoint(
-                        x: pillRect.minX + pillPadH + dotSpace,
-                        y: pillRect.minY + pillPadV
-                    )
-                    badgeStr.draw(at: textPoint, withAttributes: badgeAttrs)
-                }
-
-            case .codeFenceBody:
-                currentTheme.codeBackgroundNSColor.setFill()
-                let boxRect = NSRect(x: origin.x, y: lineRect.minY - 1, width: contentWidth, height: lineRect.height + 2)
-                boxRect.fill()
-
-            case .codeFenceEnd:
-                currentTheme.codeBackgroundNSColor.setFill()
-                let boxRect = NSRect(x: origin.x, y: lineRect.minY - 2, width: contentWidth, height: lineRect.height + 2)
-                let path = NSBezierPath(roundedRect: boxRect, xRadius: 6, yRadius: 6)
-                path.fill()
+            case .codeFenceStart, .codeFenceBody, .codeFenceEnd:
+                break
 
             case .mathBlockStart(let isActive), .mathBlockBody(let isActive), .mathBlockEnd(let isActive):
                 if isActive {
@@ -317,8 +464,117 @@ public final class HybridMarkdownTextView: NSTextView {
         }
     }
 
+    private func presentCodeFenceLanguageMenu(for lineRange: NSRange, currentLanguage: String, badgeRect: NSRect) {
+        let menu = NSMenu(title: "Select Language")
+        let normalizedCurrent = currentLanguage.lowercased().trimmingCharacters(in: .whitespaces)
+        var matchedAny = false
+
+        for lang in Self.supportedCodeFenceLanguages {
+            let item = NSMenuItem(
+                title: lang.title,
+                action: #selector(handleSelectCodeFenceLanguage(_:)),
+                keyEquivalent: ""
+            )
+            item.target = self
+            item.representedObject = CodeFenceLanguageActionPayload(lineRange: lineRange, languageId: lang.id)
+            item.image = Self.languageMenuDotImage(for: lang.id, isDark: currentTheme.isDark)
+            if lang.aliases.contains(normalizedCurrent) {
+                item.state = .on
+                matchedAny = true
+            }
+            menu.addItem(item)
+        }
+
+        if !normalizedCurrent.isEmpty && !matchedAny {
+            menu.insertItem(.separator(), at: 0)
+            let customItem = NSMenuItem(
+                title: normalizedCurrent.uppercased(),
+                action: #selector(handleSelectCodeFenceLanguage(_:)),
+                keyEquivalent: ""
+            )
+            customItem.target = self
+            customItem.representedObject = CodeFenceLanguageActionPayload(lineRange: lineRange, languageId: normalizedCurrent)
+            customItem.image = Self.languageMenuDotImage(for: normalizedCurrent, isDark: currentTheme.isDark)
+            customItem.state = .on
+            menu.insertItem(customItem, at: 0)
+        }
+
+        menu.addItem(.separator())
+        let plainItem = NSMenuItem(
+            title: "Plain Text",
+            action: #selector(handleSelectCodeFenceLanguage(_:)),
+            keyEquivalent: ""
+        )
+        plainItem.target = self
+        plainItem.representedObject = CodeFenceLanguageActionPayload(lineRange: lineRange, languageId: "")
+        plainItem.image = Self.languageMenuDotImage(for: "", isDark: currentTheme.isDark)
+        if normalizedCurrent.isEmpty {
+            plainItem.state = .on
+        }
+        menu.addItem(plainItem)
+
+        menu.popUp(
+            positioning: nil,
+            at: NSPoint(x: badgeRect.minX, y: badgeRect.maxY + 4.0),
+            in: self
+        )
+    }
+
+    @objc private func handleSelectCodeFenceLanguage(_ sender: NSMenuItem) {
+        guard let payload = sender.representedObject as? CodeFenceLanguageActionPayload else { return }
+        let nsStr = self.string as NSString
+        guard payload.lineRange.location < nsStr.length else { return }
+
+        let safeLineRange = nsStr.lineRange(for: NSRange(location: payload.lineRange.location, length: 0))
+        var contentEnd = NSMaxRange(safeLineRange)
+        while contentEnd > safeLineRange.location {
+            let ch = nsStr.character(at: contentEnd - 1)
+            if ch == 10 || ch == 13 {
+                contentEnd -= 1
+            } else {
+                break
+            }
+        }
+        let contentRange = NSRange(location: safeLineRange.location, length: contentEnd - safeLineRange.location)
+        let currentLineContent = nsStr.substring(with: contentRange)
+        let leadingWhitespace = currentLineContent.prefix(while: { $0 == " " || $0 == "\t" })
+        let newLineContent = "\(leadingWhitespace)```\(payload.languageId)"
+
+        if shouldChangeText(in: contentRange, replacementString: newLineContent) {
+            replaceCharacters(in: contentRange, with: newLineContent)
+            didChangeText()
+        }
+    }
+
     public override func mouseDown(with event: NSEvent) {
         let point = convert(event.locationInWindow, from: nil)
+
+        // 1. Hit-test code fence language selector badge on the right
+        if !isSourceCodeMode, let layoutManager = self.layoutManager {
+            let origin = self.textContainerOrigin
+            let contentWidth = self.bounds.width - origin.x * 2
+            for dec in lineDecorations {
+                if case .codeFenceStart(let language) = dec.kind,
+                   let badge = computeCodeFenceBadgeGeometry(
+                       for: dec.lineRange,
+                       language: language,
+                       layoutManager: layoutManager,
+                       origin: origin,
+                       contentWidth: contentWidth
+                   ) {
+                    if badge.pillRect.insetBy(dx: -4.0, dy: -4.0).contains(point) {
+                        presentCodeFenceLanguageMenu(
+                            for: dec.lineRange,
+                            currentLanguage: language,
+                            badgeRect: badge.pillRect
+                        )
+                        return
+                    }
+                }
+            }
+        }
+
+        // 2. Hit-test task list checkboxes
         let charIndex = characterIndexForInsertion(at: point)
         let nsStr = self.string as NSString
 

@@ -740,7 +740,6 @@ public final class EditorWorkspaceViewModel: ObservableObject {
     ### Native Code Fences with Syntax Highlighting
     ```swift
     import AppKit
-
     // Pure native TextKit rendering — 0 MB WebView footprint
     final class OpenTypeEngine {
         func renderLiveMarkdown(in storage: NSTextStorage) -> Bool {
