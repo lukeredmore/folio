@@ -722,32 +722,22 @@ public final class EditorWorkspaceViewModel: ObservableObject {
     // MARK: - Default Showcase Document
     public static let defaultWelcomeDocument = """
     # OpenType — Native macOS Markdown Editor
-
     Welcome to **OpenType**, a lightning-fast **100% native macOS** (`AppKit` + `TextKit` + `SwiftUI`) Markdown editor built for distraction-free writing.
-
     > **Seamless Live Rendering**: Place your cursor on any line to reveal and edit its raw Markdown tokens (`#`, `**`, `` ` ``, `[link](url)`). Move the cursor away and the syntax markers collapse cleanly into live typography—with zero WebView overhead.
-
     ---
-
     ## Key Features
-
     - [x] **Seamless Hybrid WYSIWYG Editor** (`HybridMarkdownTextView`) with zero-latency native TextKit layout
     - [x] **6 Curated Themes**: *Daylight*, *Midnight*, *Parchment*, *Editorial*, *Classic*, and *Modernist*
     - [x] **Focus Mode** (`F8`) & **Typewriter Mode** (`F9`) & **Source Code Mode** (`Cmd+/`)
     - [x] **Hierarchical Sidebar** (`Cmd+Shift+L`): Document **Outline**, **Files** (Tree & List views), and **Global Search**
     - [x] **Quick Open Modal** (`Cmd+P`) for instant fuzzy file switching
     - [x] **Live Word Count Popover** showing Words, Lines, Characters, and Reading Time
-
     ### Inline Typography & Math
-
     You can write **bold text**, *italicized emphasis*, ~~strikethrough~~, ==highlighted notes==, `inline code`, and [clickable links](https://example.com) effortlessly. Inline math like $E = mc^2$ and $\\nabla \\cdot \\mathbf{E} = \\frac{\\rho}{\\varepsilon_0}$ is styled live.
-
     $$
     \\mathcal{L}_{\\text{OpenType}} = \\int_{-\\infty}^{\\infty} \\psi^*(x) \\left( -\\frac{\\hbar^2}{2m}\\nabla^2 + V(x) \\right) \\psi(x)\\,dx
     $$
-
     ### Native Code Fences with Syntax Highlighting
-
     ```swift
     import AppKit
 
@@ -759,9 +749,7 @@ public final class EditorWorkspaceViewModel: ObservableObject {
         }
     }
     ```
-
     ### Live Markdown Tables
-
     | Subsystem | Architecture | Performance |
     | :--- | :--- | :--- |
     | **UI Layer** | Pure `AppKit` + `SwiftUI` | Native 120Hz ProMotion |
