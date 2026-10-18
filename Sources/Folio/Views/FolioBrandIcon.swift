@@ -1,0 +1,196 @@
+import AppKit
+import CoreGraphics
+import SwiftUI
+
+/// Renders the Folio app icon and wordmark.
+public enum FolioBrandIcon {
+    private static func srgb(_ r: CGFloat, _ g: CGFloat, _ b: CGFloat, _ a: CGFloat = 1.0) -> NSColor {
+        NSColor(srgbRed: r / 255.0, green: g / 255.0, blue: b / 255.0, alpha: a)
+    }
+
+    /// Creates a vector-rendered macOS app icon `NSImage`.
+    public static func makeAppIconImage(pixelSize: Int = 512, isDark: Bool = false) -> NSImage {
+        let rep = NSBitmapImageRep(
+            bitmapDataPlanes: nil,
+            pixelsWide: pixelSize,
+            pixelsHigh: pixelSize,
+            bitsPerSample: 8,
+            samplesPerPixel: 4,
+            hasAlpha: true,
+            isPlanar: false,
+            colorSpaceName: .deviceRGB,
+            bytesPerRow: 0,
+            bitsPerPixel: 0
+        )!
+        rep.size = NSSize(width: pixelSize, height: pixelSize)
+
+        NSGraphicsContext.saveGraphicsState()
+        if let ctx = NSGraphicsContext(bitmapImageRep: rep) {
+            NSGraphicsContext.current = ctx
+            drawSquircleIcon(in: ctx.cgContext, canvasSize: CGFloat(pixelSize), includeMacOSMargin: true, isDark: isDark)
+        }
+        NSGraphicsContext.restoreGraphicsState()
+
+        let image = NSImage(size: NSSize(width: pixelSize, height: pixelSize))
+        image.addRepresentation(rep)
+        return image
+    }
+
+    /// Draws the Folio squircle icon into a CoreGraphics context.
+    public static func drawSquircleIcon(
+        in cg: CGContext,
+        canvasSize: CGFloat,
+        includeMacOSMargin: Bool = true,
+        isDark: Bool = false
+    ) {
+        cg.saveGState()
+        cg.translateBy(x: 0, y: canvasSize)
+        cg.scaleBy(x: 1, y: -1)
+
+        let marginRatio: CGFloat = includeMacOSMargin
+            ? (canvasSize <= 32 ? (56.0 / 1024.0) : (100.0 / 1024.0))
+            : 0.0
+        let squircleOrigin = canvasSize * marginRatio
+        let squircleSize = canvasSize - (squircleOrigin * 2.0)
+        let squircleRadius = squircleSize * 0.225
+
+        let squircleRect = CGRect(x: squircleOrigin, y: squircleOrigin, width: squircleSize, height: squircleSize)
+        let squirclePath = CGPath(
+            roundedRect: squircleRect,
+            cornerWidth: squircleRadius,
+            cornerHeight: squircleRadius,
+            transform: nil
+        )
+
+        // Outer squircle drop shadow
+        if includeMacOSMargin {
+            cg.saveGState()
+            let shadowOffsetY = canvasSize * (10.0 / 1024.0)
+            let shadowBlur = canvasSize * (26.0 / 1024.0)
+            cg.setShadow(
+                offset: CGSize(width: 0, height: -shadowOffsetY),
+                blur: shadowBlur,
+                color: srgb(15, 23, 42, 0.22).cgColor
+            )
+            cg.setFillColor((isDark ? srgb(30, 36, 43, 1.0) : srgb(245, 242, 235, 1.0)).cgColor)
+            cg.addPath(squirclePath)
+            cg.fillPath()
+            cg.restoreGState()
+        }
+
+        // Squircle linear gradient background
+        cg.saveGState()
+        cg.addPath(squirclePath)
+        cg.clip()
+
+        let colorSpace = CGColorSpace(name: CGColorSpace.sRGB)!
+        let bgColors = (isDark
+            ? [srgb(30, 36, 43, 1.0).cgColor, srgb(17, 20, 25, 1.0).cgColor]
+            : [srgb(245, 242, 235, 1.0).cgColor, srgb(226, 221, 208, 1.0).cgColor]) as CFArray
+        let locations: [CGFloat] = [0.0, 1.0]
+        if let gradient = CGGradient(colorsSpace: colorSpace, colors: bgColors, locations: locations) {
+            cg.drawLinearGradient(
+                gradient,
+                start: CGPoint(x: squircleRect.minX, y: squircleRect.minY),
+                end: CGPoint(x: squircleRect.maxX, y: squircleRect.maxY),
+                options: [.drawsBeforeStartLocation, .drawsAfterEndLocation]
+            )
+        }
+
+        let unit = squircleSize / 120.0
+        cg.translateBy(x: squircleOrigin, y: squircleOrigin)
+        cg.scaleBy(x: unit, y: unit)
+
+        func roundedPath(_ x: CGFloat, _ y: CGFloat, _ w: CGFloat, _ h: CGFloat, _ r: CGFloat) -> CGPath {
+            CGPath(roundedRect: CGRect(x: x, y: y, width: w, height: h), cornerWidth: r, cornerHeight: r, transform: nil)
+        }
+
+        // Bottom card
+        let bottomPath = roundedPath(28, 71, 26, 23, 6)
+        cg.addPath(bottomPath)
+        cg.setFillColor((isDark ? srgb(56, 189, 248, 0.32) : srgb(0, 118, 223, 0.22)).cgColor)
+        cg.fillPath()
+        cg.addPath(bottomPath)
+        cg.setStrokeColor((isDark ? srgb(56, 189, 248, 0.80) : srgb(0, 118, 223, 0.72)).cgColor)
+        cg.setLineWidth(isDark ? 1.4 : 1.5)
+        cg.strokePath()
+
+        // Middle card
+        let middlePath = roundedPath(28, 47.5, 49, 21, 6)
+        cg.addPath(middlePath)
+        cg.setFillColor((isDark ? srgb(147, 197, 253, 0.62) : srgb(147, 197, 253, 0.76)).cgColor)
+        cg.fillPath()
+        cg.addPath(middlePath)
+        cg.setStrokeColor((isDark ? srgb(191, 219, 254, 0.75) : srgb(37, 99, 235, 0.58)).cgColor)
+        cg.setLineWidth(1.3)
+        cg.strokePath()
+
+        // Top card
+        let topPath = roundedPath(28, 24, 64, 21, 6)
+        cg.saveGState()
+        cg.setShadow(
+            offset: CGSize(width: 0, height: -3.0 * unit),
+            blur: 7.0 * unit,
+            color: (isDark ? srgb(0, 0, 0, 0.45) : srgb(15, 23, 42, 0.14)).cgColor
+        )
+        cg.addPath(topPath)
+        cg.setFillColor((isDark ? srgb(250, 249, 245, 1.0) : srgb(255, 255, 255, 1.0)).cgColor)
+        cg.fillPath()
+        cg.restoreGState()
+
+        if !isDark {
+            cg.addPath(topPath)
+            cg.setStrokeColor(srgb(15, 23, 42, 0.09).cgColor)
+            cg.setLineWidth(1.0)
+            cg.strokePath()
+        }
+
+        // Top card details
+        let dotRect = CGRect(x: 41.0 - 4.5, y: 34.5 - 4.5, width: 9.0, height: 9.0)
+        cg.setFillColor(srgb(234, 88, 12, 1.0).cgColor)
+        cg.fillEllipse(in: dotRect)
+
+        let barPath = roundedPath(50, 32, 28, 5, 2.5)
+        cg.addPath(barPath)
+        cg.setFillColor((isDark ? srgb(24, 28, 34, 0.78) : srgb(51, 65, 85, 0.78)).cgColor)
+        cg.fillPath()
+
+        cg.restoreGState()
+
+        // Outer squircle border
+        cg.saveGState()
+        cg.addPath(squirclePath)
+        cg.setStrokeColor((isDark ? srgb(255, 255, 255, 0.10) : srgb(15, 23, 42, 0.10)).cgColor)
+        cg.setLineWidth(max(1.0, canvasSize * (1.5 / 1024.0)))
+        cg.strokePath()
+        cg.restoreGState()
+
+        cg.restoreGState()
+    }
+}
+
+/// SwiftUI view rendering the Folio icon alongside the wordmark.
+public struct FolioBrandLockupView: View {
+    public var iconSize: CGFloat
+    public var wordmarkSize: CGFloat
+    public var isDark: Bool
+
+    public init(iconSize: CGFloat = 24, wordmarkSize: CGFloat = 16, isDark: Bool = false) {
+        self.iconSize = iconSize
+        self.wordmarkSize = wordmarkSize
+        self.isDark = isDark
+    }
+
+    public var body: some View {
+        HStack(spacing: round(iconSize * 0.34)) {
+            Image(nsImage: FolioBrandIcon.makeAppIconImage(pixelSize: Int(max(64, iconSize * 4)), isDark: isDark))
+                .resizable()
+                .interpolation(.high)
+                .frame(width: iconSize, height: iconSize)
+
+            Text("Folio")
+                .font(.custom("Charter", size: wordmarkSize).weight(.bold))
+                .tracking(-wordmarkSize * 0.02)
+        }
+    }
+}

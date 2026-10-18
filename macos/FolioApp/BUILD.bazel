@@ -26,6 +26,7 @@ macos_application(
     bundle_name = "Folio",
     infoplists = ["Info.plist"],
     minimum_os_version = "14.0",
+    resources = ["AppIcon.icns"],
     deps = [
         ":FolioAppMainLib",
     ],
@@ -36,6 +37,7 @@ sh_binary(
     srcs = ["launch_app.sh"],
     data = [
         ":FolioCLI",
+        "AppIcon.icns",
         "Info.plist",
     ],
 )

@@ -1,0 +1,28 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 120" width="1024" height="1024">
+  <defs>
+    <linearGradient id="folio_bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#F5F2EB"/>
+      <stop offset="100%" stop-color="#E2DDD0"/>
+    </linearGradient>
+    <filter id="folio_top_shadow" x="-20%" y="-20%" width="140%" height="150%">
+      <feDropShadow dx="0" dy="3" stdDeviation="3.5" flood-color="#0F172A" flood-opacity="0.14"/>
+    </filter>
+  </defs>
+
+  <!-- Squircle Background -->
+  <rect x="0" y="0" width="120" height="120" rx="27" fill="url(#folio_bg)"/>
+  <rect x="0.5" y="0.5" width="119" height="119" rx="26.5" fill="none" stroke="#0F172A" stroke-opacity="0.10" stroke-width="1"/>
+
+  <!-- Bottom Card -->
+  <rect x="28" y="71" width="26" height="23" rx="6" fill="#0076DF" fill-opacity="0.22" stroke="#0076DF" stroke-opacity="0.72" stroke-width="1.5"/>
+
+  <!-- Middle Card -->
+  <rect x="28" y="47.5" width="49" height="21" rx="6" fill="#93C5FD" fill-opacity="0.76" stroke="#2563EB" stroke-opacity="0.58" stroke-width="1.3"/>
+
+  <!-- Top Card -->
+  <rect x="28" y="24" width="64" height="21" rx="6" fill="#FFFFFF" stroke="#0F172A" stroke-opacity="0.09" stroke-width="1" filter="url(#folio_top_shadow)"/>
+
+  <!-- Accent Dot & Header Rule -->
+  <circle cx="41" cy="34.5" r="4.5" fill="#EA580C"/>
+  <rect x="50" y="32" width="28" height="5" rx="2.5" fill="#334155" fill-opacity="0.78"/>
+</svg>

@@ -62,6 +62,7 @@ public struct FolioApp: App {
 
     public init() {
         NSApplication.shared.setActivationPolicy(.regular)
+        NSApplication.shared.applicationIconImage = FolioBrandIcon.makeAppIconImage(pixelSize: 512)
     }
 
     public var body: some Scene {

@@ -3,8 +3,12 @@ set -euo pipefail
 
 RUNFILES_DIR="${RUNFILES_DIR:-$0.runfiles}"
 BIN_PATH="$RUNFILES_DIR/_main/macos/FolioApp/FolioCLI"
+ICON_PATH="$RUNFILES_DIR/_main/macos/FolioApp/AppIcon.icns"
 if [[ ! -x "$BIN_PATH" ]]; then
   BIN_PATH="$(cd "$(dirname "$0")" && pwd)/FolioCLI"
+fi
+if [[ ! -f "$ICON_PATH" ]]; then
+  ICON_PATH="$(cd "$(dirname "$0")" && pwd)/AppIcon.icns"
 fi
 
 APP_BUNDLE="${TMPDIR:-/tmp}/Folio.app"
@@ -13,6 +17,9 @@ mkdir -p "$APP_BUNDLE/Contents/Resources"
 
 cp -f "$BIN_PATH" "$APP_BUNDLE/Contents/MacOS/Folio"
 chmod +x "$APP_BUNDLE/Contents/MacOS/Folio"
+if [[ -f "$ICON_PATH" ]]; then
+  cp -f "$ICON_PATH" "$APP_BUNDLE/Contents/Resources/AppIcon.icns"
+fi
 
 cat > "$APP_BUNDLE/Contents/Info.plist" <<'EOF'
 <?xml version="1.0" encoding="UTF-8"?>
@@ -31,6 +38,8 @@ cat > "$APP_BUNDLE/Contents/Info.plist" <<'EOF'
     <string>Folio</string>
     <key>CFBundleDisplayName</key>
     <string>Folio</string>
+    <key>CFBundleIconFile</key>
+    <string>AppIcon</string>
     <key>CFBundlePackageType</key>
     <string>APPL</string>
     <key>CFBundleShortVersionString</key>
