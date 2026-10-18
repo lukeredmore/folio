@@ -16,6 +16,10 @@ public final class HybridMarkdownTextView: NSTextView {
         didSet { needsDisplay = true }
     }
 
+    public var proseColumnWidth: CGFloat = 0 {
+        didSet { needsDisplay = true }
+    }
+
     public var isTypewriterMode: Bool = false
     public var isSourceCodeMode: Bool = false
 
@@ -150,7 +154,8 @@ public final class HybridMarkdownTextView: NSTextView {
         }
 
         let origin = self.textContainerOrigin
-        let contentWidth = self.bounds.width - origin.x * 2
+        let fullContentWidth = self.bounds.width - origin.x * 2
+        let contentWidth = proseColumnWidth > 0 ? proseColumnWidth : fullContentWidth
 
         for (decIdx, dec) in lineDecorations.enumerated() {
             if case .codeFenceBody = dec.kind { continue }
@@ -181,7 +186,7 @@ public final class HybridMarkdownTextView: NSTextView {
                 let lastGlyphIdx = endGlyphs.location != NSNotFound
                     ? max(endGlyphs.location, NSMaxRange(endGlyphs) - 1)
                     : max(glyphRange.location, NSMaxRange(glyphRange) - 1)
-                let lastFrag = layoutManager.lineFragmentRect(forGlyphAt: lastGlyphIdx, effectiveRange: nil)
+                let lastFrag = layoutManager.lineFragmentUsedRect(forGlyphAt: lastGlyphIdx, effectiveRange: nil)
 
                 let fenceTop = origin.y + firstFrag.minY - 2.0
                 let fenceBottom = origin.y + lastFrag.maxY + 2.0
@@ -246,6 +251,10 @@ public final class HybridMarkdownTextView: NSTextView {
             lineRect.origin.y += origin.y
             lineRect.size.width = max(lineRect.size.width, contentWidth)
 
+            if case let .tableRow(_, _, _, _, _, _, tableWidth, _) = dec.kind {
+                lineRect.size.width = max(lineRect.size.width, tableWidth)
+            }
+
             guard lineRect.insetBy(dx: -20, dy: -50).intersects(rect) else { continue }
 
             switch dec.kind {
@@ -261,7 +270,7 @@ public final class HybridMarkdownTextView: NSTextView {
                 let baselineY = origin.y + lineFrag.minY + glyphLoc.y
                 let hFont = currentTheme.headingFont(level: level, scale: typographySettings.fontSizeScale)
                 let descenderDepth = abs(hFont.descender)
-                let offset = typographySettings.headingUnderlineOffset * (level == 1 ? 1.0 : 0.85)
+                let offset = max(3.0, min(6.0, typographySettings.headingUnderlineOffset * (level == 1 ? 0.75 : 0.65)))
                 let underlineY = baselineY + descenderDepth + offset
 
                 let underlineRect = NSRect(x: origin.x, y: underlineY, width: contentWidth, height: level == 1 ? 1.5 : 1.0)
@@ -370,9 +379,13 @@ public final class HybridMarkdownTextView: NSTextView {
                 NSBezierPath(roundedRect: hrRect, xRadius: 0.75, yRadius: 0.75).fill()
 
             case let .tableRow(isHeader, isSeparator, isFirstRow, isLastRow, bodyRowIndex, tableOffsetX, tableWidth, columnDividers):
-                let effectiveWidth = min(contentWidth, max(tableWidth, 240.0))
+                // Allow wide tables to exceed `contentWidth` without clamping!
+                let effectiveWidth = max(tableWidth, 240.0)
                 let startX = origin.x + (tableOffsetX > 0 ? tableOffsetX : max(0.0, floor((contentWidth - effectiveWidth) * 0.5)))
-                let rowRect = NSRect(x: startX, y: lineRect.minY, width: effectiveWidth, height: lineRect.height)
+                let usedFrag = layoutManager.lineFragmentUsedRect(forGlyphAt: glyphRange.location, effectiveRange: nil)
+                let rowY = origin.y + usedFrag.minY
+                let rowH = max(isSeparator ? 2.0 : 32.0, usedFrag.height)
+                let rowRect = NSRect(x: startX, y: rowY, width: effectiveWidth, height: rowH)
                 let outerBorderColor = currentTheme.isDark
                     ? NSColor.white.withAlphaComponent(0.14)
                     : NSColor.black.withAlphaComponent(0.11)
@@ -525,7 +538,8 @@ public final class HybridMarkdownTextView: NSTextView {
         // 1. Hit-test code fence language selector badge on the right
         if !isSourceCodeMode, let layoutManager = self.layoutManager {
             let origin = self.textContainerOrigin
-            let contentWidth = self.bounds.width - origin.x * 2
+            let fullContentWidth = self.bounds.width - origin.x * 2
+            let contentWidth = proseColumnWidth > 0 ? proseColumnWidth : fullContentWidth
             for dec in lineDecorations {
                 if case .codeFenceStart(let language) = dec.kind,
                    let badge = computeCodeFenceBadgeGeometry(
@@ -622,7 +636,8 @@ public final class HybridMarkdownTextView: NSTextView {
         let caretRect = layoutManager.boundingRect(forGlyphRange: glyphRange, in: textContainer)
         let visibleHeight = scrollView.contentView.bounds.height
         let targetY = max(0, caretRect.midY + textContainerOrigin.y - visibleHeight * 0.45)
-        scrollView.contentView.scroll(to: NSPoint(x: 0, y: targetY))
+        let currentX = scrollView.contentView.bounds.origin.x
+        scrollView.contentView.scroll(to: NSPoint(x: currentX, y: targetY))
         scrollView.reflectScrolledClipView(scrollView.contentView)
     }
 }
@@ -641,7 +656,7 @@ public struct HybridMarkdownEditorRepresentable: NSViewRepresentable {
     public func makeNSView(context: Context) -> NSScrollView {
         let scrollView = NSScrollView()
         scrollView.hasVerticalScroller = true
-        scrollView.hasHorizontalScroller = false
+        scrollView.hasHorizontalScroller = true
         scrollView.autohidesScrollers = true
         scrollView.drawsBackground = true
         scrollView.backgroundColor = viewModel.theme.editorBackgroundNSColor
@@ -651,14 +666,15 @@ public struct HybridMarkdownEditorRepresentable: NSViewRepresentable {
         textStorage.addLayoutManager(layoutManager)
 
         let textContainer = NSTextContainer(containerSize: NSSize(width: 800, height: CGFloat.greatestFiniteMagnitude))
-        textContainer.widthTracksTextView = true
+        textContainer.widthTracksTextView = false
+        textContainer.lineFragmentPadding = 0.0
         layoutManager.addTextContainer(textContainer)
 
         let textView = HybridMarkdownTextView(frame: .zero, textContainer: textContainer)
         textView.minSize = NSSize(width: 0, height: 400)
         textView.maxSize = NSSize(width: CGFloat.greatestFiniteMagnitude, height: CGFloat.greatestFiniteMagnitude)
         textView.isVerticallyResizable = true
-        textView.isHorizontallyResizable = false
+        textView.isHorizontallyResizable = true
         textView.autoresizingMask = [.width]
         textView.allowsUndo = true
         textView.isRichText = false
@@ -755,6 +771,7 @@ public struct HybridMarkdownEditorRepresentable: NSViewRepresentable {
         var lastFocusMode: Bool?
         var lastActiveLineRange: NSRange?
         var lastContentWidth: CGFloat = 0
+        var maxTableWidth: CGFloat = 0
 
         init(viewModel: EditorWorkspaceViewModel) {
             self.viewModel = viewModel
@@ -771,7 +788,9 @@ public struct HybridMarkdownEditorRepresentable: NSViewRepresentable {
         }
 
         func currentContentWidth(for textView: HybridMarkdownTextView) -> CGFloat {
-            let totalWidth = textView.enclosingScrollView?.bounds.width ?? textView.bounds.width
+            let totalWidth = textView.enclosingScrollView?.contentView.bounds.width
+                ?? textView.enclosingScrollView?.bounds.width
+                ?? textView.bounds.width
             let maxWrite = viewModel.typography.maxColumnWidth
             let horizontalPad = max(44.0, floor((totalWidth - maxWrite) / 2.0))
             let computed = totalWidth - horizontalPad * 2.0
@@ -779,12 +798,29 @@ public struct HybridMarkdownEditorRepresentable: NSViewRepresentable {
         }
 
         func updateInsets(for scrollView: NSScrollView, textView: HybridMarkdownTextView, theme: EditorTheme) {
-            let totalWidth = scrollView.bounds.width
+            let viewportWidth = max(320.0, scrollView.contentView.bounds.width > 0 ? scrollView.contentView.bounds.width : scrollView.bounds.width)
             let maxWrite = viewModel.typography.maxColumnWidth
-            let horizontalPad = max(44.0, floor((totalWidth - maxWrite) / 2.0))
+            let horizontalPad = max(44.0, floor((viewportWidth - maxWrite) / 2.0))
+            let proseWidth = max(200.0, viewportWidth - horizontalPad * 2.0)
             let newInset = NSSize(width: horizontalPad, height: 42.0)
             if textView.textContainerInset != newInset {
                 textView.textContainerInset = newInset
+            }
+            if abs(textView.proseColumnWidth - proseWidth) > 0.5 {
+                textView.proseColumnWidth = proseWidth
+            }
+
+            let effectiveInnerWidth = max(proseWidth, ceil(maxTableWidth + 16.0))
+            let targetDocWidth = max(viewportWidth, ceil(effectiveInnerWidth + horizontalPad * 2.0))
+            textView.minSize = NSSize(width: targetDocWidth, height: 400)
+            if abs(textView.frame.size.width - targetDocWidth) > 0.5 {
+                textView.frame.size.width = targetDocWidth
+            }
+            if let tc = textView.textContainer {
+                let targetContainerSize = NSSize(width: effectiveInnerWidth, height: CGFloat.greatestFiniteMagnitude)
+                if abs(tc.containerSize.width - targetContainerSize.width) > 0.5 {
+                    tc.containerSize = targetContainerSize
+                }
             }
         }
 
@@ -841,6 +877,16 @@ public struct HybridMarkdownEditorRepresentable: NSViewRepresentable {
                         lm.removeTemporaryAttribute(.spellingState, forCharacterRange: dec.lineRange)
                     }
                 }
+            }
+
+            maxTableWidth = analysis.decorations.reduce(CGFloat(0)) { acc, dec in
+                if case let .tableRow(_, _, _, _, _, _, tableW, _) = dec.kind {
+                    return max(acc, tableW)
+                }
+                return acc
+            }
+            if let scrollView = textView.enclosingScrollView {
+                updateInsets(for: scrollView, textView: textView, theme: viewModel.theme)
             }
 
             textView.lineDecorations = analysis.decorations

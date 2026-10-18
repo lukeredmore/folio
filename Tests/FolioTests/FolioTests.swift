@@ -331,7 +331,380 @@ final class FolioTests: XCTestCase {
         XCTAssertEqual(parsed.notes, "feat: rolling update")
         XCTAssertTrue(AppUpdateManager.isUpdateAvailable(current: installed, remote: parsed))
     }
+
+    func testNestedInlineFormattingWhenUnselected() {
+        let sample = """
+        First active line with cursor.
+        - **[`architecture/`](./architecture/README.md)** — Core architecture docs
+        - **Bold with `inline_code` and *nested italic* inside**
+        - *Italic with `code_span` and foo_bar_baz underscore*
+        - ***Bold and italic together***
+        """
+        let storage = NSTextStorage(string: sample)
+        _ = MarkdownLiveStyler.applyStyles(
+            to: storage,
+            theme: .daylight,
+            sourceCodeMode: false,
+            focusMode: false,
+            selectedRange: NSRange(location: 0, length: 0)
+        )
+
+        let ns = sample as NSString
+
+        // 1. Verify **[`architecture/`](./architecture/README.md)** has collapsed**, [, `, ], (./architecture/README.md), **
+        let archTextRange = ns.range(of: "architecture/")
+        XCTAssertNotEqual(archTextRange.location, NSNotFound)
+        let archFg = storage.attribute(.foregroundColor, at: archTextRange.location, effectiveRange: nil) as? NSColor
+        // Link color or inline code inside link
+        XCTAssertNotNil(archFg)
+        XCTAssertGreaterThan(archFg?.alphaComponent ?? 0, 0.5, "Visible link/code text must not be collapsed")
+
+        // The URL part "(./architecture/README.md)" and outer "**" must be collapsed when unselected
+        let urlRange = ns.range(of: "(./architecture/README.md)")
+        let urlFg = storage.attribute(.foregroundColor, at: urlRange.location, effectiveRange: nil) as? NSColor
+        XCTAssertEqual(urlFg?.alphaComponent ?? 1.0, 0.0, accuracy: 0.001, "Markdown link URL must be collapsed when unselected")
+
+        let outerBoldMarker = ns.range(of: "**[`architecture/`]")
+        let markerFg = storage.attribute(.foregroundColor, at: outerBoldMarker.location, effectiveRange: nil) as? NSColor
+        XCTAssertEqual(markerFg?.alphaComponent ?? 1.0, 0.0, accuracy: 0.001, "Outer ** around link with code must be collapsed when unselected")
+
+        // 2. Verify **Bold with `inline_code` and *nested italic* inside**
+        let boldWordLoc = ns.range(of: "Bold with").location
+        let boldFont = storage.attribute(.font, at: boldWordLoc, effectiveRange: nil) as? NSFont
+        XCTAssertNotNil(boldFont)
+        XCTAssertTrue(NSFontManager.shared.traits(of: boldFont!).contains(.boldFontMask), "Outer bold containing inline code must still apply bold font trait")
+
+        let nestedItalicLoc = ns.range(of: "nested italic").location
+        let nestedFont = storage.attribute(.font, at: nestedItalicLoc, effectiveRange: nil) as? NSFont
+        XCTAssertNotNil(nestedFont)
+        let nestedTraits = NSFontManager.shared.traits(of: nestedFont!)
+        XCTAssertTrue(nestedTraits.contains(.boldFontMask), "Nested italic inside bold should preserve bold trait")
+        XCTAssertTrue(nestedTraits.contains(.italicFontMask), "Nested italic inside bold should have italic trait")
+
+        // 3. Verify *Italic with `code_span` and foo_bar_baz underscore*
+        let italicWordLoc = ns.range(of: "foo_bar_baz").location
+        let italicFont = storage.attribute(.font, at: italicWordLoc, effectiveRange: nil) as? NSFont
+        XCTAssertNotNil(italicFont)
+        XCTAssertTrue(NSFontManager.shared.traits(of: italicFont!).contains(.italicFontMask), "Italic span containing intraword underscores and inline code must be styled italic")
+
+        // 4. Verify ***Bold and italic together***
+        let tripleLoc = ns.range(of: "Bold and italic together").location
+        let tripleFont = storage.attribute(.font, at: tripleLoc, effectiveRange: nil) as? NSFont
+        XCTAssertNotNil(tripleFont)
+        let tripleTraits = NSFontManager.shared.traits(of: tripleFont!)
+        XCTAssertTrue(tripleTraits.contains(.boldFontMask))
+        XCTAssertTrue(tripleTraits.contains(.italicFontMask))
+    }
+
+    func testComplicatedAndWideTablesDoNotBreakOrShrink() {
+        let sample = """
+        Cursor line at top.
+
+        | Subsystem | Primary Files | Inline Code & Pipes | Description & Details |
+        | :--- | :--- | :--- | :--- |
+        | **[`architecture/`](./architecture/README.md)** | `core/folio_engine/src/markdown.rs` | `a | b || c` and \\| escaped | Full CommonMark + GFM specification parser with nested spans `<br/>` and wide columns |
+        | **Live Styler** | [`MarkdownLiveStyler.swift`](Sources/Folio/Editor/MarkdownLiveStyler.swift) | `$|x| + |y|$` | Preserves natural column widths and allows horizontal scrolling past the prose canvas width |
+        """
+
+        let narrowContainerWidth: CGFloat = 520.0
+        let storage = NSTextStorage(string: sample)
+        let analysis = MarkdownLiveStyler.applyStyles(
+            to: storage,
+            theme: .daylight,
+            sourceCodeMode: false,
+            focusMode: false,
+            selectedRange: NSRange(location: 0, length: 0),
+            containerWidth: narrowContainerWidth
+        )
+
+        let tableDecs = analysis.decorations.compactMap { dec -> (Bool, Bool, CGFloat, CGFloat, [CGFloat])? in
+            if case .tableRow(let isHeader, let isSep, _, _, _, let offsetX, let tableWidth, let columnDividers) = dec.kind {
+                return (isHeader, isSep, offsetX, tableWidth, columnDividers)
+            }
+            return nil
+        }
+
+        XCTAssertEqual(tableDecs.count, 4, "All 4 lines of the complicated table must be recognized as a single table block")
+        let firstRow = tableDecs[0]
+        XCTAssertTrue(firstRow.0, "First row must be header")
+        XCTAssertEqual(firstRow.4.count, 3, "4 columns must produce 3 interior column dividers; pipes inside inline code, math, and escaped \\| must not split extra columns")
+        XCTAssertGreaterThan(firstRow.3, narrowContainerWidth, "Wide table must exceed narrow containerWidth instead of shrinking columns")
+        XCTAssertEqual(firstRow.2, 0.0, accuracy: 0.01, "Wide table should have 0 horizontal centering offset")
+
+        // Verify paragraph style on table rows prevents soft-wrapping
+        let ns = sample as NSString
+        let dataRowLoc = ns.range(of: "Live Styler").location
+        let para = storage.attribute(.paragraphStyle, at: dataRowLoc, effectiveRange: nil) as? NSParagraphStyle
+        XCTAssertEqual(para?.lineBreakMode, .byClipping, "Table rows must use .byClipping so wide tables never soft-wrap")
+    }
+
+    func testWhitespaceNormalizationAndListAlignment() {
+        let sample = """
+        Active line at top.
+           Leading spaces and   multiple    internal   spaces.
+        -    Bullet with extra spaces after marker
+          Continuation line under bullet
+        1.    Ordered item with extra spaces
+        """
+        let storage = NSTextStorage(string: sample)
+        _ = MarkdownLiveStyler.applyStyles(
+            to: storage,
+            theme: .daylight,
+            sourceCodeMode: false,
+            focusMode: false,
+            selectedRange: NSRange(location: 0, length: 0)
+        )
+
+        let ns = sample as NSString
+
+        // Leading spaces on inactive prose line should be collapsed
+        let leadingSpaceRange = ns.range(of: "   Leading")
+        let firstLeadingSpaceFont = storage.attribute(.font, at: leadingSpaceRange.location, effectiveRange: nil) as? NSFont
+        XCTAssertLessThanOrEqual(firstLeadingSpaceFont?.pointSize ?? 16.0, 0.2, "Leading spaces on prose line should be collapsed when unselected")
+
+        // Extra spaces in "   multiple" should have 1st space visible and 2nd/3rd spaces collapsed
+        let multiSpaceRange = ns.range(of: "   multiple")
+        let firstInternalSpaceFont = storage.attribute(.font, at: multiSpaceRange.location, effectiveRange: nil) as? NSFont
+        let secondInternalSpaceFont = storage.attribute(.font, at: multiSpaceRange.location + 1, effectiveRange: nil) as? NSFont
+        XCTAssertGreaterThan(firstInternalSpaceFont?.pointSize ?? 0.0, 10.0, "First space of internal whitespace run must remain a normal space")
+        XCTAssertLessThanOrEqual(secondInternalSpaceFont?.pointSize ?? 16.0, 0.2, "Subsequent spaces in internal whitespace run must collapse per CommonMark")
+
+        // List item marker + post-marker kern must advance text to headIndent, and continuation line must match headIndent
+        let bulletMarkerLoc = ns.range(of: "-    Bullet").location
+        let bulletLoc = ns.range(of: "Bullet with").location
+        let bulletPara = storage.attribute(.paragraphStyle, at: bulletLoc, effectiveRange: nil) as? NSParagraphStyle
+        let markerFont = storage.attribute(.font, at: bulletMarkerLoc, effectiveRange: nil) as? NSFont
+        let postMarkerKern = storage.attribute(.kern, at: bulletMarkerLoc + 1, effectiveRange: nil) as? CGFloat
+        XCTAssertNotNil(bulletPara)
+        XCTAssertNotNil(markerFont)
+        let markerWidth = ("-" as NSString).size(withAttributes: [.font: markerFont!]).width
+        XCTAssertEqual(
+            (bulletPara?.firstLineHeadIndent ?? 0) + markerWidth + (postMarkerKern ?? 0),
+            bulletPara?.headIndent ?? -1,
+            accuracy: 0.05,
+            "List firstLineHeadIndent + markerWidth + postMarkerKern must equal headIndent so wrapped lines align"
+        )
+
+        let contLoc = ns.range(of: "Continuation line").location
+        let contPara = storage.attribute(.paragraphStyle, at: contLoc, effectiveRange: nil) as? NSParagraphStyle
+        XCTAssertEqual(contPara?.firstLineHeadIndent ?? -1, bulletPara?.headIndent ?? -2, accuracy: 0.01)
+    }
+
+    func testCommonMarkSetextHeadingsTildeFencesAndEscapes() {
+        let sample = """
+        Cursor line.
+
+        Setext Heading 1
+        ================
+
+        Setext Heading 2
+        ----------------
+
+        ~~~rust
+        fn main() {}
+        ~~~
+
+        Escaped \\*not italic\\* and autolink <https://example.com/docs>.
+        """
+        let storage = NSTextStorage(string: sample)
+        let analysis = MarkdownLiveStyler.applyStyles(
+            to: storage,
+            theme: .daylight,
+            sourceCodeMode: false,
+            focusMode: false,
+            selectedRange: NSRange(location: 0, length: 0)
+        )
+
+        XCTAssertEqual(analysis.headings.count, 2)
+        XCTAssertEqual(analysis.headings[0].level, 1)
+        XCTAssertEqual(analysis.headings[0].title, "Setext Heading 1")
+        XCTAssertEqual(analysis.headings[1].level, 2)
+        XCTAssertEqual(analysis.headings[1].title, "Setext Heading 2")
+
+        XCTAssertTrue(analysis.decorations.contains(where: { $0.kind == .codeFenceStart(language: "rust") }))
+
+        let ns = sample as NSString
+        let notItalicLoc = ns.range(of: "not italic").location
+        let notItalicFont = storage.attribute(.font, at: notItalicLoc, effectiveRange: nil) as? NSFont
+        XCTAssertNotNil(notItalicFont)
+        XCTAssertFalse(NSFontManager.shared.traits(of: notItalicFont!).contains(.italicFontMask), "Escaped \\*not italic\\* must not become italic")
+
+        // Backslash before '*' should be collapsed when unselected
+        let backslashLoc = ns.range(of: "\\*not").location
+        let backslashFg = storage.attribute(.foregroundColor, at: backslashLoc, effectiveRange: nil) as? NSColor
+        XCTAssertEqual(backslashFg?.alphaComponent ?? 1.0, 0.0, accuracy: 0.001, "Escape backslash should collapse when unselected")
+    }
+
+    @MainActor
+    func testFilesViewerHidesNonMarkdownFiles() throws {
+        let tempDir = FileManager.default.temporaryDirectory.appendingPathComponent("FolioFilterTest_\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: tempDir) }
+
+        // Create Markdown files, non-Markdown files (.swift, .yaml, .json), and an empty/code-only subdir
+        let readmeURL = tempDir.appendingPathComponent("README.md")
+        let notesURL = tempDir.appendingPathComponent("guide.markdown")
+        let swiftURL = tempDir.appendingPathComponent("main.swift")
+        let yamlURL = tempDir.appendingPathComponent("config.yaml")
+
+        let docsSubdir = tempDir.appendingPathComponent("docs", isDirectory: true)
+        try FileManager.default.createDirectory(at: docsSubdir, withIntermediateDirectories: true)
+        let archURL = docsSubdir.appendingPathComponent("architecture.md")
+        let helperSwiftURL = docsSubdir.appendingPathComponent("helper.swift")
+
+        let codeOnlySubdir = tempDir.appendingPathComponent("Sources", isDirectory: true)
+        try FileManager.default.createDirectory(at: codeOnlySubdir, withIntermediateDirectories: true)
+        let appSwiftURL = codeOnlySubdir.appendingPathComponent("App.swift")
+
+        try "# Readme".write(to: readmeURL, atomically: true, encoding: .utf8)
+        try "# Guide".write(to: notesURL, atomically: true, encoding: .utf8)
+        try "import Foundation".write(to: swiftURL, atomically: true, encoding: .utf8)
+        try "key: value".write(to: yamlURL, atomically: true, encoding: .utf8)
+        try "# Architecture".write(to: archURL, atomically: true, encoding: .utf8)
+        try "struct Helper {}".write(to: helperSwiftURL, atomically: true, encoding: .utf8)
+        try "struct App {}".write(to: appSwiftURL, atomically: true, encoding: .utf8)
+
+        let vm = EditorWorkspaceViewModel()
+        vm.loadWorkspaceFolder(tempDir)
+
+        // Flat list should only contain the 3 Markdown files
+        let flatNames = Set(vm.flatMarkdownFiles.map(\.name))
+        XCTAssertEqual(flatNames, ["README.md", "guide.markdown", "architecture.md"])
+        XCTAssertFalse(flatNames.contains("main.swift"))
+        XCTAssertFalse(flatNames.contains("config.yaml"))
+
+        // Tree root nodes should only contain "docs" directory, "README.md", and "guide.markdown"
+        // (no "main.swift", no "config.yaml", and no "Sources" directory since it has no Markdown files)
+        let rootNames = Set(vm.rootFileNodes.map(\.name))
+        XCTAssertEqual(rootNames, ["docs", "README.md", "guide.markdown"])
+
+        if let docsNode = vm.rootFileNodes.first(where: { $0.name == "docs" }) {
+            let docsChildrenNames = Set((docsNode.children ?? []).map(\.name))
+            XCTAssertEqual(docsChildrenNames, ["architecture.md"])
+        } else {
+            XCTFail("Expected 'docs' directory node in rootFileNodes")
+        }
+    }
+
+    private struct UpstreamSpecTestEntry: Decodable {
+        let example: Int
+        let section: String
+        let markdown: String
+        let html: String
+        let extensions: [String]
+    }
+
+    private func locateSpecFixture(_ relativePath: String) throws -> URL {
+        let fm = FileManager.default
+        let env = ProcessInfo.processInfo.environment
+        var candidates: [String] = [relativePath]
+        if let testSrcdir = env["TEST_SRCDIR"] {
+            let workspace = env["TEST_WORKSPACE"] ?? "_main"
+            candidates.append("\(testSrcdir)/\(workspace)/\(relativePath)")
+            candidates.append("\(testSrcdir)/folio/\(relativePath)")
+        }
+        if let pwd = env["PWD"] {
+            candidates.append("\(pwd)/\(relativePath)")
+        }
+        for candidate in candidates {
+            if fm.fileExists(atPath: candidate) {
+                return URL(fileURLWithPath: candidate)
+            }
+        }
+        throw NSError(domain: "FolioTests", code: 404, userInfo: [NSLocalizedDescriptionKey: "Missing spec fixture: \(relativePath)"])
+    }
+
+    func testUpstreamGFMSpecAndExtensionsFullParity() throws {
+        let gfmSpecURL = try locateSpecFixture("third_party/markdown_spec/gfm_spec.json")
+        let gfmExtURL = try locateSpecFixture("third_party/markdown_spec/gfm_extensions.json")
+
+        let gfmSpecData = try Data(contentsOf: gfmSpecURL)
+        let gfmExtData = try Data(contentsOf: gfmExtURL)
+
+        let specEntries = try JSONDecoder().decode([UpstreamSpecTestEntry].self, from: gfmSpecData)
+        let extEntries = try JSONDecoder().decode([UpstreamSpecTestEntry].self, from: gfmExtData)
+
+        XCTAssertGreaterThanOrEqual(specEntries.count, 670, "Expected at least 670 upstream GFM spec examples")
+        XCTAssertGreaterThanOrEqual(extEntries.count, 30, "Expected at least 30 upstream GFM extensions examples")
+
+        var failures: [String] = []
+        for entry in specEntries {
+            let actual = MarkdownLiveStyler.renderHTML(entry.markdown, extensions: entry.extensions)
+            if actual != entry.html {
+                failures.append("gfm_spec.json Example \(entry.example) (\(entry.section)): expected \(entry.html.debugDescription), got \(actual.debugDescription)")
+            }
+        }
+        let defaultExtSuite = ["table", "strikethrough", "autolink", "tagfilter", "footnotes", "tasklist"]
+        for entry in extEntries {
+            guard entry.html.trimmingCharacters(in: .whitespacesAndNewlines) != "<IGNORE>" else { continue }
+            var exts = defaultExtSuite
+            for ext in entry.extensions where !exts.contains(ext) {
+                exts.append(ext)
+            }
+            let actual = MarkdownLiveStyler.renderHTML(entry.markdown, extensions: exts)
+            if actual != entry.html {
+                failures.append("gfm_extensions.json Example \(entry.example) (\(entry.section)): expected \(entry.html.debugDescription), got \(actual.debugDescription)")
+            }
+        }
+
+        XCTAssertTrue(
+            failures.isEmpty,
+            "Failed \(failures.count) upstream GFM spec tests:\n\(failures.prefix(10).joined(separator: "\n"))"
+        )
+    }
+
+    @MainActor
+    func testCmarkGfmASTLiveBufferStylingParity() {
+        let sample = """
+        # Active Line
+
+            let indentedCode = 42
+            return indentedCode
+
+        See [Reference Label][docs] and [Collapsed][] and visit www.commonmark.org today.
+
+        [docs]: https://commonmark.org/help
+        [collapsed]: https://github.github.com/gfm/
+        """
+
+        let storage = NSTextStorage(string: sample)
+        let theme = EditorTheme.daylight
+
+        let analysis = MarkdownLiveStyler.applyStyles(
+            to: storage,
+            theme: theme,
+            sourceCodeMode: false,
+            focusMode: false,
+            selectedRange: NSRange(location: 0, length: 0)
+        )
+
+        // 1. Indented code block lines should produce .codeFenceBody decorations
+        let indentedDecorations = analysis.decorations.filter { $0.kind == .codeFenceBody }
+        XCTAssertEqual(indentedDecorations.count, 2, "Expected 2 indented code block line decorations from cmark-gfm AST")
+
+        let ns = sample as NSString
+        // 2. Reference link `[Reference Label][docs]` should style `Reference Label` as link and collapse `[` and `][docs]`
+        let refLabelRange = ns.range(of: "Reference Label")
+        let refLabelColor = storage.attribute(.foregroundColor, at: refLabelRange.location, effectiveRange: nil) as? NSColor
+        let refLabelUnderline = storage.attribute(.underlineStyle, at: refLabelRange.location, effectiveRange: nil) as? Int
+        XCTAssertEqual(refLabelColor, theme.linkNSColor)
+        XCTAssertEqual(refLabelUnderline, NSUnderlineStyle.single.rawValue)
+
+        let trailingRefSyntax = ns.range(of: "][docs]")
+        let trailingRefFont = storage.attribute(.font, at: trailingRefSyntax.location, effectiveRange: nil) as? NSFont
+        XCTAssertEqual(trailingRefFont?.pointSize ?? 12.0, 0.001, accuracy: 0.01, "Reference link suffix ][docs] should collapse on unselected lines")
+
+        // 3. Collapsed reference link `[Collapsed][]` should style `Collapsed` as link
+        let collapsedRange = ns.range(of: "Collapsed")
+        let collapsedColor = storage.attribute(.foregroundColor, at: collapsedRange.location, effectiveRange: nil) as? NSColor
+        XCTAssertEqual(collapsedColor, theme.linkNSColor)
+
+        // 4. GFM extended autolink `www.commonmark.org` should style as link
+        let bareAutolinkRange = ns.range(of: "www.commonmark.org")
+        let bareAutolinkColor = storage.attribute(.foregroundColor, at: bareAutolinkRange.location, effectiveRange: nil) as? NSColor
+        let bareAutolinkUnderline = storage.attribute(.underlineStyle, at: bareAutolinkRange.location, effectiveRange: nil) as? Int
+        XCTAssertEqual(bareAutolinkColor, theme.linkNSColor)
+        XCTAssertEqual(bareAutolinkUnderline, NSUnderlineStyle.single.rawValue)
+    }
 }
-
-
 

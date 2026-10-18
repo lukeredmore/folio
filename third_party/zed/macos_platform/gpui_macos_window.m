@@ -504,12 +504,15 @@ static NSColor *ColorFromGpuiRgba(CGpuiRgba c) {
                     if (colWidths[c] < 96.0) colWidths[c] = 96.0;
                     totalTableWidth += colWidths[c];
                 }
-                if (totalTableWidth > contentWidth && totalTableWidth > 0.0) {
-                    CGFloat scale = contentWidth / totalTableWidth;
-                    totalTableWidth = 0.0;
-                    for (NSUInteger c = 0; c < numCols; c++) {
-                        colWidths[c] = floor(colWidths[c] * scale);
-                        totalTableWidth += colWidths[c];
+                if (totalTableWidth < contentWidth && numCols > 0) {
+                    CGFloat targetWidth = MIN(contentWidth, MAX(totalTableWidth, MIN(contentWidth, (CGFloat)numCols * 150.0)));
+                    if (targetWidth > totalTableWidth) {
+                        CGFloat extraPerCol = floor((targetWidth - totalTableWidth) / (CGFloat)numCols);
+                        totalTableWidth = 0.0;
+                        for (NSUInteger c = 0; c < numCols; c++) {
+                            colWidths[c] += extraPerCol;
+                            totalTableWidth += colWidths[c];
+                        }
                     }
                 }
                 CGFloat tableLeft = contentLeft + MAX(0.0, floor((contentWidth - totalTableWidth) * 0.5));
@@ -777,6 +780,8 @@ static void RenderFrameBridgeCallback(void *cb_ctx, const CGpuiRenderFrame *fram
     self.editorScrollView = [[NSScrollView alloc] initWithFrame:root.bounds];
     self.editorScrollView.autoresizingMask = NSViewWidthSizable | NSViewHeightSizable;
     self.editorScrollView.hasVerticalScroller = YES;
+    self.editorScrollView.hasHorizontalScroller = YES;
+    self.editorScrollView.autohidesScrollers = YES;
     self.editorScrollView.drawsBackground = YES;
     self.editorScrollView.borderType = NSNoBorder;
 
@@ -785,16 +790,16 @@ static void RenderFrameBridgeCallback(void *cb_ctx, const CGpuiRenderFrame *fram
     NSLayoutManager *layoutManager = [[NSLayoutManager alloc] init];
     [textStorage addLayoutManager:layoutManager];
     NSTextContainer *textContainer = [[NSTextContainer alloc] initWithContainerSize:NSMakeSize(contentSize.width, CGFLOAT_MAX)];
-    textContainer.widthTracksTextView = YES;
+    textContainer.widthTracksTextView = NO;
     [layoutManager addTextContainer:textContainer];
 
     self.editorView = [[ZedGPUIEditorTextView alloc] initWithFrame:NSMakeRect(0, 0, contentSize.width, contentSize.height) textContainer:textContainer];
     self.editorView.zedController = self;
-    self.editorView.minSize = NSMakeSize(0.0, contentSize.height);
+    self.editorView.minSize = NSMakeSize(contentSize.width, contentSize.height);
     self.editorView.maxSize = NSMakeSize(CGFLOAT_MAX, CGFLOAT_MAX);
     self.editorView.verticallyResizable = YES;
-    self.editorView.horizontallyResizable = NO;
-    self.editorView.autoresizingMask = NSViewWidthSizable;
+    self.editorView.horizontallyResizable = YES;
+    self.editorView.autoresizingMask = NSViewNotSizable;
     self.editorView.richText = NO;
     self.editorView.importsGraphics = NO;
     self.editorView.allowsUndo = YES;
@@ -1126,8 +1131,10 @@ static void RenderFrameBridgeCallback(void *cb_ctx, const CGpuiRenderFrame *fram
         }
 
         // Style Centered Markdown Tables (kind == 6)
-        CGFloat contentWidth = self.editorView.bounds.size.width - (self.editorView.textContainerOrigin.x * 2.0);
-        if (contentWidth < 120.0) contentWidth = 760.0;
+        CGFloat viewportWidth = self.editorScrollView.contentSize.width;
+        CGFloat insetX = self.editorView.textContainerInset.width;
+        CGFloat contentWidth = MAX(120.0, viewportWidth - (insetX * 2.0));
+        CGFloat maxTableWidth = 0.0;
 
         NSUInteger bIdx = 0;
         while (bIdx < capturedBlocks.count) {
@@ -1171,19 +1178,27 @@ static void RenderFrameBridgeCallback(void *cb_ctx, const CGpuiRenderFrame *fram
                     if (colWidths[c] < 96.0) colWidths[c] = 96.0;
                     totalTableWidth += colWidths[c];
                 }
-                if (totalTableWidth > contentWidth && totalTableWidth > 0.0) {
-                    CGFloat scale = contentWidth / totalTableWidth;
-                    totalTableWidth = 0.0;
-                    for (NSUInteger c = 0; c < numCols; c++) {
-                        colWidths[c] = floor(colWidths[c] * scale);
-                        totalTableWidth += colWidths[c];
+                if (totalTableWidth < contentWidth && numCols > 0) {
+                    CGFloat targetWidth = MIN(contentWidth, MAX(totalTableWidth, MIN(contentWidth, (CGFloat)numCols * 150.0)));
+                    if (targetWidth > totalTableWidth) {
+                        CGFloat extraPerCol = floor((targetWidth - totalTableWidth) / (CGFloat)numCols);
+                        totalTableWidth = 0.0;
+                        for (NSUInteger c = 0; c < numCols; c++) {
+                            colWidths[c] += extraPerCol;
+                            totalTableWidth += colWidths[c];
+                        }
                     }
+                }
+                if (totalTableWidth > maxTableWidth) {
+                    maxTableWidth = totalTableWidth;
                 }
                 CGFloat tableOffsetX = MAX(0.0, floor((contentWidth - totalTableWidth) * 0.5));
 
                 NSMutableParagraphStyle *tableRowPara = [[NSMutableParagraphStyle alloc] init];
                 tableRowPara.firstLineHeadIndent = tableOffsetX + 14.0;
                 tableRowPara.headIndent = tableOffsetX + 14.0;
+                tableRowPara.tailIndent = 0.0;
+                tableRowPara.lineBreakMode = NSLineBreakByClipping;
                 tableRowPara.minimumLineHeight = 30.0;
                 tableRowPara.maximumLineHeight = 30.0;
                 tableRowPara.lineSpacing = 0.0;
@@ -1250,6 +1265,17 @@ static void RenderFrameBridgeCallback(void *cb_ctx, const CGpuiRenderFrame *fram
             }
 
             bIdx = nextIdx;
+        }
+
+        CGFloat requiredDocWidth = MAX(viewportWidth, maxTableWidth + (insetX * 2.0) + 48.0);
+        if (fabs(self.editorView.frame.size.width - requiredDocWidth) > 0.5) {
+            NSRect f = self.editorView.frame;
+            f.size.width = requiredDocWidth;
+            self.editorView.frame = f;
+        }
+        CGFloat requiredContainerWidth = MAX(contentWidth, maxTableWidth + 48.0);
+        if (fabs(self.editorView.textContainer.containerSize.width - requiredContainerWidth) > 0.5) {
+            self.editorView.textContainer.containerSize = NSMakeSize(requiredContainerWidth, CGFLOAT_MAX);
         }
 
         // Apply Zed DisplayMap Folds (collapse_completely == true) on inactive lines!

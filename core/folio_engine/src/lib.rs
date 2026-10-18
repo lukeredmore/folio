@@ -5,9 +5,11 @@ pub mod stats;
 pub mod theme;
 
 pub use markdown::{
-    analyze_markdown_document, compute_newline_continuation, replace_code_fence_language,
-    MarkdownAnalysis, MarkdownBlockDecoration, MarkdownBlockDecorationKind, NewlineAction,
-    OutlineHeadingItem, SyntaxFoldSpan, SyntaxTokenKind,
+    analyze_markdown_document, compute_newline_continuation, parse_cmark_gfm_ast,
+    render_gfm_to_html, render_markdown_to_html, replace_code_fence_language, CmarkAstAnalysis,
+    CmarkBlockSpan, CmarkInlineSpan, MarkdownAnalysis, MarkdownBlockDecoration,
+    MarkdownBlockDecorationKind, NewlineAction, OutlineHeadingItem, SyntaxFoldSpan,
+    SyntaxTokenKind,
 };
 pub use math::{
     layout_latex, layout_math_node, parse_latex, plain_text_summary, MathDrawPrimitive,

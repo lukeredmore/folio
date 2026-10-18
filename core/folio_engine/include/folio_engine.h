@@ -133,6 +133,80 @@ OTThemeMetrics ot_engine_theme_metrics(uint32_t theme_id);
 
 OTRgbaColor ot_engine_language_accent_color(const char* language_utf8, bool is_dark);
 
+// ============================================================================
+// 5. CommonMark + GFM Spec Parser & AST / HTML Renderer (cmark-gfm)
+// ============================================================================
+
+typedef enum OTMarkdownBlockKind {
+    OT_MD_BLOCK_HEADING = 1,
+    OT_MD_BLOCK_CODE_BLOCK = 2,
+    OT_MD_BLOCK_THEMATIC_BREAK = 3,
+    OT_MD_BLOCK_BLOCK_QUOTE = 4,
+    OT_MD_BLOCK_LIST_ITEM = 5,
+    OT_MD_BLOCK_TABLE = 6,
+    OT_MD_BLOCK_HTML_BLOCK = 7,
+    OT_MD_BLOCK_PARAGRAPH = 8
+} OTMarkdownBlockKind;
+
+// Bitflags for OTMarkdownBlockSpan.flags:
+// bit 0 (1): is_fenced (for CODE_BLOCK)
+// bit 1 (2): is_setext (for HEADING)
+// bit 2 (4): is_ordered (for LIST_ITEM)
+// bit 3 (8): is_task (for LIST_ITEM)
+// bit 4 (16): task_checked (for LIST_ITEM)
+typedef struct OTMarkdownBlockSpan {
+    uint32_t kind;          // OTMarkdownBlockKind
+    uint32_t start_line;    // 1-based line number
+    uint32_t start_column;  // 1-based UTF-8 column
+    uint32_t end_line;      // 1-based line number
+    uint32_t end_column;    // 1-based UTF-8 column
+    uint32_t level;         // heading level (1..6), blockquote depth, or ordered list item number
+    uint32_t flags;         // bitflags
+    char* info;             // fence language, heading plain text, or table alignments ("lcrn")
+} OTMarkdownBlockSpan;
+
+typedef enum OTMarkdownInlineKind {
+    OT_MD_INLINE_EMPH = 1,
+    OT_MD_INLINE_STRONG = 2,
+    OT_MD_INLINE_CODE = 3,
+    OT_MD_INLINE_STRIKETHROUGH = 4,
+    OT_MD_INLINE_LINK = 5,
+    OT_MD_INLINE_IMAGE = 6,
+    OT_MD_INLINE_HTML_INLINE = 7
+} OTMarkdownInlineKind;
+
+typedef struct OTMarkdownInlineSpan {
+    uint32_t kind;          // OTMarkdownInlineKind
+    uint32_t start_line;    // 1-based line number
+    uint32_t start_column;  // 1-based UTF-8 column
+    uint32_t end_line;      // 1-based line number
+    uint32_t end_column;    // 1-based UTF-8 column
+    char* url;              // Resolved link/image URL (including reference links)
+    char* literal;          // Code/text literal or link label
+} OTMarkdownInlineSpan;
+
+typedef struct OTMarkdownAstResult {
+    OTMarkdownBlockSpan* blocks;
+    size_t block_count;
+    OTMarkdownInlineSpan* inlines;
+    size_t inline_count;
+} OTMarkdownAstResult;
+
+// Renders Markdown to HTML using the upstream cmark-gfm specification parser.
+// Pass NULL for extensions_space_separated_utf8 to use default GFM extensions
+// ("table strikethrough autolink tagfilter tasklist"), or "" for pure CommonMark.
+// Free the returned string with ot_engine_free_string().
+char* ot_engine_render_markdown_html(
+    const char* markdown_utf8,
+    const char* extensions_space_separated_utf8
+);
+
+// Parses Markdown into a CommonMark + GFM AST using cmark-gfm and returns all block
+// and inline spans (including resolved reference links and indented code blocks).
+// Free the returned result with ot_engine_free_markdown_ast().
+OTMarkdownAstResult* ot_engine_parse_markdown_ast(const char* markdown_utf8);
+void ot_engine_free_markdown_ast(OTMarkdownAstResult* result);
+
 #ifdef __cplusplus
 }
 #endif

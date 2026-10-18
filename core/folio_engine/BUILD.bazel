@@ -19,6 +19,9 @@ rust_library(
     srcs = ENGINE_SRCS,
     crate_name = "folio_engine",
     edition = "2021",
+    deps = [
+        "//third_party/cmark_gfm:cmark_gfm",
+    ],
 )
 
 # Static C-ABI archive consumed by Swift / macOS AppKit (//macos/FolioApp)
@@ -27,6 +30,9 @@ rust_static_library(
     srcs = ENGINE_SRCS,
     crate_name = "folio_engine",
     edition = "2021",
+    deps = [
+        "//third_party/cmark_gfm:cmark_gfm",
+    ],
 )
 
 swift_interop_hint(
@@ -42,10 +48,16 @@ cc_library(
     linkopts = [
         "-Wl,-dead_strip",
     ],
-    deps = [":folio_engine_static"],
+    deps = [
+        ":folio_engine_static",
+        "//third_party/cmark_gfm:cmark_gfm",
+    ],
 )
 
 rust_test(
     name = "folio_engine_test",
     crate = ":folio_engine",
+    data = [
+        "//third_party/markdown_spec:all_spec_files",
+    ],
 )

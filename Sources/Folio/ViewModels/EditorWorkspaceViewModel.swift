@@ -520,12 +520,16 @@ public final class EditorWorkspaceViewModel: ObservableObject {
             return []
         }
 
-        let ignoredDirs: Set<String> = [".build", ".git", "node_modules", "DerivedData", ".swiftpm"]
+        let ignoredDirs: Set<String> = [
+            ".build", ".git", "node_modules", "DerivedData", ".swiftpm",
+            "target", "bazel-bin", "bazel-out", "bazel-testlogs", "bazel-Folio",
+            "Folio.app", "vendor", "dist", "build"
+        ]
         var nodes: [WorkspaceFileNode] = []
 
         for itemURL in contents {
             let name = itemURL.lastPathComponent
-            if ignoredDirs.contains(name) { continue }
+            if ignoredDirs.contains(name) || name.hasPrefix("bazel-") || name.hasSuffix(".app") { continue }
 
             let resourceValues = try? itemURL.resourceValues(forKeys: [.isDirectoryKey, .contentModificationDateKey, .creationDateKey])
             let isDir = resourceValues?.isDirectory ?? false
@@ -534,15 +538,17 @@ public final class EditorWorkspaceViewModel: ObservableObject {
 
             if isDir {
                 let children = scanDirectory(at: itemURL, depth: depth + 1, flatAccumulator: &flatAccumulator)
-                let node = WorkspaceFileNode(
-                    url: itemURL,
-                    name: name,
-                    isDirectory: true,
-                    modificationDate: modDate,
-                    creationDate: createDate,
-                    children: children
-                )
-                nodes.append(node)
+                if !children.isEmpty {
+                    let node = WorkspaceFileNode(
+                        url: itemURL,
+                        name: name,
+                        isDirectory: true,
+                        modificationDate: modDate,
+                        creationDate: createDate,
+                        children: children
+                    )
+                    nodes.append(node)
+                }
             } else {
                 let node = WorkspaceFileNode(
                     url: itemURL,
@@ -552,8 +558,8 @@ public final class EditorWorkspaceViewModel: ObservableObject {
                     creationDate: createDate,
                     children: nil
                 )
-                nodes.append(node)
-                if node.isMarkdownFile || ["swift", "json", "yml", "yaml", "css", "html"].contains(itemURL.pathExtension.lowercased()) {
+                if node.isMarkdownFile {
+                    nodes.append(node)
                     flatAccumulator.append(node)
                 }
             }

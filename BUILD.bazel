@@ -15,6 +15,9 @@ swift_library(
 swift_test(
     name = "FolioTests",
     srcs = glob(["Tests/FolioTests/**/*.swift"]),
+    data = [
+        "//third_party/markdown_spec:all_spec_files",
+    ],
     deps = [
         ":Folio",
     ],
