@@ -1031,8 +1031,7 @@ public final class MarkdownLiveStyler {
                 styleSyntaxToken(in: storage, range: closeRange, isActiveLine: true, theme: theme, dimFactor: dimFactor)
             } else {
                 // On inactive lines, reserve the exact pixel width of the 2D rendered math formula and let HybridMarkdownTextView draw it
-                let mathNode = LaTeXMathRenderer.parse(latexStr)
-                let mathBox = LaTeXMathRenderer.layout(node: mathNode, baseFontSize: fontSize, isDisplayStyle: false)
+                let mathBox = LaTeXMathRenderer.layoutLatex(latexStr, baseFontSize: fontSize, isDisplayStyle: false)
                 let targetWidth = max(12.0, mathBox.width + 6.0)
 
                 let tinyFont = NSFont.monospacedSystemFont(ofSize: 2.0, weight: .regular)

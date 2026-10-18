@@ -1,4 +1,5 @@
 import Foundation
+import OpenTypeEngineFFI
 
 public struct OutlineHeading: Identifiable, Equatable {
     public let id: String
@@ -38,41 +39,22 @@ public struct DocumentStats: Equatable {
     }
 
     public static func compute(for text: String, selectedRange: NSRange? = nil) -> DocumentStats {
-        var stats = DocumentStats()
-        if text.isEmpty {
-            stats.lines = 1
-            return stats
+        let hasSel = (selectedRange != nil && (selectedRange?.length ?? 0) > 0)
+        let selLoc = max(0, selectedRange?.location ?? 0)
+        let selLen = max(0, selectedRange?.length ?? 0)
+
+        let rawStats = text.withCString { cStr in
+            ot_engine_compute_stats(cStr, hasSel, selLoc, selLen)
         }
 
-        let nsString = text as NSString
-        stats.characters = nsString.length
-        stats.charactersWithoutSpaces = text.unicodeScalars.filter { !CharacterSet.whitespacesAndNewlines.contains($0) }.count
-
-        var lineCount = 0
-        nsString.enumerateSubstrings(in: NSRange(location: 0, length: nsString.length), options: [.byLines, .substringNotRequired]) { _, _, _, _ in
-            lineCount += 1
-        }
-        if text.hasSuffix("\n") {
-            lineCount += 1
-        }
-        stats.lines = max(1, lineCount)
-
-        var wordCount = 0
-        nsString.enumerateSubstrings(in: NSRange(location: 0, length: nsString.length), options: [.byWords, .substringNotRequired]) { _, _, _, _ in
-            wordCount += 1
-        }
-        stats.words = wordCount
-
-        if let sel = selectedRange, sel.length > 0, sel.location + sel.length <= nsString.length {
-            stats.selectedCharacters = sel.length
-            var selWords = 0
-            nsString.enumerateSubstrings(in: sel, options: [.byWords, .substringNotRequired]) { _, _, _, _ in
-                selWords += 1
-            }
-            stats.selectedWords = selWords
-        }
-
-        return stats
+        return DocumentStats(
+            words: Int(rawStats.words),
+            lines: Int(rawStats.lines),
+            characters: Int(rawStats.characters),
+            charactersWithoutSpaces: Int(rawStats.characters_without_spaces),
+            selectedWords: Int(rawStats.selected_words),
+            selectedCharacters: Int(rawStats.selected_characters)
+        )
     }
 }
 

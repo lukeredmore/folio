@@ -1,0 +1,9 @@
+# Common Bazel configuration for OpenType monorepo (macOS Apple Silicon + Rust + Swift)
+build --apple_platform_type=macos
+build --macos_minimum_os=14.0
+build --host_macos_minimum_os=14.0
+build --copt=-Wno-#warnings
+build --host_copt=-Wno-#warnings
+build --incompatible_enable_cc_toolchain_resolution
+test --test_output=errors
+

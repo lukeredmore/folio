@@ -1,0 +1,42 @@
+load("@build_bazel_rules_swift//swift:swift.bzl", "swift_library", "swift_test")
+
+package(default_visibility = ["//visibility:public"])
+
+swift_library(
+    name = "OpenType",
+    srcs = glob(["Sources/OpenType/**/*.swift"]),
+    copts = ["-DOPENTYPE_NO_MAIN"],
+    module_name = "OpenType",
+    deps = [
+        "//core/opentype_engine:opentype_engine_ffi",
+    ],
+)
+
+swift_test(
+    name = "OpenTypeTests",
+    srcs = glob(["Tests/OpenTypeTests/**/*.swift"]),
+    deps = [
+        ":OpenType",
+    ],
+)
+
+alias(
+    name = "OpenTypeApp",
+    actual = "//macos/OpenTypeApp:OpenTypeLauncher",
+)
+
+alias(
+    name = "opentype_macos_app",
+    actual = "//macos/OpenTypeApp:OpenTypeApp",
+)
+
+alias(
+    name = "zed_with_opentype_mod",
+    actual = "//zed/opentype_zed_mod:zed_with_opentype_mod",
+)
+
+alias(
+    name = "opentype_zed_extension",
+    actual = "//zed/opentype_zed_extension:extension_bundle",
+)
+

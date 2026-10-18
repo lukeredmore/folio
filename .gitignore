@@ -1,8 +1,13 @@
 .DS_Store
 .build/
 .swiftpm/
+.worktrees/
 OpenType.app/
 *.xcodeproj
 *.xcworkspace
 xcuserdata/
 DerivedData/
+bazel-*
+target/
+tools/.bazelisk
+third_party/zed/upstream/

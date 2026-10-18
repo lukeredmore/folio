@@ -1,0 +1,4 @@
+module OpenTypeEngineFFI {
+    header "opentype_engine.h"
+    export *
+}

@@ -1,0 +1,30 @@
+load("@rules_rust//rust:defs.bzl", "rust_library", "rust_test")
+
+package(default_visibility = ["//visibility:public"])
+
+rust_library(
+    name = "opentype_zed_mod",
+    srcs = [
+        "src/editor_session.rs",
+        "src/inlay_folding.rs",
+        "src/lib.rs",
+        "src/math_canvas.rs",
+        "src/theme_sync.rs",
+    ],
+    crate_name = "opentype_zed_mod",
+    edition = "2021",
+    deps = [
+        "//core/opentype_engine",
+    ],
+)
+
+rust_test(
+    name = "opentype_zed_mod_test",
+    crate = ":opentype_zed_mod",
+    edition = "2021",
+)
+
+alias(
+    name = "zed_with_opentype_mod",
+    actual = "//third_party/zed:zed_with_opentype_mod",
+)

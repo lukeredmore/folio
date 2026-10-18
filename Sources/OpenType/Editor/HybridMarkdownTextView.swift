@@ -1,4 +1,5 @@
 import AppKit
+import OpenTypeEngineFFI
 import SwiftUI
 
 public final class HybridMarkdownTextView: NSTextView {
@@ -50,36 +51,10 @@ public final class HybridMarkdownTextView: NSTextView {
     }
 
     private static func languageAccentColor(for rawLang: String, isDark: Bool) -> NSColor {
-        switch rawLang.lowercased().trimmingCharacters(in: .whitespaces) {
-        case "swift":
-            return NSColor(srgbRed: 0.94, green: 0.32, blue: 0.22, alpha: 1.0)
-        case "python", "py":
-            return NSColor(srgbRed: 0.22, green: 0.46, blue: 0.67, alpha: 1.0)
-        case "javascript", "js", "jsx":
-            return isDark
-                ? NSColor(srgbRed: 0.95, green: 0.82, blue: 0.22, alpha: 1.0)
-                : NSColor(srgbRed: 0.78, green: 0.58, blue: 0.04, alpha: 1.0)
-        case "typescript", "ts", "tsx":
-            return NSColor(srgbRed: 0.19, green: 0.47, blue: 0.78, alpha: 1.0)
-        case "rust", "rs":
-            return NSColor(srgbRed: 0.85, green: 0.45, blue: 0.24, alpha: 1.0)
-        case "go", "golang":
-            return NSColor(srgbRed: 0.0, green: 0.68, blue: 0.85, alpha: 1.0)
-        case "c", "h", "cpp", "c++", "hpp", "objc", "objective-c":
-            return NSColor(srgbRed: 0.58, green: 0.28, blue: 0.78, alpha: 1.0)
-        case "json", "jsonc", "yaml", "yml", "toml":
-            return NSColor(srgbRed: 0.20, green: 0.65, blue: 0.45, alpha: 1.0)
-        case "bash", "sh", "zsh", "shell":
-            return NSColor(srgbRed: 0.26, green: 0.68, blue: 0.34, alpha: 1.0)
-        case "html", "xml", "svg", "css", "scss":
-            return NSColor(srgbRed: 0.86, green: 0.30, blue: 0.42, alpha: 1.0)
-        case "sql":
-            return NSColor(srgbRed: 0.28, green: 0.52, blue: 0.88, alpha: 1.0)
-        default:
-            return isDark
-                ? NSColor.white.withAlphaComponent(0.65)
-                : NSColor.black.withAlphaComponent(0.55)
+        let rgba = rawLang.withCString { cStr in
+            ot_engine_language_accent_color(cStr, isDark)
         }
+        return NSColor(srgbRed: rgba.r, green: rgba.g, blue: rgba.b, alpha: rgba.a)
     }
 
     private static func languageMenuDotImage(for rawLang: String, isDark: Bool) -> NSImage {
@@ -330,9 +305,8 @@ public final class HybridMarkdownTextView: NSTextView {
                 let cardPath = NSBezierPath(roundedRect: blockRect.insetBy(dx: 0, dy: 2), xRadius: 8, yRadius: 8)
                 cardPath.fill()
 
-                let node = LaTeXMathRenderer.parse(latex)
-                let mathBox = LaTeXMathRenderer.layout(
-                    node: node,
+                let mathBox = LaTeXMathRenderer.layoutLatex(
+                    latex,
                     baseFontSize: currentTheme.baseFontSize * typographySettings.fontSizeScale,
                     isDisplayStyle: true
                 )
@@ -353,9 +327,8 @@ public final class HybridMarkdownTextView: NSTextView {
                 let baselineOffset = (self.textStorage?.attribute(.baselineOffset, at: mathRange.location, effectiveRange: nil) as? CGFloat) ?? 0.0
                 let baselineY = origin.y + lineFrag.minY + glyphLoc.y - baselineOffset
 
-                let node = LaTeXMathRenderer.parse(latex)
-                let mathBox = LaTeXMathRenderer.layout(
-                    node: node,
+                let mathBox = LaTeXMathRenderer.layoutLatex(
+                    latex,
                     baseFontSize: fontSize,
                     isDisplayStyle: false
                 )
@@ -609,62 +582,29 @@ public final class HybridMarkdownTextView: NSTextView {
         let lineRange = nsStr.lineRange(for: NSRange(location: sel.location, length: 0))
         let lineUpToCursor = nsStr.substring(with: NSRange(location: lineRange.location, length: sel.location - lineRange.location))
 
-        // Task list continuation: "- [ ] " or "- [x] "
-        if let match = lineUpToCursor.range(of: #"^(\s*[-*+]\s+\[[ xX]\]\s+)(.*)$"#, options: .regularExpression) {
-            let fullLine = String(lineUpToCursor[match])
-            if let prefixMatch = fullLine.range(of: #"^\s*[-*+]\s+\[[ xX]\]\s+"#, options: .regularExpression) {
-                let prefix = String(fullLine[prefixMatch])
-                let remainder = String(fullLine[prefixMatch.upperBound...]).trimmingCharacters(in: .whitespacesAndNewlines)
-                if remainder.isEmpty {
-                    if shouldChangeText(in: lineRange, replacementString: "\n") {
-                        replaceCharacters(in: lineRange, with: "\n")
-                        didChangeText()
-                    }
-                    return
-                } else {
-                    let uncheckedPrefix = prefix.replacingOccurrences(of: "[x]", with: "[ ]").replacingOccurrences(of: "[X]", with: "[ ]")
-                    super.insertNewline(sender)
-                    insertText(uncheckedPrefix, replacementRange: self.selectedRange())
-                    return
-                }
-            }
+        let action = lineUpToCursor.withCString { cStr in
+            ot_engine_newline_continuation(cStr)
+        }
+        defer {
+            ot_engine_free_newline_action(action)
         }
 
-        // Unordered list continuation: "- " or "* "
-        if let prefixRange = lineUpToCursor.range(of: #"^\s*[-*+]\s+"#, options: .regularExpression) {
-            let prefix = String(lineUpToCursor[prefixRange])
-            let remainder = String(lineUpToCursor[prefixRange.upperBound...]).trimmingCharacters(in: .whitespacesAndNewlines)
-            if remainder.isEmpty {
-                if shouldChangeText(in: lineRange, replacementString: "\n") {
-                    replaceCharacters(in: lineRange, with: "\n")
-                    didChangeText()
-                }
-                return
-            } else {
+        switch action.kind {
+        case 1:
+            if shouldChangeText(in: lineRange, replacementString: "\n") {
+                replaceCharacters(in: lineRange, with: "\n")
+                didChangeText()
+            }
+            return
+        case 2:
+            if let prefixPtr = action.prefix {
+                let prefix = String(cString: prefixPtr)
                 super.insertNewline(sender)
                 insertText(prefix, replacementRange: self.selectedRange())
                 return
             }
-        }
-
-        // Ordered list continuation: "1. " -> "2. "
-        if let prefixRange = lineUpToCursor.range(of: #"^\s*\d+\.\s+"#, options: .regularExpression) {
-            let prefix = String(lineUpToCursor[prefixRange])
-            let remainder = String(lineUpToCursor[prefixRange.upperBound...]).trimmingCharacters(in: .whitespacesAndNewlines)
-            if remainder.isEmpty {
-                if shouldChangeText(in: lineRange, replacementString: "\n") {
-                    replaceCharacters(in: lineRange, with: "\n")
-                    didChangeText()
-                }
-                return
-            } else {
-                let leadingSpace = prefix.prefix(while: { $0.isWhitespace })
-                let digitsStr = prefix.dropFirst(leadingSpace.count).prefix(while: { $0.isNumber })
-                let nextNum = (Int(digitsStr) ?? 1) + 1
-                super.insertNewline(sender)
-                insertText("\(leadingSpace)\(nextNum). ", replacementRange: self.selectedRange())
-                return
-            }
+        default:
+            break
         }
 
         super.insertNewline(sender)

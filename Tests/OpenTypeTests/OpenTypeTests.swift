@@ -236,5 +236,17 @@ final class OpenTypeTests: XCTestCase {
 
         XCTAssertTrue(analysis.decorations.contains(where: { $0.kind == .headingUnderline(level: 1) }))
     }
+
+    func testCoreEngineFFIIntegration() {
+        let ffiBox = LaTeXMathRenderer.layoutLatex(#"\nabla \cdot \mathbf{E} = \frac{\rho}{\varepsilon_0}"#, baseFontSize: 18, isDisplayStyle: true)
+        XCTAssertGreaterThan(ffiBox.width, 60)
+        XCTAssertGreaterThan(ffiBox.ascent, 12)
+        XCTAssertGreaterThan(ffiBox.descent, 6)
+
+        let plain = LaTeXMathRenderer.plainTextSummary(of: #"\frac{\alpha}{\beta}"#)
+        XCTAssertTrue(plain.contains("α"))
+        XCTAssertTrue(plain.contains("β"))
+    }
 }
+
 

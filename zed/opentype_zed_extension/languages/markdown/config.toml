@@ -1,0 +1,13 @@
+name = "Markdown"
+grammar = "markdown"
+path_suffixes = ["md", "markdown", "mdown", "mkd"]
+line_comments = ["<!-- "]
+block_comment = ["<!--", "-->"]
+autoclose_before = ";:.,=}])>` \n\t"
+brackets = [
+    { start = "[", end = "]", close = true, newline = false },
+    { start = "(", end = ")", close = true, newline = false },
+    { start = "{", end = "}", close = true, newline = false },
+    { start = "`", end = "`", close = true, newline = false },
+    { start = "$", end = "$", close = true, newline = false },
+]

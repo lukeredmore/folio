@@ -1,0 +1,32 @@
+load("@rules_rust//rust:defs.bzl", "rust_library", "rust_test")
+
+package(default_visibility = ["//visibility:public"])
+
+filegroup(
+    name = "extension_bundle",
+    srcs = [
+        "extension.toml",
+        "languages/markdown/config.toml",
+        "languages/markdown/outline.scm",
+    ],
+)
+
+rust_library(
+    name = "opentype_zed_extension",
+    srcs = ["src/lib.rs"],
+    compile_data = [
+        "extension.toml",
+        "languages/markdown/config.toml",
+        "languages/markdown/outline.scm",
+    ],
+    crate_name = "opentype_zed_extension",
+    edition = "2021",
+    deps = [
+        "//core/opentype_engine",
+    ],
+)
+
+rust_test(
+    name = "opentype_zed_extension_test",
+    crate = ":opentype_zed_extension",
+)

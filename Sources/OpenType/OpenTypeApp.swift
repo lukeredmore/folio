@@ -54,15 +54,17 @@ public struct MainWindowView: View {
     }
 }
 
+#if !OPENTYPE_NO_MAIN
 @main
-struct OpenTypeApp: App {
+#endif
+public struct OpenTypeApp: App {
     @StateObject private var viewModel = EditorWorkspaceViewModel()
 
-    init() {
+    public init() {
         NSApplication.shared.setActivationPolicy(.regular)
     }
 
-    var body: some Scene {
+    public var body: some Scene {
         WindowGroup("OpenType") {
             MainWindowView(viewModel: viewModel)
                 .frame(minWidth: 720, minHeight: 480)

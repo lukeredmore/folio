@@ -1,0 +1,45 @@
+load("@rules_cc//cc:defs.bzl", "objc_library")
+load("@rules_rust//rust:defs.bzl", "rust_test")
+
+package(default_visibility = ["//visibility:public"])
+
+exports_files(
+    glob([
+        "upstream_seed/**",
+        "patches/*.patch",
+    ]),
+)
+
+objc_library(
+    name = "gpui_macos_platform",
+    srcs = ["macos_platform/gpui_macos_window.m"],
+    hdrs = ["macos_platform/gpui_macos_window.h"],
+    copts = ["-Wno-deprecated-declarations"],
+    sdk_frameworks = [
+        "AppKit",
+        "CoreGraphics",
+        "CoreText",
+        "Foundation",
+        "QuartzCore",
+    ],
+)
+
+sh_binary(
+    name = "zed_with_opentype_mod",
+    srcs = ["run_zed_with_opentype_mod.sh"],
+    data = [
+        "patches/0002-real-zed-editor-opentype-wysiwyg.patch",
+    ],
+)
+
+rust_test(
+    name = "zed_patched_integration_test",
+    srcs = ["tests/zed_patched_integration_test.rs"],
+    edition = "2021",
+    deps = [
+        "//core/opentype_engine",
+        "//zed/opentype_zed_mod",
+        "@zed_upstream//:editor",
+        "@zed_upstream//:gpui",
+    ],
+)

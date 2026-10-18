@@ -1,0 +1,9 @@
+[package]
+name = "opentype_engine"
+version = "0.1.0"
+edition = "2021"
+description = "OpenType native Markdown & 2D LaTeX rendering engine (shared across macOS AppKit and Zed GPUI)"
+
+[lib]
+name = "opentype_engine"
+crate-type = ["rlib", "staticlib"]

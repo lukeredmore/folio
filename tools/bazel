@@ -1,0 +1,25 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+BAZELISK_BIN="$SCRIPT_DIR/.bazelisk"
+
+if [[ -x "$BAZELISK_BIN" ]]; then
+  exec "$BAZELISK_BIN" "$@"
+elif command -v bazelisk >/dev/null 2>&1; then
+  exec bazelisk "$@"
+elif command -v bazel >/dev/null 2>&1; then
+  exec bazel "$@"
+else
+  mkdir -p "$SCRIPT_DIR"
+  ARCH="$(uname -m)"
+  if [[ "$ARCH" == "arm64" ]]; then
+    URL="https://github.com/bazelbuild/bazelisk/releases/download/v1.25.0/bazelisk-darwin-arm64"
+  else
+    URL="https://github.com/bazelbuild/bazelisk/releases/download/v1.25.0/bazelisk-darwin-amd64"
+  fi
+  echo "[OpenType] Downloading Bazelisk to $BAZELISK_BIN..." >&2
+  curl -fsSL "$URL" -o "$BAZELISK_BIN"
+  chmod +x "$BAZELISK_BIN"
+  exec "$BAZELISK_BIN" "$@"
+fi
