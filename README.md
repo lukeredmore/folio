@@ -8,8 +8,8 @@
 
 | Bazel Target | Description |
 | :--- | :--- |
-| **`//:FolioApp`** | Builds and launches the standalone native macOS **Folio.app** (`AppKit` + `TextKit` + `SwiftUI`) via `rules_apple`, backed by the Rust `folio_engine` via C-ABI FFI (`./tools/bazel run //:FolioApp` launches the app; `./tools/bazel build //:FolioApp` builds and vends `./Folio.app` at the monorepo root). |
-| **`//:zed_with_folio_mod`** | Builds and launches the full open-source **Zed IDE** (`zed-industries/zed`) with the **Folio WYSIWYG Markdown & LaTeX Editor** integrated directly into `crates/editor`. |
+| **`//:FolioApp`** | Builds and launches the standalone native macOS **Folio.app** (`AppKit` + `TextKit` + `SwiftUI`) via `rules_apple`, backed by the Rust `folio_engine` via C-ABI FFI (`bazel run //:FolioApp` launches the app; `bazel build //:FolioApp` builds and vends `./Folio.app` at the monorepo root). |
+| **`//:zed_with_folio_mod`** | Builds and launches the full open-source **Zed IDE** (`zed-industries/zed`) with the **Folio WYSIWYG Markdown & LaTeX Editor** integrated directly into `crates/editor`, and installs the `folio` CLI wrapper to `/usr/local/bin/folio` and `~/.local/bin/folio`. |
 | **`//:folio_zed_extension`** | Packages the companion Zed extension bundle (`extension.toml`, `languages/markdown/outline.scm` heading/code-fence outline queries, and `/math`, `/table`, `/callout`, `/toc` slash commands). |
 | **`//core/folio_engine`** | Shared native Rust engine (`rust_library` + `cc_library` FFI `FolioEngineFFI`) providing single-pass Markdown block/inline span scanning, active-line token folding rules, native $\\text{LaTeX}$ math box layout, document statistics, and theme metrics. |
 
@@ -17,12 +17,20 @@
 
 ## Building & Running (Bazel)
 
-Use the repo's `./tools/bazel` wrapper (which automatically configures the local Xcode SDK and toolchain):
+Requires `bazel` / `bazelisk` (`brew install bazelisk`):
 
-### 1. Run Zed IDE with the Folio WYSIWYG Markdown Editor
+### 1. Run Zed IDE with the Folio WYSIWYG Markdown Editor & Install the `folio` CLI
 ```bash
-./tools/bazel run //:zed_with_folio_mod
+bazel run //:zed_with_folio_mod
 ```
+Running this target builds the Folio-modded Zed editor (`zed`) and its companion CLI (`cli`), installs the **`folio`** wrapper command to `/usr/local/bin/folio` (and `~/.local/bin/folio`), and launches the editor. Once installed, you can open any file or directory in the Folio-modded Zed editor directly from your terminal using all standard Zed CLI flags:
+```bash
+folio .
+folio path/to/notes.md
+folio --wait path/to/file.md
+```
+(You can also run **`cli: install`** / **Zed > Install CLI** from inside the app to reinstall `/usr/local/bin/folio`.)
+
 Opening any `.md` / Markdown file inside Zed automatically transforms the editor pane into an Folio WYSIWYG document canvas while keeping all of Zed's native IDE chrome (tabs, file tree, terminal, LSP, outline panel, and light/dark theme) intact:
 - **Document Typography & Clean Gutter:** Uses Zed's proportional UI font with comfortable `1.65×` line spacing, soft wrapping, and clean document margins (hiding code line numbers, git diff gutter, fold chevrons, indent guides, and whitespace dots). Code fences, inline `` `code` `` pills, and active table rows automatically switch to Zed's monospace buffer font.
 - **Cursor-Aware Live Folding:** Syntax markers (`#`, `**`, `*`, `~~`, `==`, `` ` ``, `[label](url)`, `$...$`, `$$...$$`) fold away on inactive lines and smoothly unfold into raw Markdown when the cursor enters that line or block.
@@ -34,22 +42,22 @@ Opening any `.md` / Markdown file inside Zed automatically transforms the editor
 ### 2. Build & Run the Standalone macOS `Folio.app`
 Launch directly via Bazel:
 ```bash
-./tools/bazel run //:FolioApp
+bazel run //:FolioApp
 ```
-Or build `./Folio.app` directly into the monorepo root:
+Or build `./Folio.app` into the monorepo root:
 ```bash
-./tools/bazel build //:FolioApp
+./build_app.sh
 open Folio.app
 ```
 
 ### 3. Build the Companion Zed Extension Bundle
 ```bash
-./tools/bazel build //:folio_zed_extension
+bazel build //:folio_zed_extension
 ```
 
 ### 4. Run All Monorepo Tests
 ```bash
-./tools/bazel test //...
+bazel test //...
 ```
 Runs:
 - `//core/folio_engine:folio_engine_test` (Rust core Markdown, LaTeX math layout, stats, and FFI unit tests)
