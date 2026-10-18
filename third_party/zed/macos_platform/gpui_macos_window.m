@@ -675,7 +675,7 @@ static void RenderFrameBridgeCallback(void *cb_ctx, const CGpuiRenderFrame *fram
 - (instancetype)initWithInitialText:(NSString *)initialText {
     self = [super init];
     if (self) {
-        _initialText = [initialText copy] ?: @"# OpenType in Zed\n";
+        _initialText = [initialText copy] ?: @"# Folio in Zed\n";
         _hasAppearanceOverride = NO;
         _appearanceOverrideIsDark = YES;
         _lastCursorLine = -1;
@@ -765,7 +765,7 @@ static void RenderFrameBridgeCallback(void *cb_ctx, const CGpuiRenderFrame *fram
     NSRect frame = NSMakeRect(0, 0, 1020, 760);
     NSWindowStyleMask style = NSWindowStyleMaskTitled | NSWindowStyleMaskClosable | NSWindowStyleMaskMiniaturizable | NSWindowStyleMaskResizable;
     self.window = [[NSWindow alloc] initWithContentRect:frame styleMask:style backing:NSBackingStoreBuffered defer:NO];
-    self.window.title = @"OpenType_in_Zed.md — Zed";
+    self.window.title = @"Folio_in_Zed.md — Zed";
     self.window.minSize = NSMakeSize(640, 440);
     self.window.delegate = self;
     [self.window center];
@@ -1326,7 +1326,7 @@ void gpui_macos_run_window(
 
         NSString *initialText = initial_text_utf8
             ? [NSString stringWithUTF8String:initial_text_utf8]
-            : @"# OpenType in Zed\n";
+            : @"# Folio in Zed\n";
 
         ZedWindowController *delegate = [[ZedWindowController alloc] initWithInitialText:initialText];
         delegate.rustUserData = user_data;

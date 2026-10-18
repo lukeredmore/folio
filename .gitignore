@@ -2,7 +2,7 @@
 .build/
 .swiftpm/
 .worktrees/
-OpenType.app/
+Folio.app/
 *.xcodeproj
 *.xcworkspace
 xcuserdata/

@@ -1,0 +1,10 @@
+[package]
+name = "folio_engine"
+version = "0.1.0"
+edition = "2021"
+license = "MIT"
+description = "Folio native Markdown & 2D LaTeX rendering engine (shared across macOS AppKit and Zed GPUI)"
+
+[lib]
+name = "folio_engine"
+crate-type = ["rlib", "staticlib"]

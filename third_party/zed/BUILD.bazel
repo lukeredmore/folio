@@ -25,10 +25,10 @@ objc_library(
 )
 
 sh_binary(
-    name = "zed_with_opentype_mod",
-    srcs = ["run_zed_with_opentype_mod.sh"],
+    name = "zed_with_folio_mod",
+    srcs = ["run_zed_with_folio_mod.sh"],
     data = [
-        "patches/0002-real-zed-editor-opentype-wysiwyg.patch",
+        "patches/0002-real-zed-editor-folio-wysiwyg.patch",
     ],
 )
 
@@ -37,8 +37,8 @@ rust_test(
     srcs = ["tests/zed_patched_integration_test.rs"],
     edition = "2021",
     deps = [
-        "//core/opentype_engine",
-        "//zed/opentype_zed_mod",
+        "//core/folio_engine",
+        "//zed/folio_zed_mod",
         "@zed_upstream//:editor",
         "@zed_upstream//:gpui",
     ],

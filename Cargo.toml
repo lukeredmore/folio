@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
 members = [
-    "core/opentype_engine",
-    "zed/opentype_zed_mod",
+    "core/folio_engine",
+    "zed/folio_zed_mod",
 ]

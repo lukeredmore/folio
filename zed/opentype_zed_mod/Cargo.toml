@@ -1,8 +1,0 @@
-[package]
-name = "opentype_zed_mod"
-version = "0.1.0"
-edition = "2021"
-description = "OpenType Typora-style hybrid Markdown + native LaTeX GPUI mod for Zed"
-
-[dependencies]
-opentype_engine = { path = "../../core/opentype_engine" }

@@ -69,11 +69,11 @@ fn test_patched_zed_editor_respects_zed_appearance_and_code_fence_language() {
 
     ed.set_appearance_mode(false);
     EditorElement::prepaint(&mut ed);
-    assert!(!ed.last_opentype_frame.as_ref().unwrap().theme.is_dark);
+    assert!(!ed.last_folio_frame.as_ref().unwrap().theme.is_dark);
 
     ed.set_appearance_mode(true);
     EditorElement::prepaint(&mut ed);
-    assert!(ed.last_opentype_frame.as_ref().unwrap().theme.is_dark);
+    assert!(ed.last_folio_frame.as_ref().unwrap().theme.is_dark);
 
     assert!(ed.set_code_fence_language(0, "python"));
     assert_eq!(ed.buffer_text, "```python\nlet x = 1;\n```\n");

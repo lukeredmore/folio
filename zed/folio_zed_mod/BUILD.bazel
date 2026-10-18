@@ -1,0 +1,30 @@
+load("@rules_rust//rust:defs.bzl", "rust_library", "rust_test")
+
+package(default_visibility = ["//visibility:public"])
+
+rust_library(
+    name = "folio_zed_mod",
+    srcs = [
+        "src/editor_session.rs",
+        "src/inlay_folding.rs",
+        "src/lib.rs",
+        "src/math_canvas.rs",
+        "src/theme_sync.rs",
+    ],
+    crate_name = "folio_zed_mod",
+    edition = "2021",
+    deps = [
+        "//core/folio_engine",
+    ],
+)
+
+rust_test(
+    name = "folio_zed_mod_test",
+    crate = ":folio_zed_mod",
+    edition = "2021",
+)
+
+alias(
+    name = "zed_with_folio_mod",
+    actual = "//third_party/zed:zed_with_folio_mod",
+)

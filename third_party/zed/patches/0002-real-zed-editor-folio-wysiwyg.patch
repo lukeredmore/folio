@@ -1,0 +1,2087 @@
+diff --git a/Cargo.lock b/Cargo.lock
+index fc1be19..4367ce9 100644
+--- a/Cargo.lock
++++ b/Cargo.lock
+@@ -5539,6 +5539,8 @@ dependencies = [
+  "markdown",
+  "menu",
+  "multi_buffer",
++ "folio_engine",
++ "folio_zed_mod",
+  "ordered-float 5.5.0",
+  "parking_lot",
+  "pretty_assertions",
+@@ -12402,6 +12404,17 @@ dependencies = [
+  "vcpkg",
+ ]
+ 
++[[package]]
++name = "folio_engine"
++version = "0.1.0"
++
++[[package]]
++name = "folio_zed_mod"
++version = "0.1.0"
++dependencies = [
++ "folio_engine",
++]
++
+ [[package]]
+ name = "optfield"
+ version = "0.4.0"
+diff --git a/Cargo.toml b/Cargo.toml
+index 770f7d0..876ee8d 100644
+--- a/Cargo.toml
++++ b/Cargo.toml
+@@ -431,6 +431,8 @@ open_path_prompt = { path = "crates/open_path_prompt" }
+ open_router = { path = "crates/open_router", features = ["schemars"] }
+ openai_subscribed = { path = "crates/openai_subscribed" }
+ opencode = { path = "crates/opencode" }
++folio_engine = { path = "../../../core/folio_engine" }
++folio_zed_mod = { path = "../../../zed/folio_zed_mod" }
+ outline = { path = "crates/outline" }
+ outline_panel = { path = "crates/outline_panel" }
+ path = { path = "crates/path" }
+diff --git a/crates/editor/Cargo.toml b/crates/editor/Cargo.toml
+index dfd41b9..9d90fe5 100644
+--- a/crates/editor/Cargo.toml
++++ b/crates/editor/Cargo.toml
+@@ -66,6 +66,8 @@ lsp.workspace = true
+ markdown.workspace = true
+ menu.workspace = true
+ multi_buffer.workspace = true
++folio_engine.workspace = true
++folio_zed_mod.workspace = true
+ ordered-float.workspace = true
+ parking_lot.workspace = true
+ pretty_assertions = { workspace = true, optional = true }
+diff --git a/crates/editor/src/config.rs b/crates/editor/src/config.rs
+index d8ec82e..e1491aa 100644
+--- a/crates/editor/src/config.rs
++++ b/crates/editor/src/config.rs
+@@ -241,7 +241,7 @@ impl Editor {
+     pub(super) fn wrap_guides(&self, cx: &App) -> SmallVec<[(usize, bool); 2]> {
+         let mut wrap_guides = smallvec![];
+ 
+-        if self.show_wrap_guides == Some(false) {
++        if self.show_wrap_guides == Some(false) || self.is_folio_markdown_mode(cx) {
+             return wrap_guides;
+         }
+ 
+@@ -264,6 +264,9 @@ impl Editor {
+     }
+ 
+     pub fn soft_wrap_mode(&self, cx: &App) -> SoftWrap {
++        if self.soft_wrap_mode_override.is_none() && self.is_folio_markdown_mode(cx) {
++            return SoftWrap::EditorWidth;
++        }
+         let settings = self.buffer.read(cx).language_settings(cx);
+         let mode = self.soft_wrap_mode_override.unwrap_or(settings.soft_wrap);
+         match mode {
+@@ -352,6 +355,9 @@ impl Editor {
+     }
+ 
+     pub(super) fn should_show_indent_guides(&self) -> Option<bool> {
++        if self.folio_markdown_state.was_markdown {
++            return Some(false);
++        }
+         self.show_indent_guides
+     }
+ 
+diff --git a/crates/editor/src/display_map.rs b/crates/editor/src/display_map.rs
+index b8c77c4..550bc41 100644
+--- a/crates/editor/src/display_map.rs
++++ b/crates/editor/src/display_map.rs
+@@ -182,6 +182,7 @@ pub enum HighlightKey {
+     InputComposition,
+     MatchingBracket,
+     NavigationOverlay(NavigationOverlayKey),
++    FolioMarkdown(usize),
+     PendingInput,
+     PickerPreview,
+     ProjectSearchView,
+diff --git a/crates/editor/src/editor.rs b/crates/editor/src/editor.rs
+index 4fddce2..1221ccf 100644
+--- a/crates/editor/src/editor.rs
++++ b/crates/editor/src/editor.rs
+@@ -72,6 +72,7 @@ mod edit_prediction;
+ mod input;
+ mod markdown_actions;
+ mod navigation;
++mod folio_wysiwyg;
+ mod rewrap;
+ mod selection;
+ 
+@@ -1219,6 +1220,7 @@ pub struct Editor {
+     sticky_headers_task: Task<()>,
+     sticky_headers: Option<Vec<OutlineItem<Anchor>>>,
+     pub(crate) colorize_brackets_task: Task<()>,
++    pub(crate) folio_markdown_state: folio_wysiwyg::FolioMarkdownState,
+ }
+ 
+ #[derive(Debug, PartialEq)]
+@@ -1274,6 +1276,7 @@ pub struct EditorSnapshot {
+     current_line_highlight: CurrentLineHighlight,
+     gutter_hovered: bool,
+     semantic_tokens_enabled: bool,
++    pub is_folio_markdown: bool,
+ }
+ 
+ #[derive(Clone, Debug, PartialEq)]
+@@ -2601,6 +2604,7 @@ impl Editor {
+             sticky_headers_task: Task::ready(()),
+             sticky_headers: None,
+             colorize_brackets_task: Task::ready(()),
++            folio_markdown_state: folio_wysiwyg::FolioMarkdownState::default(),
+         };
+ 
+         if let Some(project) = editor.project.clone() {
+@@ -2655,6 +2659,8 @@ impl Editor {
+                     editor.refresh_sticky_headers(&editor.snapshot(window, cx), cx);
+                 }
+                 EditorEvent::Edited { .. } => {
++                    editor.invalidate_folio_markdown_wysiwyg();
++                    editor.refresh_folio_markdown_wysiwyg(cx);
+                     let vim_mode = vim_mode_setting::VimModeSetting::try_get(cx)
+                         .map(|vim_mode| vim_mode.0)
+                         .unwrap_or(false);
+@@ -2681,6 +2687,9 @@ impl Editor {
+                             .push_to_change_list(pop_state, new_positions);
+                     }
+                 }
++                EditorEvent::SelectionsChanged { .. } => {
++                    editor.refresh_folio_markdown_wysiwyg(cx);
++                }
+                 _ => (),
+             },
+         ));
+@@ -2744,6 +2753,7 @@ impl Editor {
+             if let Some(buffer) = multi_buffer.read(cx).as_singleton() {
+                 editor.register_buffer(buffer.read(cx).remote_id(), cx);
+             }
++            editor.refresh_folio_markdown_wysiwyg(cx);
+             editor.report_editor_event(ReportEditorEvent::EditorOpened, None, cx);
+         }
+ 
+@@ -3143,6 +3153,8 @@ impl Editor {
+             .flatten();
+ 
+         let display_snapshot = self.display_map.update(cx, |map, cx| map.snapshot(cx));
++        let is_folio_markdown = self.mode.is_full()
++            && (self.folio_markdown_state.was_markdown || self.is_in_markdown_language(cx));
+ 
+         EditorSnapshot {
+             mode: self.mode.clone(),
+@@ -3151,15 +3163,43 @@ impl Editor {
+             sticky_line_number_digits: self
+                 .search_results_hold
+                 .map_or(0, |hold| hold.min_line_number_digits),
+-            show_line_numbers: self.show_line_numbers,
++            show_line_numbers: if is_folio_markdown {
++                Some(false)
++            } else {
++                self.show_line_numbers
++            },
+             number_deleted_lines: self.number_deleted_lines,
+-            show_git_diff_gutter: self.show_git_diff_gutter,
++            show_git_diff_gutter: if is_folio_markdown {
++                Some(false)
++            } else {
++                self.show_git_diff_gutter
++            },
+             semantic_tokens_enabled: self.semantic_token_state.enabled(),
+-            show_code_actions: self.show_code_actions,
+-            show_runnables: self.show_runnables,
+-            show_bookmarks: self.show_bookmarks,
+-            show_breakpoints: self.show_breakpoints,
+-            git_blame_gutter_max_author_length,
++            show_code_actions: if is_folio_markdown {
++                Some(false)
++            } else {
++                self.show_code_actions
++            },
++            show_runnables: if is_folio_markdown {
++                Some(false)
++            } else {
++                self.show_runnables
++            },
++            show_bookmarks: if is_folio_markdown {
++                Some(false)
++            } else {
++                self.show_bookmarks
++            },
++            show_breakpoints: if is_folio_markdown {
++                Some(false)
++            } else {
++                self.show_breakpoints
++            },
++            git_blame_gutter_max_author_length: if is_folio_markdown {
++                None
++            } else {
++                git_blame_gutter_max_author_length
++            },
+             scroll_anchor: self.scroll_manager.shared_scroll_anchor(cx),
+             display_snapshot,
+             placeholder_display_snapshot: self
+@@ -3167,10 +3207,14 @@ impl Editor {
+                 .as_ref()
+                 .map(|display_map| display_map.update(cx, |map, cx| map.snapshot(cx))),
+             is_focused: self.focus_handle.is_focused(window),
+-            current_line_highlight: self
+-                .current_line_highlight
+-                .unwrap_or_else(|| EditorSettings::get_global(cx).current_line_highlight),
++            current_line_highlight: if is_folio_markdown {
++                CurrentLineHighlight::None
++            } else {
++                self.current_line_highlight
++                    .unwrap_or_else(|| EditorSettings::get_global(cx).current_line_highlight)
++            },
+             gutter_hovered: self.gutter_hovered,
++            is_folio_markdown,
+         }
+     }
+ 
+@@ -10216,6 +10260,8 @@ impl Editor {
+                 self.refresh_selected_text_highlights(&self.display_snapshot(cx), true, window, cx);
+                 self.colorize_brackets(true, cx);
+                 jsx_tag_auto_close::refresh_enabled_in_any_buffer(self, multibuffer, cx);
++                self.invalidate_folio_markdown_wysiwyg();
++                self.refresh_folio_markdown_wysiwyg(cx);
+ 
+                 cx.emit(EditorEvent::Reparsed(*buffer_id));
+             }
+@@ -10239,6 +10285,8 @@ impl Editor {
+                     self.refresh_document_highlights(cx);
+                 }
+                 jsx_tag_auto_close::refresh_enabled_in_any_buffer(self, multibuffer, cx);
++                self.invalidate_folio_markdown_wysiwyg();
++                self.refresh_folio_markdown_wysiwyg(cx);
+                 cx.emit(EditorEvent::Reparsed(*buffer_id));
+                 self.update_edit_prediction_settings(cx);
+                 cx.notify();
+@@ -10505,6 +10553,8 @@ impl Editor {
+         self.invalidate_semantic_tokens(None);
+         self.refresh_semantic_tokens(None, false, cx);
+         self.refresh_outline_symbols_at_cursor(cx);
++        self.invalidate_folio_markdown_wysiwyg();
++        self.refresh_folio_markdown_wysiwyg(cx);
+     }
+ 
+     pub fn set_searchable(&mut self, searchable: bool) {
+@@ -11505,6 +11555,7 @@ impl Editor {
+ 
+     fn create_style(&self, cx: &App) -> EditorStyle {
+         let settings = ThemeSettings::get_global(cx);
++        let is_folio_markdown = self.is_folio_markdown_mode(cx);
+ 
+         let mut text_style = match self.mode {
+             EditorMode::SingleLine | EditorMode::AutoHeight { .. } => TextStyle {
+@@ -11517,6 +11568,16 @@ impl Editor {
+                 line_height: relative(settings.buffer_line_height.value()),
+                 ..Default::default()
+             },
++            EditorMode::Full { .. } if is_folio_markdown => TextStyle {
++                color: cx.theme().colors().editor_foreground,
++                font_family: settings.ui_font.family.clone(),
++                font_features: settings.ui_font.features.clone(),
++                font_fallbacks: settings.ui_font.fallbacks.clone(),
++                font_size: px(16.0).into(),
++                font_weight: settings.ui_font.weight,
++                line_height: relative(1.65),
++                ..Default::default()
++            },
+             EditorMode::Full { .. } | EditorMode::Minimap { .. } => TextStyle {
+                 color: cx.theme().colors().editor_foreground,
+                 font_family: settings.buffer_font.family.clone(),
+@@ -11550,7 +11611,7 @@ impl Editor {
+             inlay_hints_style: make_inlay_hints_style(cx),
+             edit_prediction_styles: make_suggestion_styles(cx),
+             unnecessary_code_fade: settings.unnecessary_code_fade,
+-            show_underlines: self.diagnostics_enabled(),
++            show_underlines: is_folio_markdown || self.diagnostics_enabled(),
+         }
+     }
+ 
+@@ -12366,6 +12427,15 @@ impl EditorSnapshot {
+         window: &mut Window,
+         cx: &App,
+     ) -> GutterDimensions {
++        if self.is_folio_markdown {
++            return GutterDimensions {
++                left_padding: px(28.0),
++                right_padding: px(16.0),
++                width: px(44.0),
++                margin: px(12.0),
++                git_blame_entries_width: None,
++            };
++        }
+         if self.show_gutter
+             && let Some(ch_width) = cx.text_system().ch_width(font_id, font_size).log_err()
+             && let Some(ch_advance) = cx.text_system().ch_advance(font_id, font_size).log_err()
+diff --git a/crates/editor/src/element.rs b/crates/editor/src/element.rs
+index 77aa1db..2c68219 100644
+--- a/crates/editor/src/element.rs
++++ b/crates/editor/src/element.rs
+@@ -87,7 +87,7 @@ use std::{
+ use sum_tree::Bias;
+ use text::{BufferId, ToPoint as _};
+ use theme::{ActiveTheme, Appearance, PlayerColor};
+-use theme_settings::BufferLineHeight;
++use theme_settings::{BufferLineHeight, ThemeSettings};
+ use ui::utils::ensure_minimum_contrast;
+ use ui::{ButtonLike, POPOVER_Y_PADDING, Tooltip, prelude::*, scrollbars::ShowScrollbar};
+ use unicode_segmentation::UnicodeSegmentation;
+@@ -2978,6 +2978,7 @@ impl EditorElement {
+     ) -> Vec<Option<AnyElement>> {
+         let include_fold_statuses = EditorSettings::get_global(cx).gutter.folds
+             && snapshot.mode.is_full()
++            && !snapshot.is_folio_markdown
+             && snapshot.display_snapshot.companion_snapshot().is_none()
+             && self.editor.read(cx).buffer_kind(cx) == ItemBufferKind::Singleton;
+         if include_fold_statuses {
+@@ -5960,13 +5961,16 @@ impl EditorElement {
+         window: &mut Window,
+         cx: &mut App,
+     ) {
+-        let whitespace_setting = self
+-            .editor
+-            .read(cx)
+-            .buffer
+-            .read(cx)
+-            .language_settings(cx)
+-            .show_whitespaces;
++        let whitespace_setting = if self.editor.read(cx).folio_markdown_state.was_markdown {
++            ShowWhitespaceSetting::None
++        } else {
++            self.editor
++                .read(cx)
++                .buffer
++                .read(cx)
++                .language_settings(cx)
++                .show_whitespaces
++        };
+ 
+         for (ix, line_with_invisibles) in layout.position_map.line_layouts.iter().enumerate() {
+             let row = DisplayRow(layout.visible_display_row_range.start.0 + ix as u32);
+@@ -7415,6 +7419,7 @@ impl LineWithInvisibles {
+         let mut line_exceeded_max_len = false;
+         let font_size = text_style.font_size.to_pixels(window.rem_size());
+         let min_contrast = EditorSettings::get_global(cx).minimum_contrast_for_highlights;
++        let buffer_font = ThemeSettings::get_global(cx).buffer_font.clone();
+ 
+         let ellipsis = SharedString::from("⋯");
+ 
+@@ -7594,9 +7599,19 @@ impl LineWithInvisibles {
+                             continue;
+                         }
+ 
++                        let mut run_font = text_style.font();
++                        if highlighted_chunk
++                            .style
++                            .is_some_and(|s| s.fade_out == Some(-1.0))
++                        {
++                            run_font.family = buffer_font.family.clone();
++                            run_font.features = buffer_font.features.clone();
++                            run_font.fallbacks = buffer_font.fallbacks.clone();
++                        }
++
+                         styles.push(TextRun {
+                             len: line_chunk.len(),
+-                            font: text_style.font(),
++                            font: run_font,
+                             color: text_style.color,
+                             background_color: text_style.background_color,
+                             underline: text_style.underline,
+diff --git a/crates/editor/src/markdown_actions.rs b/crates/editor/src/markdown_actions.rs
+index 2b6af38..511f4cb 100644
+--- a/crates/editor/src/markdown_actions.rs
++++ b/crates/editor/src/markdown_actions.rs
+@@ -43,7 +43,7 @@ impl Editor {
+         self.manipulate_mutable_lines(window, cx, callback);
+     }
+ 
+-    fn is_in_markdown_language(&self, cx: &mut App) -> bool {
++    pub(crate) fn is_in_markdown_language(&self, cx: &mut App) -> bool {
+         let snapshot = self.buffer.read(cx).snapshot(cx);
+         let head = self
+             .selections
+@@ -53,4 +53,18 @@ impl Editor {
+             .language_at(head)
+             .is_some_and(|language| language.name() == "Markdown")
+     }
++
++    pub(crate) fn is_folio_markdown_mode(&self, cx: &App) -> bool {
++        if !self.mode.is_full() {
++            return false;
++        }
++        if self.folio_markdown_state.was_markdown {
++            return true;
++        }
++        let snapshot = self.buffer.read(cx).snapshot(cx);
++        let head = self.selections.newest_anchor().head();
++        snapshot
++            .language_at(head)
++            .is_some_and(|language| language.name() == "Markdown")
++    }
+ }
+diff --git a/crates/editor/src/folio_wysiwyg.rs b/crates/editor/src/folio_wysiwyg.rs
+new file mode 100644
+index 0000000..de3d09a
+--- /dev/null
++++ b/crates/editor/src/folio_wysiwyg.rs
+@@ -0,0 +1,1642 @@
++use std::{any::TypeId, ops::Range, sync::Arc};
++
++use collections::HashSet;
++use gpui::{
++    AnyElement, App, Bounds, Context, Empty, Font, FontFeatures, FontStyle, FontWeight,
++    HighlightStyle, Hsla, InteractiveElement as _, IntoElement as _, MouseButton,
++    ParentElement as _, Pixels, Rgba, SharedString, StrikethroughStyle, Styled as _, TextAlign,
++    TextRun, UnderlineStyle, Window, canvas, div, fill, point, px, size,
++};
++use multi_buffer::{Anchor, MultiBufferOffset, MultiBufferRow, ToOffset as _, ToPoint as _};
++use folio_engine::{
++    MarkdownBlockDecorationKind, SyntaxTokenKind, analyze_markdown_document, language_accent_color,
++};
++use folio_zed_mod::{GpuiMathCanvasDescriptor, GpuiMathPrimitive, build_gpui_math_canvas};
++use theme::ActiveTheme as _;
++
++use crate::{
++    BlockPlacement, BlockProperties, BlockStyle, CustomBlockId, Editor, FoldPlaceholder,
++    HighlightKey, RowHighlightOptions, display_map::Crease,
++};
++
++struct FolioMarkdownFoldTag;
++struct FolioMarkdownCodeBlockRowHighlight;
++
++#[derive(Clone, PartialEq, Eq)]
++pub(crate) struct FolioMarkdownCacheKey {
++    text_len: usize,
++    active_row: u32,
++    selected_rows: Vec<(u32, u32)>,
++    is_dark: bool,
++}
++
++#[derive(Default)]
++pub(crate) struct FolioMarkdownState {
++    pub(crate) custom_blocks: HashSet<CustomBlockId>,
++    pub(crate) last_key: Option<FolioMarkdownCacheKey>,
++    pub(crate) was_markdown: bool,
++}
++
++#[derive(Clone)]
++struct ParsedTableRow {
++    row: u32,
++    is_header: bool,
++    is_separator: bool,
++    columns: Vec<String>,
++}
++
++enum ParsedListLine {
++    Task {
++        indent_spaces: usize,
++        fold_byte_range: Range<usize>,
++        bracket_byte_range: Range<usize>,
++        content_byte_range: Range<usize>,
++        checked: bool,
++    },
++    Unordered {
++        indent_spaces: usize,
++        fold_byte_range: Range<usize>,
++    },
++    Ordered {
++        marker_byte_range: Range<usize>,
++    },
++}
++
++impl Editor {
++    pub(crate) fn invalidate_folio_markdown_wysiwyg(&mut self) {
++        self.folio_markdown_state.last_key = None;
++    }
++
++    pub(crate) fn refresh_folio_markdown_wysiwyg(&mut self, cx: &mut Context<Self>) {
++        if !self.mode.is_full() {
++            return;
++        }
++
++        if !self.is_in_markdown_language(cx) {
++            if self.folio_markdown_state.was_markdown {
++                self.clear_folio_markdown_wysiwyg(cx);
++                self.folio_markdown_state.was_markdown = false;
++            }
++            return;
++        }
++
++        let snapshot = self.buffer.read(cx).snapshot(cx);
++        let newest_selection = self.selections.newest_anchor().clone();
++        let head_anchor = newest_selection.head();
++        let head_point = head_anchor.to_point(&snapshot);
++        let head_offset = head_anchor.to_offset(&snapshot).0;
++        let is_dark = !cx.theme().appearance.is_light();
++
++        let selected_rows: Vec<(u32, u32)> = self
++            .selections
++            .disjoint_anchors_arc()
++            .iter()
++            .map(|sel| {
++                let start_row = sel.start.to_point(&snapshot).row;
++                let end_row = sel.end.to_point(&snapshot).row;
++                (start_row.min(end_row), start_row.max(end_row))
++            })
++            .collect();
++
++        let cache_key = FolioMarkdownCacheKey {
++            text_len: snapshot.len().0,
++            active_row: head_point.row,
++            selected_rows: selected_rows.clone(),
++            is_dark,
++        };
++
++        if self.folio_markdown_state.was_markdown
++            && self.folio_markdown_state.last_key.as_ref() == Some(&cache_key)
++        {
++            return;
++        }
++
++        self.folio_markdown_state.was_markdown = true;
++        self.folio_markdown_state.last_key = Some(cache_key);
++
++        let text = snapshot.text();
++        let analysis = analyze_markdown_document(&text, head_offset, false, false);
++
++        let is_row_selected = |row: u32| -> bool {
++            row == head_point.row
++                || selected_rows
++                    .iter()
++                    .any(|&(sel_start, sel_end)| row >= sel_start && row <= sel_end)
++        };
++
++        let is_range_on_selected_row = |byte_range: &Range<usize>| -> bool {
++            let start_row = snapshot
++                .offset_to_point(MultiBufferOffset(byte_range.start.min(text.len())))
++                .row;
++            let end_row = snapshot
++                .offset_to_point(MultiBufferOffset(byte_range.end.min(text.len())))
++                .row;
++            (start_row..=end_row).any(&is_row_selected)
++        };
++
++        // 1. Clear previous Folio folds, custom blocks, row highlights, and text highlights
++        self.display_map.update(cx, |display_map, cx| {
++            display_map.remove_folds_with_type(
++                [Anchor::Min..Anchor::Max],
++                TypeId::of::<FolioMarkdownFoldTag>(),
++                cx,
++            );
++        });
++        if !self.folio_markdown_state.custom_blocks.is_empty() {
++            let prev_blocks = std::mem::take(&mut self.folio_markdown_state.custom_blocks);
++            self.remove_blocks(prev_blocks, None, cx);
++        }
++        self.clear_row_highlights::<FolioMarkdownCodeBlockRowHighlight>();
++        self.clear_highlights_with(
++            &mut |key| matches!(key, HighlightKey::FolioMarkdown(_)),
++            cx,
++        );
++
++        let colors = cx.theme().colors();
++        let text_color = colors.editor_foreground;
++        let muted_color = colors.text_muted;
++        let accent_color = colors.text_accent;
++        let border_color = colors.border;
++        let surface_bg = colors.surface_background;
++        let elevated_bg = colors.elevated_surface_background;
++
++        let mut creases: Vec<Crease<Anchor>> = Vec::new();
++        let mut new_blocks: Vec<BlockProperties<Anchor>> = Vec::new();
++        let mut folded_full_rows: HashSet<u32> = HashSet::default();
++        let mut code_or_math_rows: HashSet<u32> = HashSet::default();
++
++        // 2. Scaled WYSIWYG Headings (# H1 .. ###### H6)
++        let mut active_heading_ranges = Vec::new();
++        for heading in &analysis.headings {
++            let row = (heading.line_number.saturating_sub(1)) as u32;
++            let row_len = snapshot.line_len(MultiBufferRow(row));
++            if row_len == 0 {
++                continue;
++            }
++            if !is_row_selected(row) {
++                folded_full_rows.insert(row);
++                let row_start = snapshot.anchor_after(text::Point::new(row, 0));
++                let row_end = snapshot.anchor_before(text::Point::new(row, row_len));
++                let level = heading.level;
++                let clean_title = clean_inline_markdown(&heading.title);
++                let fg = if level == 6 { muted_color } else { text_color };
++                let underline_color = border_color;
++                creases.push(Crease::simple(
++                    row_start..row_end,
++                    FoldPlaceholder {
++                        render: Arc::new(move |_, _, _| {
++                            render_scaled_heading_element(
++                                level,
++                                clean_title.clone(),
++                                fg,
++                                underline_color,
++                            )
++                        }),
++                        constrain_width: false,
++                        merge_adjacent: false,
++                        type_tag: Some(TypeId::of::<FolioMarkdownFoldTag>()),
++                        collapsed_text: None,
++                    },
++                ));
++            } else {
++                let start = snapshot.anchor_before(text::Point::new(row, 0));
++                let end = snapshot.anchor_after(text::Point::new(row, row_len));
++                active_heading_ranges.push(start..end);
++            }
++        }
++
++        // 3. Block decorations: Math, Code Fences, Tables, Blockquotes, Inline Code
++        let mut single_line_math_ranges: Vec<Range<usize>> = Vec::new();
++        let mut multi_line_math_ranges: Vec<(Range<usize>, String, bool)> = Vec::new();
++        let mut monospace_ranges: Vec<Range<Anchor>> = Vec::new();
++        let mut code_fence_row_ranges: Vec<Range<Anchor>> = Vec::new();
++        let mut inline_code_ranges: Vec<Range<Anchor>> = Vec::new();
++        let mut blockquote_ranges: Vec<Range<Anchor>> = Vec::new();
++        let mut table_rows: Vec<ParsedTableRow> = Vec::new();
++
++        for dec in &analysis.block_decorations {
++            let start = dec.byte_range.start.min(text.len());
++            let end = dec.byte_range.end.min(text.len());
++            if start >= end {
++                continue;
++            }
++            let start_pt = snapshot.offset_to_point(MultiBufferOffset(start));
++            let end_pt = snapshot.offset_to_point(MultiBufferOffset(end.saturating_sub(1)));
++
++            match &dec.kind {
++                MarkdownBlockDecorationKind::InlineMathRendered {
++                    latex, is_active, ..
++                } => {
++                    if !folded_full_rows.contains(&start_pt.row)
++                        && !*is_active
++                        && !is_range_on_selected_row(&dec.byte_range)
++                    {
++                        let anchor_range = snapshot.anchor_after(MultiBufferOffset(start))
++                            ..snapshot.anchor_before(MultiBufferOffset(end));
++                        let descriptor = build_gpui_math_canvas(latex, 15.5, false);
++                        let fg = text_color;
++                        creases.push(Crease::simple(
++                            anchor_range,
++                            FoldPlaceholder {
++                                render: Arc::new(move |_, _, _| {
++                                    render_inline_math_element(descriptor.clone(), fg)
++                                }),
++                                constrain_width: false,
++                                merge_adjacent: false,
++                                type_tag: Some(TypeId::of::<FolioMarkdownFoldTag>()),
++                                collapsed_text: None,
++                            },
++                        ));
++                    }
++                }
++                MarkdownBlockDecorationKind::MathBlockRendered {
++                    latex, is_active, ..
++                } => {
++                    for r in start_pt.row..=end_pt.row {
++                        code_or_math_rows.insert(r);
++                    }
++                    let active_or_selected =
++                        *is_active || is_range_on_selected_row(&dec.byte_range);
++                    if start_pt.row == end_pt.row {
++                        single_line_math_ranges.push(dec.byte_range.clone());
++                        if !active_or_selected {
++                            let line_end = text[start..end]
++                                .trim_end_matches(&['\r', '\n'][..])
++                                .len()
++                                + start;
++                            if start < line_end {
++                                folded_full_rows.insert(start_pt.row);
++                                let anchor_range = snapshot.anchor_after(MultiBufferOffset(start))
++                                    ..snapshot.anchor_before(MultiBufferOffset(line_end));
++                                let descriptor = build_gpui_math_canvas(latex, 17.5, true);
++                                let fg = text_color;
++                                let card_bg = elevated_bg;
++                                let card_border = border_color;
++                                creases.push(Crease::simple(
++                                    anchor_range,
++                                    FoldPlaceholder {
++                                        render: Arc::new(move |_, _, _| {
++                                            render_display_math_inline_card(
++                                                descriptor.clone(),
++                                                fg,
++                                                card_bg,
++                                                card_border,
++                                            )
++                                        }),
++                                        constrain_width: false,
++                                        merge_adjacent: false,
++                                        type_tag: Some(TypeId::of::<FolioMarkdownFoldTag>()),
++                                        collapsed_text: None,
++                                    },
++                                ));
++                            }
++                        }
++                    } else {
++                        multi_line_math_ranges.push((
++                            dec.byte_range.clone(),
++                            latex.clone(),
++                            active_or_selected,
++                        ));
++                    }
++                }
++                MarkdownBlockDecorationKind::CodeFenceStart { language } => {
++                    let row = start_pt.row;
++                    code_or_math_rows.insert(row);
++                    let row_len = snapshot.line_len(MultiBufferRow(row));
++                    let row_start = snapshot.anchor_before(text::Point::new(row, 0));
++                    let row_end = snapshot.anchor_after(text::Point::new(row, row_len));
++                    code_fence_row_ranges.push(row_start..row_end);
++                    monospace_ranges.push(row_start..row_end);
++
++                    if !is_row_selected(row) && row_len > 0 {
++                        folded_full_rows.insert(row);
++                        let fold_start = snapshot.anchor_after(text::Point::new(row, 0));
++                        let fold_end = snapshot.anchor_before(text::Point::new(row, row_len));
++                        let lang_label = if language.trim().is_empty() {
++                            "CODE".to_string()
++                        } else {
++                            language.trim().to_ascii_uppercase()
++                        };
++                        let dot_rgba = language_accent_color(language, is_dark);
++                        let dot_color: Hsla = Rgba {
++                            r: dot_rgba.r as f32,
++                            g: dot_rgba.g as f32,
++                            b: dot_rgba.b as f32,
++                            a: dot_rgba.a as f32,
++                        }
++                        .into();
++                        let pill_bg = elevated_bg;
++                        let pill_border = border_color;
++                        let pill_fg = muted_color;
++                        creases.push(Crease::simple(
++                            fold_start..fold_end,
++                            FoldPlaceholder {
++                                render: Arc::new(move |_, _, _| {
++                                    render_code_fence_language_pill(
++                                        lang_label.clone(),
++                                        dot_color,
++                                        pill_fg,
++                                        pill_bg,
++                                        pill_border,
++                                    )
++                                }),
++                                constrain_width: false,
++                                merge_adjacent: false,
++                                type_tag: Some(TypeId::of::<FolioMarkdownFoldTag>()),
++                                collapsed_text: None,
++                            },
++                        ));
++                    }
++                }
++                MarkdownBlockDecorationKind::CodeFenceBody { .. } => {
++                    for r in start_pt.row..=end_pt.row {
++                        code_or_math_rows.insert(r);
++                    }
++                    let row_start = snapshot.anchor_before(text::Point::new(start_pt.row, 0));
++                    let row_end = snapshot.anchor_after(text::Point::new(
++                        end_pt.row,
++                        snapshot.line_len(MultiBufferRow(end_pt.row)),
++                    ));
++                    code_fence_row_ranges.push(row_start..row_end);
++                    monospace_ranges.push(row_start..row_end);
++                }
++                MarkdownBlockDecorationKind::CodeFenceEnd => {
++                    let row = start_pt.row;
++                    code_or_math_rows.insert(row);
++                    let row_len = snapshot.line_len(MultiBufferRow(row));
++                    let row_start = snapshot.anchor_before(text::Point::new(row, 0));
++                    let row_end = snapshot.anchor_after(text::Point::new(row, row_len));
++                    code_fence_row_ranges.push(row_start..row_end);
++                    monospace_ranges.push(row_start..row_end);
++
++                    if !is_row_selected(row) && row_len > 0 {
++                        folded_full_rows.insert(row);
++                        let fold_start = snapshot.anchor_after(text::Point::new(row, 0));
++                        let fold_end = snapshot.anchor_before(text::Point::new(row, row_len));
++                        let bar_color = border_color;
++                        creases.push(Crease::simple(
++                            fold_start..fold_end,
++                            FoldPlaceholder {
++                                render: Arc::new(move |_, _, _| {
++                                    div()
++                                        .flex()
++                                        .items_center()
++                                        .py(px(2.0))
++                                        .child(
++                                            div()
++                                                .w(px(64.0))
++                                                .h(px(1.0))
++                                                .rounded(px(0.5))
++                                                .bg(bar_color),
++                                        )
++                                        .into_any_element()
++                                }),
++                                constrain_width: false,
++                                merge_adjacent: false,
++                                type_tag: Some(TypeId::of::<FolioMarkdownFoldTag>()),
++                                collapsed_text: None,
++                            },
++                        ));
++                    }
++                }
++                MarkdownBlockDecorationKind::InlineCode => {
++                    if !folded_full_rows.contains(&start_pt.row) {
++                        let range = snapshot.anchor_before(MultiBufferOffset(start))
++                            ..snapshot.anchor_after(MultiBufferOffset(end));
++                        inline_code_ranges.push(range.clone());
++                        monospace_ranges.push(range);
++                    }
++                }
++                MarkdownBlockDecorationKind::Blockquote { .. } => {
++                    let row = start_pt.row;
++                    let row_len = snapshot.line_len(MultiBufferRow(row));
++                    if row_len > 0 {
++                        let row_start = snapshot.anchor_before(text::Point::new(row, 0));
++                        let row_end = snapshot.anchor_after(text::Point::new(row, row_len));
++                        blockquote_ranges.push(row_start..row_end);
++                    }
++                }
++                MarkdownBlockDecorationKind::TableRow {
++                    is_header,
++                    is_separator,
++                    columns,
++                } => {
++                    let row = start_pt.row;
++                    code_or_math_rows.insert(row);
++                    table_rows.push(ParsedTableRow {
++                        row,
++                        is_header: *is_header,
++                        is_separator: *is_separator,
++                        columns: columns.clone(),
++                    });
++                }
++                _ => {}
++            }
++        }
++
++        // Apply full-row surface background highlights for fenced code blocks
++        for range in code_fence_row_ranges {
++            self.highlight_rows::<FolioMarkdownCodeBlockRowHighlight>(
++                range,
++                |cx| cx.theme().colors().surface_background,
++                RowHighlightOptions {
++                    autoscroll: false,
++                    include_gutter: false,
++                },
++                cx,
++            );
++        }
++
++        // 4. Structured WYSIWYG Tables (group contiguous table rows to compute column widths)
++        let mut table_idx = 0;
++        while table_idx < table_rows.len() {
++            let group_start = table_idx;
++            let mut group_end = table_idx + 1;
++            while group_end < table_rows.len()
++                && table_rows[group_end].row == table_rows[group_end - 1].row + 1
++            {
++                group_end += 1;
++            }
++            let group = &table_rows[group_start..group_end];
++            let max_cols = group.iter().map(|r| r.columns.len()).max().unwrap_or(0);
++            let mut col_widths: Vec<f32> = vec![80.0; max_cols];
++            for col_i in 0..max_cols {
++                let max_chars = group
++                    .iter()
++                    .filter(|r| !r.is_separator)
++                    .filter_map(|r| r.columns.get(col_i))
++                    .map(|cell| clean_inline_markdown(cell).chars().count())
++                    .max()
++                    .unwrap_or(4);
++                col_widths[col_i] = ((max_chars.max(4) as f32) * 9.2 + 28.0).clamp(80.0, 300.0);
++            }
++
++            for trow in group {
++                let row = trow.row;
++                let row_len = snapshot.line_len(MultiBufferRow(row));
++                if row_len == 0 {
++                    continue;
++                }
++                if !is_row_selected(row) {
++                    folded_full_rows.insert(row);
++                    let fold_start = snapshot.anchor_after(text::Point::new(row, 0));
++                    let fold_end = snapshot.anchor_before(text::Point::new(row, row_len));
++                    let widths = col_widths.clone();
++                    let cols: Vec<String> = trow
++                        .columns
++                        .iter()
++                        .map(|c| clean_inline_markdown(c))
++                        .collect();
++                    let is_header = trow.is_header;
++                    let is_separator = trow.is_separator;
++                    let fg = text_color;
++                    let header_bg = surface_bg;
++                    let cell_border = border_color;
++                    creases.push(Crease::simple(
++                        fold_start..fold_end,
++                        FoldPlaceholder {
++                            render: Arc::new(move |_, _, _| {
++                                render_table_row_element(
++                                    &cols,
++                                    &widths,
++                                    is_header,
++                                    is_separator,
++                                    fg,
++                                    header_bg,
++                                    cell_border,
++                                )
++                            }),
++                            constrain_width: false,
++                            merge_adjacent: false,
++                            type_tag: Some(TypeId::of::<FolioMarkdownFoldTag>()),
++                            collapsed_text: None,
++                        },
++                    ));
++                } else {
++                    let row_start = snapshot.anchor_before(text::Point::new(row, 0));
++                    let row_end = snapshot.anchor_after(text::Point::new(row, row_len));
++                    monospace_ranges.push(row_start..row_end);
++                }
++            }
++
++            table_idx = group_end;
++        }
++
++        // 5. Multi-line display math blocks
++        for (range, latex, active_or_selected) in &multi_line_math_ranges {
++            let start = range.start.min(text.len());
++            let end = range.end.min(text.len());
++            let start_row = snapshot.offset_to_point(MultiBufferOffset(start)).row;
++            let end_row = snapshot
++                .offset_to_point(MultiBufferOffset(end.saturating_sub(1)))
++                .row;
++
++            if !*active_or_selected {
++                for row in start_row..=end_row {
++                    folded_full_rows.insert(row);
++                    let row_len = snapshot.line_len(MultiBufferRow(row));
++                    if row_len > 0 {
++                        let row_start = snapshot.anchor_after(text::Point::new(row, 0));
++                        let row_end = snapshot.anchor_before(text::Point::new(row, row_len));
++                        creases.push(Crease::simple(
++                            row_start..row_end,
++                            empty_folio_fold_placeholder(),
++                        ));
++                    }
++                }
++
++                let end_anchor = snapshot.anchor_before(text::Point::new(
++                    end_row,
++                    snapshot.line_len(MultiBufferRow(end_row)),
++                ));
++                let descriptor = build_gpui_math_canvas(latex, 18.0, true);
++                let fg = text_color;
++                let card_bg = elevated_bg;
++                let card_border = border_color;
++                let block_rows = ((descriptor.total_height() + 24.0) / 24.0)
++                    .ceil()
++                    .clamp(2.0, 6.0) as u32;
++                new_blocks.push(BlockProperties {
++                    placement: BlockPlacement::Below(end_anchor),
++                    height: Some(block_rows),
++                    style: BlockStyle::Fixed,
++                    render: Arc::new(move |_cx| {
++                        render_display_math_block_card(
++                            descriptor.clone(),
++                            fg,
++                            card_bg,
++                            card_border,
++                        )
++                    }),
++                    priority: 0,
++                });
++            } else {
++                let row_start = snapshot.anchor_before(text::Point::new(start_row, 0));
++                let row_end = snapshot.anchor_after(text::Point::new(
++                    end_row,
++                    snapshot.line_len(MultiBufferRow(end_row)),
++                ));
++                monospace_ranges.push(row_start..row_end);
++            }
++        }
++
++        // 6. Lists & Interactive Task Checklists (- [ ], - [x], - , * , + , 1. )
++        let mut checked_task_ranges: Vec<Range<Anchor>> = Vec::new();
++        let mut list_marker_ranges: Vec<Range<Anchor>> = Vec::new();
++        let weak_editor = cx.weak_entity();
++
++        let mut line_byte_start = 0usize;
++        for (line_idx, raw_line) in text.split('\n').enumerate() {
++            let row = line_idx as u32;
++            let clean_line = raw_line.trim_end_matches('\r');
++            let next_line_start = line_byte_start + raw_line.len() + 1;
++
++            if !folded_full_rows.contains(&row) && !code_or_math_rows.contains(&row) {
++                if let Some(parsed_list) = parse_list_line(clean_line, line_byte_start) {
++                    match parsed_list {
++                        ParsedListLine::Task {
++                            indent_spaces,
++                            fold_byte_range,
++                            bracket_byte_range,
++                            content_byte_range,
++                            checked,
++                        } => {
++                            if checked && content_byte_range.start < content_byte_range.end {
++                                checked_task_ranges.push(
++                                    snapshot
++                                        .anchor_before(MultiBufferOffset(content_byte_range.start))
++                                        ..snapshot.anchor_after(MultiBufferOffset(
++                                            content_byte_range.end,
++                                        )),
++                                );
++                            }
++                            if !is_row_selected(row)
++                                && fold_byte_range.start < fold_byte_range.end
++                            {
++                                let anchor_range = snapshot
++                                    .anchor_after(MultiBufferOffset(fold_byte_range.start))
++                                    ..snapshot
++                                        .anchor_before(MultiBufferOffset(fold_byte_range.end));
++                                let toggle_start =
++                                    snapshot.anchor_before(MultiBufferOffset(bracket_byte_range.start));
++                                let toggle_end =
++                                    snapshot.anchor_after(MultiBufferOffset(bracket_byte_range.end));
++                                let replacement: &'static str =
++                                    if checked { "[ ]" } else { "[x]" };
++                                let weak = weak_editor.clone();
++                                let box_accent = accent_color;
++                                let box_border = border_color;
++                                let box_bg = surface_bg;
++                                creases.push(Crease::simple(
++                                    anchor_range,
++                                    FoldPlaceholder {
++                                        render: Arc::new(move |fold_id, _, _| {
++                                            let weak = weak.clone();
++                                            let toggle_range =
++                                                toggle_start.clone()..toggle_end.clone();
++                                            render_task_checkbox_element(
++                                                fold_id.into(),
++                                                indent_spaces,
++                                                checked,
++                                                box_accent,
++                                                box_border,
++                                                box_bg,
++                                                move |window, cx| {
++                                                    let _ =
++                                                        weak.update(cx, |editor, cx| {
++                                                            editor.transact(
++                                                                window,
++                                                                cx,
++                                                                |editor, _window, cx| {
++                                                                    editor.buffer.update(
++                                                                        cx,
++                                                                        |buffer, cx| {
++                                                                            buffer.edit(
++                                                                                [(
++                                                                                    toggle_range
++                                                                                        .clone(),
++                                                                                    replacement,
++                                                                                )],
++                                                                                None,
++                                                                                cx,
++                                                                            );
++                                                                        },
++                                                                    );
++                                                                },
++                                                            );
++                                                            editor
++                                                                .invalidate_folio_markdown_wysiwyg();
++                                                            editor
++                                                                .refresh_folio_markdown_wysiwyg(cx);
++                                                            cx.notify();
++                                                        });
++                                                },
++                                            )
++                                        }),
++                                        constrain_width: false,
++                                        merge_adjacent: false,
++                                        type_tag: Some(TypeId::of::<FolioMarkdownFoldTag>()),
++                                        collapsed_text: None,
++                                    },
++                                ));
++                            } else {
++                                list_marker_ranges.push(
++                                    snapshot
++                                        .anchor_before(MultiBufferOffset(fold_byte_range.start))
++                                        ..snapshot.anchor_after(MultiBufferOffset(
++                                            fold_byte_range.end,
++                                        )),
++                                );
++                            }
++                        }
++                        ParsedListLine::Unordered {
++                            indent_spaces,
++                            fold_byte_range,
++                        } => {
++                            if !is_row_selected(row)
++                                && fold_byte_range.start < fold_byte_range.end
++                            {
++                                let anchor_range = snapshot
++                                    .anchor_after(MultiBufferOffset(fold_byte_range.start))
++                                    ..snapshot
++                                        .anchor_before(MultiBufferOffset(fold_byte_range.end));
++                                let bullet_color = accent_color;
++                                creases.push(Crease::simple(
++                                    anchor_range,
++                                    FoldPlaceholder {
++                                        render: Arc::new(move |_, _, _| {
++                                            render_unordered_bullet_element(
++                                                indent_spaces,
++                                                bullet_color,
++                                            )
++                                        }),
++                                        constrain_width: false,
++                                        merge_adjacent: false,
++                                        type_tag: Some(TypeId::of::<FolioMarkdownFoldTag>()),
++                                        collapsed_text: None,
++                                    },
++                                ));
++                            } else {
++                                list_marker_ranges.push(
++                                    snapshot
++                                        .anchor_before(MultiBufferOffset(fold_byte_range.start))
++                                        ..snapshot.anchor_after(MultiBufferOffset(
++                                            fold_byte_range.end,
++                                        )),
++                                );
++                            }
++                        }
++                        ParsedListLine::Ordered { marker_byte_range } => {
++                            if marker_byte_range.start < marker_byte_range.end {
++                                list_marker_ranges.push(
++                                    snapshot
++                                        .anchor_before(MultiBufferOffset(marker_byte_range.start))
++                                        ..snapshot.anchor_after(MultiBufferOffset(
++                                            marker_byte_range.end,
++                                        )),
++                                );
++                            }
++                        }
++                    }
++                }
++            }
++
++            line_byte_start = next_line_start;
++        }
++
++        // 7. Fold inline syntax tokens on inactive rows
++        for span in &analysis.syntax_fold_spans {
++            if span.is_revealed || is_range_on_selected_row(&span.byte_range) {
++                continue;
++            }
++            if matches!(
++                span.kind,
++                SyntaxTokenKind::InlineMathDollar
++                    | SyntaxTokenKind::MathBlockDelimiter
++                    | SyntaxTokenKind::HeadingHashes
++                    | SyntaxTokenKind::CodeFenceDelimiter
++                    | SyntaxTokenKind::TablePipeDelimiter
++                    | SyntaxTokenKind::TaskListMarker
++            ) {
++                continue;
++            }
++
++            let start = span.byte_range.start.min(text.len());
++            let end = span.byte_range.end.min(text.len());
++            if start >= end {
++                continue;
++            }
++            let start_row = snapshot.offset_to_point(MultiBufferOffset(start)).row;
++            if folded_full_rows.contains(&start_row) {
++                continue;
++            }
++
++            let anchor_range = snapshot.anchor_after(MultiBufferOffset(start))
++                ..snapshot.anchor_before(MultiBufferOffset(end));
++
++            match span.kind {
++                SyntaxTokenKind::BlockquoteMarker => {
++                    let bar_color = accent_color;
++                    creases.push(Crease::simple(
++                        anchor_range,
++                        FoldPlaceholder {
++                            render: Arc::new(move |_, _, _| {
++                                div()
++                                    .flex()
++                                    .items_center()
++                                    .pr(px(10.0))
++                                    .child(
++                                        div()
++                                            .w(px(3.5))
++                                            .h(px(20.0))
++                                            .rounded(px(1.5))
++                                            .bg(bar_color),
++                                    )
++                                    .into_any_element()
++                            }),
++                            constrain_width: false,
++                            merge_adjacent: false,
++                            type_tag: Some(TypeId::of::<FolioMarkdownFoldTag>()),
++                            collapsed_text: None,
++                        },
++                    ));
++                }
++                SyntaxTokenKind::HorizontalRule => {
++                    let rule_color = border_color;
++                    creases.push(Crease::simple(
++                        anchor_range,
++                        FoldPlaceholder {
++                            render: Arc::new(move |_, _, _| {
++                                div()
++                                    .flex()
++                                    .items_center()
++                                    .py(px(8.0))
++                                    .child(
++                                        div()
++                                            .w(px(560.0))
++                                            .h(px(1.5))
++                                            .rounded(px(1.0))
++                                            .bg(rule_color),
++                                    )
++                                    .into_any_element()
++                            }),
++                            constrain_width: false,
++                            merge_adjacent: false,
++                            type_tag: Some(TypeId::of::<FolioMarkdownFoldTag>()),
++                            collapsed_text: None,
++                        },
++                    ));
++                }
++                _ => {
++                    creases.push(Crease::simple(
++                        anchor_range,
++                        empty_folio_fold_placeholder(),
++                    ));
++                }
++            }
++        }
++
++        if !creases.is_empty() {
++            self.display_map.update(cx, |display_map, cx| {
++                display_map.fold(creases, cx);
++            });
++        }
++
++        if !new_blocks.is_empty() {
++            let block_ids = self.insert_blocks(new_blocks, None, cx);
++            self.folio_markdown_state.custom_blocks.extend(block_ids);
++        }
++
++        // 8. Apply rich inline highlights (headings, inline code, bold, italic, strikethrough, highlight, links, lists, blockquotes, monospace spans)
++        if !active_heading_ranges.is_empty() {
++            self.highlight_text(
++                HighlightKey::FolioMarkdown(0),
++                active_heading_ranges,
++                HighlightStyle {
++                    font_weight: Some(FontWeight::BOLD),
++                    color: Some(accent_color),
++                    ..Default::default()
++                },
++                cx,
++            );
++        }
++
++        if !inline_code_ranges.is_empty() {
++            self.highlight_text(
++                HighlightKey::FolioMarkdown(1),
++                inline_code_ranges,
++                HighlightStyle {
++                    background_color: Some(surface_bg),
++                    color: Some(accent_color),
++                    fade_out: Some(-1.0),
++                    ..Default::default()
++                },
++                cx,
++            );
++        }
++
++        // Pair consecutive Bold / Italic / Strikethrough / Highlight / Link markers to style their inner spans
++        let mut bold_ranges = Vec::new();
++        let mut italic_ranges = Vec::new();
++        let mut strike_ranges = Vec::new();
++        let mut highlight_ranges = Vec::new();
++        let mut link_label_ranges = Vec::new();
++
++        let mut open_bold: Option<usize> = None;
++        let mut open_italic: Option<usize> = None;
++        let mut open_strike: Option<usize> = None;
++        let mut open_highlight: Option<usize> = None;
++        let mut open_link_bracket: Option<usize> = None;
++
++        for span in &analysis.syntax_fold_spans {
++            match span.kind {
++                SyntaxTokenKind::BoldMarker => {
++                    if let Some(start) = open_bold.take() {
++                        if start < span.byte_range.start {
++                            bold_ranges.push(
++                                snapshot.anchor_before(MultiBufferOffset(start))
++                                    ..snapshot
++                                        .anchor_after(MultiBufferOffset(span.byte_range.start)),
++                            );
++                        }
++                    } else {
++                        open_bold = Some(span.byte_range.end);
++                    }
++                }
++                SyntaxTokenKind::ItalicMarker => {
++                    if let Some(start) = open_italic.take() {
++                        if start < span.byte_range.start {
++                            italic_ranges.push(
++                                snapshot.anchor_before(MultiBufferOffset(start))
++                                    ..snapshot
++                                        .anchor_after(MultiBufferOffset(span.byte_range.start)),
++                            );
++                        }
++                    } else {
++                        open_italic = Some(span.byte_range.end);
++                    }
++                }
++                SyntaxTokenKind::StrikethroughMarker => {
++                    if let Some(start) = open_strike.take() {
++                        if start < span.byte_range.start {
++                            strike_ranges.push(
++                                snapshot.anchor_before(MultiBufferOffset(start))
++                                    ..snapshot
++                                        .anchor_after(MultiBufferOffset(span.byte_range.start)),
++                            );
++                        }
++                    } else {
++                        open_strike = Some(span.byte_range.end);
++                    }
++                }
++                SyntaxTokenKind::HighlightMarker => {
++                    if let Some(start) = open_highlight.take() {
++                        if start < span.byte_range.start {
++                            highlight_ranges.push(
++                                snapshot.anchor_before(MultiBufferOffset(start))
++                                    ..snapshot
++                                        .anchor_after(MultiBufferOffset(span.byte_range.start)),
++                            );
++                        }
++                    } else {
++                        open_highlight = Some(span.byte_range.end);
++                    }
++                }
++                SyntaxTokenKind::LinkSyntax => {
++                    let slice = &text[span.byte_range.start.min(text.len())
++                        ..span.byte_range.end.min(text.len())];
++                    if slice == "[" {
++                        open_link_bracket = Some(span.byte_range.end);
++                    } else if slice.starts_with("](") {
++                        if let Some(start) = open_link_bracket.take() {
++                            if start < span.byte_range.start {
++                                link_label_ranges.push(
++                                    snapshot.anchor_before(MultiBufferOffset(start))
++                                        ..snapshot.anchor_after(MultiBufferOffset(
++                                            span.byte_range.start,
++                                        )),
++                                );
++                            }
++                        }
++                    }
++                }
++                _ => {}
++            }
++        }
++
++        if !bold_ranges.is_empty() {
++            self.highlight_text(
++                HighlightKey::FolioMarkdown(2),
++                bold_ranges,
++                HighlightStyle {
++                    font_weight: Some(FontWeight::BOLD),
++                    ..Default::default()
++                },
++                cx,
++            );
++        }
++        if !italic_ranges.is_empty() {
++            self.highlight_text(
++                HighlightKey::FolioMarkdown(3),
++                italic_ranges,
++                HighlightStyle {
++                    font_style: Some(FontStyle::Italic),
++                    ..Default::default()
++                },
++                cx,
++            );
++        }
++        strike_ranges.extend(checked_task_ranges);
++        if !strike_ranges.is_empty() {
++            self.highlight_text(
++                HighlightKey::FolioMarkdown(4),
++                strike_ranges,
++                HighlightStyle {
++                    color: Some(muted_color),
++                    strikethrough: Some(StrikethroughStyle {
++                        thickness: px(1.0),
++                        color: Some(muted_color),
++                    }),
++                    ..Default::default()
++                },
++                cx,
++            );
++        }
++        if !highlight_ranges.is_empty() {
++            let mark_bg = Hsla {
++                h: 0.13,
++                s: 0.90,
++                l: if is_dark { 0.35 } else { 0.78 },
++                a: if is_dark { 0.35 } else { 0.45 },
++            };
++            self.highlight_text(
++                HighlightKey::FolioMarkdown(5),
++                highlight_ranges,
++                HighlightStyle {
++                    background_color: Some(mark_bg),
++                    underline: Some(UnderlineStyle {
++                        thickness: px(1.0),
++                        color: Some(accent_color),
++                        wavy: false,
++                    }),
++                    ..Default::default()
++                },
++                cx,
++            );
++        }
++        if !link_label_ranges.is_empty() {
++            self.highlight_text(
++                HighlightKey::FolioMarkdown(6),
++                link_label_ranges,
++                HighlightStyle {
++                    color: Some(accent_color),
++                    underline: Some(UnderlineStyle {
++                        thickness: px(1.0),
++                        color: Some(accent_color),
++                        wavy: false,
++                    }),
++                    ..Default::default()
++                },
++                cx,
++            );
++        }
++        if !blockquote_ranges.is_empty() {
++            self.highlight_text(
++                HighlightKey::FolioMarkdown(7),
++                blockquote_ranges,
++                HighlightStyle {
++                    color: Some(muted_color),
++                    font_style: Some(FontStyle::Italic),
++                    ..Default::default()
++                },
++                cx,
++            );
++        }
++        if !list_marker_ranges.is_empty() {
++            self.highlight_text(
++                HighlightKey::FolioMarkdown(8),
++                list_marker_ranges,
++                HighlightStyle {
++                    color: Some(accent_color),
++                    font_weight: Some(FontWeight::SEMIBOLD),
++                    ..Default::default()
++                },
++                cx,
++            );
++        }
++        if !monospace_ranges.is_empty() {
++            self.highlight_text(
++                HighlightKey::FolioMarkdown(9),
++                monospace_ranges,
++                HighlightStyle {
++                    fade_out: Some(-1.0),
++                    ..Default::default()
++                },
++                cx,
++            );
++        }
++    }
++
++    fn clear_folio_markdown_wysiwyg(&mut self, cx: &mut Context<Self>) {
++        self.display_map.update(cx, |display_map, cx| {
++            display_map.remove_folds_with_type(
++                [Anchor::Min..Anchor::Max],
++                TypeId::of::<FolioMarkdownFoldTag>(),
++                cx,
++            );
++        });
++        if !self.folio_markdown_state.custom_blocks.is_empty() {
++            let prev_blocks = std::mem::take(&mut self.folio_markdown_state.custom_blocks);
++            self.remove_blocks(prev_blocks, None, cx);
++        }
++        self.clear_row_highlights::<FolioMarkdownCodeBlockRowHighlight>();
++        self.clear_highlights_with(
++            &mut |key| matches!(key, HighlightKey::FolioMarkdown(_)),
++            cx,
++        );
++        self.folio_markdown_state.last_key = None;
++    }
++}
++
++fn empty_folio_fold_placeholder() -> FoldPlaceholder {
++    FoldPlaceholder {
++        render: Arc::new(|_, _, _| Empty.into_any_element()),
++        constrain_width: false,
++        merge_adjacent: false,
++        type_tag: Some(TypeId::of::<FolioMarkdownFoldTag>()),
++        collapsed_text: None,
++    }
++}
++
++fn clean_inline_markdown(input: &str) -> String {
++    let mut out = String::with_capacity(input.len());
++    let chars: Vec<char> = input.chars().collect();
++    let mut i = 0;
++    while i < chars.len() {
++        if i + 1 < chars.len()
++            && ((chars[i] == '*' && chars[i + 1] == '*')
++                || (chars[i] == '~' && chars[i + 1] == '~')
++                || (chars[i] == '=' && chars[i + 1] == '='))
++        {
++            i += 2;
++            continue;
++        }
++        if chars[i] == '`' || chars[i] == '*' {
++            i += 1;
++            continue;
++        }
++        if chars[i] == '[' {
++            // Convert [label](url) -> label
++            if let Some(close_bracket) = chars[i + 1..].iter().position(|&c| c == ']') {
++                let close_idx = i + 1 + close_bracket;
++                if close_idx + 1 < chars.len() && chars[close_idx + 1] == '(' {
++                    if let Some(close_paren) =
++                        chars[close_idx + 2..].iter().position(|&c| c == ')')
++                    {
++                        for &ch in &chars[i + 1..close_idx] {
++                            out.push(ch);
++                        }
++                        i = close_idx + 2 + close_paren + 1;
++                        continue;
++                    }
++                }
++            }
++        }
++        out.push(chars[i]);
++        i += 1;
++    }
++    out
++}
++
++fn parse_list_line(clean_line: &str, line_byte_start: usize) -> Option<ParsedListLine> {
++    let bytes = clean_line.as_bytes();
++    let mut ws_end = 0;
++    let mut indent_spaces = 0;
++    while ws_end < bytes.len() && (bytes[ws_end] == b' ' || bytes[ws_end] == b'\t') {
++        indent_spaces += if bytes[ws_end] == b'\t' { 4 } else { 1 };
++        ws_end += 1;
++    }
++    let after_ws = &clean_line[ws_end..];
++    if after_ws.is_empty() {
++        return None;
++    }
++
++    let first = after_ws.as_bytes()[0];
++    if (first == b'-' || first == b'*' || first == b'+')
++        && after_ws.len() >= 2
++        && (after_ws.as_bytes()[1] == b' ' || after_ws.as_bytes()[1] == b'\t')
++    {
++        // Avoid matching horizontal rules like "* * *" or "- - -"
++        let trimmed_rest = after_ws[1..].trim();
++        if !trimmed_rest.is_empty()
++            && trimmed_rest
++                .bytes()
++                .all(|b| b == first || b == b' ' || b == b'\t')
++        {
++            return None;
++        }
++
++        let mut bullet_ws_end = 1;
++        while bullet_ws_end < after_ws.len()
++            && (after_ws.as_bytes()[bullet_ws_end] == b' '
++                || after_ws.as_bytes()[bullet_ws_end] == b'\t')
++        {
++            bullet_ws_end += 1;
++        }
++        let after_bullet = &after_ws[bullet_ws_end..];
++        if after_bullet.len() >= 4 {
++            let box_slice = &after_bullet[..3];
++            let next_byte = after_bullet.as_bytes()[3];
++            if (box_slice == "[ ]" || box_slice == "[x]" || box_slice == "[X]")
++                && (next_byte == b' ' || next_byte == b'\t')
++            {
++                let checked = box_slice != "[ ]";
++                let bracket_start = line_byte_start + ws_end + bullet_ws_end;
++                let bracket_end = bracket_start + 3;
++                let fold_end = bracket_end + 1;
++                let line_end = line_byte_start + clean_line.len();
++                return Some(ParsedListLine::Task {
++                    indent_spaces,
++                    fold_byte_range: line_byte_start..fold_end,
++                    bracket_byte_range: bracket_start..bracket_end,
++                    content_byte_range: fold_end..line_end,
++                    checked,
++                });
++            }
++        }
++
++        let fold_end = line_byte_start + ws_end + bullet_ws_end;
++        return Some(ParsedListLine::Unordered {
++            indent_spaces,
++            fold_byte_range: line_byte_start..fold_end,
++        });
++    }
++
++    let mut digit_end = 0;
++    while digit_end < after_ws.len() && after_ws.as_bytes()[digit_end].is_ascii_digit() {
++        digit_end += 1;
++    }
++    if digit_end > 0
++        && digit_end + 1 < after_ws.len()
++        && after_ws.as_bytes()[digit_end] == b'.'
++        && (after_ws.as_bytes()[digit_end + 1] == b' '
++            || after_ws.as_bytes()[digit_end + 1] == b'\t')
++    {
++        let marker_start = line_byte_start + ws_end;
++        let marker_end = marker_start + digit_end + 2;
++        return Some(ParsedListLine::Ordered {
++            marker_byte_range: marker_start..marker_end,
++        });
++    }
++
++    None
++}
++
++fn render_scaled_heading_element(
++    level: usize,
++    title: String,
++    fg: Hsla,
++    underline_color: Hsla,
++) -> AnyElement {
++    let (font_size, weight, show_underline) = match level {
++        1 => (28.0, FontWeight::BOLD, true),
++        2 => (22.5, FontWeight::BOLD, true),
++        3 => (19.0, FontWeight::SEMIBOLD, false),
++        4 => (17.0, FontWeight::SEMIBOLD, false),
++        5 => (16.0, FontWeight::SEMIBOLD, false),
++        _ => (14.5, FontWeight::SEMIBOLD, false),
++    };
++
++    let mut container = div()
++        .flex()
++        .items_center()
++        .text_size(px(font_size))
++        .font_weight(weight)
++        .text_color(fg)
++        .child(SharedString::from(title));
++
++    if show_underline {
++        container = container
++            .min_w(px(520.0))
++            .pb(px(2.0))
++            .border_b_1()
++            .border_color(underline_color);
++    }
++
++    container.into_any_element()
++}
++
++fn render_code_fence_language_pill(
++    lang_label: String,
++    dot_color: Hsla,
++    pill_fg: Hsla,
++    pill_bg: Hsla,
++    pill_border: Hsla,
++) -> AnyElement {
++    div()
++        .flex()
++        .items_center()
++        .gap(px(6.0))
++        .px(px(9.0))
++        .py(px(2.0))
++        .rounded(px(5.0))
++        .bg(pill_bg)
++        .border_1()
++        .border_color(pill_border)
++        .child(
++            div()
++                .w(px(7.5))
++                .h(px(7.5))
++                .rounded(px(4.0))
++                .bg(dot_color),
++        )
++        .child(
++            div()
++                .text_size(px(11.5))
++                .font_weight(FontWeight::SEMIBOLD)
++                .text_color(pill_fg)
++                .child(SharedString::from(lang_label)),
++        )
++        .into_any_element()
++}
++
++fn render_task_checkbox_element(
++    fold_id: gpui::ElementId,
++    indent_spaces: usize,
++    checked: bool,
++    accent_color: Hsla,
++    border_color: Hsla,
++    surface_bg: Hsla,
++    on_toggle: impl Fn(&mut Window, &mut App) + 'static,
++) -> AnyElement {
++    let indent_px = (indent_spaces as f32) * 8.0;
++    let mut checkbox = div()
++        .id((fold_id, "folio-task-checkbox"))
++        .cursor_pointer()
++        .flex()
++        .items_center()
++        .justify_center()
++        .w(px(15.0))
++        .h(px(15.0))
++        .rounded(px(4.0))
++        .border_1()
++        .on_mouse_down(MouseButton::Left, move |_event, window, cx| {
++            cx.stop_propagation();
++            on_toggle(window, cx);
++        });
++
++    if checked {
++        checkbox = checkbox
++            .bg(accent_color)
++            .border_color(accent_color)
++            .text_size(px(11.0))
++            .font_weight(FontWeight::BOLD)
++            .text_color(surface_bg)
++            .child("✓");
++    } else {
++        checkbox = checkbox.bg(surface_bg).border_color(border_color);
++    }
++
++    div()
++        .flex()
++        .items_center()
++        .pl(px(indent_px))
++        .pr(px(8.0))
++        .child(checkbox)
++        .into_any_element()
++}
++
++fn render_unordered_bullet_element(indent_spaces: usize, bullet_color: Hsla) -> AnyElement {
++    let indent_px = (indent_spaces as f32) * 8.0;
++    div()
++        .flex()
++        .items_center()
++        .pl(px(indent_px))
++        .pr(px(8.0))
++        .child(
++            div()
++                .w(px(5.5))
++                .h(px(5.5))
++                .rounded(px(3.0))
++                .bg(bullet_color),
++        )
++        .into_any_element()
++}
++
++fn render_table_row_element(
++    columns: &[String],
++    col_widths: &[f32],
++    is_header: bool,
++    is_separator: bool,
++    fg: Hsla,
++    header_bg: Hsla,
++    border_color: Hsla,
++) -> AnyElement {
++    let total_width: f32 = col_widths.iter().sum::<f32>().max(160.0);
++    if is_separator {
++        return div()
++            .flex()
++            .items_center()
++            .w(px(total_width))
++            .py(px(4.0))
++            .child(div().w(px(total_width)).h(px(1.5)).bg(border_color))
++            .into_any_element();
++    }
++
++    let mut row_div = div()
++        .flex()
++        .items_center()
++        .border_l_1()
++        .border_color(border_color);
++
++    if is_header {
++        row_div = row_div
++            .bg(header_bg)
++            .font_weight(FontWeight::BOLD)
++            .rounded_t(px(4.0));
++    }
++
++    for (col_idx, &width) in col_widths.iter().enumerate() {
++        let cell_text = columns.get(col_idx).cloned().unwrap_or_default();
++        row_div = row_div.child(
++            div()
++                .w(px(width))
++                .px(px(10.0))
++                .py(px(2.0))
++                .border_r_1()
++                .border_color(border_color)
++                .text_color(fg)
++                .overflow_hidden()
++                .child(SharedString::from(cell_text)),
++        );
++    }
++
++    row_div.into_any_element()
++}
++
++fn render_inline_math_element(descriptor: GpuiMathCanvasDescriptor, color: Hsla) -> AnyElement {
++    let width = descriptor.width.max(8.0) + 4.0;
++    let height = descriptor.total_height().max(16.0);
++    div()
++        .flex()
++        .items_center()
++        .px(px(2.0))
++        .child(
++            canvas(
++                |_, _, _| {},
++                move |bounds, _, window, cx| {
++                    paint_gpui_math_descriptor(&descriptor, bounds, color, window, cx);
++                },
++            )
++            .w(px(width))
++            .h(px(height)),
++        )
++        .into_any_element()
++}
++
++fn render_display_math_inline_card(
++    descriptor: GpuiMathCanvasDescriptor,
++    color: Hsla,
++    card_bg: Hsla,
++    card_border: Hsla,
++) -> AnyElement {
++    let width = descriptor.width.max(24.0) + 16.0;
++    let height = descriptor.total_height().max(22.0) + 8.0;
++    div()
++        .flex()
++        .items_center()
++        .justify_center()
++        .px(px(12.0))
++        .py(px(4.0))
++        .rounded(px(6.0))
++        .bg(card_bg)
++        .border_1()
++        .border_color(card_border)
++        .child(
++            canvas(
++                |_, _, _| {},
++                move |bounds, _, window, cx| {
++                    paint_gpui_math_descriptor(&descriptor, bounds, color, window, cx);
++                },
++            )
++            .w(px(width))
++            .h(px(height)),
++        )
++        .into_any_element()
++}
++
++fn render_display_math_block_card(
++    descriptor: GpuiMathCanvasDescriptor,
++    color: Hsla,
++    card_bg: Hsla,
++    card_border: Hsla,
++) -> AnyElement {
++    let width = descriptor.width.max(24.0) + 16.0;
++    let height = descriptor.total_height().max(24.0);
++    div()
++        .w_full()
++        .flex()
++        .items_center()
++        .justify_center()
++        .py(px(6.0))
++        .px(px(16.0))
++        .child(
++            div()
++                .flex()
++                .items_center()
++                .justify_center()
++                .px(px(18.0))
++                .py(px(6.0))
++                .rounded(px(6.0))
++                .bg(card_bg)
++                .border_1()
++                .border_color(card_border)
++                .child(
++                    canvas(
++                        |_, _, _| {},
++                        move |bounds, _, window, cx| {
++                            paint_gpui_math_descriptor(&descriptor, bounds, color, window, cx);
++                        },
++                    )
++                    .w(px(width))
++                    .h(px(height)),
++                ),
++        )
++        .into_any_element()
++}
++
++fn paint_gpui_math_descriptor(
++    descriptor: &GpuiMathCanvasDescriptor,
++    bounds: Bounds<Pixels>,
++    color: Hsla,
++    window: &mut Window,
++    cx: &mut App,
++) {
++    let origin_x = bounds.origin.x + px(2.0);
++    let baseline_y = bounds.origin.y + px(descriptor.ascent);
++
++    for primitive in &descriptor.primitives {
++        match primitive {
++            GpuiMathPrimitive::ShapedGlyphRun {
++                text,
++                origin_x: prim_x,
++                baseline_y: prim_y,
++                font_size,
++                italic,
++                bold,
++                serif,
++            } => {
++                if text.is_empty() {
++                    continue;
++                }
++                let family: SharedString = if *serif {
++                    "Times New Roman".into()
++                } else {
++                    ".SystemUIFont".into()
++                };
++                let font = Font {
++                    family,
++                    features: FontFeatures::default(),
++                    fallbacks: None,
++                    weight: if *bold {
++                        FontWeight::BOLD
++                    } else {
++                        FontWeight::NORMAL
++                    },
++                    style: if *italic {
++                        FontStyle::Italic
++                    } else {
++                        FontStyle::Normal
++                    },
++                };
++                let run = TextRun {
++                    len: text.len(),
++                    font,
++                    color,
++                    background_color: None,
++                    underline: None,
++                    strikethrough: None,
++                };
++                let shaped = window.text_system().shape_line(
++                    SharedString::from(text.clone()),
++                    px(*font_size),
++                    &[run],
++                    None,
++                );
++                let top_left = point(origin_x + px(*prim_x), baseline_y + px(*prim_y));
++                let _ = shaped.paint(
++                    top_left,
++                    px(*font_size * 1.15),
++                    TextAlign::Left,
++                    None,
++                    window,
++                    cx,
++                );
++            }
++            GpuiMathPrimitive::RuleQuad {
++                x,
++                y,
++                width,
++                height,
++            } => {
++                let quad_bounds = Bounds {
++                    origin: point(origin_x + px(*x), baseline_y + px(*y)),
++                    size: size(px(*width), px((*height).max(1.0))),
++                };
++                window.paint_quad(fill(quad_bounds, color));
++            }
++            GpuiMathPrimitive::RadicalStroke {
++                x,
++                top_y,
++                bottom_y,
++                hook_width,
++                radicand_width,
++                line_width,
++            } => {
++                let stroke = (*line_width).max(1.0);
++                // Top horizontal vinculum bar over the radicand
++                let vinculum_bounds = Bounds {
++                    origin: point(
++                        origin_x + px(*x + *hook_width * 0.65),
++                        baseline_y + px(*top_y),
++                    ),
++                    size: size(px(*radicand_width + *hook_width * 0.35 + 2.0), px(stroke)),
++                };
++                window.paint_quad(fill(vinculum_bounds, color));
++
++                // Radical glyph on the left
++                let rad_height = (*bottom_y - *top_y).abs().max(12.0);
++                let font = Font {
++                    family: "Times New Roman".into(),
++                    features: FontFeatures::default(),
++                    fallbacks: None,
++                    weight: FontWeight::NORMAL,
++                    style: FontStyle::Normal,
++                };
++                let text = SharedString::from("√");
++                let run = TextRun {
++                    len: text.len(),
++                    font,
++                    color,
++                    background_color: None,
++                    underline: None,
++                    strikethrough: None,
++                };
++                let shaped = window.text_system().shape_line(
++                    text,
++                    px(rad_height * 0.92),
++                    &[run],
++                    None,
++                );
++                let _ = shaped.paint(
++                    point(origin_x + px(*x), baseline_y + px(*top_y)),
++                    px(rad_height),
++                    TextAlign::Left,
++                    None,
++                    window,
++                    cx,
++                );
++            }
++        }
++    }
++}
+diff --git a/crates/gpui_apple/Cargo.toml b/crates/gpui_apple/Cargo.toml
+index 23142d5..7e02319 100644
+--- a/crates/gpui_apple/Cargo.toml
++++ b/crates/gpui_apple/Cargo.toml
+@@ -13,7 +13,7 @@ path = "src/gpui_apple.rs"
+ doctest = false
+ 
+ [features]
+-default = []
++default = ["runtime_shaders"]
+ bench-support = ["gpui/bench-support"]
+ test-support = ["gpui/test-support"]
+ runtime_shaders = []

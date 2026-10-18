@@ -18,7 +18,7 @@ else
   else
     URL="https://github.com/bazelbuild/bazelisk/releases/download/v1.25.0/bazelisk-darwin-amd64"
   fi
-  echo "[OpenType] Downloading Bazelisk to $BAZELISK_BIN..." >&2
+  echo "[Folio] Downloading Bazelisk to $BAZELISK_BIN..." >&2
   curl -fsSL "$URL" -o "$BAZELISK_BIN"
   chmod +x "$BAZELISK_BIN"
   exec "$BAZELISK_BIN" "$@"

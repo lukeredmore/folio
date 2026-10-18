@@ -3,12 +3,12 @@
 version = 4
 
 [[package]]
-name = "opentype_engine"
+name = "folio_engine"
 version = "0.1.0"
 
 [[package]]
-name = "opentype_zed_mod"
+name = "folio_zed_mod"
 version = "0.1.0"
 dependencies = [
- "opentype_engine",
+ "folio_engine",
 ]

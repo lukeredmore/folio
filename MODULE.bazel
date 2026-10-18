@@ -1,5 +1,5 @@
 module(
-    name = "opentype",
+    name = "folio",
     version = "1.0.0",
 )
 
@@ -20,6 +20,6 @@ use_repo(rust, "rust_toolchains")
 
 register_toolchains("@rust_toolchains//:all")
 
-# 3rd-party Zed source import with OpenType GPUI Mod patch applied
+# 3rd-party Zed source import with Folio GPUI Mod patch applied
 zed_ext = use_extension("//third_party/zed:zed_repo.bzl", "zed_ext")
 use_repo(zed_ext, "zed_upstream")

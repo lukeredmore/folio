@@ -110,8 +110,8 @@
   "moduleExtensions": {
     "//third_party/zed:zed_repo.bzl%zed_ext": {
       "general": {
-        "bzlTransitiveDigest": "q4yv5Yea7vo1JQjXMni1EP2+kDbju5eVs+vetBrMkG8=",
-        "usagesDigest": "KxHicCyiqYhBsSbDWwUMzcPJd+WACfuC7RetpwdfGAk=",
+        "bzlTransitiveDigest": "fqkDIy8RssBfNy4UHanwZkWzEXaew5OBZzuBKe5ULpk=",
+        "usagesDigest": "zqExJ/CpkoluI2QGz+FqxSPg5/wWSGhnQnF58/7GzZQ=",
         "recordedFileInputs": {},
         "recordedDirentsInputs": {},
         "envVariables": {},
@@ -129,7 +129,7 @@
                 "@@//third_party/zed:upstream_seed/crates/zed/src/main.rs"
               ],
               "patches": [
-                "@@//third_party/zed:patches/0001-opentype-live-markdown-mod.patch"
+                "@@//third_party/zed:patches/0001-folio-live-markdown-mod.patch"
               ]
             }
           }

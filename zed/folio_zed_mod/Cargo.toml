@@ -1,0 +1,9 @@
+[package]
+name = "folio_zed_mod"
+version = "0.1.0"
+edition = "2021"
+license = "MIT"
+description = "Folio Typora-style hybrid Markdown + native LaTeX GPUI mod for Zed"
+
+[dependencies]
+folio_engine = { path = "../../core/folio_engine" }

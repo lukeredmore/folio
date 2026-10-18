@@ -1,0 +1,7 @@
+id = "folio-markdown-outline"
+name = "Folio Markdown Outline"
+version = "0.1.0"
+schema_version = 1
+authors = ["Folio"]
+description = "Provides native Markdown document outline (H1–H6) and breadcrumb hierarchy to Zed's built-in Outline Panel."
+repository = "https://github.com/lukeredmore/Folio"

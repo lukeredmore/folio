@@ -1,0 +1,142 @@
+import Foundation
+import FolioEngineFFI
+
+public struct OutlineHeading: Identifiable, Equatable {
+    public let id: String
+    public let level: Int
+    public let title: String
+    public let characterLocation: Int
+    public let lineNumber: Int
+
+    public init(level: Int, title: String, characterLocation: Int, lineNumber: Int) {
+        self.id = "\(lineNumber)-\(characterLocation)-\(title)"
+        self.level = level
+        self.title = title
+        self.characterLocation = characterLocation
+        self.lineNumber = lineNumber
+    }
+}
+
+public struct DocumentStats: Equatable {
+    public var words: Int = 0
+    public var lines: Int = 0
+    public var characters: Int = 0
+    public var charactersWithoutSpaces: Int = 0
+    public var selectedWords: Int = 0
+    public var selectedCharacters: Int = 0
+
+    public var readingTimeString: String {
+        // Estimate reading time at ~225 words/minute
+        let totalSeconds = max(0, Int((Double(words) / 225.0) * 60.0))
+        if totalSeconds == 0 {
+            return "0 sec"
+        } else if totalSeconds < 60 {
+            return "< 1 min"
+        } else {
+            let minutes = Int(ceil(Double(words) / 225.0))
+            return "\(minutes) min"
+        }
+    }
+
+    public static func compute(for text: String, selectedRange: NSRange? = nil) -> DocumentStats {
+        let hasSel = (selectedRange != nil && (selectedRange?.length ?? 0) > 0)
+        let selLoc = max(0, selectedRange?.location ?? 0)
+        let selLen = max(0, selectedRange?.length ?? 0)
+
+        let rawStats = text.withCString { cStr in
+            ot_engine_compute_stats(cStr, hasSel, selLoc, selLen)
+        }
+
+        return DocumentStats(
+            words: Int(rawStats.words),
+            lines: Int(rawStats.lines),
+            characters: Int(rawStats.characters),
+            charactersWithoutSpaces: Int(rawStats.characters_without_spaces),
+            selectedWords: Int(rawStats.selected_words),
+            selectedCharacters: Int(rawStats.selected_characters)
+        )
+    }
+}
+
+public struct WorkspaceFileNode: Identifiable, Hashable {
+    public let url: URL
+    public let name: String
+    public let isDirectory: Bool
+    public let modificationDate: Date
+    public let creationDate: Date
+    public var children: [WorkspaceFileNode]?
+
+    public var id: URL { url }
+
+    public var isMarkdownFile: Bool {
+        let ext = url.pathExtension.lowercased()
+        return ["md", "markdown", "mdown", "mkd", "txt", "textbundle"].contains(ext)
+    }
+}
+
+public enum FileSortOrder: String, CaseIterable, Identifiable {
+    case name = "Name"
+    case modificationDate = "Modification Date"
+    case creationDate = "Creation Date"
+
+    public var id: String { rawValue }
+}
+
+public struct WorkspaceSearchMatch: Identifiable, Equatable {
+    public let id = UUID()
+    public let fileURL: URL
+    public let fileName: String
+    public let lineNumber: Int
+    public let lineSnippet: String
+    public let matchRangeInFile: NSRange
+}
+
+public struct EditorTypographySettings: Equatable, Codable {
+    /// Multiplier applied to the theme's base font size (0.80 ... 1.50)
+    public var fontSizeScale: CGFloat = 1.0
+    /// Line height multiple applied to body and list paragraphs (1.0 ... 2.0)
+    public var lineHeightMultiple: CGFloat = 1.24
+    /// Extra line spacing (leading) in points between lines in a paragraph (0 ... 18)
+    public var lineSpacing: CGFloat = 6.0
+    /// Spacing in points after each body paragraph (2 ... 28)
+    public var paragraphSpacing: CGFloat = 12.0
+    /// Character spacing (kerning/tracking) in points for body text (-0.5 ... 2.5)
+    public var characterSpacing: CGFloat = 0.15
+    /// Character spacing (kerning/tracking) in points for headings (-0.5 ... 3.0)
+    public var headingCharacterSpacing: CGFloat = 0.55
+    /// Multiplier for spacing above and below headings (0.6 ... 2.0)
+    public var headingSpacingScale: CGFloat = 1.15
+    /// Vertical offset in points below heading descenders for H1/H2 underlines (2 ... 16)
+    public var headingUnderlineOffset: CGFloat = 8.0
+    /// Whether to draw horizontal underlines beneath H1 and H2 headings
+    public var showHeadingUnderlines: Bool = true
+    /// Maximum readable column width in points (560 ... 1280)
+    public var maxColumnWidth: CGFloat = 860.0
+
+    public init(
+        fontSizeScale: CGFloat = 1.0,
+        lineHeightMultiple: CGFloat = 1.24,
+        lineSpacing: CGFloat = 6.0,
+        paragraphSpacing: CGFloat = 12.0,
+        characterSpacing: CGFloat = 0.15,
+        headingCharacterSpacing: CGFloat = 0.55,
+        headingSpacingScale: CGFloat = 1.15,
+        headingUnderlineOffset: CGFloat = 8.0,
+        showHeadingUnderlines: Bool = true,
+        maxColumnWidth: CGFloat = 860.0
+    ) {
+        self.fontSizeScale = fontSizeScale
+        self.lineHeightMultiple = lineHeightMultiple
+        self.lineSpacing = lineSpacing
+        self.paragraphSpacing = paragraphSpacing
+        self.characterSpacing = characterSpacing
+        self.headingCharacterSpacing = headingCharacterSpacing
+        self.headingSpacingScale = headingSpacingScale
+        self.headingUnderlineOffset = headingUnderlineOffset
+        self.showHeadingUnderlines = showHeadingUnderlines
+        self.maxColumnWidth = maxColumnWidth
+    }
+
+    public static let `default` = EditorTypographySettings()
+}
+

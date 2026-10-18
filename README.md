@@ -1,6 +1,6 @@
-# OpenType Monorepo
+# Folio Monorepo
 
-**OpenType** is a Bazel-built monorepo providing a live hybrid WYSIWYG Markdown & LaTeX editing experience across a shared Rust core engine, a standalone native macOS application, and a modified build of the **Zed IDE**.
+**Folio** is a Bazel-built monorepo providing a live hybrid WYSIWYG Markdown & LaTeX editing experience across a shared Rust core engine, a standalone native macOS application, and a modified build of the **Zed IDE**.
 
 ---
 
@@ -8,11 +8,11 @@
 
 | Bazel Target | Description |
 | :--- | :--- |
-| **`//:OpenTypeApp`** | Launches the standalone native macOS **OpenType.app** (`AppKit` + `TextKit` + `SwiftUI`), backed by the Rust `opentype_engine` via C-ABI FFI. Includes all 6 editorial themes, typography & layout settings, sidebar (Outline, File List/Tree, Global Search), Focus Mode, and Typewriter Mode. |
-| **`//:opentype_macos_app`** | Builds the signed `OpenType.app` macOS bundle archive (`OpenTypeApp.zip`) via `rules_apple` (`./build_app.sh` extracts this to `./OpenType.app`). |
-| **`//:zed_with_opentype_mod`** | Builds and launches the full open-source **Zed IDE** (`zed-industries/zed`) with the **OpenType WYSIWYG Markdown & LaTeX Editor** integrated directly into `crates/editor`. |
-| **`//:opentype_zed_extension`** | Packages the companion Zed extension bundle (`extension.toml`, `languages/markdown/outline.scm` heading/code-fence outline queries, and `/math`, `/table`, `/callout`, `/toc` slash commands). |
-| **`//core/opentype_engine`** | Shared native Rust engine (`rust_library` + `cc_library` FFI `OpenTypeEngineFFI`) providing single-pass Markdown block/inline span scanning, active-line token folding rules, native $\\text{LaTeX}$ math box layout, document statistics, and theme metrics. |
+| **`//:FolioApp`** | Launches the standalone native macOS **Folio.app** (`AppKit` + `TextKit` + `SwiftUI`), backed by the Rust `folio_engine` via C-ABI FFI. Includes all 6 editorial themes, typography & layout settings, sidebar (Outline, File List/Tree, Global Search), Focus Mode, and Typewriter Mode. |
+| **`//:folio_macos_app`** | Builds the signed `Folio.app` macOS bundle archive (`FolioApp.zip`) via `rules_apple` (`./build_app.sh` extracts this to `./Folio.app`). |
+| **`//:zed_with_folio_mod`** | Builds and launches the full open-source **Zed IDE** (`zed-industries/zed`) with the **Folio WYSIWYG Markdown & LaTeX Editor** integrated directly into `crates/editor`. |
+| **`//:folio_zed_extension`** | Packages the companion Zed extension bundle (`extension.toml`, `languages/markdown/outline.scm` heading/code-fence outline queries, and `/math`, `/table`, `/callout`, `/toc` slash commands). |
+| **`//core/folio_engine`** | Shared native Rust engine (`rust_library` + `cc_library` FFI `FolioEngineFFI`) providing single-pass Markdown block/inline span scanning, active-line token folding rules, native $\\text{LaTeX}$ math box layout, document statistics, and theme metrics. |
 
 ---
 
@@ -20,32 +20,32 @@
 
 Use the repo's `./tools/bazel` wrapper (which automatically configures the local Xcode SDK and toolchain):
 
-### 1. Run Zed IDE with the OpenType WYSIWYG Markdown Editor
+### 1. Run Zed IDE with the Folio WYSIWYG Markdown Editor
 ```bash
-./tools/bazel run //:zed_with_opentype_mod
+./tools/bazel run //:zed_with_folio_mod
 ```
-Opening any `.md` / Markdown file inside Zed automatically transforms the editor pane into an OpenType WYSIWYG document canvas while keeping all of Zed's native IDE chrome (tabs, file tree, terminal, LSP, outline panel, and light/dark theme) intact:
+Opening any `.md` / Markdown file inside Zed automatically transforms the editor pane into an Folio WYSIWYG document canvas while keeping all of Zed's native IDE chrome (tabs, file tree, terminal, LSP, outline panel, and light/dark theme) intact:
 - **Document Typography & Clean Gutter:** Uses Zed's proportional UI font with comfortable `1.65×` line spacing, soft wrapping, and clean document margins (hiding code line numbers, git diff gutter, fold chevrons, indent guides, and whitespace dots). Code fences, inline `` `code` `` pills, and active table rows automatically switch to Zed's monospace buffer font.
 - **Cursor-Aware Live Folding:** Syntax markers (`#`, `**`, `*`, `~~`, `==`, `` ` ``, `[label](url)`, `$...$`, `$$...$$`) fold away on inactive lines and smoothly unfold into raw Markdown when the cursor enters that line or block.
 - **Scaled Headings (`H1`–`H6`):** Inactive headings render at true scaled typographic sizes (`H1` `28px` bold + bottom rule, `H2` `22.5px` bold + bottom rule, `H3`–`H6`).
-- **Fenced Code Block Cards:** Full-row surface card backgrounds (`highlight_rows`) in monospace font with OpenType's colored-dot **Language Pill Header** (`RUST`, `PYTHON`, etc.).
+- **Fenced Code Block Cards:** Full-row surface card backgrounds (`highlight_rows`) in monospace font with Folio's colored-dot **Language Pill Header** (`RUST`, `PYTHON`, etc.).
 - **Interactive Task Lists & Styled Bullets:** `- [ ]` and `- [x]` render as clickable GPUI checkboxes that toggle `[ ]` ↔ `[x]` directly in the buffer when clicked (with strikethrough on completed tasks).
 - **Structured Tables & LaTeX Math Cards:** Inactive pipe tables render as aligned bordered table cells with bold headers; `$...$` and `$$...$$` expressions render as native GPUI math canvases.
 
-### 2. Build & Run the Standalone macOS `OpenType.app`
+### 2. Build & Run the Standalone macOS `Folio.app`
 Launch directly via Bazel:
 ```bash
-./tools/bazel run //:OpenTypeApp
+./tools/bazel run //:FolioApp
 ```
-Or build and unpack `./OpenType.app` in the workspace root:
+Or build and unpack `./Folio.app` in the workspace root:
 ```bash
 ./build_app.sh
-open OpenType.app
+open Folio.app
 ```
 
 ### 3. Build the Companion Zed Extension Bundle
 ```bash
-./tools/bazel build //:opentype_zed_extension
+./tools/bazel build //:folio_zed_extension
 ```
 
 ### 4. Run All Monorepo Tests
@@ -53,10 +53,10 @@ open OpenType.app
 ./tools/bazel test //...
 ```
 Runs:
-- `//core/opentype_engine:opentype_engine_test` (Rust core Markdown, LaTeX math layout, stats, and FFI unit tests)
-- `//:OpenTypeTests` (macOS AppKit/SwiftUI + `OpenTypeEngineFFI` integration tests)
-- `//zed/opentype_zed_mod:opentype_zed_mod_test` (GPUI WYSIWYG adapter & math canvas tests)
-- `//zed/opentype_zed_extension:opentype_zed_extension_test` (Zed extension manifest & Tree-sitter outline tests)
+- `//core/folio_engine:folio_engine_test` (Rust core Markdown, LaTeX math layout, stats, and FFI unit tests)
+- `//:FolioTests` (macOS AppKit/SwiftUI + `FolioEngineFFI` integration tests)
+- `//zed/folio_zed_mod:folio_zed_mod_test` (GPUI WYSIWYG adapter & math canvas tests)
+- `//zed/folio_zed_extension:folio_zed_extension_test` (Zed extension manifest & Tree-sitter outline tests)
 - `//third_party/zed:zed_patched_integration_test` (Verifies the Zed source tree patch wiring)
 
 ---
@@ -66,17 +66,17 @@ Runs:
 ```text
 ├── MODULE.bazel / BUILD.bazel       # Root Bazel module & top-level target aliases
 ├── core/
-│   └── opentype_engine/             # Shared Rust Markdown + LaTeX layout engine & C-ABI FFI
-├── Sources/OpenType/                # Standalone macOS app UI, AppKit/TextKit editor, themes & modals
+│   └── folio_engine/             # Shared Rust Markdown + LaTeX layout engine & C-ABI FFI
+├── Sources/Folio/                # Standalone macOS app UI, AppKit/TextKit editor, themes & modals
 ├── macos/
-│   ├── OpenTypeApp/                 # macOS application bundle & launcher targets
-│   └── OpenTypeEngineBridge/        # Swift bridge over OpenTypeEngineFFI
+│   ├── FolioApp/                 # macOS application bundle & launcher targets
+│   └── FolioEngineBridge/        # Swift bridge over FolioEngineFFI
 ├── zed/
-│   ├── opentype_zed_mod/            # Rust GPUI bridge crate between opentype_engine and Zed
-│   └── opentype_zed_extension/      # Companion Zed extension (outline.scm + slash commands)
+│   ├── folio_zed_mod/            # Rust GPUI bridge crate between folio_engine and Zed
+│   └── folio_zed_extension/      # Companion Zed extension (outline.scm + slash commands)
 └── third_party/
     └── zed/
-        ├── upstream/                # Imported Zed IDE workspace with OpenType WYSIWYG editor mod
+        ├── upstream/                # Imported Zed IDE workspace with Folio WYSIWYG editor mod
         └── patches/                 # Reproducible git patches applied to third_party/zed/upstream
 ```
 
@@ -84,7 +84,7 @@ Runs:
 
 ## Standalone macOS App Features & Shortcuts
 
-The standalone macOS app (`//:OpenTypeApp`) provides a dedicated writing window with custom themes, layout controls, and workspace navigation:
+The standalone macOS app (`//:FolioApp`) provides a dedicated writing window with custom themes, layout controls, and workspace navigation:
 
 | Feature | Shortcut | Description |
 | :--- | :--- | :--- |

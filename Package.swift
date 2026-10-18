@@ -2,22 +2,22 @@
 import PackageDescription
 
 let package = Package(
-    name: "OpenType",
+    name: "Folio",
     platforms: [
         .macOS(.v14)
     ],
     products: [
-        .executable(name: "OpenType", targets: ["OpenType"])
+        .executable(name: "Folio", targets: ["Folio"])
     ],
     targets: [
         .executableTarget(
-            name: "OpenType",
-            path: "Sources/OpenType"
+            name: "Folio",
+            path: "Sources/Folio"
         ),
         .testTarget(
-            name: "OpenTypeTests",
-            dependencies: ["OpenType"],
-            path: "Tests/OpenTypeTests"
+            name: "FolioTests",
+            dependencies: ["Folio"],
+            path: "Tests/FolioTests"
         )
     ]
 )

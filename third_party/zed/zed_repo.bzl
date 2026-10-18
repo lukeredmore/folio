@@ -1,4 +1,4 @@
-"""Bazel repository rule and Bzlmod extension for importing Zed and applying the OpenType GPUI Mod patch."""
+"""Bazel repository rule and Bzlmod extension for importing Zed and applying the Folio GPUI Mod patch."""
 
 _ZED_BUILD_FILE = """\
 load("@rules_rust//rust:defs.bzl", "rust_binary", "rust_library", "rust_test")
@@ -27,20 +27,20 @@ rust_library(
     edition = "2021",
     deps = [
         ":gpui",
-        "@//core/opentype_engine",
-        "@//zed/opentype_zed_mod",
+        "@//core/folio_engine",
+        "@//zed/folio_zed_mod",
     ],
 )
 
 rust_binary(
-    name = "zed_with_opentype_mod",
+    name = "zed_with_folio_mod",
     srcs = ["crates/zed/src/main.rs"],
     edition = "2021",
     deps = [
         ":editor",
         ":gpui",
-        "@//core/opentype_engine",
-        "@//zed/opentype_zed_mod",
+        "@//core/folio_engine",
+        "@//zed/folio_zed_mod",
     ],
 )
 """
@@ -76,7 +76,7 @@ zed_upstream_repository = repository_rule(
         "seed_files": attr.label_list(allow_files = True),
         "patches": attr.label_list(allow_files = True),
     },
-    doc = "Imports Zed source tree into Bazel and applies the OpenType GPUI live-markdown mod patches.",
+    doc = "Imports Zed source tree into Bazel and applies the Folio GPUI live-markdown mod patches.",
 )
 
 def _zed_ext_impl(module_ctx):
@@ -91,7 +91,7 @@ def _zed_ext_impl(module_ctx):
             Label("//third_party/zed:upstream_seed/crates/zed/src/main.rs"),
         ],
         patches = [
-            Label("//third_party/zed:patches/0001-opentype-live-markdown-mod.patch"),
+            Label("//third_party/zed:patches/0001-folio-live-markdown-mod.patch"),
         ],
     )
 

@@ -1,4 +1,4 @@
-# Common Bazel configuration for OpenType monorepo (macOS Apple Silicon + Rust + Swift)
+# Common Bazel configuration for Folio monorepo (macOS Apple Silicon + Rust + Swift)
 build --apple_platform_type=macos
 build --macos_minimum_os=14.0
 build --host_macos_minimum_os=14.0

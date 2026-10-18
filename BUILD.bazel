@@ -3,40 +3,40 @@ load("@build_bazel_rules_swift//swift:swift.bzl", "swift_library", "swift_test")
 package(default_visibility = ["//visibility:public"])
 
 swift_library(
-    name = "OpenType",
-    srcs = glob(["Sources/OpenType/**/*.swift"]),
-    copts = ["-DOPENTYPE_NO_MAIN"],
-    module_name = "OpenType",
+    name = "Folio",
+    srcs = glob(["Sources/Folio/**/*.swift"]),
+    copts = ["-DFOLIO_NO_MAIN"],
+    module_name = "Folio",
     deps = [
-        "//core/opentype_engine:opentype_engine_ffi",
+        "//core/folio_engine:folio_engine_ffi",
     ],
 )
 
 swift_test(
-    name = "OpenTypeTests",
-    srcs = glob(["Tests/OpenTypeTests/**/*.swift"]),
+    name = "FolioTests",
+    srcs = glob(["Tests/FolioTests/**/*.swift"]),
     deps = [
-        ":OpenType",
+        ":Folio",
     ],
 )
 
 alias(
-    name = "OpenTypeApp",
-    actual = "//macos/OpenTypeApp:OpenTypeLauncher",
+    name = "FolioApp",
+    actual = "//macos/FolioApp:FolioLauncher",
 )
 
 alias(
-    name = "opentype_macos_app",
-    actual = "//macos/OpenTypeApp:OpenTypeApp",
+    name = "folio_macos_app",
+    actual = "//macos/FolioApp:FolioApp",
 )
 
 alias(
-    name = "zed_with_opentype_mod",
-    actual = "//zed/opentype_zed_mod:zed_with_opentype_mod",
+    name = "zed_with_folio_mod",
+    actual = "//zed/folio_zed_mod:zed_with_folio_mod",
 )
 
 alias(
-    name = "opentype_zed_extension",
-    actual = "//zed/opentype_zed_extension:extension_bundle",
+    name = "folio_zed_extension",
+    actual = "//zed/folio_zed_extension:extension_bundle",
 )
 

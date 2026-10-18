@@ -1,0 +1,51 @@
+load("@build_bazel_rules_swift//swift:swift_interop_hint.bzl", "swift_interop_hint")
+load("@rules_cc//cc:defs.bzl", "cc_library")
+load("@rules_rust//rust:defs.bzl", "rust_library", "rust_static_library", "rust_test")
+
+package(default_visibility = ["//visibility:public"])
+
+ENGINE_SRCS = [
+    "src/ffi.rs",
+    "src/lib.rs",
+    "src/markdown.rs",
+    "src/math.rs",
+    "src/stats.rs",
+    "src/theme.rs",
+]
+
+# Native Rust library consumed by Zed GPUI Mod (//zed/folio_zed_mod)
+rust_library(
+    name = "folio_engine",
+    srcs = ENGINE_SRCS,
+    crate_name = "folio_engine",
+    edition = "2021",
+)
+
+# Static C-ABI archive consumed by Swift / macOS AppKit (//macos/FolioApp)
+rust_static_library(
+    name = "folio_engine_static",
+    srcs = ENGINE_SRCS,
+    crate_name = "folio_engine",
+    edition = "2021",
+)
+
+swift_interop_hint(
+    name = "folio_engine_swift_interop",
+    module_name = "FolioEngineFFI",
+)
+
+cc_library(
+    name = "folio_engine_ffi",
+    hdrs = ["include/folio_engine.h"],
+    aspect_hints = [":folio_engine_swift_interop"],
+    includes = ["include"],
+    linkopts = [
+        "-Wl,-dead_strip",
+    ],
+    deps = [":folio_engine_static"],
+)
+
+rust_test(
+    name = "folio_engine_test",
+    crate = ":folio_engine",
+)

@@ -1,0 +1,4 @@
+module FolioEngineFFI {
+    header "folio_engine.h"
+    export *
+}

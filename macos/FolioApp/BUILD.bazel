@@ -1,0 +1,42 @@
+load("@build_bazel_rules_apple//apple:macos.bzl", "macos_application")
+load("@build_bazel_rules_swift//swift:swift.bzl", "swift_binary", "swift_library")
+
+package(default_visibility = ["//visibility:public"])
+
+swift_library(
+    name = "FolioAppMainLib",
+    srcs = ["AppMain.swift"],
+    module_name = "FolioAppMainLib",
+    deps = [
+        "//:Folio",
+    ],
+)
+
+swift_binary(
+    name = "FolioCLI",
+    srcs = ["AppMain.swift"],
+    deps = [
+        "//:Folio",
+    ],
+)
+
+macos_application(
+    name = "FolioApp",
+    bundle_id = "app.folio.macos",
+    bundle_name = "Folio",
+    infoplists = ["Info.plist"],
+    minimum_os_version = "14.0",
+    deps = [
+        ":FolioAppMainLib",
+    ],
+)
+
+sh_binary(
+    name = "FolioLauncher",
+    srcs = ["launch_app.sh"],
+    data = [
+        ":FolioCLI",
+        "Info.plist",
+    ],
+)
+
