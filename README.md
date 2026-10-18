@@ -8,8 +8,7 @@
 
 | Bazel Target | Description |
 | :--- | :--- |
-| **`//:FolioApp`** | Launches the standalone native macOS **Folio.app** (`AppKit` + `TextKit` + `SwiftUI`), backed by the Rust `folio_engine` via C-ABI FFI. Includes all 6 editorial themes, typography & layout settings, sidebar (Outline, File List/Tree, Global Search), Focus Mode, and Typewriter Mode. |
-| **`//:folio_macos_app`** | Builds the signed `Folio.app` macOS bundle archive (`FolioApp.zip`) via `rules_apple` (`./build_app.sh` extracts this to `./Folio.app`). |
+| **`//:FolioApp`** | Builds and launches the standalone native macOS **Folio.app** (`AppKit` + `TextKit` + `SwiftUI`) via `rules_apple`, backed by the Rust `folio_engine` via C-ABI FFI (`./tools/bazel run //:FolioApp` launches the app; `./tools/bazel build //:FolioApp` builds and vends `./Folio.app` at the monorepo root). |
 | **`//:zed_with_folio_mod`** | Builds and launches the full open-source **Zed IDE** (`zed-industries/zed`) with the **Folio WYSIWYG Markdown & LaTeX Editor** integrated directly into `crates/editor`. |
 | **`//:folio_zed_extension`** | Packages the companion Zed extension bundle (`extension.toml`, `languages/markdown/outline.scm` heading/code-fence outline queries, and `/math`, `/table`, `/callout`, `/toc` slash commands). |
 | **`//core/folio_engine`** | Shared native Rust engine (`rust_library` + `cc_library` FFI `FolioEngineFFI`) providing single-pass Markdown block/inline span scanning, active-line token folding rules, native $\\text{LaTeX}$ math box layout, document statistics, and theme metrics. |
@@ -37,9 +36,9 @@ Launch directly via Bazel:
 ```bash
 ./tools/bazel run //:FolioApp
 ```
-Or build and unpack `./Folio.app` in the workspace root:
+Or build `./Folio.app` directly into the monorepo root:
 ```bash
-./build_app.sh
+./tools/bazel build //:FolioApp
 open Folio.app
 ```
 

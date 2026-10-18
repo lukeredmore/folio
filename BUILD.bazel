@@ -22,11 +22,6 @@ swift_test(
 
 alias(
     name = "FolioApp",
-    actual = "//macos/FolioApp:FolioLauncher",
-)
-
-alias(
-    name = "folio_macos_app",
     actual = "//macos/FolioApp:FolioApp",
 )
 
