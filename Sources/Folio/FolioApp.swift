@@ -19,6 +19,8 @@ public struct MainWindowView: View {
                 }
 
                 VStack(spacing: 0) {
+                    RemoteConnectionBannerView(viewModel: viewModel)
+
                     if viewModel.showFindReplaceBar {
                         FindReplaceBannerView(viewModel: viewModel)
                     }
@@ -52,6 +54,9 @@ public struct MainWindowView: View {
         .sheet(isPresented: $viewModel.showInsertTableSheet) {
             InsertTableModalView(viewModel: viewModel)
         }
+        .sheet(isPresented: $viewModel.showAddRemoteModal) {
+            AddRemoteMountModalView(viewModel: viewModel)
+        }
         .sheet(isPresented: $updateManager.showUpdateSheet) {
             AppUpdateModalView(updateManager: updateManager)
         }
@@ -77,6 +82,7 @@ public struct FolioApp: App {
                 .onAppear {
                     NSApplication.shared.activate(ignoringOtherApps: true)
                     updateManager.checkForUpdatesOnLaunchIfNeeded()
+                    viewModel.remoteWorkspaceManager.startBackgroundSyncLoop()
                 }
         }
         .windowStyle(.titleBar)
@@ -115,6 +121,11 @@ public struct FolioApp: App {
                     viewModel.openFolderPanel()
                 }
                 .keyboardShortcut("o", modifiers: [.command, .shift])
+
+                Button("Connect Remote Folder or File (SSH)...") {
+                    viewModel.showAddRemoteModal = true
+                }
+                .keyboardShortcut("r", modifiers: [.command, .shift])
 
                 Divider()
 

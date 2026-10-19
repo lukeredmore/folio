@@ -1,7 +1,7 @@
 import Foundation
 import FolioEngineFFI
 
-public struct OutlineHeading: Identifiable, Equatable {
+public struct OutlineHeading: Identifiable, Equatable, Sendable {
     public let id: String
     public let level: Int
     public let title: String
@@ -17,7 +17,7 @@ public struct OutlineHeading: Identifiable, Equatable {
     }
 }
 
-public struct DocumentStats: Equatable {
+public struct DocumentStats: Equatable, Sendable {
     public var words: Int = 0
     public var lines: Int = 0
     public var characters: Int = 0
@@ -58,15 +58,45 @@ public struct DocumentStats: Equatable {
     }
 }
 
-public struct WorkspaceFileNode: Identifiable, Hashable {
+public struct WorkspaceFileNode: Identifiable, Hashable, Sendable {
     public let url: URL
     public let name: String
     public let isDirectory: Bool
     public let modificationDate: Date
     public let creationDate: Date
     public var children: [WorkspaceFileNode]?
+    public var remoteMountID: UUID?
+    public var isRemoteRoot: Bool
+    public var remoteConnectionString: String?
+    public var syncStatus: RemoteFileSyncStatus?
+
+    public init(
+        url: URL,
+        name: String,
+        isDirectory: Bool,
+        modificationDate: Date,
+        creationDate: Date,
+        children: [WorkspaceFileNode]?,
+        remoteMountID: UUID? = nil,
+        isRemoteRoot: Bool = false,
+        remoteConnectionString: String? = nil,
+        syncStatus: RemoteFileSyncStatus? = nil
+    ) {
+        self.url = url
+        self.name = name
+        self.isDirectory = isDirectory
+        self.modificationDate = modificationDate
+        self.creationDate = creationDate
+        self.children = children
+        self.remoteMountID = remoteMountID
+        self.isRemoteRoot = isRemoteRoot
+        self.remoteConnectionString = remoteConnectionString
+        self.syncStatus = syncStatus
+    }
 
     public var id: URL { url }
+
+    public var isRemote: Bool { remoteMountID != nil }
 
     public var isMarkdownFile: Bool {
         let ext = url.pathExtension.lowercased()
@@ -74,7 +104,7 @@ public struct WorkspaceFileNode: Identifiable, Hashable {
     }
 }
 
-public enum FileSortOrder: String, CaseIterable, Identifiable {
+public enum FileSortOrder: String, CaseIterable, Identifiable, Sendable {
     case name = "Name"
     case modificationDate = "Modification Date"
     case creationDate = "Creation Date"
@@ -82,7 +112,7 @@ public enum FileSortOrder: String, CaseIterable, Identifiable {
     public var id: String { rawValue }
 }
 
-public struct WorkspaceSearchMatch: Identifiable, Equatable {
+public struct WorkspaceSearchMatch: Identifiable, Equatable, Sendable {
     public let id = UUID()
     public let fileURL: URL
     public let fileName: String
@@ -91,7 +121,7 @@ public struct WorkspaceSearchMatch: Identifiable, Equatable {
     public let matchRangeInFile: NSRange
 }
 
-public struct EditorTypographySettings: Equatable, Codable {
+public struct EditorTypographySettings: Equatable, Codable, Sendable {
     /// Multiplier applied to the theme's base font size (0.80 ... 1.50)
     public var fontSizeScale: CGFloat = 1.0
     /// Line height multiple applied to body and list paragraphs (1.0 ... 2.0)

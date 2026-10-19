@@ -5,7 +5,11 @@ package(default_visibility = ["//visibility:public"])
 swift_library(
     name = "Folio",
     srcs = glob(["Sources/Folio/**/*.swift"]),
-    copts = ["-DFOLIO_NO_MAIN"],
+    copts = [
+        "-DFOLIO_NO_MAIN",
+        "-swift-version",
+        "6",
+    ],
     module_name = "Folio",
     deps = [
         "//core/folio_engine:folio_engine_ffi",
@@ -15,6 +19,10 @@ swift_library(
 swift_test(
     name = "FolioTests",
     srcs = glob(["Tests/FolioTests/**/*.swift"]),
+    copts = [
+        "-swift-version",
+        "6",
+    ],
     data = [
         "//third_party/markdown_spec:all_spec_files",
     ],

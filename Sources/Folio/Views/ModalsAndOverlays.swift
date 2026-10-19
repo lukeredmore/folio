@@ -1,4 +1,6 @@
+import AppKit
 import SwiftUI
+import UniformTypeIdentifiers
 
 public struct QuickOpenModalView: View {
     @ObservedObject var viewModel: EditorWorkspaceViewModel
@@ -15,7 +17,8 @@ public struct QuickOpenModalView: View {
         }
         return viewModel.flatMarkdownFiles.filter {
             $0.name.localizedCaseInsensitiveContains(q) ||
-            $0.url.path.localizedCaseInsensitiveContains(q)
+            $0.url.path.localizedCaseInsensitiveContains(q) ||
+            ($0.remoteConnectionString?.localizedCaseInsensitiveContains(q) ?? false)
         }
     }
 
@@ -73,14 +76,14 @@ public struct QuickOpenModalView: View {
                                 viewModel.showQuickOpen = false
                             } label: {
                                 HStack(spacing: 10) {
-                                    Image(systemName: node.isMarkdownFile ? "doc.text.fill" : "doc")
+                                    Image(systemName: node.isRemote ? "network" : (node.isMarkdownFile ? "doc.text.fill" : "doc"))
                                         .font(.system(size: 14))
                                         .foregroundColor(viewModel.theme.linkColor)
                                     VStack(alignment: .leading, spacing: 2) {
                                         Text(node.name)
                                             .font(.system(size: 13, weight: .medium))
                                             .foregroundColor(viewModel.theme.textColor)
-                                        Text(node.url.deletingLastPathComponent().path)
+                                        Text(node.remoteConnectionString ?? node.url.deletingLastPathComponent().path)
                                             .font(.system(size: 10.5))
                                             .foregroundColor(viewModel.theme.secondaryTextColor)
                                             .lineLimit(1)
@@ -293,9 +296,11 @@ public struct FindReplaceBannerView: View {
 
 public struct StatusBarView: View {
     @ObservedObject var viewModel: EditorWorkspaceViewModel
+    @ObservedObject var remoteManager: RemoteWorkspaceManager
 
     public init(viewModel: EditorWorkspaceViewModel) {
         self.viewModel = viewModel
+        self.remoteManager = viewModel.remoteWorkspaceManager
     }
 
     public var body: some View {
@@ -339,6 +344,11 @@ public struct StatusBarView: View {
                 modeBadge(title: "Typewriter", icon: "align.vertical.center") {
                     viewModel.typewriterMode = false
                 }
+            }
+
+            if let fileURL = viewModel.currentFileURL,
+               let mount = remoteManager.mount(forLocalURL: fileURL) {
+                remoteStatusPill(for: fileURL, mount: mount)
             }
 
             Spacer()
@@ -438,6 +448,53 @@ public struct StatusBarView: View {
             )
         }
         .buttonStyle(.plain)
+    }
+
+    @ViewBuilder
+    private func remoteStatusPill(for fileURL: URL, mount: RemoteMountSpec) -> some View {
+        let fileStatus = remoteManager.syncStatus(forLocalURL: fileURL)
+        let mountState = remoteManager.connectionStates[mount.id] ?? .connected
+        let sshLabel = remoteManager.remoteSSHDisplayPath(forLocalURL: fileURL) ?? mount.connectionString
+
+        let (text, icon, color): (String, String, Color) = {
+            switch (fileStatus, mountState) {
+            case (.syncing, _), (_, .syncing):
+                return ("Syncing \(mount.host)…", "arrow.triangle.2.circlepath", viewModel.theme.linkColor)
+            case (.pendingUpload, _):
+                return ("Queued for \(mount.host)", "arrow.up.circle.fill", .orange)
+            case (_, .reconnecting(let attempt, _, _)):
+                return ("Reconnecting \(mount.host) (#\(attempt))…", "wifi.exclamationmark", .orange)
+            case (_, .error):
+                return ("Offline (\(mount.host))", "wifi.exclamationmark", .orange)
+            case (.error, _):
+                return ("Sync Retry (\(mount.host))", "exclamationmark.triangle.fill", .orange)
+            default:
+                return ("SSH: \(mount.host)", "checkmark.icloud.fill", .green)
+            }
+        }()
+
+        Button {
+            Task {
+                await remoteManager.syncMount(id: mount.id, isBackground: false)
+            }
+        } label: {
+            HStack(spacing: 4) {
+                Image(systemName: icon)
+                    .font(.system(size: 10))
+                Text(text)
+                    .font(.system(size: 10.5, weight: .medium))
+                    .lineLimit(1)
+            }
+            .foregroundColor(color)
+            .padding(.horizontal, 7)
+            .padding(.vertical, 2)
+            .background(
+                Capsule()
+                    .fill(color.opacity(0.14))
+            )
+        }
+        .buttonStyle(.plain)
+        .help("\(sshLabel) — Click to sync now")
     }
 }
 
@@ -751,5 +808,357 @@ public struct AppUpdateModalView: View {
         .frame(width: 420)
     }
 }
+
+public struct RemoteConnectionBannerView: View {
+    @ObservedObject var viewModel: EditorWorkspaceViewModel
+    @ObservedObject var remoteManager: RemoteWorkspaceManager
+
+    public init(viewModel: EditorWorkspaceViewModel) {
+        self.viewModel = viewModel
+        self.remoteManager = viewModel.remoteWorkspaceManager
+    }
+
+    public var body: some View {
+        let unhealthy = remoteManager.unhealthyMounts
+        if !unhealthy.isEmpty && !viewModel.remoteConnectionBannerDismissed {
+            let (firstMount, firstState) = unhealthy[0]
+            let errorMessage = firstState.errorMessage ?? "Connection interrupted."
+            let attemptCount: Int = {
+                switch firstState {
+                case .reconnecting(let attempt, _, _):
+                    return attempt
+                default:
+                    return 1
+                }
+            }()
+
+            HStack(spacing: 10) {
+                Image(systemName: "wifi.exclamationmark")
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundColor(.orange)
+
+                VStack(alignment: .leading, spacing: 2) {
+                    HStack(spacing: 6) {
+                        Text("Remote connection issue (\(firstMount.connectionString))")
+                            .font(.system(size: 12, weight: .semibold))
+                            .foregroundColor(viewModel.theme.textColor)
+                        Text("• Auto-reconnecting (#\(attemptCount))…")
+                            .font(.system(size: 11, weight: .medium))
+                            .foregroundColor(.orange)
+                    }
+                    Text("\(errorMessage) — All files remain editable locally and will sync automatically as soon as connectivity returns.")
+                        .font(.system(size: 11))
+                        .foregroundColor(viewModel.theme.secondaryTextColor)
+                        .lineLimit(2)
+                }
+
+                Spacer()
+
+                Button("Retry Now") {
+                    remoteManager.retryAllUnhealthyMounts()
+                }
+                .controlSize(.small)
+
+                Button {
+                    viewModel.showAddRemoteModal = true
+                } label: {
+                    Text("Manage")
+                }
+                .controlSize(.small)
+
+                Button {
+                    viewModel.remoteConnectionBannerDismissed = true
+                } label: {
+                    Image(systemName: "xmark")
+                        .font(.system(size: 10.5, weight: .semibold))
+                        .foregroundColor(viewModel.theme.secondaryTextColor)
+                }
+                .buttonStyle(.plain)
+                .help("Dismiss banner (reconnection continues automatically in background)")
+            }
+            .padding(.horizontal, 14)
+            .padding(.vertical, 8)
+            .background(Color.orange.opacity(0.10))
+            .overlay(alignment: .bottom) {
+                Divider().overlay(Color.orange.opacity(0.30))
+            }
+            .transition(.move(edge: .top).combined(with: .opacity))
+        }
+    }
+}
+
+public struct AddRemoteMountModalView: View {
+    @ObservedObject var viewModel: EditorWorkspaceViewModel
+    @ObservedObject var remoteManager: RemoteWorkspaceManager
+
+    @State private var connectionInput: String = ""
+    @State private var targetKind: RemoteMountTargetKind = .folder
+    @State private var targetKindManuallyChosen: Bool = false
+    @State private var portInput: String = "22"
+    @State private var identityFileInput: String = ""
+    @State private var displayNameInput: String = ""
+    @State private var isConnecting: Bool = false
+    @State private var validationError: String?
+
+    public init(viewModel: EditorWorkspaceViewModel) {
+        self.viewModel = viewModel
+        self.remoteManager = viewModel.remoteWorkspaceManager
+    }
+
+    public var body: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            HStack(spacing: 10) {
+                Image(systemName: "externaldrive.connected.to.line.below.fill")
+                    .font(.system(size: 20))
+                    .foregroundColor(viewModel.theme.linkColor)
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Connect Remote Folder or File (SSH / SFTP)")
+                        .font(.system(size: 14.5, weight: .semibold))
+                    Text("Files are mirrored to a high-speed local cache for 0ms open/search latency and synced automatically in the background.")
+                        .font(.system(size: 11.5))
+                        .foregroundColor(.secondary)
+                }
+                Spacer()
+            }
+
+            Divider()
+
+            VStack(alignment: .leading, spacing: 10) {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("SSH Destination")
+                        .font(.system(size: 11.5, weight: .semibold))
+                    TextField("user@host:/path/to/notes  or  ssh://user@host:2222/~/notes/todo.md", text: $connectionInput)
+                        .textFieldStyle(.roundedBorder)
+                        .font(.system(size: 12.5, design: .monospaced))
+                        .onChange(of: connectionInput) { _, newValue in
+                            validationError = nil
+                            if !targetKindManuallyChosen {
+                                let trimmed = newValue.trimmingCharacters(in: .whitespacesAndNewlines)
+                                let ext = (trimmed as NSString).pathExtension.lowercased()
+                                if ["md", "markdown", "mdown", "mkd", "txt"].contains(ext) {
+                                    targetKind = .file
+                                } else {
+                                    targetKind = .folder
+                                }
+                            }
+                        }
+                        .onSubmit {
+                            connectRemote()
+                        }
+                }
+
+                HStack(spacing: 14) {
+                    Picker("Mount Type", selection: Binding(
+                        get: { targetKind },
+                        set: { newKind in
+                            targetKind = newKind
+                            targetKindManuallyChosen = true
+                        }
+                    )) {
+                        Text("Remote Folder").tag(RemoteMountTargetKind.folder)
+                        Text("Single File").tag(RemoteMountTargetKind.file)
+                    }
+                    .pickerStyle(.segmented)
+                    .frame(width: 240)
+
+                    HStack(spacing: 6) {
+                        Text("Port:")
+                            .font(.system(size: 11.5))
+                            .foregroundColor(.secondary)
+                        TextField("22", text: $portInput)
+                            .textFieldStyle(.roundedBorder)
+                            .font(.system(size: 12, design: .monospaced))
+                            .frame(width: 64)
+                    }
+
+                    Spacer()
+                }
+
+                HStack(spacing: 10) {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("SSH Identity Key (Optional)")
+                            .font(.system(size: 11))
+                            .foregroundColor(.secondary)
+                        HStack(spacing: 6) {
+                            TextField("~/.ssh/id_ed25519 (uses ~/.ssh/config & ssh-agent by default)", text: $identityFileInput)
+                                .textFieldStyle(.roundedBorder)
+                                .font(.system(size: 11.5, design: .monospaced))
+                            Button("Browse…") {
+                                browseIdentityKeyFile()
+                            }
+                            .controlSize(.small)
+                        }
+                    }
+
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("Sidebar Label (Optional)")
+                            .font(.system(size: 11))
+                            .foregroundColor(.secondary)
+                        TextField("e.g. Research Server", text: $displayNameInput)
+                            .textFieldStyle(.roundedBorder)
+                            .font(.system(size: 11.5))
+                            .frame(width: 155)
+                    }
+                }
+
+                if let validationError {
+                    Label(validationError, systemImage: "exclamationmark.triangle.fill")
+                        .font(.system(size: 11.5))
+                        .foregroundColor(.orange)
+                }
+            }
+
+            if !remoteManager.mounts.isEmpty {
+                Divider()
+
+                VStack(alignment: .leading, spacing: 6) {
+                    HStack {
+                        Text("CONNECTED REMOTES (\(remoteManager.mounts.count))")
+                            .font(.system(size: 10, weight: .bold))
+                            .foregroundColor(.secondary)
+                        Spacer()
+                        Button("Sync All") {
+                            Task {
+                                await remoteManager.syncAllMounts(isBackground: false)
+                            }
+                        }
+                        .controlSize(.mini)
+                    }
+
+                    ScrollView {
+                        VStack(alignment: .leading, spacing: 6) {
+                            ForEach(remoteManager.mounts) { mount in
+                                HStack(spacing: 8) {
+                                    Image(systemName: mount.targetKind == .folder ? "folder.fill" : "doc.text.fill")
+                                        .font(.system(size: 12))
+                                        .foregroundColor(viewModel.theme.linkColor)
+
+                                    VStack(alignment: .leading, spacing: 1) {
+                                        Text(mount.label)
+                                            .font(.system(size: 12, weight: .medium))
+                                        Text(mount.connectionString)
+                                            .font(.system(size: 10.5, design: .monospaced))
+                                            .foregroundColor(.secondary)
+                                    }
+
+                                    Spacer()
+
+                                    mountStateBadge(for: mount)
+
+                                    Button("Sync") {
+                                        Task {
+                                            await remoteManager.syncMount(id: mount.id, isBackground: false)
+                                        }
+                                    }
+                                    .controlSize(.mini)
+
+                                    Button("Disconnect") {
+                                        viewModel.disconnectRemoteMount(id: mount.id)
+                                    }
+                                    .controlSize(.mini)
+                                }
+                                .padding(.horizontal, 10)
+                                .padding(.vertical, 6)
+                                .background(
+                                    RoundedRectangle(cornerRadius: 6)
+                                        .fill(Color.secondary.opacity(0.08))
+                                )
+                            }
+                        }
+                    }
+                    .frame(maxHeight: 130)
+                }
+            }
+
+            HStack {
+                if isConnecting {
+                    ProgressView()
+                        .controlSize(.small)
+                    Text("Mounting & syncing initial snapshot…")
+                        .font(.system(size: 11.5))
+                        .foregroundColor(.secondary)
+                }
+                Spacer()
+                Button("Close") {
+                    viewModel.showAddRemoteModal = false
+                }
+                Button("Connect Remote") {
+                    connectRemote()
+                }
+                .buttonStyle(.borderedProminent)
+                .disabled(connectionInput.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || isConnecting)
+            }
+        }
+        .padding(18)
+        .frame(width: 540)
+    }
+
+    @ViewBuilder
+    private func mountStateBadge(for mount: RemoteMountSpec) -> some View {
+        let state = remoteManager.connectionStates[mount.id] ?? .connected
+        switch state {
+        case .connected:
+            Label("Synced", systemImage: "checkmark.circle.fill")
+                .font(.system(size: 10.5, weight: .medium))
+                .foregroundColor(.green)
+        case .syncing:
+            Label("Syncing…", systemImage: "arrow.triangle.2.circlepath")
+                .font(.system(size: 10.5, weight: .medium))
+                .foregroundColor(.accentColor)
+        case .reconnecting(let attempt, _, _):
+            Label("Retry #\(attempt)", systemImage: "wifi.exclamationmark")
+                .font(.system(size: 10.5, weight: .medium))
+                .foregroundColor(.orange)
+        case .error:
+            Label("Offline", systemImage: "wifi.exclamationmark")
+                .font(.system(size: 10.5, weight: .medium))
+                .foregroundColor(.orange)
+        }
+    }
+
+    private func connectRemote() {
+        let trimmed = connectionInput.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+
+        let port = Int(portInput.trimmingCharacters(in: .whitespacesAndNewlines)) ?? 22
+        let keyPath = identityFileInput.trimmingCharacters(in: .whitespacesAndNewlines)
+        let customLabel = displayNameInput.trimmingCharacters(in: .whitespacesAndNewlines)
+
+        do {
+            let spec = try RemoteMountSpec.parse(
+                connectionString: trimmed,
+                targetKind: targetKind,
+                portOverride: port == 22 ? nil : port,
+                identityFilePath: keyPath.isEmpty ? nil : keyPath,
+                displayName: customLabel.isEmpty ? nil : customLabel
+            )
+            validationError = nil
+            isConnecting = true
+            Task {
+                await viewModel.connectRemoteMount(spec)
+                isConnecting = false
+                connectionInput = ""
+                viewModel.showAddRemoteModal = false
+            }
+        } catch {
+            validationError = error.localizedDescription
+        }
+    }
+
+    private func browseIdentityKeyFile() {
+        let panel = NSOpenPanel()
+        panel.canChooseDirectories = false
+        panel.canChooseFiles = true
+        panel.allowsMultipleSelection = false
+        panel.showsHiddenFiles = true
+        panel.directoryURL = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".ssh")
+        panel.prompt = "Select SSH Key"
+        if panel.runModal() == .OK, let url = panel.url {
+            identityFileInput = url.path
+        }
+    }
+}
+
 
 

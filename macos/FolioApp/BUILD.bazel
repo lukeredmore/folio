@@ -6,6 +6,10 @@ package(default_visibility = ["//visibility:public"])
 swift_library(
     name = "FolioAppMainLib",
     srcs = ["AppMain.swift"],
+    copts = [
+        "-swift-version",
+        "6",
+    ],
     module_name = "FolioAppMainLib",
     deps = [
         "//:Folio",

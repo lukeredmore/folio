@@ -16,6 +16,7 @@ public enum FileDisplayStyle: String, CaseIterable {
     case list = "List"
 }
 
+@MainActor
 public final class EditorWorkspaceViewModel: ObservableObject {
 
     // MARK: - Document & Editor State
@@ -51,6 +52,7 @@ public final class EditorWorkspaceViewModel: ObservableObject {
     @Published public var showInsertTableSheet: Bool = false
     @Published public var showSettingsModal: Bool = false
     @Published public var showFindReplaceBar: Bool = false
+    @Published public var showAddRemoteModal: Bool = false
     @Published public var findQuery: String = ""
     @Published public var replaceQuery: String = ""
 
@@ -66,6 +68,11 @@ public final class EditorWorkspaceViewModel: ObservableObject {
     @Published public var flatMarkdownFiles: [WorkspaceFileNode] = []
     @Published public var recentFileURLs: [URL] = []
 
+    // MARK: - Remote Folders & Files (SSH / SFTP Multi-Root Sync)
+    public let remoteWorkspaceManager: RemoteWorkspaceManager
+    @Published public var remoteConnectionBannerDismissed: Bool = false
+    private var cancellables: Set<AnyCancellable> = []
+
     @Published public var workspaceSearchQuery: String = ""
     @Published public var searchCaseSensitive: Bool = false
     @Published public var searchWholeWord: Bool = false
@@ -76,10 +83,13 @@ public final class EditorWorkspaceViewModel: ObservableObject {
 
     private static let typographyDefaultsKey = "Folio.EditorTypographySettings.v2"
 
-    private var fileWatchSource: DispatchSourceFileSystemObject?
-    private var fileWatchDescriptor: Int32 = -1
+    nonisolated(unsafe) private var fileWatchSource: DispatchSourceFileSystemObject?
+    nonisolated(unsafe) private var fileWatchDescriptor: Int32 = -1
 
-    public init() {
+    public init(remoteWorkspaceManager: RemoteWorkspaceManager? = nil) {
+        let manager = remoteWorkspaceManager ?? RemoteWorkspaceManager()
+        self.remoteWorkspaceManager = manager
+
         if let data = UserDefaults.standard.data(forKey: Self.typographyDefaultsKey),
            let decoded = try? JSONDecoder().decode(EditorTypographySettings.self, from: data) {
             self.typography = decoded
@@ -120,6 +130,26 @@ public final class EditorWorkspaceViewModel: ObservableObject {
         } else {
             initialWorkspaceURL = URL(fileURLWithPath: cwdPath)
         }
+
+        manager.objectWillChange
+            .sink { [weak self] _ in
+                self?.objectWillChange.send()
+            }
+            .store(in: &cancellables)
+
+        manager.onMirrorUpdated = { [weak self] _, updatedURLs in
+            guard let self = self else { return }
+            self.reloadWorkspaceTree()
+            if let currentURL = self.currentFileURL?.standardizedFileURL,
+               !self.isDirty,
+               updatedURLs.contains(currentURL),
+               let diskContent = try? String(contentsOf: currentURL, encoding: .utf8),
+               diskContent != self.markdownText {
+                self.markdownText = diskContent
+                self.stats = DocumentStats.compute(for: diskContent)
+            }
+        }
+
         self.loadWorkspaceFolder(initialWorkspaceURL)
     }
 
@@ -433,8 +463,9 @@ public final class EditorWorkspaceViewModel: ObservableObject {
         }
     }
 
-    public func createNewFileInWorkspace() {
-        guard let folder = workspaceFolderURL else {
+    public func createNewFileInWorkspace(in targetDirectoryURL: URL? = nil) {
+        let baseFolder = targetDirectoryURL ?? workspaceFolderURL
+        guard let folder = baseFolder else {
             newDocument()
             return
         }
@@ -445,8 +476,15 @@ public final class EditorWorkspaceViewModel: ObservableObject {
             targetURL = folder.appendingPathComponent("Untitled \(candidateIndex).md")
         }
         let template = "# \(targetURL.deletingPathExtension().lastPathComponent)\n\n"
+        try? FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
         try? template.write(to: targetURL, atomically: true, encoding: .utf8)
-        loadWorkspaceFolder(folder)
+
+        if remoteWorkspaceManager.isRemoteURL(targetURL) {
+            Task { @MainActor in
+                await remoteWorkspaceManager.saveRemoteFile(at: targetURL, content: template)
+            }
+        }
+        reloadWorkspaceTree()
         openFile(at: targetURL)
     }
 
@@ -454,8 +492,57 @@ public final class EditorWorkspaceViewModel: ObservableObject {
         do {
             try markdownText.write(to: url, atomically: true, encoding: .utf8)
             isDirty = false
+            if remoteWorkspaceManager.isRemoteURL(url) {
+                let textSnapshot = markdownText
+                Task { @MainActor in
+                    await remoteWorkspaceManager.saveRemoteFile(at: url, content: textSnapshot)
+                }
+            }
         } catch {
             NSSound.beep()
+        }
+    }
+
+    // MARK: - Remote Mount Operations
+
+    @discardableResult
+    public func addRemoteMount(_ spec: RemoteMountSpec) async -> Bool {
+        remoteConnectionBannerDismissed = false
+        let ok = await remoteWorkspaceManager.addMount(spec)
+        reloadWorkspaceTree()
+        showSidebar = true
+        activeSidebarTab = .files
+
+        // If the user mounted a single remote file, open it immediately once mirrored
+        if spec.targetKind == .file {
+            let filename = (spec.remotePath as NSString).lastPathComponent
+            let mirroredURL = remoteWorkspaceManager.localFileURL(for: filename, in: spec)
+            if FileManager.default.fileExists(atPath: mirroredURL.path) {
+                openFile(at: mirroredURL)
+            }
+        }
+        return ok
+    }
+
+    @discardableResult
+    public func connectRemoteMount(_ spec: RemoteMountSpec) async -> Bool {
+        await addRemoteMount(spec)
+    }
+
+    public func removeRemoteMount(id: UUID) {
+        remoteWorkspaceManager.removeMount(id: id)
+        reloadWorkspaceTree()
+    }
+
+    public func disconnectRemoteMount(id: UUID) {
+        removeRemoteMount(id: id)
+    }
+
+    public func syncRemoteMountNow(id: UUID) {
+        remoteConnectionBannerDismissed = false
+        Task { @MainActor in
+            _ = await remoteWorkspaceManager.syncMount(id: id, isManualRetry: true)
+            reloadWorkspaceTree()
         }
     }
 
@@ -480,11 +567,13 @@ public final class EditorWorkspaceViewModel: ObservableObject {
             queue: .main
         )
         source.setEventHandler { [weak self] in
-            guard let self = self, !self.isDirty, let currentURL = self.currentFileURL else { return }
-            if let diskContent = try? String(contentsOf: currentURL, encoding: .utf8),
-               diskContent != self.markdownText {
-                self.markdownText = diskContent
-                self.stats = DocumentStats.compute(for: diskContent)
+            MainActor.assumeIsolated {
+                guard let self = self, !self.isDirty, let currentURL = self.currentFileURL else { return }
+                if let diskContent = try? String(contentsOf: currentURL, encoding: .utf8),
+                   diskContent != self.markdownText {
+                    self.markdownText = diskContent
+                    self.stats = DocumentStats.compute(for: diskContent)
+                }
             }
         }
         source.setCancelHandler {
@@ -494,7 +583,7 @@ public final class EditorWorkspaceViewModel: ObservableObject {
         fileWatchSource = source
     }
 
-    private func stopWatchingCurrentFile() {
+    nonisolated private func stopWatchingCurrentFile() {
         fileWatchSource?.cancel()
         fileWatchSource = nil
         fileWatchDescriptor = -1
@@ -503,13 +592,75 @@ public final class EditorWorkspaceViewModel: ObservableObject {
     // MARK: - Workspace Folder Tree & Multi-file Search
     public func loadWorkspaceFolder(_ folderURL: URL) {
         workspaceFolderURL = folderURL
-        var flatList: [WorkspaceFileNode] = []
-        rootFileNodes = scanDirectory(at: folderURL, depth: 0, flatAccumulator: &flatList)
-        sortFileNodes()
-        flatMarkdownFiles = flatList
+        reloadWorkspaceTree()
     }
 
-    private func scanDirectory(at url: URL, depth: Int, flatAccumulator: inout [WorkspaceFileNode]) -> [WorkspaceFileNode] {
+    public func reloadWorkspaceTree() {
+        var flatList: [WorkspaceFileNode] = []
+        var combinedRoots: [WorkspaceFileNode] = []
+
+        if let folderURL = workspaceFolderURL {
+            combinedRoots.append(contentsOf: scanDirectory(at: folderURL, depth: 0, remoteMountID: nil, flatAccumulator: &flatList))
+        }
+
+        // Append mounted remote folders & files into the unified multi-root tree
+        for mount in remoteWorkspaceManager.mounts {
+            let mirrorDir = remoteWorkspaceManager.localMirrorDirectory(for: mount)
+            switch mount.targetKind {
+            case .folder:
+                let remoteChildren = scanDirectory(at: mirrorDir, depth: 0, remoteMountID: mount.id, flatAccumulator: &flatList)
+                let rootNode = WorkspaceFileNode(
+                    url: mirrorDir,
+                    name: mount.effectiveDisplayName,
+                    isDirectory: true,
+                    modificationDate: Date(),
+                    creationDate: Date(),
+                    children: remoteChildren,
+                    remoteMountID: mount.id,
+                    isRemoteRoot: true,
+                    remoteConnectionString: mount.connectionSpecString,
+                    syncStatus: nil
+                )
+                combinedRoots.append(rootNode)
+
+            case .file:
+                let filename = (mount.remotePath as NSString).lastPathComponent
+                let fileURL = remoteWorkspaceManager.localFileURL(for: filename, in: mount)
+                if !FileManager.default.fileExists(atPath: fileURL.path) {
+                    try? FileManager.default.createDirectory(at: mirrorDir, withIntermediateDirectories: true)
+                    try? "".write(to: fileURL, atomically: true, encoding: .utf8)
+                }
+                let rv = try? fileURL.resourceValues(forKeys: [.contentModificationDateKey, .creationDateKey])
+                let fileNode = WorkspaceFileNode(
+                    url: fileURL,
+                    name: mount.displayName ?? filename,
+                    isDirectory: false,
+                    modificationDate: rv?.contentModificationDate ?? Date(),
+                    creationDate: rv?.creationDate ?? Date(),
+                    children: nil,
+                    remoteMountID: mount.id,
+                    isRemoteRoot: true,
+                    remoteConnectionString: mount.connectionSpecString,
+                    syncStatus: remoteWorkspaceManager.fileSyncStatuses[fileURL.standardizedFileURL] ?? .synced
+                )
+                combinedRoots.append(fileNode)
+                if fileNode.isMarkdownFile {
+                    flatList.append(fileNode)
+                }
+            }
+        }
+
+        rootFileNodes = combinedRoots
+        sortFileNodes()
+        flatMarkdownFiles = sortNodesArray(flatList, by: fileSortOrder)
+    }
+
+    private func scanDirectory(
+        at url: URL,
+        depth: Int,
+        remoteMountID: UUID?,
+        flatAccumulator: inout [WorkspaceFileNode]
+    ) -> [WorkspaceFileNode] {
         guard depth < 4 else { return [] }
         let fm = FileManager.default
         guard let contents = try? fm.contentsOfDirectory(
@@ -537,7 +688,7 @@ public final class EditorWorkspaceViewModel: ObservableObject {
             let createDate = resourceValues?.creationDate ?? Date.distantPast
 
             if isDir {
-                let children = scanDirectory(at: itemURL, depth: depth + 1, flatAccumulator: &flatAccumulator)
+                let children = scanDirectory(at: itemURL, depth: depth + 1, remoteMountID: remoteMountID, flatAccumulator: &flatAccumulator)
                 if !children.isEmpty {
                     let node = WorkspaceFileNode(
                         url: itemURL,
@@ -545,18 +696,23 @@ public final class EditorWorkspaceViewModel: ObservableObject {
                         isDirectory: true,
                         modificationDate: modDate,
                         creationDate: createDate,
-                        children: children
+                        children: children,
+                        remoteMountID: remoteMountID
                     )
                     nodes.append(node)
                 }
             } else {
+                let stdURL = itemURL.standardizedFileURL
+                let syncStat = remoteMountID != nil ? (remoteWorkspaceManager.fileSyncStatuses[stdURL] ?? .synced) : nil
                 let node = WorkspaceFileNode(
                     url: itemURL,
                     name: name,
                     isDirectory: false,
                     modificationDate: modDate,
                     creationDate: createDate,
-                    children: nil
+                    children: nil,
+                    remoteMountID: remoteMountID,
+                    syncStatus: syncStat
                 )
                 if node.isMarkdownFile {
                     nodes.append(node)
@@ -581,6 +737,10 @@ public final class EditorWorkspaceViewModel: ObservableObject {
             }
             return copy
         }.sorted { a, b in
+            // Keep remote root mounts grouped cleanly at the top of the tree or alongside folders
+            if a.isRemoteRoot != b.isRemoteRoot {
+                return a.isRemoteRoot
+            }
             if a.isDirectory != b.isDirectory {
                 return a.isDirectory
             }
@@ -764,6 +924,7 @@ public final class EditorWorkspaceViewModel: ObservableObject {
     """
 }
 
+@MainActor
 private extension NSPrintOperation {
     func RunModal() {
         run()

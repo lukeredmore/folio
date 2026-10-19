@@ -3,9 +3,11 @@ import SwiftUI
 
 public struct SidebarView: View {
     @ObservedObject var viewModel: EditorWorkspaceViewModel
+    @ObservedObject var remoteManager: RemoteWorkspaceManager
 
     public init(viewModel: EditorWorkspaceViewModel) {
         self.viewModel = viewModel
+        self.remoteManager = viewModel.remoteWorkspaceManager
     }
 
     public var body: some View {
@@ -91,18 +93,33 @@ public struct SidebarView: View {
                     Text("No Open Folder")
                         .font(.system(size: 13, weight: .medium))
                         .foregroundColor(viewModel.theme.textColor)
-                    Button("Open Folder...") {
-                        viewModel.openFolderPanel()
+                    VStack(spacing: 8) {
+                        Button("Open Folder...") {
+                            viewModel.openFolderPanel()
+                        }
+                        .buttonStyle(.borderedProminent)
+                        .controlSize(.small)
+
+                        Button {
+                            viewModel.showAddRemoteModal = true
+                        } label: {
+                            Label("Connect Remote (SSH)...", systemImage: "network")
+                        }
+                        .buttonStyle(.bordered)
+                        .controlSize(.small)
                     }
-                    .buttonStyle(.borderedProminent)
-                    .controlSize(.small)
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else if viewModel.fileDisplayStyle == .tree {
                 ScrollView {
                     LazyVStack(alignment: .leading, spacing: 2) {
                         ForEach(viewModel.rootFileNodes) { node in
-                            FileTreeNodeRow(node: node, level: 0, viewModel: viewModel)
+                            FileTreeNodeRow(
+                                node: node,
+                                level: 0,
+                                viewModel: viewModel,
+                                remoteManager: remoteManager
+                            )
                         }
                     }
                     .padding(.vertical, 6)
@@ -116,7 +133,7 @@ public struct SidebarView: View {
                                 viewModel.openFile(at: node.url)
                             } label: {
                                 HStack(spacing: 8) {
-                                    Image(systemName: node.isMarkdownFile ? "doc.text" : "doc")
+                                    Image(systemName: node.isRemote ? "network" : (node.isMarkdownFile ? "doc.text" : "doc"))
                                         .font(.system(size: 12))
                                         .foregroundColor(viewModel.theme.linkColor)
                                     VStack(alignment: .leading, spacing: 2) {
@@ -124,9 +141,18 @@ public struct SidebarView: View {
                                             .font(.system(size: 12.5, weight: viewModel.currentFileURL == node.url ? .semibold : .regular))
                                             .foregroundColor(viewModel.theme.textColor)
                                             .lineLimit(1)
-                                        Text(node.modificationDate, style: .date)
-                                            .font(.system(size: 10.5))
-                                            .foregroundColor(viewModel.theme.secondaryTextColor)
+                                        HStack(spacing: 4) {
+                                            if let conn = node.remoteConnectionString {
+                                                Text(conn)
+                                                    .font(.system(size: 10))
+                                                    .foregroundColor(viewModel.theme.secondaryTextColor)
+                                                    .lineLimit(1)
+                                            } else {
+                                                Text(node.modificationDate, style: .date)
+                                                    .font(.system(size: 10.5))
+                                                    .foregroundColor(viewModel.theme.secondaryTextColor)
+                                            }
+                                        }
                                     }
                                     Spacer()
                                 }
@@ -359,13 +385,40 @@ public struct SidebarView: View {
             .buttonStyle(.plain)
             .help("New File in Workspace")
 
+            Button {
+                viewModel.showAddRemoteModal = true
+            } label: {
+                Image(systemName: "network")
+                    .font(.system(size: 11.5))
+                    .foregroundColor(
+                        !remoteManager.unhealthyMounts.isEmpty
+                            ? Color.orange
+                            : (!remoteManager.mounts.isEmpty ? viewModel.theme.linkColor : viewModel.theme.secondaryTextColor)
+                    )
+            }
+            .buttonStyle(.plain)
+            .help("Connect Remote Folder or File via SSH (Cmd+Shift+R)")
+
             Menu {
                 if let folder = viewModel.workspaceFolderURL {
-                    Text("Folder: \(folder.lastPathComponent)")
-                    Divider()
+                    Text("Local: \(folder.lastPathComponent)")
                 }
-                Button("Open Folder...") {
+                if !remoteManager.mounts.isEmpty {
+                    Text("Remotes: \(remoteManager.mounts.count) connected")
+                }
+                Divider()
+                Button("Open Local Folder...") {
                     viewModel.openFolderPanel()
+                }
+                Button("Connect Remote Folder or File (SSH)...") {
+                    viewModel.showAddRemoteModal = true
+                }
+                if !remoteManager.mounts.isEmpty {
+                    Button("Sync All Remotes Now") {
+                        Task {
+                            await remoteManager.syncAllMounts(isBackground: false)
+                        }
+                    }
                 }
                 Divider()
                 Picker("View Mode", selection: $viewModel.fileDisplayStyle) {
@@ -384,7 +437,7 @@ public struct SidebarView: View {
                 HStack(spacing: 4) {
                     Image(systemName: "folder")
                         .font(.system(size: 11))
-                    Text(viewModel.workspaceFolderURL?.lastPathComponent ?? "Workspace")
+                    Text(workspaceFooterLabel)
                         .font(.system(size: 11.5))
                         .lineLimit(1)
                 }
@@ -413,13 +466,38 @@ public struct SidebarView: View {
                 .frame(height: 1)
         }
     }
+
+    private var workspaceFooterLabel: String {
+        if let folder = viewModel.workspaceFolderURL {
+            if remoteManager.mounts.isEmpty {
+                return folder.lastPathComponent
+            }
+            return "\(folder.lastPathComponent) + \(remoteManager.mounts.count) remote"
+        }
+        if let firstMount = remoteManager.mounts.first {
+            return remoteManager.mounts.count == 1
+                ? firstMount.label
+                : "\(remoteManager.mounts.count) Remotes"
+        }
+        return "Workspace"
+    }
 }
 
 private struct FileTreeNodeRow: View {
     let node: WorkspaceFileNode
     let level: Int
     @ObservedObject var viewModel: EditorWorkspaceViewModel
+    @ObservedObject var remoteManager: RemoteWorkspaceManager
     @State private var isExpanded: Bool = true
+
+    private var mountConnectionState: RemoteConnectionState? {
+        guard let mountID = node.remoteMountID else { return nil }
+        return remoteManager.connectionStates[mountID]
+    }
+
+    private var liveSyncStatus: RemoteFileSyncStatus {
+        remoteManager.syncStatus(forLocalURL: node.url)
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 1) {
@@ -438,12 +516,12 @@ private struct FileTreeNodeRow: View {
                             .font(.system(size: 9, weight: .semibold))
                             .foregroundColor(viewModel.theme.secondaryTextColor)
                             .frame(width: 10)
-                        Image(systemName: "folder.fill")
+                        Image(systemName: node.isRemoteRoot ? "externaldrive.connected.to.line.below.fill" : "folder.fill")
                             .font(.system(size: 11.5))
                             .foregroundColor(viewModel.theme.linkColor.opacity(0.85))
                     } else {
                         Spacer().frame(width: 10)
-                        Image(systemName: node.isMarkdownFile ? "doc.text.fill" : "doc")
+                        Image(systemName: node.isRemoteRoot ? "network" : (node.isMarkdownFile ? "doc.text.fill" : "doc"))
                             .font(.system(size: 11.5))
                             .foregroundColor(node.isMarkdownFile ? viewModel.theme.linkColor : viewModel.theme.secondaryTextColor)
                     }
@@ -453,7 +531,9 @@ private struct FileTreeNodeRow: View {
                         .foregroundColor(viewModel.theme.textColor)
                         .lineLimit(1)
 
-                    Spacer()
+                    Spacer(minLength: 4)
+
+                    remoteBadgeView
                 }
                 .padding(.leading, CGFloat(level) * 12.0 + 4.0)
                 .padding(.trailing, 6)
@@ -465,16 +545,103 @@ private struct FileTreeNodeRow: View {
                 .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
+            .help(node.remoteConnectionString ?? node.url.path)
             .contextMenu {
-                Button("Reveal in Finder") {
-                    NSWorkspace.shared.activateFileViewerSelecting([node.url])
+                if node.isDirectory {
+                    Button("New Markdown File") {
+                        viewModel.createNewFileInWorkspace(in: node.url)
+                    }
+                    Divider()
+                }
+                if let mountID = node.remoteMountID {
+                    Button("Sync Remote Now") {
+                        Task {
+                            await remoteManager.syncMount(id: mountID, isBackground: false)
+                        }
+                    }
+                    if let sshURI = remoteManager.remoteSSHDisplayPath(forLocalURL: node.url) ?? node.remoteConnectionString {
+                        Button("Copy SSH Path (\(sshURI))") {
+                            NSPasteboard.general.clearContents()
+                            NSPasteboard.general.setString(sshURI, forType: .string)
+                        }
+                    }
+                    Button("Reveal Local Mirror in Finder") {
+                        NSWorkspace.shared.activateFileViewerSelecting([node.url])
+                    }
+                    if node.isRemoteRoot {
+                        Divider()
+                        Button("Disconnect Remote", role: .destructive) {
+                            viewModel.disconnectRemoteMount(id: mountID)
+                        }
+                    }
+                } else {
+                    Button("Reveal in Finder") {
+                        NSWorkspace.shared.activateFileViewerSelecting([node.url])
+                    }
                 }
             }
 
             if node.isDirectory, isExpanded, let children = node.children {
                 ForEach(children) { child in
-                    FileTreeNodeRow(node: child, level: level + 1, viewModel: viewModel)
+                    FileTreeNodeRow(
+                        node: child,
+                        level: level + 1,
+                        viewModel: viewModel,
+                        remoteManager: remoteManager
+                    )
                 }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var remoteBadgeView: some View {
+        if node.isRemoteRoot, let state = mountConnectionState {
+            switch state {
+            case .syncing:
+                Image(systemName: "arrow.triangle.2.circlepath")
+                    .font(.system(size: 10, weight: .semibold))
+                    .foregroundColor(viewModel.theme.linkColor)
+                    .help("Syncing with remote host…")
+            case .reconnecting(let attempt, let err, _):
+                HStack(spacing: 3) {
+                    Image(systemName: "wifi.exclamationmark")
+                        .font(.system(size: 10, weight: .semibold))
+                    Text("#\(attempt)")
+                        .font(.system(size: 9, weight: .semibold, design: .monospaced))
+                }
+                .foregroundColor(.orange)
+                .help("Connection interrupted (\(err)). Auto-reconnecting…")
+            case .error(let err):
+                Image(systemName: "wifi.exclamationmark")
+                    .font(.system(size: 10, weight: .semibold))
+                    .foregroundColor(.orange)
+                    .help("Connection interrupted (\(err)). Auto-reconnecting…")
+            case .connected:
+                Circle()
+                    .fill(Color.green.opacity(0.85))
+                    .frame(width: 6, height: 6)
+                    .help("Connected & synced (\(node.remoteConnectionString ?? "SSH"))")
+            }
+        } else if !node.isDirectory, node.isRemote {
+            switch liveSyncStatus {
+            case .syncing:
+                Image(systemName: "arrow.triangle.2.circlepath")
+                    .font(.system(size: 9.5))
+                    .foregroundColor(viewModel.theme.linkColor)
+                    .help("Syncing to remote…")
+            case .pendingUpload:
+                Image(systemName: "arrow.up.circle.fill")
+                    .font(.system(size: 10))
+                    .foregroundColor(.orange)
+                    .help("Saved locally — queued to sync automatically when connection resumes")
+            case .error(let message):
+                Image(systemName: "exclamationmark.triangle.fill")
+                    .font(.system(size: 10))
+                    .foregroundColor(.orange)
+                    .help(message)
+            case .conflictResolved, .synced:
+                EmptyView()
             }
         }
     }

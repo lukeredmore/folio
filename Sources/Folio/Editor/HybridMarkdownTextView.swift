@@ -782,6 +782,7 @@ public struct HybridMarkdownEditorRepresentable: NSViewRepresentable {
         }
     }
 
+    @MainActor
     public final class Coordinator: NSObject, NSTextViewDelegate {
         var viewModel: EditorWorkspaceViewModel
         weak var textView: HybridMarkdownTextView?

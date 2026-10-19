@@ -2215,7 +2215,7 @@ public final class MarkdownLiveStyler {
         }
     }
 
-    private static let collapsedTokenAttributes: [NSAttributedString.Key: Any] = [
+    nonisolated(unsafe) private static let collapsedTokenAttributes: [NSAttributedString.Key: Any] = [
         .foregroundColor: NSColor.clear,
         .backgroundColor: NSColor.clear,
         .font: NSFont.systemFont(ofSize: 0.001),
