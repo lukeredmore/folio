@@ -11,7 +11,7 @@
 | **`//:FolioApp`** | Builds and launches the standalone native macOS **Folio.app** (`AppKit` + `TextKit` + `SwiftUI`) via `rules_apple`, backed by the Rust `folio_engine` via C-ABI FFI (`bazel run //:FolioApp` launches the app; `bazel build //:FolioApp` builds and vends `./Folio.app` at the monorepo root). |
 | **`//:zed_with_folio_mod`** | Builds and launches the full open-source **Zed IDE** (`zed-industries/zed`) with the **Folio WYSIWYG Markdown & LaTeX Editor** integrated directly into `crates/editor`, and installs the `folio` CLI wrapper to `/usr/local/bin/folio` and `~/.local/bin/folio`. |
 | **`//:folio_zed_extension`** | Packages the companion Zed extension bundle (`extension.toml`, `languages/markdown/outline.scm` heading/code-fence outline queries, and `/math`, `/table`, `/callout`, `/toc` slash commands). |
-| **`//core/folio_engine`** | Shared native Rust engine (`rust_library` + `cc_library` FFI `FolioEngineFFI`) providing single-pass Markdown block/inline span scanning, active-line token folding rules, native $\\text{LaTeX}$ math box layout, document statistics, and theme metrics. |
+| **`//core/folio_engine`** | Shared native Rust engine (`rust_library` + `cc_library` FFI `FolioEngineFFI`) providing single-pass Markdown block/inline span scanning, active-line token folding rules, native $\\text{LaTeX}$ math box layout, paragraph source reflow, document statistics, and theme metrics. |
 
 ---
 
@@ -109,6 +109,7 @@ The standalone macOS app (`//:FolioApp`) provides a dedicated writing window wit
 | **Find in Workspace** | `Cmd + Shift + F` | Multi-file search with Case-Sensitive (`Aa`), Whole-Word (`ab`), and Regex (`.*`) toggles |
 | **Word Count Popover** | `Cmd + Shift + W` | Live Words, Lines, Characters, Without Spaces, Selection stats, and Reading Time |
 | **Headings 1–6 / Paragraph** | `Cmd + 1..6` / `Cmd + 0` | Apply or clear heading levels on the current line |
+| **Paragraph Line Wrapping** | `Ctrl + Q` | Source line breaks inside a paragraph render as spaces, so paragraphs wrap to the window. When you leave a paragraph you edited, its source is rewrapped to **Wrap Markdown Source At** (Settings, default 80 columns, or Off). **Paragraph > Reflow Paragraph / Reflow Document** rewrap on demand |
 | **Bold / Italic / Code** | `Cmd + B` / `Cmd + I` / ``Cmd + ` `` | Wrap selection in inline Markdown formatting |
 | **Code Fences / Math Block / Table** | `Cmd + Opt + C / M / T` | Insert syntax-highlighted code block, LaTeX math block, or Markdown table |
 
