@@ -9,6 +9,7 @@ ENGINE_SRCS = [
     "src/lib.rs",
     "src/markdown.rs",
     "src/math.rs",
+    "src/reflow.rs",
     "src/stats.rs",
     "src/theme.rs",
 ]

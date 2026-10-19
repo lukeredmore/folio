@@ -488,3 +488,61 @@ pub unsafe extern "C" fn ot_engine_free_markdown_ast(result: *mut OTMarkdownAstR
     }
 }
 
+#[repr(C)]
+#[derive(Debug)]
+pub struct OTParagraphReflow {
+    pub found: bool,
+    pub start_line: u32,
+    pub end_line: u32,
+    pub replacement: *mut c_char,
+}
+
+/// Rewraps the paragraph containing the 1-based `line` to `width` columns.
+#[no_mangle]
+pub unsafe extern "C" fn ot_engine_reflow_paragraph_at_line(
+    markdown_utf8: *const c_char,
+    line: u32,
+    width: u32,
+) -> OTParagraphReflow {
+    let markdown = if markdown_utf8.is_null() {
+        ""
+    } else {
+        CStr::from_ptr(markdown_utf8).to_str().unwrap_or("")
+    };
+    match crate::reflow::reflow_paragraph_at_line(markdown, line, width as usize) {
+        Some(r) => OTParagraphReflow {
+            found: true,
+            start_line: r.start_line,
+            end_line: r.end_line,
+            replacement: CString::new(r.replacement).unwrap_or_default().into_raw(),
+        },
+        None => OTParagraphReflow {
+            found: false,
+            start_line: 0,
+            end_line: 0,
+            replacement: std::ptr::null_mut(),
+        },
+    }
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn ot_engine_free_paragraph_reflow(result: OTParagraphReflow) {
+    if !result.replacement.is_null() {
+        let _ = CString::from_raw(result.replacement);
+    }
+}
+
+/// Rewraps every paragraph in the document to `width` columns.
+#[no_mangle]
+pub unsafe extern "C" fn ot_engine_reflow_markdown(
+    markdown_utf8: *const c_char,
+    width: u32,
+) -> *mut c_char {
+    let markdown = if markdown_utf8.is_null() {
+        ""
+    } else {
+        CStr::from_ptr(markdown_utf8).to_str().unwrap_or("")
+    };
+    let out = crate::reflow::reflow_markdown(markdown, width as usize);
+    CString::new(out).unwrap_or_default().into_raw()
+}

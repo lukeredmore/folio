@@ -1,6 +1,7 @@
 pub mod ffi;
 pub mod markdown;
 pub mod math;
+pub mod reflow;
 pub mod stats;
 pub mod theme;
 
@@ -15,6 +16,7 @@ pub use math::{
     layout_latex, layout_math_node, parse_latex, plain_text_summary, MathDrawPrimitive,
     MathFontStyle, MathLayoutPlan, MathNode,
 };
+pub use reflow::{reflow_markdown, reflow_paragraph_at_line, ParagraphReflow};
 pub use stats::DocumentStats;
 pub use theme::{language_accent_color, RgbaColor, ThemeId, ThemeMetrics};
 
