@@ -998,7 +998,60 @@ fn is_ascii_punctuation_byte(b: u8) -> bool {
     )
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ClosingSearch {
+    Found(usize),
+    /// Stopped at another identical opener; a later search may still succeed.
+    Blocked,
+    /// Reached the end of the slice with no closer.
+    Exhausted,
+}
+
 fn find_unprotected_closing_marker(slice: &str, marker: &str) -> Option<usize> {
+    match search_closing_marker(slice, marker) {
+        ClosingSearch::Found(rel) => Some(rel),
+        ClosingSearch::Blocked | ClosingSearch::Exhausted => None,
+    }
+}
+
+fn emphasis_marker_slot(marker: &str) -> usize {
+    match marker {
+        "*" => 0,
+        "_" => 1,
+        "**" => 2,
+        "__" => 3,
+        "***" => 4,
+        "___" => 5,
+        "~~" => 6,
+        _ => 7,
+    }
+}
+
+/// Finds the closing `marker` for an opener whose content starts at `from` in `line`.
+/// Once a search for a marker reaches the end of the line with no closer, later searches for
+/// that marker on the same line also fail, so they are skipped. This keeps lines with many
+/// unmatched openers (e.g. `**a **a **a`) linear instead of quadratic.
+fn find_closing_marker_cached(
+    line: &str,
+    from: usize,
+    marker: &str,
+    exhausted_from: &mut [usize; 8],
+) -> Option<usize> {
+    let slot = emphasis_marker_slot(marker);
+    if from >= exhausted_from[slot] {
+        return None;
+    }
+    match search_closing_marker(&line[from..], marker) {
+        ClosingSearch::Found(rel) => Some(rel),
+        ClosingSearch::Blocked => None,
+        ClosingSearch::Exhausted => {
+            exhausted_from[slot] = exhausted_from[slot].min(from);
+            None
+        }
+    }
+}
+
+fn search_closing_marker(slice: &str, marker: &str) -> ClosingSearch {
     let bytes = slice.as_bytes();
     let mbytes = marker.as_bytes();
     let mlen = mbytes.len();
@@ -1061,7 +1114,7 @@ fn find_unprotected_closing_marker(slice: &str, marker: &str) -> Option<usize> {
                     && bytes[i + mlen] != b'\t'
                     && bytes[i + mlen] != mbytes[0]
                 {
-                    return None;
+                    return ClosingSearch::Blocked;
                 }
                 i += 1;
                 continue;
@@ -1074,11 +1127,37 @@ fn find_unprotected_closing_marker(slice: &str, marker: &str) -> Option<usize> {
                 i += 1;
                 continue;
             }
-            return Some(i);
+            return ClosingSearch::Found(i);
         }
         i += 1;
     }
-    None
+    ClosingSearch::Exhausted
+}
+
+/// For each `(` in `bytes`, the index of its matching `)` (`usize::MAX` when unmatched or not
+/// a `(`). Backslash escapes are skipped. One linear pass replaces a per-link scan to the end
+/// of the line, which was quadratic for lines with many unclosed link destinations.
+fn match_parens(bytes: &[u8]) -> Vec<usize> {
+    let mut matches = vec![usize::MAX; bytes.len()];
+    let mut stack: Vec<usize> = Vec::new();
+    let mut i = 0;
+    while i < bytes.len() {
+        match bytes[i] {
+            b'\\' => {
+                i += 2;
+                continue;
+            }
+            b'(' => stack.push(i),
+            b')' => {
+                if let Some(open) = stack.pop() {
+                    matches[open] = i;
+                }
+            }
+            _ => {}
+        }
+        i += 1;
+    }
+    matches
 }
 
 fn scan_inline_spans(
@@ -1096,6 +1175,9 @@ fn scan_inline_spans(
     let mut no_closing_dollar = false;
     let mut cached_bracket_paren: Option<Option<usize>> = None;
     let mut no_closing_angle = false;
+    let mut exhausted_from = [usize::MAX; 8];
+    // Matching `)` for each `(` on the line, computed once on first use.
+    let mut paren_matches: Option<Vec<usize>> = None;
 
     while i < bytes.len() {
         // 0. Backslash Escape (\*, \_, \`, \|, \[, etc., CommonMark §2.4)
@@ -1218,7 +1300,7 @@ fn scan_inline_spans(
             let prev_is_word = i > 0 && bytes[i - 1].is_ascii_alphanumeric();
             if !(delim == b'_' && prev_is_word) {
                 let marker = &line_slice[i..i + 3];
-                if let Some(rel_end) = find_unprotected_closing_marker(&line_slice[i + 3..], marker)
+                if let Some(rel_end) = find_closing_marker_cached(line_slice, i + 3, marker, &mut exhausted_from)
                 {
                     let close_start = i + 3 + rel_end;
                     syntax_fold_spans.push(SyntaxFoldSpan {
@@ -1258,7 +1340,7 @@ fn scan_inline_spans(
             let prev_is_word = i > 0 && bytes[i - 1].is_ascii_alphanumeric();
             if !(delim == b'_' && prev_is_word) {
                 let marker = &line_slice[i..i + 2];
-                if let Some(rel_end) = find_unprotected_closing_marker(&line_slice[i + 2..], marker)
+                if let Some(rel_end) = find_closing_marker_cached(line_slice, i + 2, marker, &mut exhausted_from)
                 {
                     let close_start = i + 2 + rel_end;
                     syntax_fold_spans.push(SyntaxFoldSpan {
@@ -1293,7 +1375,7 @@ fn scan_inline_spans(
             && bytes[i + 2] != b' '
             && bytes[i + 2] != b'\t'
         {
-            if let Some(rel_end) = find_unprotected_closing_marker(&line_slice[i + 2..], "~~") {
+            if let Some(rel_end) = find_closing_marker_cached(line_slice, i + 2, "~~", &mut exhausted_from) {
                 let close_start = i + 2 + rel_end;
                 syntax_fold_spans.push(SyntaxFoldSpan {
                     byte_range: (base_offset + i)..(base_offset + i + 2),
@@ -1326,7 +1408,7 @@ fn scan_inline_spans(
             && bytes[i + 2] != b' '
             && bytes[i + 2] != b'\t'
         {
-            if let Some(rel_end) = find_unprotected_closing_marker(&line_slice[i + 2..], "==") {
+            if let Some(rel_end) = find_closing_marker_cached(line_slice, i + 2, "==", &mut exhausted_from) {
                 let close_start = i + 2 + rel_end;
                 syntax_fold_spans.push(SyntaxFoldSpan {
                     byte_range: (base_offset + i)..(base_offset + i + 2),
@@ -1363,7 +1445,7 @@ fn scan_inline_spans(
             let prev_is_word = i > 0 && bytes[i - 1].is_ascii_alphanumeric();
             if !(delim == b'_' && prev_is_word) {
                 let marker = &line_slice[i..i + 1];
-                if let Some(rel_end) = find_unprotected_closing_marker(&line_slice[i + 1..], marker)
+                if let Some(rel_end) = find_closing_marker_cached(line_slice, i + 1, marker, &mut exhausted_from)
                 {
                     let close_idx = i + 1 + rel_end;
                     syntax_fold_spans.push(SyntaxFoldSpan {
@@ -1410,26 +1492,8 @@ fn scan_inline_spans(
                 // let that later '[' match this `](` instead of scanning quadratically.
                 let has_inner_open = bytes[bracket_open + 1..bracket_close].contains(&b'[');
                 if !has_inner_open && bracket_close >= bracket_open + 1 {
-                    let url_start = bracket_close + 2;
-                    let mut p_depth = 1usize;
-                    let mut p_idx = url_start;
-                    let mut found_paren = None;
-                    while p_idx < bytes.len() {
-                        if bytes[p_idx] == b'\\' {
-                            p_idx += 2;
-                            continue;
-                        }
-                        if bytes[p_idx] == b'(' {
-                            p_depth += 1;
-                        } else if bytes[p_idx] == b')' {
-                            p_depth -= 1;
-                            if p_depth == 0 {
-                                found_paren = Some(p_idx);
-                                break;
-                            }
-                        }
-                        p_idx += 1;
-                    }
+                    let matches = paren_matches.get_or_insert_with(|| match_parens(bytes));
+                    let found_paren = Some(matches[bracket_close + 1]).filter(|&m| m != usize::MAX);
                     if let Some(paren_close) = found_paren {
                         syntax_fold_spans.push(SyntaxFoldSpan {
                             byte_range: (base_offset + i)..(base_offset + bracket_open + 1),
@@ -2349,12 +2413,42 @@ Here is a [reference link][ref] and a [shortcut] link.
         )));
     }
 
-    #[test]
-    fn test_adversarial_markdown_and_math_linear_time() {
-        use std::time::Instant;
+    /// Fastest of `runs` timings of `work`. The minimum filters out scheduler noise.
+    fn min_duration(runs: usize, mut work: impl FnMut()) -> std::time::Duration {
+        (0..runs)
+            .map(|_| {
+                let start = std::time::Instant::now();
+                work();
+                start.elapsed()
+            })
+            .min()
+            .unwrap_or_default()
+    }
 
-        let n = 2000usize;
-        let adversarial_md = [
+    /// Asserts that `work` scales near-linearly with input size. Compares run time at `small`
+    /// and at 4x `small`, so the check does not depend on how fast the machine is: linear code
+    /// grows about 4x, quadratic code about 16x. A 10 s cap still catches hangs.
+    fn assert_near_linear_scaling(label: &str, small: usize, mut work: impl FnMut(usize)) {
+        const FACTOR: usize = 4;
+        const MAX_RATIO: f64 = 10.0;
+        work(small); // Warm up one-time initialization (cmark extensions, allocator).
+        let t_small = min_duration(3, || work(small));
+        let t_large = min_duration(3, || work(small * FACTOR));
+        let ratio = t_large.as_secs_f64() / t_small.as_secs_f64().max(1e-6);
+        eprintln!("{label}: {t_small:?} -> {t_large:?} ({ratio:.2}x for {FACTOR}x input)");
+        assert!(
+            ratio < MAX_RATIO,
+            "{label}: {FACTOR}x input took {ratio:.1}x longer ({t_small:?} -> {t_large:?}); linear is ~{FACTOR}x, quadratic ~{}x",
+            FACTOR * FACTOR
+        );
+        assert!(
+            t_large.as_secs() < 10,
+            "{label}: {t_large:?} for the large input exceeds the 10 s hang cap"
+        );
+    }
+
+    fn adversarial_markdown(n: usize) -> String {
+        [
             // Unmatched backtick sequences of varying lengths
             "`a ".repeat(n),
             "``a ".repeat(n),
@@ -2376,41 +2470,40 @@ Here is a [reference link][ref] and a [shortcut] link.
             // Unmatched angle brackets
             "<http://example.com/".repeat(n / 2),
         ]
-        .join("\n\n");
+        .join("\n\n")
+    }
 
-        let start = Instant::now();
-        let analysis = analyze_markdown_document(&adversarial_md, 99999, false, false);
-        let elapsed = start.elapsed();
-        assert!(
-            elapsed.as_millis() < 250,
-            "Adversarial markdown analysis took {:?}, expected <250ms",
-            elapsed
-        );
+    #[test]
+    fn test_adversarial_markdown_scales_linearly() {
+        let analysis = analyze_markdown_document(&adversarial_markdown(500), 99999, false, false);
         assert!(!analysis.syntax_fold_spans.is_empty());
+        assert_near_linear_scaling("adversarial markdown analysis", 500, |n| {
+            let md = adversarial_markdown(n);
+            std::hint::black_box(analyze_markdown_document(&md, 99999, false, false));
+        });
+    }
 
+    #[test]
+    fn test_adversarial_math_scales_linearly() {
         // Deeply nested & malformed LaTeX math inputs
-        let deep_braces = format!("{}{}{}", "{".repeat(500), "x+1", "}".repeat(500));
-        let deep_supers = "x^".repeat(500) + "2";
+        let deep_braces = |d: usize| format!("{}{}{}", "{".repeat(d), "x+1", "}".repeat(d));
+        let deep_supers = |d: usize| "x^".repeat(d) + "2";
         let stray_closing_braces = "}}}}}}x+y}}}}}}";
         let left_with_rightarrow = r"\left( a \rightarrow b } c \right)";
 
-        let t_math = Instant::now();
-        let m1 = crate::math::layout_latex(&deep_braces, 16.0, false);
-        let m2 = crate::math::layout_latex(&deep_supers, 16.0, false);
-        let m3 = crate::math::layout_latex(stray_closing_braces, 16.0, false);
-        let m4 = crate::math::layout_latex(left_with_rightarrow, 16.0, false);
-        let s4 = crate::math::plain_text_summary(left_with_rightarrow);
-        let math_elapsed = t_math.elapsed();
-        assert!(
-            math_elapsed.as_millis() < 100,
-            "Adversarial math parsing took {:?}, expected <100ms",
-            math_elapsed
-        );
-        assert!(m1.width > 0.0);
-        assert!(m2.width > 0.0);
-        assert!(m3.width > 0.0);
-        assert!(m4.width > 0.0);
-        assert!(s4.contains("→"));
+        assert!(crate::math::layout_latex(&deep_braces(500), 16.0, false).width > 0.0);
+        assert!(crate::math::layout_latex(&deep_supers(500), 16.0, false).width > 0.0);
+        assert!(crate::math::layout_latex(stray_closing_braces, 16.0, false).width > 0.0);
+        assert!(crate::math::layout_latex(left_with_rightarrow, 16.0, false).width > 0.0);
+        assert!(crate::math::plain_text_summary(left_with_rightarrow).contains("→"));
+
+        assert_near_linear_scaling("nested LaTeX layout", 125, |d| {
+            // Repeat so each timing is several milliseconds and timer noise stays small.
+            for _ in 0..20 {
+                std::hint::black_box(crate::math::layout_latex(&deep_braces(d), 16.0, false));
+                std::hint::black_box(crate::math::layout_latex(&deep_supers(d), 16.0, false));
+            }
+        });
     }
 }
 

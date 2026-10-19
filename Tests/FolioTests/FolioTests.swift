@@ -748,19 +748,25 @@ final class FolioTests: XCTestCase {
         - And an unmatched _underscore delimiter followed by a very long sequence of characters without any closing underscore anywhere on this line either!
         """
 
-        let start = CFAbsoluteTimeGetCurrent()
-        let storage = NSTextStorage(string: pathologicalMarkdown)
-        _ = MarkdownLiveStyler.applyStyles(
-            to: storage,
-            theme: .daylight,
-            typography: .default,
-            sourceCodeMode: false,
-            focusMode: false,
-            selectedRange: NSRange(location: 0, length: 0),
-            containerWidth: 720
-        )
-        let elapsed = CFAbsoluteTimeGetCurrent() - start
-        XCTAssertLessThan(elapsed, 0.3, "Styling unmatched emphasis delimiters should be O(N) and complete in <300ms, took \(elapsed)s")
+        let style: (String) -> Void = { markdown in
+            _ = MarkdownLiveStyler.applyStyles(
+                to: NSTextStorage(string: markdown),
+                theme: .daylight,
+                typography: .default,
+                sourceCodeMode: false,
+                focusMode: false,
+                selectedRange: NSRange(location: 0, length: 0),
+                containerWidth: 720
+            )
+        }
+        style(pathologicalMarkdown)
+
+        // Backtracking grows exponentially with the length of the unmatched tail; linear code grows 4x.
+        assertNearLinearScaling("unmatched emphasis tail", small: 40) { words in
+            let tail = Array(repeating: "word", count: words).joined(separator: " ")
+            let line = "- unmatched *asterisk \(tail) and _underscore \(tail) and `_subscriptions: Vec<Sub>` \(tail)"
+            style(Array(repeating: line, count: 25).joined(separator: "\n"))
+        }
 
         // Also verify full MainWindowView + HybridMarkdownTextView layout with AGENTS.md files if present on disk
         let candidatePaths = [
@@ -795,55 +801,52 @@ final class FolioTests: XCTestCase {
     func testAdversarialMarkdownAndLatexNoExplosions() throws {
         // Comprehensive pentest suite for algorithmic complexity attacks (ReDoS, O(N^2) scanners,
         // stack-overflow recursion, and infinite loops on malformed delimiters).
-        let n = 1500
-        let adversarialLines: [String] = [
-            // 1. Cubic O(N^3) hrRegex attack: alternating hyphens and spaces ending with non-hyphen
-            String(repeating: "- ", count: n) + "a",
-            String(repeating: "* ", count: n) + "a",
-            String(repeating: "_ ", count: n) + "a",
-            // 2. Quadratic O(N^2) headingRegex attack: trailing spaces + hashes + non-hash
-            "# " + String(repeating: " ", count: n) + String(repeating: "#", count: n) + "a",
-            // 3. Quadratic O(N^2) autolink email domain attack without closing '>'
-            "<user@" + String(repeating: "a.", count: n),
-            // 4. Repeated unmatched inline code backtick runs of different lengths
-            String(repeating: "`a ", count: n),
-            String(repeating: "``a ", count: n),
-            String(repeating: "```a ", count: n),
-            // 5. Repeated unmatched emphasis, strikethrough, and highlight openers
-            String(repeating: "*a ", count: n),
-            String(repeating: "_a ", count: n),
-            String(repeating: "**a ", count: n),
-            String(repeating: "__a ", count: n),
-            String(repeating: "***a ", count: n),
-            String(repeating: "~~a ", count: n),
-            String(repeating: "==a ", count: n),
-            // 6. Repeated unmatched brackets and unclosed link destinations
-            String(repeating: "[a ", count: n),
-            String(repeating: "[a](https://example.com/", count: n / 2),
-            String(repeating: "[outer ", count: n) + "[inner](https://example.com)",
-            // 7. Table candidate line with pipes and thousands of unmatched backticks and '$'
-            "| " + String(repeating: "`a ", count: n) + " | " + String(repeating: "$a ", count: n) + " |",
-        ]
-        let adversarialMarkdown = adversarialLines.joined(separator: "\n\n")
-
-        let start = CFAbsoluteTimeGetCurrent()
-        let storage = NSTextStorage(string: adversarialMarkdown)
-        let doc = MarkdownLiveStyler.applyStyles(
-            to: storage,
-            theme: .daylight,
-            typography: .default,
-            sourceCodeMode: false,
-            focusMode: false,
-            selectedRange: NSRange(location: 0, length: 0),
-            containerWidth: 720
-        )
-        let elapsed = CFAbsoluteTimeGetCurrent() - start
-        XCTAssertLessThan(
-            elapsed,
-            1.0,
-            "Adversarial Markdown pentest suite should run in linear time (<1.0s), took \(elapsed)s"
-        )
-        XCTAssertEqual(doc.headings.count, 1)
+        func adversarialMarkdown(_ n: Int) -> String {
+            let adversarialLines: [String] = [
+                // 1. Cubic O(N^3) hrRegex attack: alternating hyphens and spaces ending with non-hyphen
+                String(repeating: "- ", count: n) + "a",
+                String(repeating: "* ", count: n) + "a",
+                String(repeating: "_ ", count: n) + "a",
+                // 2. Quadratic O(N^2) headingRegex attack: trailing spaces + hashes + non-hash
+                "# " + String(repeating: " ", count: n) + String(repeating: "#", count: n) + "a",
+                // 3. Quadratic O(N^2) autolink email domain attack without closing '>'
+                "<user@" + String(repeating: "a.", count: n),
+                // 4. Repeated unmatched inline code backtick runs of different lengths
+                String(repeating: "`a ", count: n),
+                String(repeating: "``a ", count: n),
+                String(repeating: "```a ", count: n),
+                // 5. Repeated unmatched emphasis, strikethrough, and highlight openers
+                String(repeating: "*a ", count: n),
+                String(repeating: "_a ", count: n),
+                String(repeating: "**a ", count: n),
+                String(repeating: "__a ", count: n),
+                String(repeating: "***a ", count: n),
+                String(repeating: "~~a ", count: n),
+                String(repeating: "==a ", count: n),
+                // 6. Repeated unmatched brackets and unclosed link destinations
+                String(repeating: "[a ", count: n),
+                String(repeating: "[a](https://example.com/", count: n / 2),
+                String(repeating: "[outer ", count: n) + "[inner](https://example.com)",
+                // 7. Table candidate line with pipes and thousands of unmatched backticks and '$'
+                "| " + String(repeating: "`a ", count: n) + " | " + String(repeating: "$a ", count: n) + " |",
+            ]
+            return adversarialLines.joined(separator: "\n\n")
+        }
+        let style: (String) -> MarkdownDocumentAnalysis = { markdown in
+            MarkdownLiveStyler.applyStyles(
+                to: NSTextStorage(string: markdown),
+                theme: .daylight,
+                typography: .default,
+                sourceCodeMode: false,
+                focusMode: false,
+                selectedRange: NSRange(location: 0, length: 0),
+                containerWidth: 720
+            )
+        }
+        XCTAssertEqual(style(adversarialMarkdown(1500)).headings.count, 1)
+        assertNearLinearScaling("adversarial markdown styling", small: 400) { n in
+            _ = style(adversarialMarkdown(n))
+        }
 
         // 8. LaTeX parser pentests: deeply nested braces, scripts, stray '}', and \left...\rightarrow...\right
         let deepBraces = String(repeating: "{", count: 500) + "x+1" + String(repeating: "}", count: 500)
@@ -851,7 +854,6 @@ final class FolioTests: XCTestCase {
         let strayClosingBraces = "}}}}}}x + y}}}}}}"
         let leftWithRightArrow = #"\left( a \rightarrow b } c \right)"#
 
-        let latexStart = CFAbsoluteTimeGetCurrent()
         let node1 = LaTeXMathRenderer.parse(deepBraces)
         let node2 = LaTeXMathRenderer.parse(deepSupers)
         let node3 = LaTeXMathRenderer.parse(strayClosingBraces)
@@ -859,12 +861,15 @@ final class FolioTests: XCTestCase {
         let box1 = LaTeXMathRenderer.layout(node: node1, baseFontSize: 16, isDisplayStyle: true)
         let box4 = LaTeXMathRenderer.layoutLatex(leftWithRightArrow, baseFontSize: 16, isDisplayStyle: true)
         let summary4 = LaTeXMathRenderer.plainTextSummary(of: leftWithRightArrow)
-        let latexElapsed = CFAbsoluteTimeGetCurrent() - latexStart
-        XCTAssertLessThan(
-            latexElapsed,
-            0.5,
-            "Adversarial LaTeX pentest suite should complete in <500ms, took \(latexElapsed)s"
-        )
+        assertNearLinearScaling("nested LaTeX layout", small: 125) { depth in
+            // Repeat so each timing is several milliseconds and timer noise stays small.
+            for _ in 0..<5 {
+                let braces = String(repeating: "{", count: depth) + "x+1" + String(repeating: "}", count: depth)
+                let supers = String(repeating: "x^", count: depth) + "2"
+                _ = LaTeXMathRenderer.layout(node: LaTeXMathRenderer.parse(braces), baseFontSize: 16, isDisplayStyle: true)
+                _ = LaTeXMathRenderer.layout(node: LaTeXMathRenderer.parse(supers), baseFontSize: 16, isDisplayStyle: true)
+            }
+        }
         XCTAssertGreaterThan(box1.width, 0)
         XCTAssertGreaterThan(box4.width, 0)
         XCTAssertTrue(summary4.contains("→"))
