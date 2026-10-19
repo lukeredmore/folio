@@ -619,6 +619,20 @@ public struct EditorSettingsView: View {
                 )
 
                 HStack {
+                    Text("Wrap Markdown Source At")
+                        .font(.system(size: 12))
+                    Spacer()
+                    Picker("Wrap Markdown Source At", selection: $viewModel.sourceLineWidth) {
+                        ForEach(MarkdownSourceReflow.widthOptions, id: \.self) { width in
+                            Text(width == 0 ? "Off" : "\(width) columns").tag(width)
+                        }
+                    }
+                    .labelsHidden()
+                    .frame(width: 120)
+                }
+                .help("Rewraps a paragraph's source lines when you finish editing it. Line breaks inside a paragraph never show in the rendered view.")
+
+                HStack {
                     Toggle("Continuous Spellcheck", isOn: $viewModel.spellCheckEnabled)
                         .font(.system(size: 12))
                     Spacer()

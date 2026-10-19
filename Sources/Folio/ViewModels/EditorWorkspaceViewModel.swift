@@ -79,6 +79,13 @@ public final class EditorWorkspaceViewModel: ObservableObject {
             userDefaults.set(spellCheckEnabled, forKey: Self.spellCheckEnabledDefaultsKey)
         }
     }
+    /// Column width that edited paragraphs are hard-wrapped to in the Markdown source (0 = off).
+    @Published public var sourceLineWidth: Int = MarkdownSourceReflow.defaultWidth {
+        didSet {
+            guard !isRestoringState else { return }
+            userDefaults.set(sourceLineWidth, forKey: Self.sourceLineWidthDefaultsKey)
+        }
+    }
 
     // MARK: - Sidebar & Panels
     @Published public var showSidebar: Bool = true {
@@ -175,6 +182,7 @@ public final class EditorWorkspaceViewModel: ObservableObject {
     public static let focusModeDefaultsKey = "Folio.FocusMode.v1"
     public static let typewriterModeDefaultsKey = "Folio.TypewriterMode.v1"
     public static let spellCheckEnabledDefaultsKey = "Folio.SpellCheckEnabled.v1"
+    public static let sourceLineWidthDefaultsKey = "Folio.SourceLineWidth.v1"
     public static let showSidebarDefaultsKey = "Folio.ShowSidebar.v1"
     public static let activeSidebarTabDefaultsKey = "Folio.ActiveSidebarTab.v1"
     public static let fileDisplayStyleDefaultsKey = "Folio.FileDisplayStyle.v1"
@@ -212,6 +220,11 @@ public final class EditorWorkspaceViewModel: ObservableObject {
         self.focusMode = resolvedDefaults.bool(forKey: Self.focusModeDefaultsKey)
         self.typewriterMode = resolvedDefaults.bool(forKey: Self.typewriterModeDefaultsKey)
         self.spellCheckEnabled = resolvedDefaults.bool(forKey: Self.spellCheckEnabledDefaultsKey)
+        if resolvedDefaults.object(forKey: Self.sourceLineWidthDefaultsKey) != nil {
+            self.sourceLineWidth = max(0, resolvedDefaults.integer(forKey: Self.sourceLineWidthDefaultsKey))
+        } else {
+            self.sourceLineWidth = MarkdownSourceReflow.defaultWidth
+        }
 
         if resolvedDefaults.object(forKey: Self.showSidebarDefaultsKey) != nil {
             self.showSidebar = resolvedDefaults.bool(forKey: Self.showSidebarDefaultsKey)
@@ -613,6 +626,52 @@ public final class EditorWorkspaceViewModel: ObservableObject {
             tv.didChangeText()
             let innerRange = NSRange(location: sel.location + (prefix as NSString).length, length: (selectedText as NSString).length)
             tv.setSelectedRange(innerRange)
+        }
+    }
+
+    /// Width for explicit reflow commands: the source line width, or the default when auto-wrap is off.
+    public var effectiveReflowWidth: Int {
+        sourceLineWidth > 0 ? sourceLineWidth : MarkdownSourceReflow.defaultWidth
+    }
+
+    /// Hard-wraps the paragraph at the cursor to `effectiveReflowWidth` columns.
+    public func reflowCurrentParagraph() {
+        guard let tv = activeTextView else { return }
+        let text = tv.string
+        let nsStr = text as NSString
+        let sel = tv.selectedRange()
+        let line = MarkdownSourceReflow.lineNumber(at: sel.location, in: nsStr)
+        guard let edit = MarkdownSourceReflow.reflowParagraph(in: text, line: line, width: effectiveReflowWidth),
+              nsStr.substring(with: edit.range) != edit.replacement else { return }
+        let newLocation = edit.range.location + MarkdownSourceReflow.mapLocation(
+            sel.location, in: nsStr, oldRange: edit.range, to: edit.replacement as NSString
+        )
+        tv.breakUndoCoalescing()
+        if tv.shouldChangeText(in: edit.range, replacementString: edit.replacement) {
+            tv.replaceCharacters(in: edit.range, with: edit.replacement)
+            tv.didChangeText()
+            tv.undoManager?.setActionName("Reflow Paragraph")
+            tv.setSelectedRange(NSRange(location: newLocation, length: 0))
+        }
+    }
+
+    /// Hard-wraps every paragraph in the document to `effectiveReflowWidth` columns.
+    public func reflowDocument() {
+        guard let tv = activeTextView else { return }
+        let text = tv.string
+        let nsStr = text as NSString
+        let reflowed = MarkdownSourceReflow.reflowDocument(text, width: effectiveReflowWidth)
+        guard reflowed != text else { return }
+        let fullRange = NSRange(location: 0, length: nsStr.length)
+        let newLocation = MarkdownSourceReflow.mapLocation(
+            tv.selectedRange().location, in: nsStr, oldRange: fullRange, to: reflowed as NSString
+        )
+        tv.breakUndoCoalescing()
+        if tv.shouldChangeText(in: fullRange, replacementString: reflowed) {
+            tv.replaceCharacters(in: fullRange, with: reflowed)
+            tv.didChangeText()
+            tv.undoManager?.setActionName("Reflow Document")
+            tv.setSelectedRange(NSRange(location: newLocation, length: 0))
         }
     }
 

@@ -207,6 +207,26 @@ char* ot_engine_render_markdown_html(
 OTMarkdownAstResult* ot_engine_parse_markdown_ast(const char* markdown_utf8);
 void ot_engine_free_markdown_ast(OTMarkdownAstResult* result);
 
+// ============================================================================
+// 6. Markdown Source Reflow (paragraph hard-wrap)
+// ============================================================================
+
+typedef struct OTParagraphReflow {
+    bool found;
+    uint32_t start_line;   // 1-based, inclusive
+    uint32_t end_line;     // 1-based, inclusive
+    char* replacement;     // Non-null when found; replaces lines start_line...end_line
+} OTParagraphReflow;
+
+// Rewraps the paragraph that contains the 1-based `line` to `width` columns.
+// Free the returned value with ot_engine_free_paragraph_reflow().
+OTParagraphReflow ot_engine_reflow_paragraph_at_line(const char* markdown_utf8, uint32_t line, uint32_t width);
+void ot_engine_free_paragraph_reflow(OTParagraphReflow result);
+
+// Rewraps every paragraph in the document to `width` columns.
+// Free the returned string with ot_engine_free_string().
+char* ot_engine_reflow_markdown(const char* markdown_utf8, uint32_t width);
+
 #ifdef __cplusplus
 }
 #endif

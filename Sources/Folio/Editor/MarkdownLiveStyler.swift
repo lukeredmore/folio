@@ -69,6 +69,14 @@ public final class MarkdownLiveStyler {
 
     public static let collapsedTokenAttributeKey = NSAttributedString.Key("FolioCollapsedSyntaxToken")
     public static let inlineCodeFontAttributeKey = NSAttributedString.Key("FolioInlineCodeFont")
+    /// Marks a source newline inside an inactive paragraph that renders as a space (CommonMark soft line break).
+    public static let softLineBreakAttributeKey = NSAttributedString.Key("FolioSoftLineBreak")
+
+    private enum ProseLineKind: Equatable {
+        case paragraph
+        case listItem
+        case blockquote(nestLevel: Int)
+    }
 
     /// Renders Markdown to specification-compliant HTML using the upstream `cmark-gfm` parser in `folio_engine`.
     /// Pass `nil` for `extensions` to enable the default GitHub Flavored Markdown extensions
@@ -234,6 +242,7 @@ public final class MarkdownLiveStyler {
             astLinksByLine[inl.startLine, default: []].append(inl)
         }
         var lineRecords: [Int: (lineRange: NSRange, contentRange: NSRange, lineText: String, isActive: Bool, dimFactor: CGFloat)] = [:]
+        var proseLineKinds: [Int: ProseLineKind] = [:]
 
         var inCodeFence = false
         var currentFenceChar: Character = "`"
@@ -704,6 +713,7 @@ public final class MarkdownLiveStyler {
                     ], range: lineRange)
                     styleSyntaxToken(in: storage, range: innerPrefixRange, isActiveLine: isActiveLine, theme: theme, dimFactor: dimFactor)
                 } else {
+                    proseLineKinds[lineNumber] = .blockquote(nestLevel: nestLevel)
                     storage.addAttributes([
                         .font: bqFont,
                         .foregroundColor: bqColor,
@@ -808,6 +818,7 @@ public final class MarkdownLiveStyler {
                     dimFactor: dimFactor
                 )
 
+                proseLineKinds[lineNumber] = .listItem
                 let boxFont = NSFont.monospacedSystemFont(ofSize: effectiveBaseSize * 0.92, weight: .bold)
                 storage.addAttributes([
                     .font: boxFont,
@@ -881,6 +892,7 @@ public final class MarkdownLiveStyler {
                 let markerAdvance: CGFloat = isOrdered ? 22.0 : 16.0
                 let textIndent: CGFloat = baseIndent + markerAdvance
                 previousListTextIndent = textIndent
+                proseLineKinds[lineNumber] = .listItem
 
                 let markerFont = theme.bodyFont(size: effectiveBaseSize, bold: true)
                 let markerStr = nsString.substring(with: markerSymbolRange) as NSString
@@ -1077,6 +1089,7 @@ public final class MarkdownLiveStyler {
                 previousListTextIndent = nil
             }
 
+            proseLineKinds[lineNumber] = .paragraph
             if dimFactor < 1.0 {
                 storage.addAttribute(.foregroundColor, value: baseColor.withAlphaComponent(dimFactor), range: contentRange)
             }
@@ -1096,6 +1109,13 @@ public final class MarkdownLiveStyler {
             index = NSMaxRange(lineRange)
             lineNumber += 1
         }
+
+        applySoftLineBreaks(
+            to: storage,
+            blocks: specAST.blocks,
+            lineRecords: lineRecords,
+            proseLineKinds: proseLineKinds
+        )
 
         // Apply cmark-gfm AST-resolved reference links ([text][ref], [text][], [text])
         // and GFM extended autolinks (www.example.com, https://...)
@@ -1180,6 +1200,61 @@ public final class MarkdownLiveStyler {
     }
 
     // MARK: - Helpers for Line Ranges & Indentation
+    /// Marks source newlines inside inactive cmark paragraphs as soft line breaks, so the
+    /// layout manager renders them as spaces and the paragraph wraps to the container width.
+    /// Paragraphs that contain the cursor keep their source line breaks for editing.
+    private static func applySoftLineBreaks(
+        to storage: NSTextStorage,
+        blocks: [CmarkAstBlock],
+        lineRecords: [Int: (lineRange: NSRange, contentRange: NSRange, lineText: String, isActive: Bool, dimFactor: CGFloat)],
+        proseLineKinds: [Int: ProseLineKind]
+    ) {
+        let nsString = storage.string as NSString
+        for block in blocks where block.kind == 8 && block.endLine > block.startLine && block.startLine > 0 {
+            let lines = block.startLine...block.endLine
+            guard !lines.contains(where: { lineRecords[$0]?.isActive ?? true }) else { continue }
+
+            for ln in block.startLine..<block.endLine {
+                guard let rec = lineRecords[ln],
+                      canJoinProseLines(proseLineKinds[ln], proseLineKinds[ln + 1]),
+                      !endsWithHardLineBreak(rec.lineText) else {
+                    continue
+                }
+                let newlineLocation = NSMaxRange(rec.contentRange)
+                guard newlineLocation < NSMaxRange(rec.lineRange),
+                      nsString.character(at: newlineLocation) == 10 else {
+                    continue
+                }
+                // TextKit lays out the joined paragraph with the style of its first source line.
+                storage.addAttribute(softLineBreakAttributeKey, value: true, range: NSRange(location: newlineLocation, length: 1))
+            }
+        }
+    }
+
+    private static func canJoinProseLines(_ current: ProseLineKind?, _ next: ProseLineKind?) -> Bool {
+        switch (current, next) {
+        case (.paragraph?, .paragraph?), (.listItem?, .paragraph?):
+            return true
+        case let (.blockquote(a)?, .blockquote(b)?):
+            return a == b
+        default:
+            return false
+        }
+    }
+
+    /// CommonMark hard line break: two or more trailing spaces, a trailing unescaped backslash, or `<br>`.
+    private static func endsWithHardLineBreak(_ lineText: String) -> Bool {
+        if lineText.hasSuffix("  ") {
+            return true
+        }
+        let trailingBackslashes = lineText.reversed().prefix(while: { $0 == "\\" }).count
+        if trailingBackslashes % 2 == 1 {
+            return true
+        }
+        let lower = lineText.lowercased().trimmingCharacters(in: .whitespaces)
+        return lower.hasSuffix("<br>") || lower.hasSuffix("<br/>") || lower.hasSuffix("<br />")
+    }
+
     private static func strippedLineContentRange(nsString: NSString, lineRange: NSRange) -> NSRange {
         var contentRange = lineRange
         while contentRange.length > 0 {

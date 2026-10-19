@@ -342,6 +342,17 @@ public struct FolioApp: App {
                     viewModel.insertHorizontalRule()
                 }
                 .keyboardShortcut("-", modifiers: [.command, .option])
+
+                Divider()
+
+                Button("Reflow Paragraph") {
+                    viewModel.reflowCurrentParagraph()
+                }
+                .keyboardShortcut("q", modifiers: [.control])
+
+                Button("Reflow Document") {
+                    viewModel.reflowDocument()
+                }
             }
 
             // MARK: - Format Menu
