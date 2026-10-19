@@ -20,29 +20,97 @@ public enum FileDisplayStyle: String, CaseIterable {
 public final class EditorWorkspaceViewModel: ObservableObject {
 
     // MARK: - Document & Editor State
-    @Published public var markdownText: String
-    @Published public var currentFileURL: URL?
-    @Published public var isDirty: Bool = false
+    @Published public var markdownText: String {
+        didSet {
+            guard !isRestoringState else { return }
+            persistDocumentSessionState()
+        }
+    }
+    @Published public var currentFileURL: URL? {
+        didSet {
+            guard !isRestoringState else { return }
+            persistCurrentFileBookmark()
+            persistDocumentSessionState()
+        }
+    }
+    @Published public var isDirty: Bool = false {
+        didSet {
+            guard !isRestoringState else { return }
+            persistDocumentSessionState()
+        }
+    }
 
     // MARK: - Editor Modes, Theme & Typography
-    @Published public var theme: EditorTheme = .daylight
+    @Published public var theme: EditorTheme = .daylight {
+        didSet {
+            guard !isRestoringState else { return }
+            userDefaults.set(theme.rawValue, forKey: Self.themeDefaultsKey)
+        }
+    }
     @Published public var typography: EditorTypographySettings = .default {
         didSet {
+            guard !isRestoringState else { return }
             if let encoded = try? JSONEncoder().encode(typography) {
-                UserDefaults.standard.set(encoded, forKey: Self.typographyDefaultsKey)
+                userDefaults.set(encoded, forKey: Self.typographyDefaultsKey)
             }
         }
     }
-    @Published public var sourceCodeMode: Bool = false
-    @Published public var focusMode: Bool = false
-    @Published public var typewriterMode: Bool = false
-    @Published public var spellCheckEnabled: Bool = false
+    @Published public var sourceCodeMode: Bool = false {
+        didSet {
+            guard !isRestoringState else { return }
+            userDefaults.set(sourceCodeMode, forKey: Self.sourceCodeModeDefaultsKey)
+        }
+    }
+    @Published public var focusMode: Bool = false {
+        didSet {
+            guard !isRestoringState else { return }
+            userDefaults.set(focusMode, forKey: Self.focusModeDefaultsKey)
+        }
+    }
+    @Published public var typewriterMode: Bool = false {
+        didSet {
+            guard !isRestoringState else { return }
+            userDefaults.set(typewriterMode, forKey: Self.typewriterModeDefaultsKey)
+        }
+    }
+    @Published public var spellCheckEnabled: Bool = false {
+        didSet {
+            guard !isRestoringState else { return }
+            userDefaults.set(spellCheckEnabled, forKey: Self.spellCheckEnabledDefaultsKey)
+        }
+    }
 
     // MARK: - Sidebar & Panels
-    @Published public var showSidebar: Bool = true
-    @Published public var activeSidebarTab: SidebarTab = .outline
-    @Published public var fileDisplayStyle: FileDisplayStyle = .tree
-    @Published public var fileSortOrder: FileSortOrder = .name
+    @Published public var showSidebar: Bool = true {
+        didSet {
+            guard !isRestoringState else { return }
+            userDefaults.set(showSidebar, forKey: Self.showSidebarDefaultsKey)
+        }
+    }
+    @Published public var activeSidebarTab: SidebarTab = .outline {
+        didSet {
+            guard !isRestoringState else { return }
+            userDefaults.set(activeSidebarTab.rawValue, forKey: Self.activeSidebarTabDefaultsKey)
+        }
+    }
+    @Published public var fileDisplayStyle: FileDisplayStyle = .tree {
+        didSet {
+            guard !isRestoringState else { return }
+            userDefaults.set(fileDisplayStyle.rawValue, forKey: Self.fileDisplayStyleDefaultsKey)
+        }
+    }
+    @Published public var fileSortOrder: FileSortOrder = .name {
+        didSet {
+            guard !isRestoringState else { return }
+            userDefaults.set(fileSortOrder.rawValue, forKey: Self.fileSortOrderDefaultsKey)
+        }
+    }
+    @Published public var collapsedDirectoryPaths: Set<String> = [] {
+        didSet {
+            guard !isRestoringState else { return }
+            userDefaults.set(Array(collapsedDirectoryPaths).sorted(), forKey: Self.collapsedDirectoryPathsDefaultsKey)
+        }
+    }
     @Published public var outlineFilterText: String = ""
 
     // MARK: - Modals & Banners
@@ -63,15 +131,27 @@ public final class EditorWorkspaceViewModel: ObservableObject {
     @Published public var pendingScrollToCharacterLocation: Int?
 
     // MARK: - Workspace Files & Search
-    @Published public var workspaceFolderURL: URL?
+    @Published public var workspaceFolderURL: URL? {
+        didSet {
+            guard !isRestoringState else { return }
+            persistWorkspaceFolder(workspaceFolderURL)
+        }
+    }
     @Published public var rootFileNodes: [WorkspaceFileNode] = []
     @Published public var flatMarkdownFiles: [WorkspaceFileNode] = []
-    @Published public var recentFileURLs: [URL] = []
+    @Published public var recentFileURLs: [URL] = [] {
+        didSet {
+            guard !isRestoringState else { return }
+            userDefaults.set(recentFileURLs.map(\.path), forKey: Self.recentFilePathsDefaultsKey)
+        }
+    }
 
     // MARK: - Remote Folders & Files (SSH / SFTP Multi-Root Sync)
     public let remoteWorkspaceManager: RemoteWorkspaceManager
+    public let userDefaults: UserDefaults
     @Published public var remoteConnectionBannerDismissed: Bool = false
     private var cancellables: Set<AnyCancellable> = []
+    private var isRestoringState: Bool = true
 
     @Published public var workspaceSearchQuery: String = ""
     @Published public var searchCaseSensitive: Bool = false
@@ -81,54 +161,184 @@ public final class EditorWorkspaceViewModel: ObservableObject {
 
     public weak var activeTextView: HybridMarkdownTextView?
 
-    private static let typographyDefaultsKey = "Folio.EditorTypographySettings.v2"
+    public static let typographyDefaultsKey = "Folio.EditorTypographySettings.v2"
+    public static let workspaceFolderPathDefaultsKey = "Folio.WorkspaceFolderPath.v1"
+    public static let workspaceFolderBookmarkDefaultsKey = "Folio.WorkspaceFolderBookmark.v1"
+    public static let currentFilePathDefaultsKey = "Folio.CurrentFilePath.v1"
+    public static let currentFileBookmarkDefaultsKey = "Folio.CurrentFileBookmark.v1"
+    public static let unsavedBufferTextDefaultsKey = "Folio.UnsavedBufferText.v1"
+    public static let unsavedBufferIsDirtyDefaultsKey = "Folio.UnsavedBufferIsDirty.v1"
+    public static let hasSavedDocumentSessionDefaultsKey = "Folio.HasSavedDocumentSession.v1"
+    public static let recentFilePathsDefaultsKey = "Folio.RecentFilePaths.v1"
+    public static let themeDefaultsKey = "Folio.EditorTheme.v1"
+    public static let sourceCodeModeDefaultsKey = "Folio.SourceCodeMode.v1"
+    public static let focusModeDefaultsKey = "Folio.FocusMode.v1"
+    public static let typewriterModeDefaultsKey = "Folio.TypewriterMode.v1"
+    public static let spellCheckEnabledDefaultsKey = "Folio.SpellCheckEnabled.v1"
+    public static let showSidebarDefaultsKey = "Folio.ShowSidebar.v1"
+    public static let activeSidebarTabDefaultsKey = "Folio.ActiveSidebarTab.v1"
+    public static let fileDisplayStyleDefaultsKey = "Folio.FileDisplayStyle.v1"
+    public static let fileSortOrderDefaultsKey = "Folio.FileSortOrder.v1"
+    public static let collapsedDirectoryPathsDefaultsKey = "Folio.CollapsedDirectoryPaths.v1"
+    public static let selectedCursorLocationDefaultsKey = "Folio.SelectedCursorLocation.v1"
 
     nonisolated(unsafe) private var fileWatchSource: DispatchSourceFileSystemObject?
     nonisolated(unsafe) private var fileWatchDescriptor: Int32 = -1
 
-    public init(remoteWorkspaceManager: RemoteWorkspaceManager? = nil) {
-        let manager = remoteWorkspaceManager ?? RemoteWorkspaceManager()
+    public init(
+        remoteWorkspaceManager: RemoteWorkspaceManager? = nil,
+        userDefaults: UserDefaults? = nil
+    ) {
+        let resolvedDefaults = userDefaults ?? remoteWorkspaceManager?.userDefaults ?? .standard
+        let manager = remoteWorkspaceManager ?? RemoteWorkspaceManager(userDefaults: resolvedDefaults)
+        self.userDefaults = resolvedDefaults
         self.remoteWorkspaceManager = manager
 
-        if let data = UserDefaults.standard.data(forKey: Self.typographyDefaultsKey),
+        if let data = resolvedDefaults.data(forKey: Self.typographyDefaultsKey),
            let decoded = try? JSONDecoder().decode(EditorTypographySettings.self, from: data) {
             self.typography = decoded
         } else {
             self.typography = .default
         }
 
-        let initialContent = Self.defaultWelcomeDocument
+        if let rawTheme = resolvedDefaults.string(forKey: Self.themeDefaultsKey),
+           let decodedTheme = EditorTheme(rawValue: rawTheme) {
+            self.theme = decodedTheme
+        } else {
+            self.theme = .daylight
+        }
+
+        self.sourceCodeMode = resolvedDefaults.bool(forKey: Self.sourceCodeModeDefaultsKey)
+        self.focusMode = resolvedDefaults.bool(forKey: Self.focusModeDefaultsKey)
+        self.typewriterMode = resolvedDefaults.bool(forKey: Self.typewriterModeDefaultsKey)
+        self.spellCheckEnabled = resolvedDefaults.bool(forKey: Self.spellCheckEnabledDefaultsKey)
+
+        if resolvedDefaults.object(forKey: Self.showSidebarDefaultsKey) != nil {
+            self.showSidebar = resolvedDefaults.bool(forKey: Self.showSidebarDefaultsKey)
+        } else {
+            self.showSidebar = true
+        }
+
+        if let rawTab = resolvedDefaults.string(forKey: Self.activeSidebarTabDefaultsKey),
+           let decodedTab = SidebarTab(rawValue: rawTab) {
+            self.activeSidebarTab = decodedTab
+        } else {
+            self.activeSidebarTab = .outline
+        }
+
+        if let rawStyle = resolvedDefaults.string(forKey: Self.fileDisplayStyleDefaultsKey),
+           let decodedStyle = FileDisplayStyle(rawValue: rawStyle) {
+            self.fileDisplayStyle = decodedStyle
+        } else {
+            self.fileDisplayStyle = .tree
+        }
+
+        if let rawOrder = resolvedDefaults.string(forKey: Self.fileSortOrderDefaultsKey),
+           let decodedOrder = FileSortOrder(rawValue: rawOrder) {
+            self.fileSortOrder = decodedOrder
+        } else {
+            self.fileSortOrder = .name
+        }
+
+        if let savedCollapsed = resolvedDefaults.stringArray(forKey: Self.collapsedDirectoryPathsDefaultsKey) {
+            self.collapsedDirectoryPaths = Set(savedCollapsed)
+        } else {
+            self.collapsedDirectoryPaths = []
+        }
+
+        if let savedRecentPaths = resolvedDefaults.stringArray(forKey: Self.recentFilePathsDefaultsKey) {
+            let fm = FileManager.default
+            self.recentFileURLs = savedRecentPaths.compactMap { path in
+                var isDir: ObjCBool = false
+                guard !path.isEmpty,
+                      fm.fileExists(atPath: path, isDirectory: &isDir),
+                      !isDir.boolValue else {
+                    return nil
+                }
+                return URL(fileURLWithPath: path)
+            }
+        } else {
+            self.recentFileURLs = []
+        }
+
+        // Restore open file / buffer session if available
+        let restoredFileURL = Self.resolvePersistedURL(
+            from: resolvedDefaults,
+            pathKey: Self.currentFilePathDefaultsKey,
+            bookmarkKey: Self.currentFileBookmarkDefaultsKey,
+            requireDirectory: false
+        )
+        let hasSavedSession = resolvedDefaults.bool(forKey: Self.hasSavedDocumentSessionDefaultsKey)
+        let savedIsDirty = resolvedDefaults.bool(forKey: Self.unsavedBufferIsDirtyDefaultsKey)
+        let savedBufferText = resolvedDefaults.string(forKey: Self.unsavedBufferTextDefaultsKey)
+        let hadSavedFilePath = (resolvedDefaults.string(forKey: Self.currentFilePathDefaultsKey) != nil)
+
+        let initialContent: String
+        let initialFileURL: URL?
+        let initialIsDirty: Bool
+
+        if let fileURL = restoredFileURL {
+            if savedIsDirty, let unsavedText = savedBufferText {
+                initialFileURL = fileURL
+                initialContent = unsavedText
+                initialIsDirty = true
+            } else if let diskContent = try? String(contentsOf: fileURL, encoding: .utf8) {
+                initialFileURL = fileURL
+                initialContent = diskContent
+                initialIsDirty = false
+            } else {
+                initialFileURL = nil
+                initialContent = Self.defaultWelcomeDocument
+                initialIsDirty = false
+            }
+        } else if savedIsDirty, let unsavedText = savedBufferText {
+            initialFileURL = nil
+            initialContent = unsavedText
+            initialIsDirty = true
+        } else if hasSavedSession, !hadSavedFilePath, let untitledText = savedBufferText {
+            initialFileURL = nil
+            initialContent = untitledText
+            initialIsDirty = false
+        } else {
+            initialFileURL = nil
+            initialContent = Self.defaultWelcomeDocument
+            initialIsDirty = false
+        }
+
+        self.currentFileURL = initialFileURL
         self.markdownText = initialContent
+        self.isDirty = initialIsDirty
         self.stats = DocumentStats.compute(for: initialContent)
 
         let analysis = MarkdownLiveStyler.applyStyles(
             to: NSTextStorage(string: initialContent),
-            theme: .daylight,
+            theme: self.theme,
             typography: self.typography,
-            sourceCodeMode: false,
-            focusMode: false,
+            sourceCodeMode: self.sourceCodeMode,
+            focusMode: self.focusMode,
             selectedRange: NSRange(location: 0, length: 0)
         )
         self.headings = analysis.headings
 
-        let cwdPath = FileManager.default.currentDirectoryPath
-        let initialWorkspaceURL: URL
-        if cwdPath == "/" || cwdPath.isEmpty {
-            let bundleURL = Bundle.main.bundleURL
-            if bundleURL.pathExtension == "app" {
-                let parentDir = bundleURL.deletingLastPathComponent()
-                if parentDir.path != "/" && parentDir.path != "/Applications" {
-                    initialWorkspaceURL = parentDir
-                } else {
-                    initialWorkspaceURL = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first
-                        ?? FileManager.default.homeDirectoryForCurrentUser
-                }
-            } else {
-                initialWorkspaceURL = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first
-                    ?? FileManager.default.homeDirectoryForCurrentUser
+        if (initialFileURL != nil || initialIsDirty || (hasSavedSession && !hadSavedFilePath)),
+           resolvedDefaults.object(forKey: Self.selectedCursorLocationDefaultsKey) != nil {
+            let savedLoc = resolvedDefaults.integer(forKey: Self.selectedCursorLocationDefaultsKey)
+            let maxLen = (initialContent as NSString).length
+            if savedLoc > 0 && savedLoc <= maxLen {
+                self.pendingScrollToCharacterLocation = savedLoc
             }
+        }
+
+        let initialWorkspaceURL: URL
+        if let savedWorkspaceURL = Self.resolvePersistedURL(
+            from: resolvedDefaults,
+            pathKey: Self.workspaceFolderPathDefaultsKey,
+            bookmarkKey: Self.workspaceFolderBookmarkDefaultsKey,
+            requireDirectory: true
+        ) {
+            initialWorkspaceURL = savedWorkspaceURL
         } else {
-            initialWorkspaceURL = URL(fileURLWithPath: cwdPath)
+            initialWorkspaceURL = Self.defaultFallbackWorkspaceFolderURL()
         }
 
         manager.objectWillChange
@@ -150,7 +360,140 @@ public final class EditorWorkspaceViewModel: ObservableObject {
             }
         }
 
-        self.loadWorkspaceFolder(initialWorkspaceURL)
+        self.workspaceFolderURL = initialWorkspaceURL
+        self.reloadWorkspaceTree()
+        if let fileURL = initialFileURL {
+            self.watchCurrentFile(fileURL)
+        }
+        self.isRestoringState = false
+    }
+
+    private static func defaultFallbackWorkspaceFolderURL() -> URL {
+        let cwdPath = FileManager.default.currentDirectoryPath
+        if cwdPath == "/" || cwdPath.isEmpty {
+            let bundleURL = Bundle.main.bundleURL
+            if bundleURL.pathExtension == "app" {
+                let parentDir = bundleURL.deletingLastPathComponent()
+                if parentDir.path != "/" && parentDir.path != "/Applications" {
+                    return parentDir
+                } else {
+                    return FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first
+                        ?? FileManager.default.homeDirectoryForCurrentUser
+                }
+            } else {
+                return FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first
+                    ?? FileManager.default.homeDirectoryForCurrentUser
+            }
+        } else {
+            return URL(fileURLWithPath: cwdPath, isDirectory: true)
+        }
+    }
+
+    private static func resolvePersistedURL(
+        from defaults: UserDefaults,
+        pathKey: String,
+        bookmarkKey: String,
+        requireDirectory: Bool
+    ) -> URL? {
+        let fm = FileManager.default
+        if let savedPath = defaults.string(forKey: pathKey), !savedPath.isEmpty {
+            var isDir: ObjCBool = false
+            if fm.fileExists(atPath: savedPath, isDirectory: &isDir),
+               isDir.boolValue == requireDirectory {
+                if let bookmarkData = defaults.data(forKey: bookmarkKey) {
+                    var isStale = false
+                    if let bookmarkedURL = try? URL(
+                        resolvingBookmarkData: bookmarkData,
+                        options: [.withoutUI],
+                        relativeTo: nil,
+                        bookmarkDataIsStale: &isStale
+                    ) {
+                        _ = bookmarkedURL.startAccessingSecurityScopedResource()
+                    }
+                }
+                return URL(fileURLWithPath: savedPath, isDirectory: requireDirectory)
+            }
+        }
+
+        if let bookmarkData = defaults.data(forKey: bookmarkKey) {
+            var isStale = false
+            if let bookmarkedURL = try? URL(
+                resolvingBookmarkData: bookmarkData,
+                options: [.withoutUI],
+                relativeTo: nil,
+                bookmarkDataIsStale: &isStale
+            ) {
+                var isDir: ObjCBool = false
+                if fm.fileExists(atPath: bookmarkedURL.path, isDirectory: &isDir),
+                   isDir.boolValue == requireDirectory {
+                    _ = bookmarkedURL.startAccessingSecurityScopedResource()
+                    if isStale,
+                       let freshData = try? bookmarkedURL.bookmarkData(
+                           options: [],
+                           includingResourceValuesForKeys: nil,
+                           relativeTo: nil
+                       ) {
+                        defaults.set(freshData, forKey: bookmarkKey)
+                    }
+                    defaults.set(bookmarkedURL.path, forKey: pathKey)
+                    return bookmarkedURL
+                }
+            }
+        }
+
+        return nil
+    }
+
+    private func persistWorkspaceFolder(_ folderURL: URL?) {
+        guard !isRestoringState else { return }
+        if let folderURL {
+            userDefaults.set(folderURL.path, forKey: Self.workspaceFolderPathDefaultsKey)
+            if let bookmark = try? folderURL.bookmarkData(
+                options: [],
+                includingResourceValuesForKeys: nil,
+                relativeTo: nil
+            ) {
+                userDefaults.set(bookmark, forKey: Self.workspaceFolderBookmarkDefaultsKey)
+            }
+        } else {
+            userDefaults.removeObject(forKey: Self.workspaceFolderPathDefaultsKey)
+            userDefaults.removeObject(forKey: Self.workspaceFolderBookmarkDefaultsKey)
+        }
+    }
+
+    private func persistCurrentFileBookmark() {
+        guard !isRestoringState else { return }
+        if let fileURL = currentFileURL {
+            userDefaults.set(fileURL.path, forKey: Self.currentFilePathDefaultsKey)
+            if let bookmark = try? fileURL.bookmarkData(
+                options: [],
+                includingResourceValuesForKeys: nil,
+                relativeTo: nil
+            ) {
+                userDefaults.set(bookmark, forKey: Self.currentFileBookmarkDefaultsKey)
+            }
+        } else {
+            userDefaults.removeObject(forKey: Self.currentFilePathDefaultsKey)
+            userDefaults.removeObject(forKey: Self.currentFileBookmarkDefaultsKey)
+        }
+    }
+
+    private func persistDocumentSessionState() {
+        guard !isRestoringState else { return }
+        userDefaults.set(true, forKey: Self.hasSavedDocumentSessionDefaultsKey)
+        userDefaults.set(isDirty, forKey: Self.unsavedBufferIsDirtyDefaultsKey)
+        if let fileURL = currentFileURL {
+            userDefaults.set(fileURL.path, forKey: Self.currentFilePathDefaultsKey)
+            if isDirty {
+                userDefaults.set(markdownText, forKey: Self.unsavedBufferTextDefaultsKey)
+            } else {
+                userDefaults.removeObject(forKey: Self.unsavedBufferTextDefaultsKey)
+            }
+        } else {
+            userDefaults.removeObject(forKey: Self.currentFilePathDefaultsKey)
+            userDefaults.removeObject(forKey: Self.currentFileBookmarkDefaultsKey)
+            userDefaults.set(markdownText, forKey: Self.unsavedBufferTextDefaultsKey)
+        }
     }
 
     deinit {
@@ -159,6 +502,29 @@ public final class EditorWorkspaceViewModel: ObservableObject {
 
     public func resetTypographyToDefaults() {
         typography = .default
+    }
+
+    // MARK: - Directory Expansion State
+    public func isDirectoryExpanded(_ url: URL) -> Bool {
+        !collapsedDirectoryPaths.contains(url.standardizedFileURL.path)
+    }
+
+    public func setDirectoryExpanded(_ expanded: Bool, for url: URL) {
+        let key = url.standardizedFileURL.path
+        if expanded {
+            collapsedDirectoryPaths.remove(key)
+        } else {
+            collapsedDirectoryPaths.insert(key)
+        }
+    }
+
+    public func toggleDirectoryExpanded(_ url: URL) {
+        let key = url.standardizedFileURL.path
+        if collapsedDirectoryPaths.contains(key) {
+            collapsedDirectoryPaths.remove(key)
+        } else {
+            collapsedDirectoryPaths.insert(key)
+        }
     }
 
     // MARK: - Document Title
@@ -178,10 +544,16 @@ public final class EditorWorkspaceViewModel: ObservableObject {
             markdownText = newText
             isDirty = true
         }
+        if !isRestoringState {
+            userDefaults.set(selectedRange.location, forKey: Self.selectedCursorLocationDefaultsKey)
+        }
         stats = DocumentStats.compute(for: newText, selectedRange: selectedRange)
     }
 
     public func updateSelectionStats(selectedRange: NSRange) {
+        if !isRestoringState {
+            userDefaults.set(selectedRange.location, forKey: Self.selectedCursorLocationDefaultsKey)
+        }
         stats = DocumentStats.compute(for: markdownText, selectedRange: selectedRange)
     }
 
@@ -392,7 +764,19 @@ public final class EditorWorkspaceViewModel: ObservableObject {
         currentFileURL = nil
         markdownText = "# Untitled\n\n"
         isDirty = false
+        userDefaults.set(0, forKey: Self.selectedCursorLocationDefaultsKey)
         stats = DocumentStats.compute(for: markdownText)
+        if activeTextView == nil {
+            let analysis = MarkdownLiveStyler.applyStyles(
+                to: NSTextStorage(string: markdownText),
+                theme: theme,
+                typography: typography,
+                sourceCodeMode: sourceCodeMode,
+                focusMode: focusMode,
+                selectedRange: NSRange(location: 0, length: 0)
+            )
+            headings = analysis.headings
+        }
     }
 
     public func openDocumentPanel() {
@@ -400,6 +784,7 @@ public final class EditorWorkspaceViewModel: ObservableObject {
         panel.canChooseFiles = true
         panel.canChooseDirectories = true
         panel.allowsMultipleSelection = false
+        panel.directoryURL = workspaceFolderURL ?? currentFileURL?.deletingLastPathComponent()
         panel.prompt = "Open"
         if panel.runModal() == .OK, let url = panel.url {
             var isDir: ObjCBool = false
@@ -418,6 +803,7 @@ public final class EditorWorkspaceViewModel: ObservableObject {
         panel.canChooseFiles = false
         panel.canChooseDirectories = true
         panel.allowsMultipleSelection = false
+        panel.directoryURL = workspaceFolderURL ?? currentFileURL?.deletingLastPathComponent()
         panel.prompt = "Open Folder"
         if panel.runModal() == .OK, let url = panel.url {
             loadWorkspaceFolder(url)
@@ -432,7 +818,19 @@ public final class EditorWorkspaceViewModel: ObservableObject {
             currentFileURL = url
             markdownText = content
             isDirty = false
+            userDefaults.set(0, forKey: Self.selectedCursorLocationDefaultsKey)
             stats = DocumentStats.compute(for: content)
+            if activeTextView == nil {
+                let analysis = MarkdownLiveStyler.applyStyles(
+                    to: NSTextStorage(string: content),
+                    theme: theme,
+                    typography: typography,
+                    sourceCodeMode: sourceCodeMode,
+                    focusMode: focusMode,
+                    selectedRange: NSRange(location: 0, length: 0)
+                )
+                headings = analysis.headings
+            }
             addRecentFile(url)
             watchCurrentFile(url)
         } catch {
@@ -451,6 +849,7 @@ public final class EditorWorkspaceViewModel: ObservableObject {
     public func saveDocumentAs() {
         let panel = NSSavePanel()
         panel.nameFieldStringValue = documentTitle
+        panel.directoryURL = workspaceFolderURL ?? currentFileURL?.deletingLastPathComponent()
         panel.allowedContentTypes = [.plainText]
         if panel.runModal() == .OK, let url = panel.url {
             writeDocument(to: url)
@@ -546,8 +945,12 @@ public final class EditorWorkspaceViewModel: ObservableObject {
         }
     }
 
+    public func clearRecentFiles() {
+        recentFileURLs.removeAll()
+    }
+
     private func addRecentFile(_ url: URL) {
-        recentFileURLs.removeAll(where: { $0 == url })
+        recentFileURLs.removeAll(where: { $0.standardizedFileURL == url.standardizedFileURL })
         recentFileURLs.insert(url, at: 0)
         if recentFileURLs.count > 15 {
             recentFileURLs = Array(recentFileURLs.prefix(15))
@@ -829,6 +1232,7 @@ public final class EditorWorkspaceViewModel: ObservableObject {
     public func exportToHTML() {
         let panel = NSSavePanel()
         panel.nameFieldStringValue = documentTitle.replacingOccurrences(of: ".md", with: "") + ".html"
+        panel.directoryURL = workspaceFolderURL ?? currentFileURL?.deletingLastPathComponent()
         panel.allowedContentTypes = [.html]
         if panel.runModal() == .OK, let url = panel.url {
             let html = generateStandaloneHTML()

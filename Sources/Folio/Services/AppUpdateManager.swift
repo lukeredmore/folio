@@ -119,22 +119,29 @@ public struct AppVersionInfo: Equatable, Sendable {
     public let commitSHA: String
     public let engineVersion: String
     public let repository: String
+    public let isDevBuild: Bool
 
     public init(
         shortVersion: String,
         buildNumber: Int,
         commitSHA: String,
         engineVersion: String = "0.1.0",
-        repository: String = "lukeredmore/folio"
+        repository: String = "lukeredmore/folio",
+        isDevBuild: Bool? = nil
     ) {
         self.shortVersion = shortVersion
         self.buildNumber = buildNumber
         self.commitSHA = commitSHA
         self.engineVersion = engineVersion
         self.repository = repository
+        let normalizedSHA = commitSHA.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        self.isDevBuild = isDevBuild ?? (normalizedSHA.isEmpty || normalizedSHA == "dev")
     }
 
-    public static func current(bundle: Bundle = .main) -> AppVersionInfo {
+    public static func current(
+        bundle: Bundle = .main,
+        environment: [String: String] = ProcessInfo.processInfo.environment
+    ) -> AppVersionInfo {
         let info = bundle.infoDictionary ?? [:]
         let shortVersion = (info["CFBundleShortVersionString"] as? String) ?? "1.0.0"
         let buildString = (info["CFBundleVersion"] as? String) ?? "1"
@@ -142,13 +149,18 @@ public struct AppVersionInfo: Equatable, Sendable {
         let commitSHA = (info["FolioCommitSHA"] as? String) ?? "dev"
         let engineVersion = (info["FolioEngineVersion"] as? String) ?? "0.1.0"
         let repository = (info["FolioRepository"] as? String) ?? "lukeredmore/folio"
+        let normalizedSHA = commitSHA.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        let isDevBuild = FolioBrandIcon.isRunningDevBuild(bundle: bundle, environment: environment)
+            || normalizedSHA.isEmpty
+            || normalizedSHA == "dev"
 
         return AppVersionInfo(
             shortVersion: shortVersion,
             buildNumber: buildNumber,
             commitSHA: commitSHA,
             engineVersion: engineVersion,
-            repository: repository
+            repository: repository,
+            isDevBuild: isDevBuild
         )
     }
 
@@ -178,6 +190,10 @@ public final class AppUpdateManager: ObservableObject {
 
     public let currentVersion: AppVersionInfo
 
+    public var isRunningDevBuild: Bool {
+        currentVersion.isDevBuild
+    }
+
     public init(currentVersion: AppVersionInfo = .current()) {
         self.currentVersion = currentVersion
     }
@@ -185,10 +201,14 @@ public final class AppUpdateManager: ObservableObject {
     /// Evaluates whether a remote release manifest is newer than the currently running build.
     /// Supports both semantic version bumps (`1.0.0` -> `1.1.0`) and rolling builds without version changes
     /// (`1.0.0` build #41 -> `1.0.0` build #42, or differing commit SHA on the same build number).
+    /// Dev/debug builds never report an update available against published releases.
     public nonisolated static func isUpdateAvailable(
         current: AppVersionInfo,
         remote: ReleaseManifest
     ) -> Bool {
+        if current.isDevBuild {
+            return false
+        }
         let versionOrder = remote.version.compare(current.shortVersion, options: .numeric)
         if versionOrder == .orderedDescending {
             return true
@@ -224,13 +244,14 @@ public final class AppUpdateManager: ObservableObject {
     }
 
     public func checkForUpdatesOnLaunchIfNeeded() {
-        guard autoCheckForUpdates else { return }
+        guard autoCheckForUpdates, !isRunningDevBuild else { return }
         Task {
             await checkForUpdates(userInitiated: false)
         }
     }
 
     public func checkForUpdates(userInitiated: Bool) async {
+        guard userInitiated || !isRunningDevBuild else { return }
         status = .checking
         if userInitiated {
             showUpdateSheet = true

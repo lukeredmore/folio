@@ -51,6 +51,7 @@ public struct MainWindowView: View {
         }
         .preferredColorScheme(viewModel.theme.colorScheme)
         .navigationTitle(viewModel.documentTitle + (viewModel.isDirty ? " — Edited" : ""))
+        .background(WindowStatePersistenceAccessor(userDefaults: viewModel.userDefaults))
         .sheet(isPresented: $viewModel.showInsertTableSheet) {
             InsertTableModalView(viewModel: viewModel)
         }
@@ -63,10 +64,95 @@ public struct MainWindowView: View {
     }
 }
 
+private struct WindowStatePersistenceAccessor: NSViewRepresentable {
+    let userDefaults: UserDefaults
+    static let windowFrameDefaultsKey = "Folio.MainWindowFrame.v1"
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator(userDefaults: userDefaults)
+    }
+
+    func makeNSView(context: Context) -> NSView {
+        let view = NSView(frame: .zero)
+        DispatchQueue.main.async {
+            if let window = view.window {
+                context.coordinator.attach(to: window)
+            }
+        }
+        return view
+    }
+
+    func updateNSView(_ nsView: NSView, context: Context) {
+        DispatchQueue.main.async {
+            if let window = nsView.window {
+                context.coordinator.attach(to: window)
+            }
+        }
+    }
+
+    @MainActor
+    final class Coordinator: NSObject {
+        private let userDefaults: UserDefaults
+        private weak var attachedWindow: NSWindow?
+
+        init(userDefaults: UserDefaults) {
+            self.userDefaults = userDefaults
+        }
+
+        deinit {
+            NotificationCenter.default.removeObserver(self)
+        }
+
+        func attach(to window: NSWindow) {
+            guard attachedWindow !== window else { return }
+            if let oldWindow = attachedWindow {
+                NotificationCenter.default.removeObserver(self, name: NSWindow.didResizeNotification, object: oldWindow)
+                NotificationCenter.default.removeObserver(self, name: NSWindow.didMoveNotification, object: oldWindow)
+            }
+            attachedWindow = window
+
+            window.setFrameAutosaveName("FolioMainWindow")
+            if let savedFrameString = userDefaults.string(forKey: WindowStatePersistenceAccessor.windowFrameDefaultsKey) {
+                let rect = NSRectFromString(savedFrameString)
+                if rect.width >= 720, rect.height >= 480 {
+                    window.setFrame(rect, display: true)
+                }
+            }
+
+            NotificationCenter.default.addObserver(
+                self,
+                selector: #selector(windowDidChangeFrame(_:)),
+                name: NSWindow.didResizeNotification,
+                object: window
+            )
+            NotificationCenter.default.addObserver(
+                self,
+                selector: #selector(windowDidChangeFrame(_:)),
+                name: NSWindow.didMoveNotification,
+                object: window
+            )
+        }
+
+        @objc private func windowDidChangeFrame(_ notification: Notification) {
+            guard let window = attachedWindow else { return }
+            let frameString = NSStringFromRect(window.frame)
+            userDefaults.set(frameString, forKey: WindowStatePersistenceAccessor.windowFrameDefaultsKey)
+        }
+    }
+}
+
+@MainActor
+public final class FolioAppDelegate: NSObject, NSApplicationDelegate {
+    public func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
+        true
+    }
+}
+
 #if !FOLIO_NO_MAIN
 @main
 #endif
 public struct FolioApp: App {
+    @NSApplicationDelegateAdaptor(FolioAppDelegate.self) private var appDelegate
     @StateObject private var viewModel = EditorWorkspaceViewModel()
     @ObservedObject private var updateManager = AppUpdateManager.shared
 
@@ -85,6 +171,7 @@ public struct FolioApp: App {
                     viewModel.remoteWorkspaceManager.startBackgroundSyncLoop()
                 }
         }
+        .defaultSize(width: 1120, height: 760)
         .windowStyle(.titleBar)
         .windowToolbarStyle(.unifiedCompact(showsTitle: true))
         .commands {
@@ -121,6 +208,22 @@ public struct FolioApp: App {
                     viewModel.openFolderPanel()
                 }
                 .keyboardShortcut("o", modifiers: [.command, .shift])
+
+                Menu("Open Recent") {
+                    if viewModel.recentFileURLs.isEmpty {
+                        Text("No Recent Documents")
+                    } else {
+                        ForEach(viewModel.recentFileURLs, id: \.path) { url in
+                            Button(url.lastPathComponent) {
+                                viewModel.openFile(at: url)
+                            }
+                        }
+                        Divider()
+                        Button("Clear Menu") {
+                            viewModel.clearRecentFiles()
+                        }
+                    }
+                }
 
                 Button("Connect Remote Folder or File (SSH)...") {
                     viewModel.showAddRemoteModal = true

@@ -488,7 +488,10 @@ private struct FileTreeNodeRow: View {
     let level: Int
     @ObservedObject var viewModel: EditorWorkspaceViewModel
     @ObservedObject var remoteManager: RemoteWorkspaceManager
-    @State private var isExpanded: Bool = true
+
+    private var isExpanded: Bool {
+        viewModel.isDirectoryExpanded(node.url)
+    }
 
     private var mountConnectionState: RemoteConnectionState? {
         guard let mountID = node.remoteMountID else { return nil }
@@ -504,7 +507,7 @@ private struct FileTreeNodeRow: View {
             Button {
                 if node.isDirectory {
                     withAnimation(.easeInOut(duration: 0.12)) {
-                        isExpanded.toggle()
+                        viewModel.toggleDirectoryExpanded(node.url)
                     }
                 } else {
                     viewModel.openFile(at: node.url)

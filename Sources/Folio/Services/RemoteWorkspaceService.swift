@@ -573,7 +573,7 @@ public final class RemoteWorkspaceManager: ObservableObject {
     nonisolated(unsafe) private var pollingTask: Task<Void, Never>?
 
     private let mountsDefaultsKey: String
-    private let userDefaults: UserDefaults
+    public let userDefaults: UserDefaults
 
     /// Backoff schedule in seconds: fast initial recovery (1s, 2s, 4s, 8s, capped at 15s).
     public var retryBackoffBaseSeconds: TimeInterval = 1.0

@@ -249,7 +249,8 @@ final class FolioTests: XCTestCase {
         XCTAssertTrue(plain.contains("β"))
     }
 
-    func testAppUpdateManagerRollingAndVersionedComparisons() throws {
+    @MainActor
+    func testAppUpdateManagerRollingAndVersionedComparisons() async throws {
         let installed = AppVersionInfo(
             shortVersion: "1.0.0",
             buildNumber: 12,
@@ -257,6 +258,7 @@ final class FolioTests: XCTestCase {
             engineVersion: "0.1.0",
             repository: "lukeredmore/folio"
         )
+        XCTAssertFalse(installed.isDevBuild)
 
         // 1. Same version and build number + matching SHA -> no update
         let sameBuild = ReleaseManifest(
@@ -294,7 +296,27 @@ final class FolioTests: XCTestCase {
         )
         XCTAssertTrue(AppUpdateManager.isUpdateAvailable(current: installed, remote: semverBump))
 
-        // 4. Verify SHA-256 helper
+        // 4. Dev / debug builds (commitSHA == "dev" or isDevBuild == true) must never report an update available
+        // or trigger automatic update checks on launch
+        let devBuild = AppVersionInfo(
+            shortVersion: "1.0.0",
+            buildNumber: 1,
+            commitSHA: "dev",
+            engineVersion: "0.1.0",
+            repository: "lukeredmore/folio"
+        )
+        XCTAssertTrue(devBuild.isDevBuild)
+        XCTAssertFalse(AppUpdateManager.isUpdateAvailable(current: devBuild, remote: rollingNewerBuild))
+        XCTAssertFalse(AppUpdateManager.isUpdateAvailable(current: devBuild, remote: semverBump))
+
+        let devManager = AppUpdateManager(currentVersion: devBuild)
+        devManager.autoCheckForUpdates = true
+        devManager.checkForUpdatesOnLaunchIfNeeded()
+        await devManager.checkForUpdates(userInitiated: false)
+        XCTAssertEqual(devManager.status, .idle)
+        XCTAssertFalse(devManager.showUpdateSheet)
+
+        // 5. Verify SHA-256 helper
         let tempFile = FileManager.default.temporaryDirectory.appendingPathComponent("folio-sha-test-\(UUID().uuidString)")
         defer { try? FileManager.default.removeItem(at: tempFile) }
         try Data("folio-dmg-payload".utf8).write(to: tempFile)
@@ -308,7 +330,7 @@ final class FolioTests: XCTestCase {
             expectedHex: "0000000000000000000000000000000000000000000000000000000000000000"
         ))
 
-        // 5. Parse GitHub Releases REST API payload directly (no external JSON file needed)
+        // 6. Parse GitHub Releases REST API payload directly (no external JSON file needed)
         let ghReleasePayload = """
         {
           "tag_name": "latest",
@@ -331,6 +353,7 @@ final class FolioTests: XCTestCase {
         XCTAssertEqual(parsed.commitSHA, "9f8e7d6")
         XCTAssertEqual(parsed.notes, "feat: rolling update")
         XCTAssertTrue(AppUpdateManager.isUpdateAvailable(current: installed, remote: parsed))
+        XCTAssertFalse(AppUpdateManager.isUpdateAvailable(current: devBuild, remote: parsed))
     }
 
     func testNestedInlineFormattingWhenUnselected() {
@@ -565,7 +588,11 @@ final class FolioTests: XCTestCase {
         try "struct Helper {}".write(to: helperSwiftURL, atomically: true, encoding: .utf8)
         try "struct App {}".write(to: appSwiftURL, atomically: true, encoding: .utf8)
 
-        let vm = EditorWorkspaceViewModel()
+        let defaultsSuiteName = "com.folio.tests.filter.\(UUID().uuidString)"
+        let testDefaults = UserDefaults(suiteName: defaultsSuiteName)!
+        defer { testDefaults.removePersistentDomain(forName: defaultsSuiteName) }
+
+        let vm = EditorWorkspaceViewModel(userDefaults: testDefaults)
         vm.loadWorkspaceFolder(tempDir)
 
         // Flat list should only contain the 3 Markdown files
@@ -740,7 +767,11 @@ final class FolioTests: XCTestCase {
             "/Users/lukeredmore/Developer/Folio/third_party/zed/upstream/AGENTS.md",
             "/Users/lukeredmore/Developer/PDLaunch/AGENTS.md"
         ]
-        let vm = EditorWorkspaceViewModel()
+        let defaultsSuiteName = "com.folio.tests.perf.\(UUID().uuidString)"
+        let testDefaults = UserDefaults(suiteName: defaultsSuiteName)!
+        defer { testDefaults.removePersistentDomain(forName: defaultsSuiteName) }
+
+        let vm = EditorWorkspaceViewModel(userDefaults: testDefaults)
         let window = NSWindow(
             contentRect: NSRect(x: 0, y: 0, width: 901, height: 1036),
             styleMask: [.titled, .resizable],
@@ -1208,6 +1239,120 @@ final class FolioTests: XCTestCase {
             500,
             "Expected DEV badge to render prominently in the lower-right region of the dev app icon"
         )
+    }
+
+    @MainActor
+    func testWorkspaceFolderAndSessionStatePersistenceAcrossLaunches() throws {
+        let tempDir = FileManager.default.temporaryDirectory.appendingPathComponent("FolioPersistenceTest_\(UUID().uuidString)", isDirectory: true)
+        let subfolderDir = tempDir.appendingPathComponent("Subfolder", isDirectory: true)
+        try FileManager.default.createDirectory(at: subfolderDir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: tempDir) }
+
+        let fileA = tempDir.appendingPathComponent("Alpha.md")
+        let fileB = subfolderDir.appendingPathComponent("Beta.md")
+        try "# Alpha Heading\nFirst document body.\n\n## Alpha Subheading\nDetails here.".write(to: fileA, atomically: true, encoding: .utf8)
+        try "# Beta Heading\nSecond document in subfolder.".write(to: fileB, atomically: true, encoding: .utf8)
+
+        let defaultsSuiteName = "com.folio.tests.persistence.\(UUID().uuidString)"
+        let testDefaults = UserDefaults(suiteName: defaultsSuiteName)!
+        defer { testDefaults.removePersistentDomain(forName: defaultsSuiteName) }
+
+        // 1. Launch #1: Configure workspace folder, open file, sidebar state, collapsed folders, theme, and editor modes
+        do {
+            let vm1 = EditorWorkspaceViewModel(userDefaults: testDefaults)
+            vm1.loadWorkspaceFolder(tempDir)
+            vm1.openFile(at: fileA)
+            vm1.openFile(at: fileB)
+            vm1.updateSelectionStats(selectedRange: NSRange(location: 16, length: 0))
+
+            vm1.theme = .midnight
+            vm1.sourceCodeMode = true
+            vm1.focusMode = true
+            vm1.typewriterMode = true
+            vm1.spellCheckEnabled = true
+            vm1.showSidebar = true
+            vm1.activeSidebarTab = .files
+            vm1.fileDisplayStyle = .list
+            vm1.fileSortOrder = .modificationDate
+            vm1.setDirectoryExpanded(false, for: subfolderDir)
+        }
+
+        // 2. Launch #2: Verify full state restoration from UserDefaults
+        do {
+            let vm2 = EditorWorkspaceViewModel(userDefaults: testDefaults)
+            XCTAssertEqual(vm2.workspaceFolderURL?.standardizedFileURL, tempDir.standardizedFileURL)
+            XCTAssertEqual(Set(vm2.flatMarkdownFiles.map(\.name)), ["Alpha.md", "Beta.md"])
+            XCTAssertEqual(vm2.currentFileURL?.standardizedFileURL, fileB.standardizedFileURL)
+            XCTAssertEqual(vm2.markdownText, "# Beta Heading\nSecond document in subfolder.")
+            XCTAssertFalse(vm2.isDirty)
+            XCTAssertEqual(vm2.documentTitle, "Beta.md")
+            XCTAssertEqual(vm2.headings.map(\.title), ["Beta Heading"])
+            XCTAssertEqual(vm2.pendingScrollToCharacterLocation, 16)
+
+            XCTAssertEqual(vm2.theme, .midnight)
+            XCTAssertTrue(vm2.sourceCodeMode)
+            XCTAssertTrue(vm2.focusMode)
+            XCTAssertTrue(vm2.typewriterMode)
+            XCTAssertTrue(vm2.spellCheckEnabled)
+            XCTAssertTrue(vm2.showSidebar)
+            XCTAssertEqual(vm2.activeSidebarTab, .files)
+            XCTAssertEqual(vm2.fileDisplayStyle, .list)
+            XCTAssertEqual(vm2.fileSortOrder, .modificationDate)
+            XCTAssertFalse(vm2.isDirectoryExpanded(subfolderDir))
+            XCTAssertEqual(vm2.recentFileURLs.map(\.lastPathComponent), ["Beta.md", "Alpha.md"])
+
+            // Make unsaved edits to the open file without saving to disk
+            vm2.handleEditorTextEdited(
+                "# Beta Heading\nUnsaved in-progress edit across relaunch!",
+                selectedRange: NSRange(location: 25, length: 0)
+            )
+            XCTAssertTrue(vm2.isDirty)
+        }
+
+        // 3. Launch #3: Verify unsaved dirty buffer on open file is restored intact
+        do {
+            let vm3 = EditorWorkspaceViewModel(userDefaults: testDefaults)
+            XCTAssertEqual(vm3.currentFileURL?.standardizedFileURL, fileB.standardizedFileURL)
+            XCTAssertEqual(vm3.markdownText, "# Beta Heading\nUnsaved in-progress edit across relaunch!")
+            XCTAssertTrue(vm3.isDirty)
+            XCTAssertEqual(vm3.pendingScrollToCharacterLocation, 25)
+
+            // Now create a brand-new untitled draft and type into it without saving
+            vm3.newDocument()
+            vm3.handleEditorTextEdited(
+                "# Scratchpad Draft\nRemember this untitled note on relaunch.",
+                selectedRange: NSRange(location: 19, length: 0)
+            )
+        }
+
+        // 4. Launch #4: Verify untitled draft session is restored intact
+        do {
+            let vm4 = EditorWorkspaceViewModel(userDefaults: testDefaults)
+            XCTAssertNil(vm4.currentFileURL)
+            XCTAssertEqual(vm4.markdownText, "# Scratchpad Draft\nRemember this untitled note on relaunch.")
+            XCTAssertTrue(vm4.isDirty)
+            XCTAssertEqual(vm4.documentTitle, "Scratchpad Draft.md")
+            XCTAssertEqual(vm4.pendingScrollToCharacterLocation, 19)
+
+            // Open fileA cleanly, then delete tempDir to verify deleted folder/file fallback
+            vm4.openFile(at: fileA)
+            XCTAssertFalse(vm4.isDirty)
+        }
+
+        // 5. Delete the workspace folder on disk and verify Launch #5 falls back gracefully without crashing
+        try FileManager.default.removeItem(at: tempDir)
+        do {
+            let vm5 = EditorWorkspaceViewModel(userDefaults: testDefaults)
+            XCTAssertNotEqual(vm5.workspaceFolderURL?.standardizedFileURL, tempDir.standardizedFileURL)
+            XCTAssertNil(vm5.currentFileURL)
+            XCTAssertEqual(vm5.markdownText, EditorWorkspaceViewModel.defaultWelcomeDocument)
+            XCTAssertFalse(vm5.isDirty)
+            XCTAssertTrue(vm5.recentFileURLs.isEmpty)
+        }
+
+        // 6. Verify app delegate quits when the last window is closed
+        let appDelegate = FolioAppDelegate()
+        XCTAssertTrue(appDelegate.applicationShouldTerminateAfterLastWindowClosed(NSApplication.shared))
     }
 }
 
