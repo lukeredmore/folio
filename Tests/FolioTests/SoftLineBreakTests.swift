@@ -56,13 +56,35 @@ final class SoftLineBreakTests: XCTestCase {
         XCTAssertFalse(isSoftBreak(storage, at: newlineLocation(after: "line two  ", in: listSample)))
     }
 
-    func testActiveParagraphKeepsSourceLineBreaks() {
+    func testActiveParagraphStaysJoined() {
         let cursor = (listSample as NSString).range(of: "beans that").location
         let storage = style(listSample, cursor: cursor)
-        XCTAssertFalse(isSoftBreak(storage, at: newlineLocation(after: "trellis for climbing", in: listSample)))
-        XCTAssertFalse(isSoftBreak(storage, at: newlineLocation(after: "spring and the", in: listSample)))
-        XCTAssertTrue(isSoftBreak(storage, at: newlineLocation(after: "line one", in: listSample)),
-                      "Other paragraphs stay joined")
+        XCTAssertTrue(isSoftBreak(storage, at: newlineLocation(after: "trellis for climbing", in: listSample)),
+                      "Entering a paragraph must not add visual line breaks")
+        XCTAssertTrue(isSoftBreak(storage, at: newlineLocation(after: "spring and the", in: listSample)))
+        let indentFont = storage.attribute(.font, at: newlineLocation(after: "trellis for climbing", in: listSample) + 1, effectiveRange: nil) as? NSFont
+        XCTAssertLessThanOrEqual(indentFont?.pointSize ?? 99, 0.2, "Continuation indentation stays hidden in the active paragraph")
+    }
+
+    func testReturnInsideParagraphStartsNewParagraph() {
+        final class RestyleDelegate: NSObject, NSTextViewDelegate {
+            func textDidChange(_ notification: Notification) {
+                guard let tv = notification.object as? NSTextView, let storage = tv.textStorage else { return }
+                _ = MarkdownLiveStyler.applyStyles(to: storage, theme: .daylight, sourceCodeMode: false, focusMode: false, selectedRange: tv.selectedRange())
+            }
+        }
+        let textView = HybridMarkdownTextView(frame: NSRect(x: 0, y: 0, width: 600, height: 400))
+        let delegate = RestyleDelegate()
+        textView.delegate = delegate
+        textView.string = "alpha beta gamma\n\n# End"
+        textView.setSelectedRange(NSRange(location: 6, length: 0))
+        textView.insertNewline(nil)
+        XCTAssertEqual(textView.string, "alpha \n\nbeta gamma\n\n# End")
+
+        textView.string = "alpha beta\n\n# End"
+        textView.setSelectedRange(NSRange(location: 10, length: 0))
+        textView.insertNewline(nil)
+        XCTAssertEqual(textView.string, "alpha beta\n\n\n# End", "Return at the end of a paragraph inserts one newline")
     }
 
     func testSoftBreaksJoinLinesInLayout() {
@@ -125,7 +147,7 @@ final class SoftLineBreakTests: XCTestCase {
         XCTAssertLessThanOrEqual(trailingFont?.pointSize ?? 99, 0.2, "Reference syntax is folded")
     }
 
-    func testActiveParagraphKeepsInlineStylingPerLine() {
+    func testActiveLineRevealsInlineSyntax() {
         let text = "Keep **bold\nwords** apart.\n\n# End"
         let storage = style(text, cursor: 2)
         let ns = text as NSString

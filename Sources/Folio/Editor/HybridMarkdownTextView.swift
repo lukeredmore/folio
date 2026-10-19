@@ -649,6 +649,20 @@ public final class HybridMarkdownTextView: NSTextView {
         }
 
         super.insertNewline(sender)
+        startNewParagraphIfSoftBreak()
+    }
+
+    /// In live mode a single newline inside a paragraph is a soft break and renders as a space,
+    /// so Return would look like it did nothing. Insert a second newline to start a new paragraph.
+    private func startNewParagraphIfSoftBreak() {
+        guard !isSourceCodeMode, let storage = textStorage else { return }
+        let location = selectedRange().location
+        guard location > 0, location <= storage.length,
+              (storage.string as NSString).character(at: location - 1) == 10,
+              storage.attribute(MarkdownLiveStyler.softLineBreakAttributeKey, at: location - 1, effectiveRange: nil) != nil else {
+            return
+        }
+        insertText("\n", replacementRange: selectedRange())
     }
 
     public func centerSelectionIfTypewriter() {
