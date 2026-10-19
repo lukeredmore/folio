@@ -3,6 +3,7 @@ import SwiftUI
 
 public struct MainWindowView: View {
     @ObservedObject var viewModel: EditorWorkspaceViewModel
+    @ObservedObject var updateManager: AppUpdateManager = .shared
 
     public init(viewModel: EditorWorkspaceViewModel) {
         self.viewModel = viewModel
@@ -51,6 +52,9 @@ public struct MainWindowView: View {
         .sheet(isPresented: $viewModel.showInsertTableSheet) {
             InsertTableModalView(viewModel: viewModel)
         }
+        .sheet(isPresented: $updateManager.showUpdateSheet) {
+            AppUpdateModalView(updateManager: updateManager)
+        }
     }
 }
 
@@ -59,6 +63,7 @@ public struct MainWindowView: View {
 #endif
 public struct FolioApp: App {
     @StateObject private var viewModel = EditorWorkspaceViewModel()
+    @ObservedObject private var updateManager = AppUpdateManager.shared
 
     public init() {
         NSApplication.shared.setActivationPolicy(.regular)
@@ -71,11 +76,21 @@ public struct FolioApp: App {
                 .frame(minWidth: 720, minHeight: 480)
                 .onAppear {
                     NSApplication.shared.activate(ignoringOtherApps: true)
+                    updateManager.checkForUpdatesOnLaunchIfNeeded()
                 }
         }
         .windowStyle(.titleBar)
         .windowToolbarStyle(.unifiedCompact(showsTitle: true))
         .commands {
+            // MARK: - Software Updates
+            CommandGroup(after: .appInfo) {
+                Button("Check for Updates...") {
+                    Task {
+                        await updateManager.checkForUpdates(userInitiated: true)
+                    }
+                }
+            }
+
             // MARK: - App Settings (Cmd+,)
             CommandGroup(replacing: .appSettings) {
                 Button("Settings...") {

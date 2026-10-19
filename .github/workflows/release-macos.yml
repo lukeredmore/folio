@@ -1,0 +1,169 @@
+name: Release macOS DMG
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-macos-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-and-release:
+    name: Build & Package Folio.dmg
+    runs-on: macos-14
+    steps:
+      - name: Checkout repository (full history for commit count build number)
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Cache Bazel repository & action cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cache/bazel
+            /private/var/tmp/_bazel_runner
+          key: bazel-macos-${{ runner.os }}-${{ hashFiles('MODULE.bazel', 'MODULE.bazel.lock') }}
+          restore-keys: |
+            bazel-macos-${{ runner.os }}-
+
+      - name: Run core engine & macOS app tests
+        run: |
+          bazel test //core/folio_engine:folio_engine_test //:FolioTests
+
+      - name: Import Apple signing certificate (if configured in Secrets)
+        id: codesign
+        env:
+          APPLE_CERTIFICATE_P12_BASE64: ${{ secrets.APPLE_CERTIFICATE_P12_BASE64 }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_CODESIGN_IDENTITY_OVERRIDE: ${{ secrets.APPLE_CODESIGN_IDENTITY }}
+        run: |
+          if [[ -z "$APPLE_CERTIFICATE_P12_BASE64" || -z "$APPLE_CERTIFICATE_PASSWORD" ]]; then
+            echo "No APPLE_CERTIFICATE_P12_BASE64 secret configured; using ad-hoc signing (-)."
+            echo "identity=-" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          KEYCHAIN_PATH="$RUNNER_TEMP/folio-signing.keychain-db"
+          KEYCHAIN_PASS="$(uuidgen)"
+          CERT_PATH="$RUNNER_TEMP/certificate.p12"
+
+          echo "$APPLE_CERTIFICATE_P12_BASE64" | base64 --decode > "$CERT_PATH"
+
+          security create-keychain -p "$KEYCHAIN_PASS" "$KEYCHAIN_PATH"
+          security set-keychain-settings -lut 21600 "$KEYCHAIN_PATH"
+          security unlock-keychain -p "$KEYCHAIN_PASS" "$KEYCHAIN_PATH"
+          curl -fsSL https://www.apple.com/certificateauthority/AppleWWDRCAG3.cer -o "$RUNNER_TEMP/AppleWWDRCAG3.cer" && \
+            security import "$RUNNER_TEMP/AppleWWDRCAG3.cer" -k "$KEYCHAIN_PATH" -T /usr/bin/codesign || true
+          security import "$CERT_PATH" -P "$APPLE_CERTIFICATE_PASSWORD" -A -t cert -f pkcs12 -k "$KEYCHAIN_PATH"
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$KEYCHAIN_PASS" "$KEYCHAIN_PATH"
+          security list-keychains -d user -s "$KEYCHAIN_PATH" $(security list-keychains -d user | tr -d '"')
+          rm -f "$CERT_PATH" "$RUNNER_TEMP/AppleWWDRCAG3.cer"
+
+          if [[ -n "$APPLE_CODESIGN_IDENTITY_OVERRIDE" ]]; then
+            IDENTITY="$APPLE_CODESIGN_IDENTITY_OVERRIDE"
+          else
+            IDENTITY=$(security find-identity -v -p codesigning "$KEYCHAIN_PATH" | awk 'NR==1 {print $2}')
+          fi
+
+          if [[ -z "$IDENTITY" ]]; then
+            echo "Warning: No valid codesigning identity found in imported p12; falling back to ad-hoc signing (-)."
+            IDENTITY="-"
+          else
+            echo "Using Apple signing identity: $IDENTITY"
+          fi
+          echo "identity=$IDENTITY" >> "$GITHUB_OUTPUT"
+
+      - name: Build Folio.app and package Folio.dmg
+        env:
+          FOLIO_REPOSITORY: ${{ github.repository }}
+          APPLE_CODESIGN_IDENTITY: ${{ steps.codesign.outputs.identity }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          chmod +x ./build_app.sh ./scripts/package_dmg.sh
+          ./scripts/package_dmg.sh
+
+      - name: Clean up temporary signing keychain
+        if: always()
+        run: |
+          rm -f "$RUNNER_TEMP/certificate.p12"
+          security delete-keychain "$RUNNER_TEMP/folio-signing.keychain-db" 2>/dev/null || true
+
+      - name: Upload Folio.dmg as workflow artifact (for PR testing)
+        uses: actions/upload-artifact@v4
+        with:
+          name: Folio-macos-dmg
+          path: Folio.dmg
+          retention-days: 14
+
+      - name: Read build metadata from Folio.app
+        id: meta
+        run: |
+          PLIST="Folio.app/Contents/Info.plist"
+          VERSION=$(/usr/libexec/PlistBuddy -c "Print :CFBundleShortVersionString" "$PLIST")
+          BUILD_NUM=$(/usr/libexec/PlistBuddy -c "Print :CFBundleVersion" "$PLIST")
+          SHA=$(/usr/libexec/PlistBuddy -c "Print :FolioCommitSHA" "$PLIST")
+          ENGINE_VER=$(/usr/libexec/PlistBuddy -c "Print :FolioEngineVersion" "$PLIST")
+          SHA256=$(shasum -a 256 Folio.dmg | awk '{print $1}')
+          PUBLISHED_AT=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+          COMMIT_MSG=$(git log -1 --pretty=%s)
+
+          METADATA_JSON=$(python3 -c 'import json, sys; print(json.dumps({
+              "version": sys.argv[1],
+              "build_number": int(sys.argv[2]),
+              "commit_sha": sys.argv[3],
+              "engine_version": sys.argv[4],
+              "published_at": sys.argv[5],
+              "dmg_url": f"https://github.com/{sys.argv[6]}/releases/latest/download/Folio.dmg",
+              "dmg_sha256": sys.argv[7],
+              "notes": sys.argv[8],
+          }))' "$VERSION" "$BUILD_NUM" "$SHA" "$ENGINE_VER" "$PUBLISHED_AT" "${{ github.repository }}" "$SHA256" "$COMMIT_MSG")
+
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "build_number=$BUILD_NUM" >> "$GITHUB_OUTPUT"
+          echo "commit_sha=$SHA" >> "$GITHUB_OUTPUT"
+          echo "engine_version=$ENGINE_VER" >> "$GITHUB_OUTPUT"
+          echo "dmg_sha256=$SHA256" >> "$GITHUB_OUTPUT"
+          echo "metadata_json=$METADATA_JSON" >> "$GITHUB_OUTPUT"
+
+      - name: Update rolling 'latest' GitHub Release (main branch only)
+        if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          TAG="latest"
+          TITLE="Folio v${{ steps.meta.outputs.version }} (Build #${{ steps.meta.outputs.build_number }} — ${{ steps.meta.outputs.commit_sha }})"
+          NOTES=$(cat <<EOF
+          Automated rolling macOS build from \`main\` (${{ github.sha }}).
+
+          - **App Version:** \`v${{ steps.meta.outputs.version }}\` (Build \`#${{ steps.meta.outputs.build_number }}\`)
+          - **Core Engine (\`folio_engine\`):** \`v${{ steps.meta.outputs.engine_version }}\`
+          - **DMG SHA-256:** \`${{ steps.meta.outputs.dmg_sha256 }}\`
+
+          Existing installations of **Folio.app** will automatically detect and install this build via **Folio → Check for Updates…** (or on launch).
+
+          <!-- folio-release: ${{ steps.meta.outputs.metadata_json }} -->
+          EOF
+          )
+
+          # Delete previous 'latest' tag/release so the tag points to the newest commit and stays marked as Latest
+          gh release delete "$TAG" --cleanup-tag --yes 2>/dev/null || true
+          git push origin ":refs/tags/$TAG" 2>/dev/null || true
+
+          gh release create "$TAG" \
+            Folio.dmg \
+            --target "${{ github.sha }}" \
+            --title "$TITLE" \
+            --notes "$NOTES" \
+            --latest

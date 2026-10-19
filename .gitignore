@@ -3,6 +3,7 @@
 .swiftpm/
 .worktrees/
 Folio.app/
+Folio.dmg
 *.xcodeproj
 *.xcworkspace
 xcuserdata/

@@ -247,6 +247,91 @@ final class FolioTests: XCTestCase {
         XCTAssertTrue(plain.contains("α"))
         XCTAssertTrue(plain.contains("β"))
     }
+
+    func testAppUpdateManagerRollingAndVersionedComparisons() throws {
+        let installed = AppVersionInfo(
+            shortVersion: "1.0.0",
+            buildNumber: 12,
+            commitSHA: "3f15af8",
+            engineVersion: "0.1.0",
+            repository: "lukeredmore/folio"
+        )
+
+        // 1. Same version and build number + matching SHA -> no update
+        let sameBuild = ReleaseManifest(
+            version: "1.0.0",
+            buildNumber: 12,
+            commitSHA: "3f15af8",
+            engineVersion: "0.1.0",
+            publishedAt: "2026-10-18T19:00:00Z",
+            dmgURL: "https://github.com/lukeredmore/folio/releases/latest/download/Folio.dmg",
+            dmgSHA256: ""
+        )
+        XCTAssertFalse(AppUpdateManager.isUpdateAvailable(current: installed, remote: sameBuild))
+
+        // 2. Rolling update WITHOUT marketing version change (1.0.0 build #12 -> 1.0.0 build #13)
+        let rollingNewerBuild = ReleaseManifest(
+            version: "1.0.0",
+            buildNumber: 13,
+            commitSHA: "a91bc02",
+            engineVersion: "0.2.0",
+            publishedAt: "2026-10-18T19:30:00Z",
+            dmgURL: "https://github.com/lukeredmore/folio/releases/latest/download/Folio.dmg",
+            dmgSHA256: ""
+        )
+        XCTAssertTrue(AppUpdateManager.isUpdateAvailable(current: installed, remote: rollingNewerBuild))
+
+        // 3. Semantic version bump (1.0.0 -> 1.1.0)
+        let semverBump = ReleaseManifest(
+            version: "1.1.0",
+            buildNumber: 1,
+            commitSHA: "b82cd11",
+            engineVersion: "0.2.0",
+            publishedAt: "2026-10-18T20:00:00Z",
+            dmgURL: "https://github.com/lukeredmore/folio/releases/latest/download/Folio.dmg",
+            dmgSHA256: ""
+        )
+        XCTAssertTrue(AppUpdateManager.isUpdateAvailable(current: installed, remote: semverBump))
+
+        // 4. Verify SHA-256 helper
+        let tempFile = FileManager.default.temporaryDirectory.appendingPathComponent("folio-sha-test-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: tempFile) }
+        try Data("folio-dmg-payload".utf8).write(to: tempFile)
+        // SHA-256("folio-dmg-payload") = cd80ba81532451cedacbba4d7bd7e97a01150151ba665f29cda50bd46018ea1e
+        XCTAssertTrue(try AppUpdateManager.verifySHA256(
+            fileURL: tempFile,
+            expectedHex: "cd80ba81532451cedacbba4d7bd7e97a01150151ba665f29cda50bd46018ea1e"
+        ))
+        XCTAssertFalse(try AppUpdateManager.verifySHA256(
+            fileURL: tempFile,
+            expectedHex: "0000000000000000000000000000000000000000000000000000000000000000"
+        ))
+
+        // 5. Parse GitHub Releases REST API payload directly (no external JSON file needed)
+        let ghReleasePayload = """
+        {
+          "tag_name": "latest",
+          "name": "Folio v1.0.0 (Build #15 — 9f8e7d6)",
+          "published_at": "2026-10-18T20:15:00Z",
+          "body": "Automated rolling macOS build.\\n\\n<!-- folio-release: {\\"version\\":\\"1.0.0\\",\\"build_number\\":15,\\"commit_sha\\":\\"9f8e7d6\\",\\"engine_version\\":\\"0.1.0\\",\\"published_at\\":\\"2026-10-18T20:15:00Z\\",\\"dmg_url\\":\\"https://github.com/lukeredmore/folio/releases/latest/download/Folio.dmg\\",\\"dmg_sha256\\":\\"cd80ba81532451cedacbba4d7bd7e97a01150151ba665f29cda50bd46018ea1e\\",\\"notes\\":\\"feat: rolling update\\"} -->",
+          "assets": [
+            {
+              "name": "Folio.dmg",
+              "browser_download_url": "https://github.com/lukeredmore/folio/releases/latest/download/Folio.dmg",
+              "digest": "sha256:cd80ba81532451cedacbba4d7bd7e97a01150151ba665f29cda50bd46018ea1e"
+            }
+          ]
+        }
+        """.data(using: .utf8)!
+
+        let parsed = try ReleaseManifest.fromGitHubReleaseAPI(data: ghReleasePayload)
+        XCTAssertEqual(parsed.version, "1.0.0")
+        XCTAssertEqual(parsed.buildNumber, 15)
+        XCTAssertEqual(parsed.commitSHA, "9f8e7d6")
+        XCTAssertEqual(parsed.notes, "feat: rolling update")
+        XCTAssertTrue(AppUpdateManager.isUpdateAvailable(current: installed, remote: parsed))
+    }
 }
+
 
 
