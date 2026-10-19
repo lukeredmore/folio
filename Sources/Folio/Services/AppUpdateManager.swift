@@ -309,7 +309,18 @@ public final class AppUpdateManager: ObservableObject {
                 try Self.mountExtractAndScheduleSwap(dmgURL: downloadedDMG, workDir: tempRoot)
             }.value
 
+            // Dismiss the modal sheet and any AppKit attached sheets first, because AppKit
+            // ignores NSApplication.shared.terminate(nil) while a window has an attached sheet.
+            showUpdateSheet = false
+            for window in NSApplication.shared.windows {
+                if let sheet = window.attachedSheet {
+                    window.endSheet(sheet)
+                }
+            }
             NSApplication.shared.terminate(nil)
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
+                Darwin.exit(0)
+            }
         } catch {
             status = .error("Failed to install update: \(error.localizedDescription)")
         }
@@ -383,9 +394,17 @@ public final class AppUpdateManager: ObservableObject {
         let scriptContents = """
         #!/usr/bin/env bash
         set -euo pipefail
-        while kill -0 \(currentPID) 2>/dev/null; do
+        for _ in {1..10}; do
+            if ! kill -0 \(currentPID) 2>/dev/null; then
+                break
+            fi
             sleep 0.2
         done
+        if kill -0 \(currentPID) 2>/dev/null; then
+            kill -TERM \(currentPID) 2>/dev/null || true
+            sleep 0.3
+            kill -9 \(currentPID) 2>/dev/null || true
+        fi
         rm -rf "\(targetAppPath)"
         mv "\(stagedApp.path)" "\(targetAppPath)"
         open -n "\(targetAppPath)"
@@ -394,8 +413,11 @@ public final class AppUpdateManager: ObservableObject {
         try scriptContents.write(to: updaterScript, atomically: true, encoding: .utf8)
 
         let swapProc = Process()
-        swapProc.executableURL = URL(fileURLWithPath: "/bin/bash")
-        swapProc.arguments = [updaterScript.path]
+        swapProc.executableURL = URL(fileURLWithPath: "/usr/bin/nohup")
+        swapProc.arguments = ["/bin/bash", updaterScript.path]
+        swapProc.standardInput = FileHandle.nullDevice
+        swapProc.standardOutput = FileHandle.nullDevice
+        swapProc.standardError = FileHandle.nullDevice
         try swapProc.run()
     }
 }
