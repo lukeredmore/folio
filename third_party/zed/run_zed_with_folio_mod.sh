@@ -4,28 +4,33 @@ set -euo pipefail
 if [[ -n "${BUILD_WORKSPACE_DIRECTORY:-}" ]]; then
     REPO_ROOT="${BUILD_WORKSPACE_DIRECTORY}"
 else
-    # Fallback when executed directly from bazel-bin/third_party/zed/
+    # Fallback when executed directly from bazel-bin/third_party/zed/ or repo
     SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
     REPO_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
-    if [[ ! -d "${REPO_ROOT}/third_party/zed" && -d "/Users/lukeredmore/Developer/Folio/.worktrees/bazel-monorepo/third_party/zed" ]]; then
-        REPO_ROOT="/Users/lukeredmore/Developer/Folio/.worktrees/bazel-monorepo"
-    fi
 fi
 
 ZED_UPSTREAM_DIR="${REPO_ROOT}/third_party/zed/upstream"
-if [[ ! -d "${ZED_UPSTREAM_DIR}/.git" ]]; then
-    COMMON_GIT_DIR="$(git -C "${REPO_ROOT}" rev-parse --git-common-dir 2>/dev/null || true)"
-    if [[ -n "${COMMON_GIT_DIR}" ]]; then
-        MAIN_REPO_ROOT="$(cd "${REPO_ROOT}" && cd "${COMMON_GIT_DIR}/.." && pwd)"
-        if [[ -d "${MAIN_REPO_ROOT}/third_party/zed/upstream/.git" ]]; then
-            ZED_UPSTREAM_DIR="${MAIN_REPO_ROOT}/third_party/zed/upstream"
-        fi
-    fi
-fi
 PATCH_FILE="${REPO_ROOT}/third_party/zed/patches/0002-real-zed-editor-folio-wysiwyg.patch"
 ZED_COMMIT="56934ec0560bce8929025497411de7f5322fb6ca"
 
-if [[ ! -d "${ZED_UPSTREAM_DIR}/.git" ]]; then
+if [[ ! -e "${ZED_UPSTREAM_DIR}/.git" ]]; then
+    COMMON_GIT_DIR="$(git -C "${REPO_ROOT}" rev-parse --git-common-dir 2>/dev/null || true)"
+    if [[ -n "${COMMON_GIT_DIR}" ]]; then
+        MAIN_REPO_ROOT="$(cd "${REPO_ROOT}" && cd "${COMMON_GIT_DIR}/.." && pwd)"
+        MAIN_ZED_UPSTREAM="${MAIN_REPO_ROOT}/third_party/zed/upstream"
+        if [[ -e "${MAIN_ZED_UPSTREAM}/.git" && "${MAIN_REPO_ROOT}" != "${REPO_ROOT}" ]]; then
+            echo "[Folio] Creating isolated Zed worktree in ${ZED_UPSTREAM_DIR} (sharing Cargo target cache)..."
+            git -C "${MAIN_ZED_UPSTREAM}" worktree prune || true
+            git -C "${MAIN_ZED_UPSTREAM}" worktree add --detach "${ZED_UPSTREAM_DIR}" "${ZED_COMMIT}"
+            git -C "${ZED_UPSTREAM_DIR}" apply "${PATCH_FILE}"
+            if [[ -d "${MAIN_ZED_UPSTREAM}/target" && ! -e "${ZED_UPSTREAM_DIR}/target" ]]; then
+                ln -s "${MAIN_ZED_UPSTREAM}/target" "${ZED_UPSTREAM_DIR}/target"
+            fi
+        fi
+    fi
+fi
+
+if [[ ! -e "${ZED_UPSTREAM_DIR}/.git" ]]; then
     echo "[Folio] Cloning upstream zed-industries/zed (${ZED_COMMIT})..."
     git clone --depth 1 https://github.com/zed-industries/zed.git "${ZED_UPSTREAM_DIR}"
     git -C "${ZED_UPSTREAM_DIR}" fetch --depth 1 origin "${ZED_COMMIT}"
