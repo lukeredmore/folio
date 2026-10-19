@@ -1589,7 +1589,7 @@ public final class MarkdownLiveStyler {
                 }
 
                 let actualCellW = cell.contentRange.length > 0
-                    ? ceil(storage.attributedSubstring(from: cell.contentRange).size().width)
+                    ? max(0.0, measuredWidths[rIdx][cIdx] - 4.0)
                     : 0.0
                 let colW = colWidths[cIdx]
                 let alignOffset: CGFloat
@@ -1627,6 +1627,42 @@ public final class MarkdownLiveStyler {
     }
 
     // MARK: - Inline Markdown Styling
+    private static func sortedRangesOverlap(_ ranges: [NSRange], _ target: NSRange) -> Bool {
+        guard !ranges.isEmpty, target.length > 0 else { return false }
+        let targetEnd = target.location + target.length
+        var low = 0
+        var high = ranges.count
+        while low < high {
+            let mid = (low + high) >> 1
+            let r = ranges[mid]
+            if r.location + r.length <= target.location {
+                low = mid + 1
+            } else {
+                high = mid
+            }
+        }
+        return low < ranges.count && ranges[low].location < targetEnd
+    }
+
+    private static func insertSortedRange(_ range: NSRange, into ranges: inout [NSRange]) {
+        guard range.length > 0 else { return }
+        if let last = ranges.last, last.location <= range.location {
+            ranges.append(range)
+            return
+        }
+        var low = 0
+        var high = ranges.count
+        while low < high {
+            let mid = (low + high) >> 1
+            if ranges[mid].location < range.location {
+                low = mid + 1
+            } else {
+                high = mid
+            }
+        }
+        ranges.insert(range, at: low)
+    }
+
     private static func styleInlineMarkdown(
         in storage: NSTextStorage,
         string: String,
@@ -1648,48 +1684,52 @@ public final class MarkdownLiveStyler {
         var protectedDelimiterRanges: [NSRange] = []
 
         let isInCodeOrMath: (NSRange) -> Bool = { r in
-            codeAndMathRanges.contains { NSIntersectionRange($0, r).length > 0 }
+            sortedRangesOverlap(codeAndMathRanges, r)
         }
         let isDelimiterProtected: (NSRange) -> Bool = { r in
-            isInCodeOrMath(r) || protectedDelimiterRanges.contains { NSIntersectionRange($0, r).length > 0 }
+            sortedRangesOverlap(codeAndMathRanges, r) || sortedRangesOverlap(protectedDelimiterRanges, r)
         }
 
         // 1. Inline Code (`code` or `` ` ``) - highest precedence in CommonMark (even `\` inside code is literal)
-        for codeSpan in scanInlineCodeSpans(nsString: nsString, range: range) {
-            let fullMatchRange = codeSpan.fullRange
-            codeAndMathRanges.append(fullMatchRange)
-
-            var openRange = codeSpan.openRange
-            var innerRange = codeSpan.innerRange
-            var closeRange = codeSpan.closeRange
-
-            // CommonMark rule: if code span has a leading AND trailing space (and is not all spaces), strip one space from each end
-            if innerRange.length >= 2 {
-                let firstChar = nsString.character(at: innerRange.location)
-                let lastChar = nsString.character(at: NSMaxRange(innerRange) - 1)
-                let innerSub = nsString.substring(with: innerRange)
-                if firstChar == 32 && lastChar == 32 && innerSub.contains(where: { $0 != " " }) {
-                    openRange.length += 1
-                    innerRange.location += 1
-                    innerRange.length -= 2
-                    closeRange.location -= 1
-                    closeRange.length += 1
-                }
-            }
-
+        let codeSpans = scanInlineCodeSpans(nsString: nsString, range: range)
+        if !codeSpans.isEmpty {
             let codeFontSize = fontSize * 0.88
             let codeFont = theme.codeFont(size: codeFontSize)
-            storage.addAttributes([
+            let inlineCodeAttrs: [NSAttributedString.Key: Any] = [
                 .font: codeFont,
                 .foregroundColor: theme.inlineCodeNSColor.withAlphaComponent(dimFactor),
                 inlineCodeFontAttributeKey: true
-            ], range: innerRange)
-            decorations.append(LineDecoration(
-                lineRange: innerRange,
-                kind: .inlineCode(range: innerRange, fontSize: codeFontSize, dimFactor: dimFactor)
-            ))
-            styleSyntaxToken(in: storage, range: openRange, isActiveLine: isActiveLine, theme: theme, dimFactor: dimFactor)
-            styleSyntaxToken(in: storage, range: closeRange, isActiveLine: isActiveLine, theme: theme, dimFactor: dimFactor)
+            ]
+            for codeSpan in codeSpans {
+                let fullMatchRange = codeSpan.fullRange
+                insertSortedRange(fullMatchRange, into: &codeAndMathRanges)
+
+                var openRange = codeSpan.openRange
+                var innerRange = codeSpan.innerRange
+                var closeRange = codeSpan.closeRange
+
+                // CommonMark rule: if code span has a leading AND trailing space (and is not all spaces), strip one space from each end
+                if innerRange.length >= 2 {
+                    let firstChar = nsString.character(at: innerRange.location)
+                    let lastChar = nsString.character(at: NSMaxRange(innerRange) - 1)
+                    let innerSub = nsString.substring(with: innerRange)
+                    if firstChar == 32 && lastChar == 32 && innerSub.contains(where: { $0 != " " }) {
+                        openRange.length += 1
+                        innerRange.location += 1
+                        innerRange.length -= 2
+                        closeRange.location -= 1
+                        closeRange.length += 1
+                    }
+                }
+
+                storage.addAttributes(inlineCodeAttrs, range: innerRange)
+                decorations.append(LineDecoration(
+                    lineRange: innerRange,
+                    kind: .inlineCode(range: innerRange, fontSize: codeFontSize, dimFactor: dimFactor)
+                ))
+                styleSyntaxToken(in: storage, range: openRange, isActiveLine: isActiveLine, theme: theme, dimFactor: dimFactor)
+                styleSyntaxToken(in: storage, range: closeRange, isActiveLine: isActiveLine, theme: theme, dimFactor: dimFactor)
+            }
         }
 
         // 2. Inline Math ($E = mc^2$)
@@ -1699,7 +1739,7 @@ public final class MarkdownLiveStyler {
             if isInCodeOrMath(fullMatchRange) {
                 return
             }
-            codeAndMathRanges.append(fullMatchRange)
+            insertSortedRange(fullMatchRange, into: &codeAndMathRanges)
 
             let openRange = match.range(at: 1)
             let innerRange = match.range(at: 2)
@@ -1748,7 +1788,7 @@ public final class MarkdownLiveStyler {
             guard let match = match, !isInCodeOrMath(match.range) else { return }
             let slashRange = NSRange(location: match.range.location, length: 1)
             let escapedCharRange = match.range(at: 1)
-            protectedDelimiterRanges.append(match.range)
+            insertSortedRange(match.range, into: &protectedDelimiterRanges)
             styleSyntaxToken(in: storage, range: slashRange, isActiveLine: isActiveLine, theme: theme, dimFactor: dimFactor)
             _ = escapedCharRange
         }
@@ -1756,7 +1796,7 @@ public final class MarkdownLiveStyler {
         // 4. HTML <br/> tags outside inline code/math
         htmlBrRegex.enumerateMatches(in: string, options: [], range: range) { match, _, _ in
             guard let match = match, !isInCodeOrMath(match.range) else { return }
-            protectedDelimiterRanges.append(match.range)
+            insertSortedRange(match.range, into: &protectedDelimiterRanges)
             styleSyntaxToken(in: storage, range: match.range, isActiveLine: isActiveLine, theme: theme, dimFactor: dimFactor)
             if !isActiveLine && match.range.length > 0 {
                 storage.addAttribute(.kern, value: 6.0, range: NSRange(location: match.range.location, length: 1))
@@ -1766,8 +1806,8 @@ public final class MarkdownLiveStyler {
         // 5. Links ([label](url)) and Images (![alt](url)) — scanned with code-span & balanced-paren awareness
         let linkMatches = scanMarkdownLinks(nsString: nsString, range: range, isDelimiterProtected: isDelimiterProtected)
         for link in linkMatches {
-            protectedDelimiterRanges.append(link.openSyntaxRange)
-            protectedDelimiterRanges.append(link.trailingSyntaxRange)
+            insertSortedRange(link.openSyntaxRange, into: &protectedDelimiterRanges)
+            insertSortedRange(link.trailingSyntaxRange, into: &protectedDelimiterRanges)
 
             applyAttributesToVisibleCharacters(
                 in: storage,
@@ -1787,7 +1827,7 @@ public final class MarkdownLiveStyler {
             let openAngle = match.range(at: 1)
             let urlRange = match.range(at: 2)
             let closeAngle = match.range(at: 3)
-            protectedDelimiterRanges.append(match.range)
+            insertSortedRange(match.range, into: &protectedDelimiterRanges)
 
             applyAttributesToVisibleCharacters(
                 in: storage,
@@ -1810,8 +1850,8 @@ public final class MarkdownLiveStyler {
             let closeRange = NSRange(location: NSMaxRange(innerRange), length: 3)
             guard !isDelimiterProtected(openRange), !isDelimiterProtected(closeRange) else { return }
 
-            protectedDelimiterRanges.append(openRange)
-            protectedDelimiterRanges.append(closeRange)
+            insertSortedRange(openRange, into: &protectedDelimiterRanges)
+            insertSortedRange(closeRange, into: &protectedDelimiterRanges)
             applyFontTraitToVisibleCharacters(in: storage, range: innerRange, trait: [.boldFontMask, .italicFontMask], fallbackFont: baseFont)
             styleSyntaxToken(in: storage, range: openRange, isActiveLine: isActiveLine, theme: theme, dimFactor: dimFactor)
             styleSyntaxToken(in: storage, range: closeRange, isActiveLine: isActiveLine, theme: theme, dimFactor: dimFactor)
@@ -1826,8 +1866,8 @@ public final class MarkdownLiveStyler {
                 let closeRange = NSRange(location: NSMaxRange(innerRange), length: 2)
                 guard !isDelimiterProtected(openRange), !isDelimiterProtected(closeRange) else { return }
 
-                protectedDelimiterRanges.append(openRange)
-                protectedDelimiterRanges.append(closeRange)
+                insertSortedRange(openRange, into: &protectedDelimiterRanges)
+                insertSortedRange(closeRange, into: &protectedDelimiterRanges)
                 applyFontTraitToVisibleCharacters(in: storage, range: innerRange, trait: .boldFontMask, fallbackFont: baseFont)
                 styleSyntaxToken(in: storage, range: openRange, isActiveLine: isActiveLine, theme: theme, dimFactor: dimFactor)
                 styleSyntaxToken(in: storage, range: closeRange, isActiveLine: isActiveLine, theme: theme, dimFactor: dimFactor)
@@ -1843,8 +1883,8 @@ public final class MarkdownLiveStyler {
                 let closeRange = NSRange(location: NSMaxRange(innerRange), length: 1)
                 guard !isDelimiterProtected(openRange), !isDelimiterProtected(closeRange) else { return }
 
-                protectedDelimiterRanges.append(openRange)
-                protectedDelimiterRanges.append(closeRange)
+                insertSortedRange(openRange, into: &protectedDelimiterRanges)
+                insertSortedRange(closeRange, into: &protectedDelimiterRanges)
                 applyFontTraitToVisibleCharacters(in: storage, range: innerRange, trait: .italicFontMask, fallbackFont: baseFont)
                 styleSyntaxToken(in: storage, range: openRange, isActiveLine: isActiveLine, theme: theme, dimFactor: dimFactor)
                 styleSyntaxToken(in: storage, range: closeRange, isActiveLine: isActiveLine, theme: theme, dimFactor: dimFactor)
@@ -1859,8 +1899,8 @@ public final class MarkdownLiveStyler {
             let closeRange = match.range(at: 3)
             guard !isDelimiterProtected(openRange), !isDelimiterProtected(closeRange) else { return }
 
-            protectedDelimiterRanges.append(openRange)
-            protectedDelimiterRanges.append(closeRange)
+            insertSortedRange(openRange, into: &protectedDelimiterRanges)
+            insertSortedRange(closeRange, into: &protectedDelimiterRanges)
             applyAttributesToVisibleCharacters(
                 in: storage,
                 range: innerRange,
@@ -1881,8 +1921,8 @@ public final class MarkdownLiveStyler {
             let closeRange = match.range(at: 3)
             guard !isDelimiterProtected(openRange), !isDelimiterProtected(closeRange) else { return }
 
-            protectedDelimiterRanges.append(openRange)
-            protectedDelimiterRanges.append(closeRange)
+            insertSortedRange(openRange, into: &protectedDelimiterRanges)
+            insertSortedRange(closeRange, into: &protectedDelimiterRanges)
             let highlightBg = theme.isDark
                 ? NSColor(srgbRed: 0.55, green: 0.45, blue: 0.12, alpha: 0.55 * dimFactor)
                 : NSColor(srgbRed: 1.0, green: 0.93, blue: 0.45, alpha: 0.65 * dimFactor)
@@ -2142,20 +2182,22 @@ public final class MarkdownLiveStyler {
         }
     }
 
+    private static let collapsedTokenAttributes: [NSAttributedString.Key: Any] = [
+        .foregroundColor: NSColor.clear,
+        .backgroundColor: NSColor.clear,
+        .font: NSFont.systemFont(ofSize: 0.001),
+        .kern: 0.0,
+        .underlineStyle: 0,
+        .strikethroughStyle: 0,
+        collapsedTokenAttributeKey: true
+    ]
+
     private static func collapseWhitespaceRange(
         in storage: NSTextStorage,
         range: NSRange
     ) {
         guard range.length > 0 else { return }
-        storage.addAttributes([
-            .foregroundColor: NSColor.clear,
-            .backgroundColor: NSColor.clear,
-            .font: NSFont.systemFont(ofSize: 0.001),
-            .kern: 0.0,
-            .underlineStyle: 0,
-            .strikethroughStyle: 0,
-            collapsedTokenAttributeKey: true
-        ], range: range)
+        storage.addAttributes(collapsedTokenAttributes, range: range)
     }
 
     private static func styleSyntaxToken(

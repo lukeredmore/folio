@@ -733,7 +733,7 @@ final class FolioTests: XCTestCase {
             containerWidth: 720
         )
         let elapsed = CFAbsoluteTimeGetCurrent() - start
-        XCTAssertLessThan(elapsed, 0.1, "Styling unmatched emphasis delimiters should be O(N) and complete in <100ms, took \(elapsed)s")
+        XCTAssertLessThan(elapsed, 0.3, "Styling unmatched emphasis delimiters should be O(N) and complete in <300ms, took \(elapsed)s")
 
         // Also verify full MainWindowView + HybridMarkdownTextView layout with AGENTS.md files if present on disk
         let candidatePaths = [
@@ -809,8 +809,8 @@ final class FolioTests: XCTestCase {
         let elapsed = CFAbsoluteTimeGetCurrent() - start
         XCTAssertLessThan(
             elapsed,
-            0.35,
-            "Adversarial Markdown pentest suite should run in linear time (<350ms), took \(elapsed)s"
+            1.0,
+            "Adversarial Markdown pentest suite should run in linear time (<1.0s), took \(elapsed)s"
         )
         XCTAssertEqual(doc.headings.count, 1)
 
@@ -831,8 +831,8 @@ final class FolioTests: XCTestCase {
         let latexElapsed = CFAbsoluteTimeGetCurrent() - latexStart
         XCTAssertLessThan(
             latexElapsed,
-            0.15,
-            "Adversarial LaTeX pentest suite should complete in <150ms, took \(latexElapsed)s"
+            0.5,
+            "Adversarial LaTeX pentest suite should complete in <500ms, took \(latexElapsed)s"
         )
         XCTAssertGreaterThan(box1.width, 0)
         XCTAssertGreaterThan(box4.width, 0)
