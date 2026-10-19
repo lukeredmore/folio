@@ -110,7 +110,7 @@
   "moduleExtensions": {
     "//third_party/zed:zed_repo.bzl%zed_ext": {
       "general": {
-        "bzlTransitiveDigest": "fqkDIy8RssBfNy4UHanwZkWzEXaew5OBZzuBKe5ULpk=",
+        "bzlTransitiveDigest": "KcsDDf2T6nHOca/A9GThXEm6A9HBa3seu3tMIgWxoeM=",
         "usagesDigest": "zqExJ/CpkoluI2QGz+FqxSPg5/wWSGhnQnF58/7GzZQ=",
         "recordedFileInputs": {},
         "recordedDirentsInputs": {},
@@ -126,6 +126,7 @@
                 "@@//third_party/zed:upstream_seed/crates/editor/src/editor.rs",
                 "@@//third_party/zed:upstream_seed/crates/editor/src/element.rs",
                 "@@//third_party/zed:upstream_seed/crates/editor/src/lib.rs",
+                "@@//third_party/zed:upstream_seed/crates/markdown_preview/src/lib.rs",
                 "@@//third_party/zed:upstream_seed/crates/zed/src/main.rs"
               ],
               "patches": [

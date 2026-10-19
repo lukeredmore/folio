@@ -4,6 +4,7 @@ pub mod math_canvas;
 pub mod theme_sync;
 
 pub use editor_session::{FolioZedModSession, FolioZedRenderFrame};
+pub use folio_engine::markdown::NewlineAction;
 pub use inlay_folding::{
     analyze_buffer_for_zed, compute_zed_folds, translate_block_decorations, ZedBlockDecoration,
     ZedFoldRange,
@@ -14,7 +15,6 @@ pub use theme_sync::{ZedAppearanceMode, ZedThemeOverrides};
 #[cfg(test)]
 mod tests {
     use super::*;
-    use folio_engine::markdown::NewlineAction;
 
     #[test]
     fn test_zed_mod_folds_inactive_lines_and_unfolds_active_line() {

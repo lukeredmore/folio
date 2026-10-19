@@ -27,7 +27,21 @@ rust_library(
     edition = "2021",
     deps = [
         ":gpui",
+    ],
+)
+
+rust_library(
+    name = "markdown_preview",
+    srcs = [
+        "crates/markdown_preview/src/lib.rs",
+    ],
+    crate_name = "markdown_preview",
+    edition = "2021",
+    deps = [
+        ":editor",
+        ":gpui",
         "@//core/folio_engine",
+        "@//zed/folio_zed_extension",
         "@//zed/folio_zed_mod",
     ],
 )
@@ -39,7 +53,9 @@ rust_binary(
     deps = [
         ":editor",
         ":gpui",
+        ":markdown_preview",
         "@//core/folio_engine",
+        "@//zed/folio_zed_extension",
         "@//zed/folio_zed_mod",
     ],
 )
@@ -88,6 +104,7 @@ def _zed_ext_impl(module_ctx):
             Label("//third_party/zed:upstream_seed/crates/editor/src/editor.rs"),
             Label("//third_party/zed:upstream_seed/crates/editor/src/element.rs"),
             Label("//third_party/zed:upstream_seed/crates/editor/src/lib.rs"),
+            Label("//third_party/zed:upstream_seed/crates/markdown_preview/src/lib.rs"),
             Label("//third_party/zed:upstream_seed/crates/zed/src/main.rs"),
         ],
         patches = [
@@ -98,3 +115,4 @@ def _zed_ext_impl(module_ctx):
 zed_ext = module_extension(
     implementation = _zed_ext_impl,
 )
+

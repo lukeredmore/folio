@@ -1,38 +1,57 @@
---- a/crates/editor/src/editor.rs
-+++ b/crates/editor/src/editor.rs
-@@ -1,31 +1,84 @@
- //! Zed `Editor` buffer and cursor state (`crates/editor/src/editor.rs`).
+--- a/crates/markdown_preview/src/lib.rs
++++ b/crates/markdown_preview/src/lib.rs
+@@ -1,12 +1,22 @@
+ //! Zed `markdown_preview` crate (`crates/markdown_preview/src/lib.rs`).
++//! Adds interactive editing to Zed's Markdown Preview canvas while preserving
++//! untouched raw source mode in `crates/editor`, plus built-in Folio Markdown extension rules.
  
- use crate::display_map::DisplayMap;
+-use editor::Editor;
+-use gpui::WindowScene;
++use editor::{DisplayMap, Editor};
 +use folio_engine::markdown::NewlineAction;
-+use folio_zed_mod::{FolioZedModSession, FolioZedRenderFrame};
++use folio_zed_extension::{
++    extract_zed_outline_symbols, ZedOutlineSymbol, LANGUAGE_CONFIG_TOML, OUTLINE_SCM,
++};
++use folio_zed_mod::{FolioZedModSession, FolioZedRenderFrame, GpuiMathPrimitive};
++use gpui::{Bounds, PaintQuad, Pixels, Point, Rgba, ShapedGlyphRun, Size, WindowScene};
  use std::ops::Range;
  
- pub struct Editor {
-     pub buffer_text: String,
+ pub struct MarkdownPreviewView {
+     pub active_editor: Editor,
      pub selection: Range<usize>,
-     pub display_map: DisplayMap,
++    pub canvas_display_map: DisplayMap,
 +    pub folio_mod: FolioZedModSession,
 +    pub last_folio_frame: Option<FolioZedRenderFrame>,
  }
  
- impl Editor {
-     pub fn new(buffer_text: impl Into<String>) -> Self {
+ impl MarkdownPreviewView {
+@@ -14,18 +24,236 @@
          Self {
-             buffer_text: buffer_text.into(),
+             active_editor: editor,
              selection: 0..0,
-             display_map: DisplayMap::new(),
++            canvas_display_map: DisplayMap::new(),
 +            folio_mod: FolioZedModSession::new(true),
 +            last_folio_frame: None,
          }
      }
  
      pub fn set_selection(&mut self, selection: Range<usize>) {
-         self.selection = selection;
+-        self.selection = selection;
++        let len = self.active_editor.buffer_text.len();
++        let start = selection.start.min(len);
++        let end = selection.end.min(len).max(start);
++        self.selection = start..end;
++        self.active_editor.set_selection(self.selection.clone());
      }
- 
++
 +    pub fn set_appearance_mode(&mut self, is_dark: bool) {
 +        self.folio_mod.is_dark = is_dark;
++    }
++
++    pub fn apply_source_edit(&mut self, new_source: String, new_selection: Range<usize>) {
++        self.active_editor.buffer_text = new_source;
++        self.set_selection(new_selection);
++        MarkdownPreviewElement::prepaint(self);
 +    }
 +
 +    pub fn set_code_fence_language(
@@ -41,82 +60,107 @@
 +        new_language: &str,
 +    ) -> bool {
 +        if let Some(updated) = FolioZedModSession::set_code_fence_language(
-+            &self.buffer_text,
++            &self.active_editor.buffer_text,
 +            fence_start_byte_offset,
 +            new_language,
 +        ) {
-+            self.buffer_text = updated;
++            let sel = self.selection.clone();
++            self.apply_source_edit(updated, sel);
 +            true
 +        } else {
 +            false
 +        }
 +    }
 +
-     pub fn insert_newline(&mut self) {
-         let pos = self.selection.end.min(self.buffer_text.len());
-+        let line_start = self.buffer_text[..pos]
++    pub fn toggle_task_checkbox(&mut self, bracket_byte_offset: usize) -> bool {
++        if let Some(updated) = FolioZedModSession::toggle_task_checkbox(
++            &self.active_editor.buffer_text,
++            bracket_byte_offset,
++        ) {
++            let sel = self.selection.clone();
++            self.apply_source_edit(updated, sel);
++            true
++        } else {
++            false
++        }
++    }
++
++    pub fn insert_newline(&mut self) {
++        let pos = self.selection.end.min(self.active_editor.buffer_text.len());
++        let line_start = self.active_editor.buffer_text[..pos]
 +            .rfind('\n')
 +            .map(|idx| idx + 1)
 +            .unwrap_or(0);
-+        let line_up_to_cursor = &self.buffer_text[line_start..pos];
++        let line_up_to_cursor = &self.active_editor.buffer_text[line_start..pos];
 +
 +        match self.folio_mod.on_editor_newline(line_up_to_cursor) {
 +            NewlineAction::ClearEmptyListLine => {
-+                let line_end = self.buffer_text[pos..]
++                let line_end = self.active_editor.buffer_text[pos..]
 +                    .find('\n')
 +                    .map(|rel| pos + rel)
-+                    .unwrap_or(self.buffer_text.len());
-+                self.buffer_text.replace_range(line_start..line_end, "");
-+                self.selection = line_start..line_start;
++                    .unwrap_or(self.active_editor.buffer_text.len());
++                let mut next = self.active_editor.buffer_text.clone();
++                next.replace_range(line_start..line_end, "");
++                self.apply_source_edit(next, line_start..line_start);
 +                return;
 +            }
 +            NewlineAction::InsertPrefix(prefix) => {
 +                let ins = format!("\n{}", prefix);
-+                self.buffer_text.insert_str(pos, &ins);
++                let mut next = self.active_editor.buffer_text.clone();
++                next.insert_str(pos, &ins);
 +                let new_pos = pos + ins.len();
-+                self.selection = new_pos..new_pos;
++                self.apply_source_edit(next, new_pos..new_pos);
 +                return;
 +            }
 +            NewlineAction::Default => {}
 +        }
 +
-         self.buffer_text.insert(pos, '\n');
-         let new_pos = pos + 1;
-         self.selection = new_pos..new_pos;
-     }
++        let mut next = self.active_editor.buffer_text.clone();
++        next.insert(pos, '\n');
++        let new_pos = pos + 1;
++        self.apply_source_edit(next, new_pos..new_pos);
++    }
++
++    pub fn render_canvas_visible_text(&self) -> String {
++        self.canvas_display_map
++            .render_visible_text(&self.active_editor.buffer_text)
++    }
++
++    pub fn extract_built_in_outline_symbols(&self) -> Vec<ZedOutlineSymbol> {
++        extract_zed_outline_symbols(&self.active_editor.buffer_text)
++    }
++
++    pub fn built_in_markdown_config_toml() -> &'static str {
++        LANGUAGE_CONFIG_TOML
++    }
++
++    pub fn built_in_markdown_outline_scm() -> &'static str {
++        OUTLINE_SCM
++    }
  }
---- a/crates/editor/src/element.rs
-+++ b/crates/editor/src/element.rs
-@@ -1,16 +1,130 @@
- //! Zed `EditorElement` GPUI layout and paint pipeline (`crates/editor/src/element.rs`).
  
- use crate::editor::Editor;
--use gpui::WindowScene;
-+use gpui::{Bounds, PaintQuad, Pixels, Point, Rgba, ShapedGlyphRun, Size, WindowScene};
-+use folio_zed_mod::GpuiMathPrimitive;
+ pub struct MarkdownPreviewElement;
  
- pub struct EditorElement;
- 
- impl EditorElement {
-     pub fn prepaint(editor: &mut Editor) {
-         editor.display_map.clear_folds();
-+        let frame = editor
+ impl MarkdownPreviewElement {
+-    pub fn prepaint(_view: &mut MarkdownPreviewView) {}
++    pub fn prepaint(view: &mut MarkdownPreviewView) {
++        view.canvas_display_map.clear_folds();
++        let frame = view
 +            .folio_mod
-+            .evaluate_buffer(&editor.buffer_text, editor.selection.clone());
++            .evaluate_buffer(&view.active_editor.buffer_text, view.selection.clone());
 +        for fold in &frame.folds {
-+            editor.display_map.insert_fold(
++            view.canvas_display_map.insert_fold(
 +                fold.byte_range.clone(),
 +                fold.placeholder_text.clone(),
 +                fold.collapse_completely,
 +            );
 +        }
-+        editor.last_folio_frame = Some(frame);
-     }
++        view.last_folio_frame = Some(frame);
++    }
  
--    pub fn paint(_editor: &Editor, _scene: &mut WindowScene) {
--        // Default upstream paint pass
-+    pub fn paint(editor: &Editor, scene: &mut WindowScene) {
-+        let Some(frame) = &editor.last_folio_frame else {
+-    pub fn paint(_view: &MarkdownPreviewView, _scene: &mut WindowScene) {}
++    pub fn paint(view: &MarkdownPreviewView, scene: &mut WindowScene) {
++        let Some(frame) = &view.last_folio_frame else {
 +            return;
 +        };
 +        let hc = frame.theme.heading_color;
@@ -219,440 +263,5 @@
 +                }
 +            }
 +        }
-     }
- }
---- a/crates/zed/src/main.rs
-+++ b/crates/zed/src/main.rs
-@@ -1,10 +1,429 @@
- use editor::{Editor, EditorElement};
--use gpui::WindowScene;
-+use gpui::{
-+    gpui_macos_run_window, CGpuiBlockDecoration, CGpuiFoldSpan, CGpuiMathCanvas,
-+    CGpuiMathPrimitive, CGpuiRenderCallback, CGpuiRenderFrame, CGpuiRgba, CGpuiTheme, WindowScene,
-+};
-+use folio_engine::theme::RgbaColor;
-+use folio_zed_mod::{GpuiMathPrimitive, ZedBlockDecoration};
-+use std::ffi::{c_char, c_void, CStr, CString};
-+
-+const INITIAL_DOCUMENT: &str = "# Folio in Zed (Markdown WYSIWYG)\n\
-+\n\
-+Welcome to **Zed** with the native **Folio Markdown WYSIWYG** engine (`//:zed_with_folio_mod`).\n\
-+Move your cursor onto any line to reveal its raw Markdown or LaTeX delimiters — move away and `DisplayMap` + `EditorElement` fold and typeset it live while respecting Zed's appearance mode.\n\
-+\n\
-+## 1. Native 2D Math Canvas (`EditorElement::paint`)\n\
-+\n\
-+Inline Euler identity $e^{i\\pi} + 1 = 0$ and golden ratio $\\phi = \\frac{1 + \\sqrt{5}}{2}$ alongside Gaussian integral:\n\
-+\n\
-+$$\n\
-+\\int_{-\\infty}^{\\infty} e^{-x^2} \\, dx = \\sqrt{\\pi} \\quad \\text{and} \\quad \\nabla \\times \\mathbf{B} = \\mu_0 \\mathbf{J} + \\mu_0 \\varepsilon_0 \\frac{\\partial \\mathbf{E}}{\\partial t}\n\
-+$$\n\
-+\n\
-+## 2. Hybrid Markdown & Smart Lists\n\
-+\n\
-+> \"Typography is what language looks like.\" — *Ellen Lupton*\n\
-+\n\
-+- [x] Extract shared Rust core engine (`//core/folio_engine`)\n\
-+- [x] Bridge Zed `DisplayMap` folds and `EditorElement::paint` math canvases (`//zed/folio_zed_mod`)\n\
-+- [x] Provide native Zed Outline Panel queries via `//zed/folio_zed_extension`\n\
-+- [ ] Press **Return** at the end of this task item to test `Editor::insert_newline` continuation!\n\
-+\n\
-+## 3. Fenced Code & Centered Tables\n\
-+\n\
-+```rust\n\
-+fn main() {\n\
-+    let mut editor = Editor::new(\"# Folio + Zed\");\n\
-+    EditorElement::prepaint(&mut editor);\n\
-+}\n\
-+```\n\
-+\n\
-+| Target | Language | Bazel Label |\n\
-+| :--- | :--- | :--- |\n\
-+| Core Engine | Rust + C-FFI | `//core/folio_engine` |\n\
-+| Folio App | Swift / AppKit | `//:FolioApp` |\n\
-+| Zed WYSIWYG Mod | Rust / GPUI | `//:zed_with_folio_mod` |\n\
-+| Zed Outline Ext | Tree-sitter | `//:folio_zed_extension` |\n";
-+
-+fn to_c_rgba(c: RgbaColor) -> CGpuiRgba {
-+    CGpuiRgba {
-+        r: c.r as f32,
-+        g: c.g as f32,
-+        b: c.b as f32,
-+        a: c.a as f32,
-+    }
-+}
-+
-+unsafe extern "C" fn zed_evaluate_bridge(
-+    user_data: *mut c_void,
-+    text_utf8: *const c_char,
-+    sel_byte_start: usize,
-+    sel_byte_end: usize,
-+    is_dark: bool,
-+    render_callback: CGpuiRenderCallback,
-+    cb_ctx: *mut c_void,
-+) {
-+    let editor = &mut *(user_data as *mut Editor);
-+    let text = if text_utf8.is_null() {
-+        ""
-+    } else {
-+        CStr::from_ptr(text_utf8).to_str().unwrap_or("")
-+    };
-+
-+    editor.buffer_text.clear();
-+    editor.buffer_text.push_str(text);
-+    let clamped_start = sel_byte_start.min(editor.buffer_text.len());
-+    let clamped_end = sel_byte_end.min(editor.buffer_text.len()).max(clamped_start);
-+    editor.set_selection(clamped_start..clamped_end);
-+    editor.set_appearance_mode(is_dark);
-+
-+    let mut scene = WindowScene::new();
-+    EditorElement::prepaint(editor);
-+    EditorElement::paint(editor, &mut scene);
-+
-+    let Some(frame) = &editor.last_folio_frame else {
-+        return;
-+    };
-+
-+    let c_theme = CGpuiTheme {
-+        is_dark: frame.theme.is_dark,
-+        base_font_size: frame.theme.base_font_size,
-+        max_write_width: frame.theme.max_write_width,
-+        editor_bg: to_c_rgba(frame.theme.editor_background),
-+        text_fg: to_c_rgba(frame.theme.text_color),
-+        heading_fg: to_c_rgba(frame.theme.heading_color),
-+        secondary_fg: to_c_rgba(frame.theme.secondary_text_color),
-+        link_fg: to_c_rgba(frame.theme.link_color),
-+        code_bg: to_c_rgba(frame.theme.code_background),
-+        inline_code_fg: to_c_rgba(frame.theme.inline_code_color),
-+    };
-+
-+    let c_folds: Vec<CGpuiFoldSpan> = frame
-+        .folds
-+        .iter()
-+        .map(|f| CGpuiFoldSpan {
-+            byte_start: f.byte_range.start,
-+            byte_end: f.byte_range.end,
-+            collapse_completely: f.collapse_completely,
-+        })
-+        .collect();
-+
-+    let mut block_labels: Vec<CString> = Vec::with_capacity(frame.block_decorations.len());
-+    let mut c_blocks: Vec<CGpuiBlockDecoration> = Vec::with_capacity(frame.block_decorations.len());
-+
-+    for dec in &frame.block_decorations {
-+        match dec {
-+            ZedBlockDecoration::HeadingRule { level, line_range } => {
-+                block_labels.push(CString::default());
-+                c_blocks.push(CGpuiBlockDecoration {
-+                    kind: 0,
-+                    byte_start: line_range.start,
-+                    byte_end: line_range.end,
-+                    level: *level as u32,
-+                    is_active: false,
-+                    dim_factor: 1.0,
-+                    accent_rgba: CGpuiRgba { r: 0.0, g: 0.0, b: 0.0, a: 0.0 },
-+                    label_text: block_labels.last().unwrap().as_ptr(),
-+                });
-+            }
-+            ZedBlockDecoration::BlockquoteBar { nest_level, line_range } => {
-+                block_labels.push(CString::default());
-+                c_blocks.push(CGpuiBlockDecoration {
-+                    kind: 1,
-+                    byte_start: line_range.start,
-+                    byte_end: line_range.end,
-+                    level: *nest_level as u32,
-+                    is_active: false,
-+                    dim_factor: 1.0,
-+                    accent_rgba: CGpuiRgba { r: 0.0, g: 0.0, b: 0.0, a: 0.0 },
-+                    label_text: block_labels.last().unwrap().as_ptr(),
-+                });
-+            }
-+            ZedBlockDecoration::CodeFenceHeader { language, accent_rgba, line_range } => {
-+                block_labels.push(CString::new(language.as_str()).unwrap_or_default());
-+                c_blocks.push(CGpuiBlockDecoration {
-+                    kind: 2,
-+                    byte_start: line_range.start,
-+                    byte_end: line_range.end,
-+                    level: 0,
-+                    is_active: false,
-+                    dim_factor: 1.0,
-+                    accent_rgba: CGpuiRgba {
-+                        r: accent_rgba.0,
-+                        g: accent_rgba.1,
-+                        b: accent_rgba.2,
-+                        a: accent_rgba.3,
-+                    },
-+                    label_text: block_labels.last().unwrap().as_ptr(),
-+                });
-+            }
-+            ZedBlockDecoration::CodeFenceRow { is_end, line_range } => {
-+                block_labels.push(CString::default());
-+                c_blocks.push(CGpuiBlockDecoration {
-+                    kind: 3,
-+                    byte_start: line_range.start,
-+                    byte_end: line_range.end,
-+                    level: if *is_end { 1 } else { 0 },
-+                    is_active: false,
-+                    dim_factor: 1.0,
-+                    accent_rgba: CGpuiRgba { r: 0.0, g: 0.0, b: 0.0, a: 0.0 },
-+                    label_text: block_labels.last().unwrap().as_ptr(),
-+                });
-+            }
-+            ZedBlockDecoration::DisplayMathCard { latex, line_range, is_active, dim_factor } => {
-+                block_labels.push(CString::new(latex.as_str()).unwrap_or_default());
-+                c_blocks.push(CGpuiBlockDecoration {
-+                    kind: 4,
-+                    byte_start: line_range.start,
-+                    byte_end: line_range.end,
-+                    level: 0,
-+                    is_active: *is_active,
-+                    dim_factor: *dim_factor,
-+                    accent_rgba: CGpuiRgba { r: 0.0, g: 0.0, b: 0.0, a: 0.0 },
-+                    label_text: block_labels.last().unwrap().as_ptr(),
-+                });
-+            }
-+            ZedBlockDecoration::HorizontalRule { line_range } => {
-+                block_labels.push(CString::default());
-+                c_blocks.push(CGpuiBlockDecoration {
-+                    kind: 5,
-+                    byte_start: line_range.start,
-+                    byte_end: line_range.end,
-+                    level: 0,
-+                    is_active: false,
-+                    dim_factor: 1.0,
-+                    accent_rgba: CGpuiRgba { r: 0.0, g: 0.0, b: 0.0, a: 0.0 },
-+                    label_text: block_labels.last().unwrap().as_ptr(),
-+                });
-+            }
-+            ZedBlockDecoration::TableRow { is_header, is_separator, columns, line_range } => {
-+                let joined = columns.join("\t");
-+                block_labels.push(CString::new(joined).unwrap_or_default());
-+                let flags = (if *is_header { 1 } else { 0 }) | (if *is_separator { 2 } else { 0 });
-+                c_blocks.push(CGpuiBlockDecoration {
-+                    kind: 6,
-+                    byte_start: line_range.start,
-+                    byte_end: line_range.end,
-+                    level: flags,
-+                    is_active: false,
-+                    dim_factor: 1.0,
-+                    accent_rgba: CGpuiRgba { r: 0.0, g: 0.0, b: 0.0, a: 0.0 },
-+                    label_text: block_labels.last().unwrap().as_ptr(),
-+                });
-+            }
-+            ZedBlockDecoration::InlineCodePill { span_range } => {
-+                block_labels.push(CString::default());
-+                c_blocks.push(CGpuiBlockDecoration {
-+                    kind: 7,
-+                    byte_start: span_range.start,
-+                    byte_end: span_range.end,
-+                    level: 0,
-+                    is_active: false,
-+                    dim_factor: 1.0,
-+                    accent_rgba: CGpuiRgba { r: 0.0, g: 0.0, b: 0.0, a: 0.0 },
-+                    label_text: block_labels.last().unwrap().as_ptr(),
-+                });
-+            }
-+        }
-+    }
-+
-+    let total_canvases = frame.display_math_canvases.len() + frame.inline_math_canvases.len();
-+    let mut prim_strings: Vec<Vec<CString>> = Vec::with_capacity(total_canvases);
-+    let mut prim_arrays: Vec<Vec<CGpuiMathPrimitive>> = Vec::with_capacity(total_canvases);
-+    let mut c_canvases: Vec<CGpuiMathCanvas> = Vec::with_capacity(total_canvases);
-+
-+    let all_canvases = frame
-+        .display_math_canvases
-+        .iter()
-+        .map(|(r, c)| (r, c, true))
-+        .chain(frame.inline_math_canvases.iter().map(|(r, c)| (r, c, false)));
-+
-+    for (range, canvas, is_display) in all_canvases {
-+        let mut strs = Vec::with_capacity(canvas.primitives.len());
-+        let mut prims = Vec::with_capacity(canvas.primitives.len());
-+        for p in &canvas.primitives {
-+            match p {
-+                GpuiMathPrimitive::ShapedGlyphRun {
-+                    text,
-+                    origin_x,
-+                    baseline_y,
-+                    font_size,
-+                    italic,
-+                    bold,
-+                    serif,
-+                } => {
-+                    strs.push(CString::new(text.as_str()).unwrap_or_default());
-+                    prims.push(CGpuiMathPrimitive {
-+                        kind: 0,
-+                        x: *origin_x,
-+                        y: *baseline_y,
-+                        width: 0.0,
-+                        height: 0.0,
-+                        font_size: *font_size,
-+                        line_width: 0.0,
-+                        italic: *italic,
-+                        bold: *bold,
-+                        serif: *serif,
-+                        text: strs.last().unwrap().as_ptr(),
-+                    });
-+                }
-+                GpuiMathPrimitive::RuleQuad { x, y, width, height } => {
-+                    strs.push(CString::default());
-+                    prims.push(CGpuiMathPrimitive {
-+                        kind: 1,
-+                        x: *x,
-+                        y: *y,
-+                        width: *width,
-+                        height: *height,
-+                        font_size: 0.0,
-+                        line_width: 0.0,
-+                        italic: false,
-+                        bold: false,
-+                        serif: false,
-+                        text: strs.last().unwrap().as_ptr(),
-+                    });
-+                }
-+                GpuiMathPrimitive::RadicalStroke {
-+                    x,
-+                    top_y,
-+                    bottom_y,
-+                    hook_width,
-+                    radicand_width,
-+                    line_width,
-+                } => {
-+                    strs.push(CString::default());
-+                    prims.push(CGpuiMathPrimitive {
-+                        kind: 2,
-+                        x: *x,
-+                        y: *top_y,
-+                        width: *hook_width + *radicand_width,
-+                        height: (*bottom_y - *top_y).abs(),
-+                        font_size: 0.0,
-+                        line_width: *line_width,
-+                        italic: false,
-+                        bold: false,
-+                        serif: false,
-+                        text: strs.last().unwrap().as_ptr(),
-+                    });
-+                }
-+            }
-+        }
-+        prim_strings.push(strs);
-+        prim_arrays.push(prims);
-+        let arr = prim_arrays.last().unwrap();
-+        c_canvases.push(CGpuiMathCanvas {
-+            byte_start: range.start,
-+            byte_end: range.end,
-+            is_display,
-+            width: canvas.width,
-+            ascent: canvas.ascent,
-+            descent: canvas.descent,
-+            primitives: arr.as_ptr(),
-+            primitives_len: arr.len(),
-+        });
-+    }
-+
-+    let c_frame = CGpuiRenderFrame {
-+        theme: c_theme,
-+        folds: c_folds.as_ptr(),
-+        folds_len: c_folds.len(),
-+        blocks: c_blocks.as_ptr(),
-+        blocks_len: c_blocks.len(),
-+        math_canvases: c_canvases.as_ptr(),
-+        math_canvases_len: c_canvases.len(),
-+    };
-+
-+    render_callback(cb_ctx, &c_frame);
-+}
-+
-+unsafe extern "C" fn zed_newline_bridge(
-+    user_data: *mut c_void,
-+    text_utf8: *const c_char,
-+    cursor_byte_offset: usize,
-+    out_new_cursor_byte: *mut usize,
-+) -> *mut c_char {
-+    let editor = &mut *(user_data as *mut Editor);
-+    let text = if text_utf8.is_null() {
-+        ""
-+    } else {
-+        CStr::from_ptr(text_utf8).to_str().unwrap_or("")
-+    };
-+    editor.buffer_text.clear();
-+    editor.buffer_text.push_str(text);
-+    let pos = cursor_byte_offset.min(editor.buffer_text.len());
-+    editor.set_selection(pos..pos);
-+    editor.insert_newline();
-+    if !out_new_cursor_byte.is_null() {
-+        *out_new_cursor_byte = editor.selection.end;
-+    }
-+    CString::new(editor.buffer_text.as_str())
-+        .unwrap_or_default()
-+        .into_raw()
-+}
-+
-+unsafe extern "C" fn zed_set_fence_lang_bridge(
-+    user_data: *mut c_void,
-+    text_utf8: *const c_char,
-+    fence_start_byte_offset: usize,
-+    new_lang_utf8: *const c_char,
-+) -> *mut c_char {
-+    let editor = &mut *(user_data as *mut Editor);
-+    let text = if text_utf8.is_null() {
-+        ""
-+    } else {
-+        CStr::from_ptr(text_utf8).to_str().unwrap_or("")
-+    };
-+    let new_lang = if new_lang_utf8.is_null() {
-+        ""
-+    } else {
-+        CStr::from_ptr(new_lang_utf8).to_str().unwrap_or("")
-+    };
-+    editor.buffer_text.clear();
-+    editor.buffer_text.push_str(text);
-+    if editor.set_code_fence_language(fence_start_byte_offset, new_lang) {
-+        CString::new(editor.buffer_text.as_str())
-+            .unwrap_or_default()
-+            .into_raw()
-+    } else {
-+        std::ptr::null_mut()
-+    }
-+}
-+
-+unsafe extern "C" fn zed_free_string(ptr: *mut c_char) {
-+    if !ptr.is_null() {
-+        let _ = CString::from_raw(ptr);
-+    }
-+}
- 
- fn main() {
--    let mut ed = Editor::new("# Zed Editor\n");
-+    let mut ed = Editor::new(INITIAL_DOCUMENT);
-+    let end = ed.buffer_text.len();
-+    ed.set_selection(end..end);
-     let mut scene = WindowScene::new();
-     EditorElement::prepaint(&mut ed);
-     EditorElement::paint(&ed, &mut scene);
--    println!("Zed initialized: {}", ed.display_map.render_visible_text(&ed.buffer_text));
-+    println!(
-+        "Zed + Folio GPUI Mod active | folds={} | gpu_quads={} | gpu_glyph_runs={}",
-+        ed.display_map.folds.len(),
-+        scene.quads.len(),
-+        scene.glyph_runs.len()
-+    );
-+
-+    let headless = std::env::args().any(|a| a == "--headless")
-+        || std::env::var("ZED_HEADLESS").map(|v| v == "1").unwrap_or(false);
-+    if headless {
-+        return;
-+    }
-+
-+    let initial_c = CString::new(INITIAL_DOCUMENT).unwrap();
-+    unsafe {
-+        gpui_macos_run_window(
-+            (&mut ed as *mut Editor).cast::<c_void>(),
-+            initial_c.as_ptr(),
-+            zed_evaluate_bridge,
-+            zed_newline_bridge,
-+            zed_set_fence_lang_bridge,
-+            zed_free_string,
-+        );
 +    }
  }

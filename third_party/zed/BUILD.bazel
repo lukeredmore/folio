@@ -29,6 +29,8 @@ sh_binary(
     srcs = ["run_zed_with_folio_mod.sh"],
     data = [
         "patches/0002-real-zed-editor-folio-wysiwyg.patch",
+        "//zed/folio_zed_extension:extension_bundle",
+        "//zed/folio_zed_mod",
     ],
 )
 
@@ -38,8 +40,11 @@ rust_test(
     edition = "2021",
     deps = [
         "//core/folio_engine",
+        "//zed/folio_zed_extension",
         "//zed/folio_zed_mod",
         "@zed_upstream//:editor",
         "@zed_upstream//:gpui",
+        "@zed_upstream//:markdown_preview",
     ],
 )
+

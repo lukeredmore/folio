@@ -11,21 +11,23 @@ fi
 
 ZED_UPSTREAM_DIR="${REPO_ROOT}/third_party/zed/upstream"
 PATCH_FILE="${REPO_ROOT}/third_party/zed/patches/0002-real-zed-editor-folio-wysiwyg.patch"
+EXTENSION_DIR="${REPO_ROOT}/zed/folio_zed_extension"
 ZED_COMMIT="56934ec0560bce8929025497411de7f5322fb6ca"
 
-if [[ ! -e "${ZED_UPSTREAM_DIR}/.git" ]]; then
-    COMMON_GIT_DIR="$(git -C "${REPO_ROOT}" rev-parse --git-common-dir 2>/dev/null || true)"
-    if [[ -n "${COMMON_GIT_DIR}" ]]; then
-        MAIN_REPO_ROOT="$(cd "${REPO_ROOT}" && cd "${COMMON_GIT_DIR}/.." && pwd)"
-        MAIN_ZED_UPSTREAM="${MAIN_REPO_ROOT}/third_party/zed/upstream"
-        if [[ -e "${MAIN_ZED_UPSTREAM}/.git" && "${MAIN_REPO_ROOT}" != "${REPO_ROOT}" ]]; then
-            echo "[Folio] Creating isolated Zed worktree in ${ZED_UPSTREAM_DIR} (sharing Cargo target cache)..."
-            git -C "${MAIN_ZED_UPSTREAM}" worktree prune || true
-            git -C "${MAIN_ZED_UPSTREAM}" worktree add --detach "${ZED_UPSTREAM_DIR}" "${ZED_COMMIT}"
-            git -C "${ZED_UPSTREAM_DIR}" apply "${PATCH_FILE}"
-            if [[ -d "${MAIN_ZED_UPSTREAM}/target" && ! -e "${ZED_UPSTREAM_DIR}/target" ]]; then
-                ln -s "${MAIN_ZED_UPSTREAM}/target" "${ZED_UPSTREAM_DIR}/target"
-            fi
+COMMON_GIT_DIR="$(git -C "${REPO_ROOT}" rev-parse --git-common-dir 2>/dev/null || true)"
+if [[ -n "${COMMON_GIT_DIR}" ]]; then
+    MAIN_REPO_ROOT="$(cd "${REPO_ROOT}" && cd "${COMMON_GIT_DIR}/.." && pwd)"
+fi
+
+if [[ ! -e "${ZED_UPSTREAM_DIR}/.git" && -n "${MAIN_REPO_ROOT:-}" ]]; then
+    MAIN_ZED_UPSTREAM="${MAIN_REPO_ROOT}/third_party/zed/upstream"
+    if [[ -e "${MAIN_ZED_UPSTREAM}/.git" && "${MAIN_REPO_ROOT}" != "${REPO_ROOT}" ]]; then
+        echo "[Folio] Creating isolated Zed worktree in ${ZED_UPSTREAM_DIR} (sharing Cargo target cache)..."
+        git -C "${MAIN_ZED_UPSTREAM}" worktree prune || true
+        git -C "${MAIN_ZED_UPSTREAM}" worktree add --detach "${ZED_UPSTREAM_DIR}" "${ZED_COMMIT}"
+        git -C "${ZED_UPSTREAM_DIR}" apply "${PATCH_FILE}"
+        if [[ -d "${MAIN_ZED_UPSTREAM}/target" && ! -e "${ZED_UPSTREAM_DIR}/target" ]]; then
+            ln -s "${MAIN_ZED_UPSTREAM}/target" "${ZED_UPSTREAM_DIR}/target"
         fi
     fi
 fi
@@ -37,6 +39,10 @@ if [[ ! -e "${ZED_UPSTREAM_DIR}/.git" ]]; then
     git -C "${ZED_UPSTREAM_DIR}" checkout "${ZED_COMMIT}"
     echo "[Folio] Applying Folio Markdown WYSIWYG patch to Zed crates/editor..."
     git -C "${ZED_UPSTREAM_DIR}" apply "${PATCH_FILE}"
+fi
+
+if [[ -f "${EXTENSION_DIR}/languages/markdown/outline.scm" && -d "${ZED_UPSTREAM_DIR}/crates/grammars/src/markdown" ]]; then
+    cp "${EXTENSION_DIR}/languages/markdown/outline.scm" "${ZED_UPSTREAM_DIR}/crates/grammars/src/markdown/outline.scm"
 fi
 
 export PATH="${HOME}/.cargo/bin:${PATH}:/opt/local/bin"
@@ -83,5 +89,10 @@ mkdir -p "${HOME}/.local/bin"
 install_folio_cli_link "${HOME}/.local/bin" || true
 install_folio_cli_link "/usr/local/bin" || true
 
+DEFAULT_WORKSPACE="${MAIN_REPO_ROOT:-${REPO_ROOT}}"
 echo "[Folio] Launching Zed IDE with Folio Markdown WYSIWYG mod..."
-exec "${ZED_BIN}" "$@"
+if [[ $# -eq 0 ]]; then
+    exec "${ZED_BIN}" "${DEFAULT_WORKSPACE}"
+else
+    exec "${ZED_BIN}" "$@"
+fi
