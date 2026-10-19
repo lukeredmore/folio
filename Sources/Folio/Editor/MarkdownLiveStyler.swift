@@ -1167,20 +1167,42 @@ public final class MarkdownLiveStyler {
                         && storage.attribute(softLineBreakAttributeKey, at: NSMaxRange(rec.contentRange), effectiveRange: nil) != nil
                 } == true
             guard !continuesRun else { continue }
+            let run = deferredProseInline[runStart...i]
             let first = deferredProseInline[runStart]
-            let joined = i > runStart
-            let runRange = NSRange(location: first.range.location, length: NSMaxRange(item.range) - first.range.location)
-            styleInlineMarkdown(
-                in: storage,
-                string: string,
-                range: joined ? runRange : first.range,
-                baseFont: first.baseFont,
-                isActiveLine: joined ? false : first.isActive,
-                theme: theme,
-                dimFactor: first.dimFactor,
-                normalizeWhitespace: joined ? true : !first.isActive,
-                decorations: &decorations
-            )
+            // Style consecutive lines with the same activity as one range: the cursor line reveals
+            // its syntax, and the lines around it keep spans that cross soft breaks folded.
+            var segmentStart = runStart
+            for j in runStart...i where j == i || deferredProseInline[j + 1].isActive != deferredProseInline[j].isActive {
+                let segFirst = deferredProseInline[segmentStart]
+                let segLast = deferredProseInline[j]
+                styleInlineMarkdown(
+                    in: storage,
+                    string: string,
+                    range: NSRange(location: segFirst.range.location, length: NSMaxRange(segLast.range) - segFirst.range.location),
+                    baseFont: first.baseFont,
+                    isActiveLine: segFirst.isActive,
+                    theme: theme,
+                    dimFactor: segFirst.dimFactor,
+                    normalizeWhitespace: !segFirst.isActive,
+                    decorations: &decorations
+                )
+                segmentStart = j + 1
+            }
+            if run.count > 1 {
+                // Whitespace at a soft break is not content: hide continuation indentation and
+                // trailing spaces even while the paragraph is being edited.
+                for entry in run {
+                    guard let rec = lineRecords[entry.line] else { continue }
+                    for regex in [leadingSpaceRegex, trailingSpaceRegex] {
+                        let isLeading = regex === leadingSpaceRegex
+                        if isLeading && entry.line == first.line { continue }
+                        if !isLeading && entry.line == item.line { continue }
+                        if let match = regex.firstMatch(in: string, options: [], range: rec.contentRange) {
+                            collapseWhitespaceRange(in: storage, range: match.range)
+                        }
+                    }
+                }
+            }
             runStart = i + 1
         }
 
@@ -1274,9 +1296,9 @@ public final class MarkdownLiveStyler {
     }
 
     // MARK: - Helpers for Line Ranges & Indentation
-    /// Marks source newlines inside inactive cmark paragraphs as soft line breaks, so the
-    /// layout manager renders them as spaces and the paragraph wraps to the container width.
-    /// Paragraphs that contain the cursor keep their source line breaks for editing.
+    /// Marks source newlines inside cmark paragraphs as soft line breaks, so the layout manager
+    /// renders them as spaces and the paragraph wraps to the container width. This includes the
+    /// paragraph that contains the cursor, so entering a paragraph does not change its layout.
     private static func applySoftLineBreaks(
         to storage: NSTextStorage,
         blocks: [CmarkAstBlock],
@@ -1285,9 +1307,6 @@ public final class MarkdownLiveStyler {
     ) {
         let nsString = storage.string as NSString
         for block in blocks where block.kind == 8 && block.endLine > block.startLine && block.startLine > 0 {
-            let lines = block.startLine...block.endLine
-            guard !lines.contains(where: { lineRecords[$0]?.isActive ?? true }) else { continue }
-
             for ln in block.startLine..<block.endLine {
                 guard let rec = lineRecords[ln],
                       canJoinProseLines(proseLineKinds[ln], proseLineKinds[ln + 1]),
