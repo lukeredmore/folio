@@ -759,5 +759,84 @@ final class FolioTests: XCTestCase {
             XCTAssertLessThan(dt, 0.5, "Opening and rendering \(path) should complete in <0.5s, took \(dt)s")
         }
     }
-}
 
+    @MainActor
+    func testAdversarialMarkdownAndLatexNoExplosions() throws {
+        // Comprehensive pentest suite for algorithmic complexity attacks (ReDoS, O(N^2) scanners,
+        // stack-overflow recursion, and infinite loops on malformed delimiters).
+        let n = 1500
+        let adversarialLines: [String] = [
+            // 1. Cubic O(N^3) hrRegex attack: alternating hyphens and spaces ending with non-hyphen
+            String(repeating: "- ", count: n) + "a",
+            String(repeating: "* ", count: n) + "a",
+            String(repeating: "_ ", count: n) + "a",
+            // 2. Quadratic O(N^2) headingRegex attack: trailing spaces + hashes + non-hash
+            "# " + String(repeating: " ", count: n) + String(repeating: "#", count: n) + "a",
+            // 3. Quadratic O(N^2) autolink email domain attack without closing '>'
+            "<user@" + String(repeating: "a.", count: n),
+            // 4. Repeated unmatched inline code backtick runs of different lengths
+            String(repeating: "`a ", count: n),
+            String(repeating: "``a ", count: n),
+            String(repeating: "```a ", count: n),
+            // 5. Repeated unmatched emphasis, strikethrough, and highlight openers
+            String(repeating: "*a ", count: n),
+            String(repeating: "_a ", count: n),
+            String(repeating: "**a ", count: n),
+            String(repeating: "__a ", count: n),
+            String(repeating: "***a ", count: n),
+            String(repeating: "~~a ", count: n),
+            String(repeating: "==a ", count: n),
+            // 6. Repeated unmatched brackets and unclosed link destinations
+            String(repeating: "[a ", count: n),
+            String(repeating: "[a](https://example.com/", count: n / 2),
+            String(repeating: "[outer ", count: n) + "[inner](https://example.com)",
+            // 7. Table candidate line with pipes and thousands of unmatched backticks and '$'
+            "| " + String(repeating: "`a ", count: n) + " | " + String(repeating: "$a ", count: n) + " |",
+        ]
+        let adversarialMarkdown = adversarialLines.joined(separator: "\n\n")
+
+        let start = CFAbsoluteTimeGetCurrent()
+        let storage = NSTextStorage(string: adversarialMarkdown)
+        let doc = MarkdownLiveStyler.applyStyles(
+            to: storage,
+            theme: .daylight,
+            typography: .default,
+            sourceCodeMode: false,
+            focusMode: false,
+            selectedRange: NSRange(location: 0, length: 0),
+            containerWidth: 720
+        )
+        let elapsed = CFAbsoluteTimeGetCurrent() - start
+        XCTAssertLessThan(
+            elapsed,
+            0.35,
+            "Adversarial Markdown pentest suite should run in linear time (<350ms), took \(elapsed)s"
+        )
+        XCTAssertEqual(doc.headings.count, 1)
+
+        // 8. LaTeX parser pentests: deeply nested braces, scripts, stray '}', and \left...\rightarrow...\right
+        let deepBraces = String(repeating: "{", count: 500) + "x+1" + String(repeating: "}", count: 500)
+        let deepSupers = String(repeating: "x^", count: 500) + "2"
+        let strayClosingBraces = "}}}}}}x + y}}}}}}"
+        let leftWithRightArrow = #"\left( a \rightarrow b } c \right)"#
+
+        let latexStart = CFAbsoluteTimeGetCurrent()
+        let node1 = LaTeXMathRenderer.parse(deepBraces)
+        let node2 = LaTeXMathRenderer.parse(deepSupers)
+        let node3 = LaTeXMathRenderer.parse(strayClosingBraces)
+        let node4 = LaTeXMathRenderer.parse(leftWithRightArrow)
+        let box1 = LaTeXMathRenderer.layout(node: node1, baseFontSize: 16, isDisplayStyle: true)
+        let box4 = LaTeXMathRenderer.layoutLatex(leftWithRightArrow, baseFontSize: 16, isDisplayStyle: true)
+        let summary4 = LaTeXMathRenderer.plainTextSummary(of: leftWithRightArrow)
+        let latexElapsed = CFAbsoluteTimeGetCurrent() - latexStart
+        XCTAssertLessThan(
+            latexElapsed,
+            0.15,
+            "Adversarial LaTeX pentest suite should complete in <150ms, took \(latexElapsed)s"
+        )
+        XCTAssertGreaterThan(box1.width, 0)
+        XCTAssertGreaterThan(box4.width, 0)
+        XCTAssertTrue(summary4.contains("→"))
+        _ = (node2, node3, node4)
+    }
+}

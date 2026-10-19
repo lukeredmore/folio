@@ -1003,6 +1003,7 @@ fn find_unprotected_closing_marker(slice: &str, marker: &str) -> Option<usize> {
     let mbytes = marker.as_bytes();
     let mlen = mbytes.len();
     let mut i = 0;
+    let mut failed_tick_mask: u64 = 0;
 
     while i + mlen <= bytes.len() {
         if bytes[i] == b'\\' {
@@ -1016,6 +1017,11 @@ fn find_unprotected_closing_marker(slice: &str, marker: &str) -> Option<usize> {
                 tick_len += 1;
                 i += 1;
             }
+            if tick_len < 64 && (failed_tick_mask & (1u64 << tick_len)) != 0 {
+                continue;
+            }
+            let after_open = i;
+            let mut found_close = false;
             while i < bytes.len() {
                 if bytes[i] == b'`' {
                     let mut c_len = 0;
@@ -1024,24 +1030,40 @@ fn find_unprotected_closing_marker(slice: &str, marker: &str) -> Option<usize> {
                         i += 1;
                     }
                     if c_len == tick_len {
+                        found_close = true;
                         break;
                     }
                 } else {
                     i += 1;
                 }
             }
+            if !found_close {
+                if tick_len < 64 {
+                    failed_tick_mask |= 1u64 << tick_len;
+                }
+                i = after_open;
+            }
             continue;
         }
 
         if &bytes[i..i + mlen] == mbytes {
-            // Must not be preceded by whitespace
-            if i == 0 || bytes[i - 1] == b' ' || bytes[i - 1] == b'\t' {
-                i += 1;
-                continue;
-            }
             // For single-char emphasis (* or _), ensure it isn't part of a double marker (** or __)
             if mlen == 1 && i + 1 < bytes.len() && bytes[i + 1] == mbytes[0] {
                 i += 2;
+                continue;
+            }
+            // If preceded by whitespace, cannot be a closing marker; if also followed by non-whitespace,
+            // it is another identical opening marker so abort early to keep repeated unmatched openers O(N).
+            if i == 0 || bytes[i - 1] == b' ' || bytes[i - 1] == b'\t' {
+                if i > 0
+                    && i + mlen < bytes.len()
+                    && bytes[i + mlen] != b' '
+                    && bytes[i + mlen] != b'\t'
+                    && bytes[i + mlen] != mbytes[0]
+                {
+                    return None;
+                }
+                i += 1;
                 continue;
             }
             // CommonMark intraword rule for '_' / '__': cannot close if followed by alphanumeric
@@ -1070,6 +1092,10 @@ fn scan_inline_spans(
 ) {
     let bytes = line_slice.as_bytes();
     let mut i = 0;
+    let mut failed_tick_mask: u64 = 0;
+    let mut no_closing_dollar = false;
+    let mut cached_bracket_paren: Option<Option<usize>> = None;
+    let mut no_closing_angle = false;
 
     while i < bytes.len() {
         // 0. Backslash Escape (\*, \_, \`, \|, \[, etc., CommonMark §2.4)
@@ -1090,6 +1116,9 @@ fn scan_inline_spans(
             while i < bytes.len() && bytes[i] == b'`' {
                 tick_len += 1;
                 i += 1;
+            }
+            if tick_len < 64 && (failed_tick_mask & (1u64 << tick_len)) != 0 {
+                continue;
             }
             let mut found_close = None;
             let mut search = i;
@@ -1130,11 +1159,14 @@ fn scan_inline_spans(
                 i = close_end;
                 continue;
             }
+            if tick_len < 64 {
+                failed_tick_mask |= 1u64 << tick_len;
+            }
             continue;
         }
 
         // 2. Inline Math ($...$)
-        if bytes[i] == b'$' && (i + 1 < bytes.len() && bytes[i + 1] != b'$') {
+        if !no_closing_dollar && bytes[i] == b'$' && (i + 1 < bytes.len() && bytes[i + 1] != b'$') {
             let start = i;
             let mut search = i + 1;
             let mut found_close = None;
@@ -1170,6 +1202,8 @@ fn scan_inline_spans(
                     i = close_idx + 1;
                     continue;
                 }
+            } else {
+                no_closing_dollar = true;
             }
         }
 
@@ -1359,13 +1393,24 @@ fn scan_inline_spans(
 
         // 8. Markdown Image ![alt](url) or Link [label](url)
         if bytes[i] == b'[' || (bytes[i] == b'!' && i + 1 < bytes.len() && bytes[i + 1] == b'[') {
-            let is_image = bytes[i] == b'!';
-            let bracket_open = if is_image { i + 1 } else { i };
-            if let Some(rel_bracket_close) = line_slice[bracket_open + 1..].find("](") {
-                let bracket_close = bracket_open + 1 + rel_bracket_close;
-                if bracket_close >= bracket_open + 1 {
+            let bracket_open = if bytes[i] == b'!' { i + 1 } else { i };
+            let next_bp = match cached_bracket_paren {
+                Some(Some(pos)) if pos > bracket_open => Some(pos),
+                Some(None) => None,
+                _ => {
+                    let found = line_slice[bracket_open + 1..]
+                        .find("](")
+                        .map(|rel| bracket_open + 1 + rel);
+                    cached_bracket_paren = Some(found);
+                    found
+                }
+            };
+            if let Some(bracket_close) = next_bp {
+                // If there is another unescaped '[' inside (bracket_open + 1)..bracket_close,
+                // let that later '[' match this `](` instead of scanning quadratically.
+                let has_inner_open = bytes[bracket_open + 1..bracket_close].contains(&b'[');
+                if !has_inner_open && bracket_close >= bracket_open + 1 {
                     let url_start = bracket_close + 2;
-                    // Handle balanced single level of parentheses inside URL if needed
                     let mut p_depth = 1usize;
                     let mut p_idx = url_start;
                     let mut found_paren = None;
@@ -1391,7 +1436,6 @@ fn scan_inline_spans(
                             kind: SyntaxTokenKind::LinkSyntax,
                             is_revealed: is_active_line,
                         });
-                        // Recursively scan inline spans inside the link label (e.g. [`architecture/`](./README.md))
                         if bracket_close > bracket_open + 1 {
                             scan_inline_spans(
                                 &line_slice[bracket_open + 1..bracket_close],
@@ -1411,13 +1455,19 @@ fn scan_inline_spans(
                         });
                         i = paren_close + 1;
                         continue;
+                    } else {
+                        // This `](` had no closing `)`, invalidate cache past `bracket_close`
+                        cached_bracket_paren = line_slice
+                            .get(bracket_close + 2..)
+                            .and_then(|s| s.find("](").map(|rel| bracket_close + 2 + rel))
+                            .into();
                     }
                 }
             }
         }
 
         // 9. Autolinks (<https://...> or <mailto:...>, CommonMark §6.5)
-        if bytes[i] == b'<' {
+        if !no_closing_angle && bytes[i] == b'<' {
             if let Some(rel_close) = line_slice[i + 1..].find('>') {
                 let inner = &line_slice[i + 1..i + 1 + rel_close];
                 if (inner.starts_with("http://")
@@ -1439,6 +1489,8 @@ fn scan_inline_spans(
                     i = close_idx + 1;
                     continue;
                 }
+            } else {
+                no_closing_angle = true;
             }
         }
 
@@ -2296,4 +2348,69 @@ Here is a [reference link][ref] and a [shortcut] link.
             MarkdownBlockDecorationKind::CodeFenceStart { language } if language == "python"
         )));
     }
+
+    #[test]
+    fn test_adversarial_markdown_and_math_linear_time() {
+        use std::time::Instant;
+
+        let n = 2000usize;
+        let adversarial_md = [
+            // Unmatched backtick sequences of varying lengths
+            "`a ".repeat(n),
+            "``a ".repeat(n),
+            "```a ".repeat(n),
+            // Unmatched emphasis & strikethrough & highlight openers
+            "*a ".repeat(n),
+            "_a ".repeat(n),
+            "**a ".repeat(n),
+            "__a ".repeat(n),
+            "***a ".repeat(n),
+            "~~a ".repeat(n),
+            "==a ".repeat(n),
+            // Unmatched inline math
+            "$a ".repeat(n),
+            // Unmatched brackets & unclosed link parens
+            "[a ".repeat(n),
+            "[a](http://example.com/".repeat(n / 2),
+            format!("{}[inner](https://example.com)", "[outer ".repeat(n)),
+            // Unmatched angle brackets
+            "<http://example.com/".repeat(n / 2),
+        ]
+        .join("\n\n");
+
+        let start = Instant::now();
+        let analysis = analyze_markdown_document(&adversarial_md, 99999, false, false);
+        let elapsed = start.elapsed();
+        assert!(
+            elapsed.as_millis() < 250,
+            "Adversarial markdown analysis took {:?}, expected <250ms",
+            elapsed
+        );
+        assert!(!analysis.syntax_fold_spans.is_empty());
+
+        // Deeply nested & malformed LaTeX math inputs
+        let deep_braces = format!("{}{}{}", "{".repeat(500), "x+1", "}".repeat(500));
+        let deep_supers = "x^".repeat(500) + "2";
+        let stray_closing_braces = "}}}}}}x+y}}}}}}";
+        let left_with_rightarrow = r"\left( a \rightarrow b } c \right)";
+
+        let t_math = Instant::now();
+        let m1 = crate::math::layout_latex(&deep_braces, 16.0, false);
+        let m2 = crate::math::layout_latex(&deep_supers, 16.0, false);
+        let m3 = crate::math::layout_latex(stray_closing_braces, 16.0, false);
+        let m4 = crate::math::layout_latex(left_with_rightarrow, 16.0, false);
+        let s4 = crate::math::plain_text_summary(left_with_rightarrow);
+        let math_elapsed = t_math.elapsed();
+        assert!(
+            math_elapsed.as_millis() < 100,
+            "Adversarial math parsing took {:?}, expected <100ms",
+            math_elapsed
+        );
+        assert!(m1.width > 0.0);
+        assert!(m2.width > 0.0);
+        assert!(m3.width > 0.0);
+        assert!(m4.width > 0.0);
+        assert!(s4.contains("→"));
+    }
 }
+

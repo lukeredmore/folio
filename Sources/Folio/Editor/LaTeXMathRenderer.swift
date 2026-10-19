@@ -124,11 +124,13 @@ public final class LaTeXMathRenderer {
         "V": "𝕍", "W": "𝕎", "X": "𝕏", "Y": "𝕐", "Z": "ℤ"
     ]
 
+    private static let maxParseDepth = 64
+
     // MARK: - Public API
     public static func parse(_ latex: String) -> MathNode {
         let chars = Array(latex.trimmingCharacters(in: .whitespacesAndNewlines))
         var index = 0
-        return parseSequence(chars, index: &index, stopOnRightCommand: false)
+        return parseSequence(chars, index: &index, stopOnRightCommand: false, stopOnCloseBrace: false, depth: 0)
     }
 
     /// Executes 2D math parsing and box layout directly through the shared Rust core engine (`//core/folio_engine`).
@@ -283,18 +285,43 @@ public final class LaTeXMathRenderer {
     }
 
     // MARK: - Recursive Descent LaTeX Parser
+    private static func isRightDelimiterCommand(_ chars: [Character], at index: Int) -> Bool {
+        let prefix: [Character] = ["\\", "r", "i", "g", "h", "t"]
+        guard index + prefix.count <= chars.count else { return false }
+        for i in 0..<prefix.count {
+            if chars[index + i] != prefix[i] { return false }
+        }
+        if index + prefix.count < chars.count && chars[index + prefix.count].isLetter {
+            return false
+        }
+        return true
+    }
+
     private static func parseSequence(
         _ chars: [Character],
         index: inout Int,
-        stopOnRightCommand: Bool
+        stopOnRightCommand: Bool,
+        stopOnCloseBrace: Bool,
+        depth: Int
     ) -> MathNode {
+        if depth > maxParseDepth {
+            if index < chars.count { index += 1 }
+            return .text("", .romanUpright)
+        }
+
         var nodes: [MathNode] = []
 
         while index < chars.count {
             let ch = chars[index]
 
             if ch == "}" {
-                break
+                if stopOnCloseBrace {
+                    break
+                } else {
+                    index += 1
+                    nodes.append(.text("}", .romanUpright))
+                    continue
+                }
             }
 
             if ch.isWhitespace {
@@ -302,15 +329,12 @@ public final class LaTeXMathRenderer {
                 continue
             }
 
-            // Check for \right delimiter termination
-            if stopOnRightCommand, ch == "\\" {
-                let remaining = String(chars[index...])
-                if remaining.hasPrefix("\\right") {
-                    break
-                }
+            // Check for \right delimiter termination in O(1) without String slice allocation
+            if stopOnRightCommand, ch == "\\", isRightDelimiterCommand(chars, at: index) {
+                break
             }
 
-            guard let atom = parseAtom(chars, index: &index) else {
+            guard let atom = parseAtom(chars, index: &index, depth: depth + 1) else {
                 continue
             }
 
@@ -325,10 +349,10 @@ public final class LaTeXMathRenderer {
                 guard index < chars.count else { break }
                 if chars[index] == "_" {
                     index += 1
-                    subNode = parseScriptArgument(chars, index: &index)
+                    subNode = parseScriptArgument(chars, index: &index, depth: depth + 1)
                 } else if chars[index] == "^" {
                     index += 1
-                    supNode = parseScriptArgument(chars, index: &index)
+                    supNode = parseScriptArgument(chars, index: &index, depth: depth + 1)
                 } else if chars[index] == "'" {
                     index += 1
                     let primeNode = MathNode.text("′", .operatorSymbol)
@@ -355,7 +379,11 @@ public final class LaTeXMathRenderer {
         return .row(nodes)
     }
 
-    private static func parseScriptArgument(_ chars: [Character], index: inout Int) -> MathNode {
+    private static func parseScriptArgument(_ chars: [Character], index: inout Int, depth: Int) -> MathNode {
+        if depth > maxParseDepth {
+            if index < chars.count { index += 1 }
+            return .text("", .italicVariable)
+        }
         while index < chars.count && chars[index].isWhitespace {
             index += 1
         }
@@ -363,12 +391,16 @@ public final class LaTeXMathRenderer {
             return .text("", .italicVariable)
         }
         if chars[index] == "{" {
-            return parseBracedGroup(chars, index: &index)
+            return parseBracedGroup(chars, index: &index, depth: depth + 1)
         }
-        return parseAtom(chars, index: &index) ?? .text("", .italicVariable)
+        return parseAtom(chars, index: &index, depth: depth + 1) ?? .text("", .italicVariable)
     }
 
-    private static func parseBracedGroup(_ chars: [Character], index: inout Int) -> MathNode {
+    private static func parseBracedGroup(_ chars: [Character], index: inout Int, depth: Int) -> MathNode {
+        if depth > maxParseDepth {
+            if index < chars.count { index += 1 }
+            return .text("", .italicVariable)
+        }
         while index < chars.count && chars[index].isWhitespace {
             index += 1
         }
@@ -377,13 +409,13 @@ public final class LaTeXMathRenderer {
         }
         if chars[index] == "{" {
             index += 1 // consume '{'
-            let inside = parseSequence(chars, index: &index, stopOnRightCommand: false)
+            let inside = parseSequence(chars, index: &index, stopOnRightCommand: false, stopOnCloseBrace: true, depth: depth + 1)
             if index < chars.count && chars[index] == "}" {
                 index += 1 // consume '}'
             }
             return inside
         } else {
-            return parseAtom(chars, index: &index) ?? .text("", .italicVariable)
+            return parseAtom(chars, index: &index, depth: depth + 1) ?? .text("", .italicVariable)
         }
     }
 
@@ -417,7 +449,11 @@ public final class LaTeXMathRenderer {
         }
     }
 
-    private static func parseAtom(_ chars: [Character], index: inout Int) -> MathNode? {
+    private static func parseAtom(_ chars: [Character], index: inout Int, depth: Int) -> MathNode? {
+        if depth > maxParseDepth {
+            if index < chars.count { index += 1 }
+            return nil
+        }
         while index < chars.count && chars[index].isWhitespace {
             index += 1
         }
@@ -426,7 +462,7 @@ public final class LaTeXMathRenderer {
         let ch = chars[index]
 
         if ch == "{" {
-            return parseBracedGroup(chars, index: &index)
+            return parseBracedGroup(chars, index: &index, depth: depth + 1)
         }
 
         if ch == "\\" {
@@ -458,8 +494,8 @@ public final class LaTeXMathRenderer {
 
             switch cmd {
             case "frac", "dfrac", "tfrac":
-                let num = parseBracedGroup(chars, index: &index)
-                let den = parseBracedGroup(chars, index: &index)
+                let num = parseBracedGroup(chars, index: &index, depth: depth + 1)
+                let den = parseBracedGroup(chars, index: &index, depth: depth + 1)
                 return .fraction(numerator: num, denominator: den)
 
             case "sqrt":
@@ -467,19 +503,16 @@ public final class LaTeXMathRenderer {
                     while index < chars.count && chars[index] != "]" { index += 1 }
                     if index < chars.count { index += 1 }
                 }
-                let rad = parseBracedGroup(chars, index: &index)
+                let rad = parseBracedGroup(chars, index: &index, depth: depth + 1)
                 return .sqrt(radicand: rad)
 
             case "left":
                 let leftDelim = readDelimiterToken(chars, index: &index)
-                let body = parseSequence(chars, index: &index, stopOnRightCommand: true)
+                let body = parseSequence(chars, index: &index, stopOnRightCommand: true, stopOnCloseBrace: stopOnCloseBraceForLeft(), depth: depth + 1)
                 var rightDelim = ")"
-                if index < chars.count && chars[index] == "\\" {
-                    let rem = String(chars[index...])
-                    if rem.hasPrefix("\\right") {
-                        index += 6 // consume \right
-                        rightDelim = readDelimiterToken(chars, index: &index)
-                    }
+                if index < chars.count && chars[index] == "\\" && isRightDelimiterCommand(chars, at: index) {
+                    index += 6 // consume \right
+                    rightDelim = readDelimiterToken(chars, index: &index)
                 }
                 return .delimited(left: leftDelim, body: body, right: rightDelim)
 
@@ -518,17 +551,17 @@ public final class LaTeXMathRenderer {
                 return .text(raw, .italicVariable)
 
             case "hat", "widehat":
-                return .accent(base: parseBracedGroup(chars, index: &index), mark: "̂")
+                return .accent(base: parseBracedGroup(chars, index: &index, depth: depth + 1), mark: "̂")
             case "bar", "overline":
-                return .accent(base: parseBracedGroup(chars, index: &index), mark: "̄")
+                return .accent(base: parseBracedGroup(chars, index: &index, depth: depth + 1), mark: "̄")
             case "vec", "overrightarrow":
-                return .accent(base: parseBracedGroup(chars, index: &index), mark: "⃗")
+                return .accent(base: parseBracedGroup(chars, index: &index, depth: depth + 1), mark: "⃗")
             case "tilde", "widetilde":
-                return .accent(base: parseBracedGroup(chars, index: &index), mark: "̃")
+                return .accent(base: parseBracedGroup(chars, index: &index, depth: depth + 1), mark: "̃")
             case "dot":
-                return .accent(base: parseBracedGroup(chars, index: &index), mark: "̇")
+                return .accent(base: parseBracedGroup(chars, index: &index, depth: depth + 1), mark: "̇")
             case "ddot":
-                return .accent(base: parseBracedGroup(chars, index: &index), mark: "̈")
+                return .accent(base: parseBracedGroup(chars, index: &index, depth: depth + 1), mark: "̈")
 
             case "quad":
                 return .space(12.0)
@@ -584,6 +617,10 @@ public final class LaTeXMathRenderer {
         return .text(String(ch), .italicVariable)
     }
 
+    private static func stopOnCloseBraceForLeft() -> Bool {
+        false
+    }
+
     private static func readDelimiterToken(_ chars: [Character], index: inout Int) -> String {
         while index < chars.count && chars[index].isWhitespace {
             index += 1
@@ -611,11 +648,30 @@ public final class LaTeXMathRenderer {
     }
 
     private static func resolveSimpleSymbols(in raw: String) -> String {
-        var result = raw
-        for (k, v) in symbolMap {
-            result = result.replacingOccurrences(of: "\\\(k)", with: v)
+        guard raw.contains("\\") else { return raw }
+        let chars = Array(raw)
+        var out = ""
+        out.reserveCapacity(chars.count)
+        var i = 0
+        while i < chars.count {
+            if chars[i] == "\\", i + 1 < chars.count, chars[i + 1].isLetter {
+                i += 1
+                var cmd = ""
+                while i < chars.count && chars[i].isLetter {
+                    cmd.append(chars[i])
+                    i += 1
+                }
+                if let sym = symbolMap[cmd] {
+                    out.append(sym)
+                } else {
+                    out.append(cmd)
+                }
+            } else {
+                out.append(chars[i])
+                i += 1
+            }
         }
-        return result
+        return out
     }
 
     // MARK: - 2D Box Layout Engine (Flipped NSView coordinates: +y is downward)

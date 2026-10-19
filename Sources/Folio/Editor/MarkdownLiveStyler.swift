@@ -140,31 +140,29 @@ public final class MarkdownLiveStyler {
         }
     }
 
-    private static let headingRegex = try! NSRegularExpression(pattern: #"^( {0,3})(#{1,6})(?:([ \t]+)(.*?))?(?:[ \t]+#+[ \t]*)?$"#)
+    private static let headingRegex = try! NSRegularExpression(pattern: #"^( {0,3})(#{1,6})(?:([ \t]+)(.*?))?(?:(?<![ \t])[ \t]+#+[ \t]*)?$"#)
     private static let setextH1Regex = try! NSRegularExpression(pattern: #"^ {0,3}=+[ \t]*$"#)
     private static let setextH2Regex = try! NSRegularExpression(pattern: #"^ {0,3}-{2,}[ \t]*$"#)
     private static let blockquoteRegex = try! NSRegularExpression(pattern: #"^(\s*>+[ \t]*)(.*)$"#)
     private static let taskListRegex = try! NSRegularExpression(pattern: #"^([ \t]*)([-*+]|\d+[.)])([ \t]+)(\[[ xX]\])([ \t]+)(.*)$"#)
     private static let unorderedListRegex = try! NSRegularExpression(pattern: #"^([ \t]*)([-*+])([ \t]+)(.+)$"#)
     private static let orderedListRegex = try! NSRegularExpression(pattern: #"^([ \t]*)(\d+[.)])([ \t]+)(.+)$"#)
-    private static let hrRegex = try! NSRegularExpression(pattern: #"^ {0,3}(?:-[ \t]*-[ \t]*-[-\t ]*|\*[ \t]*\*[ \t]*\*[*\t ]*|_[ \t]*_[ \t]*_[_\t ]*)$"#)
+    private static let hrRegex = try! NSRegularExpression(pattern: #"^ {0,3}(?:(?:-[ \t]*){3,}|(?:\*[ \t]*){3,}|(?:_[ \t]*){3,})$"#)
     private static let codeFenceOpenRegex = try! NSRegularExpression(pattern: #"^ {0,3}(`{3,}|~{3,})([ \t]*[^`~\n]*)$"#)
     private static let linkRefDefRegex = try! NSRegularExpression(pattern: #"^( {0,3}\[[^\]]+\]:)([ \t]*)(<?[^\s>]+>?)(?:([ \t]+)(["'(].*["')]))?[ \t]*$"#)
 
     // Inline regexes
     private static let escapeRegex = try! NSRegularExpression(pattern: ##"\\([!\"#$%&'()*+,\-./:;<=>?@\[\\\]^_`{|}~])"##)
     private static let htmlBrRegex = try! NSRegularExpression(pattern: #"<br\s*/?>"#, options: [.caseInsensitive])
-    private static let boldItalicRegex = try! NSRegularExpression(pattern: #"(?<!\*)\*\*\*(?!\*)(?=\S)(.+?)(?<=\S)\*\*\*(?!\*)|(?<![\p{L}\p{N}_])___(?!_)(?=\S)(.+?)(?<=\S)___(?![\p{L}\p{N}_])"#)
-    private static let boldAsteriskRegex = try! NSRegularExpression(pattern: #"(?<!\*)\*\*(?!\*)(?=\S)(.+?)(?<=\S)\*\*(?!\*)"#)
-    private static let boldUnderscoreRegex = try! NSRegularExpression(pattern: #"(?<![\p{L}\p{N}_])__(?!_)(?=\S)(.+?)(?<=\S)__(?![\p{L}\p{N}_])"#)
-    private static let italicAsteriskRegex = try! NSRegularExpression(pattern: #"(?<!\*)\*(?!\*)(?=\S)((?:[^\*\n]|\*\*[^\*\n]+?\*\*)+?)(?<=\S)\*(?!\*)"#)
-    private static let italicUnderscoreRegex = try! NSRegularExpression(pattern: #"(?<![\p{L}\p{N}_])_(?!_)(?=\S)((?:[^_\n]|__[^_\n]+?__|(?<=[\p{L}\p{N}])_(?=[\p{L}\p{N}]))+?)(?<=\S)_(?![\p{L}\p{N}_])"#)
-    private static let strikeRegex = try! NSRegularExpression(pattern: #"(?<!~)(~~)(?!~)(?=\S)(.+?)(?<=\S)(~~)(?!~)"#)
-    private static let highlightRegex = try! NSRegularExpression(pattern: #"(?<!=)(==)(?!=)(?=\S)(.+?)(?<=\S)(==)(?!=)"#)
-    // CommonMark-compliant inline code regex: matches exact backtick run length (e.g. `` ` `` or `code`) without splitting multi-backticks
-    private static let inlineCodeRegex = try! NSRegularExpression(pattern: #"(?<!`)(`+)(?!`)((?:(?!\1)[^\n])+?)(?<!`)\1(?!`)"#)
-    private static let inlineMathRegex = try! NSRegularExpression(pattern: #"(?<!\$)(\$)(?!\$)([^\$\n]+?)(?<!\$)(\$)(?!\$)"#)
-    private static let autolinkRegex = try! NSRegularExpression(pattern: #"(<)((?:https?://|mailto:)[^>\s]+|[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,})(>)"#)
+    private static let boldItalicRegex = try! NSRegularExpression(pattern: #"(?<!\*)\*\*\*(?!\*)(?=\S)((?:(?!\*\*\*)[^\n])+?)(?<=\S)\*\*\*(?!\*)|(?<![\p{L}\p{N}_])___(?!_)(?=\S)((?:(?!___)[^\n])+?)(?<=\S)___(?![\p{L}\p{N}_])"#)
+    private static let boldAsteriskRegex = try! NSRegularExpression(pattern: #"(?<!\*)\*\*(?!\*)(?=\S)((?:(?!\*\*)[^\n])+?)(?<=\S)\*\*(?!\*)"#)
+    private static let boldUnderscoreRegex = try! NSRegularExpression(pattern: #"(?<![\p{L}\p{N}_])__(?!_)(?=\S)((?:(?!__)[^\n])+?)(?<=\S)__(?![\p{L}\p{N}_])"#)
+    private static let italicAsteriskRegex = try! NSRegularExpression(pattern: #"(?<!\*)\*(?!\*)(?=\S)((?:[^\*\n]|\*\*(?=\S)[^\*\n]+?(?<=\S)\*\*)+?)(?<=\S)\*(?!\*)"#)
+    private static let italicUnderscoreRegex = try! NSRegularExpression(pattern: #"(?<![\p{L}\p{N}_])_(?!_)(?=\S)((?:[^_\n]|__(?=\S)[^_\n]+?(?<=\S)__|(?<=[\p{L}\p{N}])_(?=[\p{L}\p{N}]))+?)(?<=\S)_(?![\p{L}\p{N}_])"#)
+    private static let strikeRegex = try! NSRegularExpression(pattern: #"(?<!~)(~~)(?!~)(?=\S)((?:(?!~~)[^\n])+?)(?<=\S)(~~)(?!~)"#)
+    private static let highlightRegex = try! NSRegularExpression(pattern: #"(?<!=)(==)(?!=)(?=\S)((?:(?!==)[^\n])+?)(?<=\S)(==)(?!=)"#)
+    private static let inlineMathRegex = try! NSRegularExpression(pattern: #"(?<!\$)(\$)(?!\$)(?=\S)([^\$\n]+?)(?<=\S)(?<!\$)(\$)(?!\$)"#)
+    private static let autolinkRegex = try! NSRegularExpression(pattern: #"(<)((?:https?://|mailto:)[^>\s]+|[a-zA-Z0-9._%+\-]+@(?:[a-zA-Z0-9\-]+\.)+[a-zA-Z]{2,})(>)"#)
     private static let multiSpaceRegex = try! NSRegularExpression(pattern: #"[ \t]{2,}"#)
     private static let leadingSpaceRegex = try! NSRegularExpression(pattern: #"^[ \t]+"#)
     private static let trailingSpaceRegex = try! NSRegularExpression(pattern: #"[ \t]+$"#)
@@ -1200,6 +1198,8 @@ public final class MarkdownLiveStyler {
         var pipes: [Int] = []
         let endLoc = NSMaxRange(contentRange)
         var idx = contentRange.location
+        var failedTickLengths = Set<Int>()
+        var noClosingDollar = false
 
         while idx < endLoc {
             let ch = nsString.character(at: idx)
@@ -1211,6 +1211,10 @@ public final class MarkdownLiveStyler {
                 var tickCount = 0
                 while idx + tickCount < endLoc && nsString.character(at: idx + tickCount) == 0x60 {
                     tickCount += 1
+                }
+                if failedTickLengths.contains(tickCount) {
+                    idx += tickCount
+                    continue
                 }
                 var searchIdx = idx + tickCount
                 var foundClose = false
@@ -1231,11 +1235,12 @@ public final class MarkdownLiveStyler {
                     }
                 }
                 if !foundClose {
+                    failedTickLengths.insert(tickCount)
                     idx += tickCount
                 }
                 continue
             }
-            if ch == 0x24 { // '$' inline math span
+            if ch == 0x24 && !noClosingDollar { // '$' inline math span
                 if idx + 1 < endLoc && nsString.character(at: idx + 1) != 0x24 {
                     var searchIdx = idx + 1
                     var foundClose = false
@@ -1253,6 +1258,7 @@ public final class MarkdownLiveStyler {
                         searchIdx += 1
                     }
                     if !foundClose {
+                        noClosingDollar = true
                         idx += 1
                     }
                     continue
@@ -1649,14 +1655,13 @@ public final class MarkdownLiveStyler {
         }
 
         // 1. Inline Code (`code` or `` ` ``) - highest precedence in CommonMark (even `\` inside code is literal)
-        inlineCodeRegex.enumerateMatches(in: string, options: [], range: range) { match, _, _ in
-            guard let match = match else { return }
-            let fullMatchRange = match.range(at: 0)
+        for codeSpan in scanInlineCodeSpans(nsString: nsString, range: range) {
+            let fullMatchRange = codeSpan.fullRange
             codeAndMathRanges.append(fullMatchRange)
 
-            var openRange = match.range(at: 1)
-            var innerRange = match.range(at: 2)
-            var closeRange = NSRange(location: NSMaxRange(innerRange), length: openRange.length)
+            var openRange = codeSpan.openRange
+            var innerRange = codeSpan.innerRange
+            var closeRange = codeSpan.closeRange
 
             // CommonMark rule: if code span has a leading AND trailing space (and is not all spaces), strip one space from each end
             if innerRange.length >= 2 {
@@ -1901,108 +1906,175 @@ public final class MarkdownLiveStyler {
         }
     }
 
+    private struct ScannedInlineCodeSpan {
+        let fullRange: NSRange
+        let openRange: NSRange
+        let innerRange: NSRange
+        let closeRange: NSRange
+    }
+
+    /// Linear-time $O(N)$ CommonMark inline code span scanner.
+    /// Collects contiguous backtick runs in a single pass and pairs matching run lengths without quadratic rescanning.
+    private static func scanInlineCodeSpans(nsString: NSString, range: NSRange) -> [ScannedInlineCodeSpan] {
+        let end = NSMaxRange(range)
+        var runs: [(location: Int, length: Int)] = []
+        var runsByLength: [Int: [Int]] = [:]
+
+        var idx = range.location
+        while idx < end {
+            let ch = nsString.character(at: idx)
+            if ch == 0x0A { // '\n' - inline code in single-line styler does not cross line breaks
+                idx += 1
+                continue
+            }
+            if ch == 0x60 { // '`'
+                let start = idx
+                while idx < end && nsString.character(at: idx) == 0x60 {
+                    idx += 1
+                }
+                let len = idx - start
+                let runIdx = runs.count
+                runs.append((location: start, length: len))
+                runsByLength[len, default: []].append(runIdx)
+            } else {
+                idx += 1
+            }
+        }
+
+        guard runs.count >= 2 else { return [] }
+
+        var results: [ScannedInlineCodeSpan] = []
+        var cursorByLength: [Int: Int] = [:]
+        var i = 0
+        while i < runs.count {
+            let openRun = runs[i]
+            guard let candidates = runsByLength[openRun.length] else {
+                i += 1
+                continue
+            }
+            var cursor = cursorByLength[openRun.length] ?? 0
+            while cursor < candidates.count && candidates[cursor] <= i {
+                cursor += 1
+            }
+            cursorByLength[openRun.length] = cursor
+
+            if cursor < candidates.count {
+                let closeRunIdx = candidates[cursor]
+                let closeRun = runs[closeRunIdx]
+                let openEnd = openRun.location + openRun.length
+                let innerLen = closeRun.location - openEnd
+                if innerLen > 0 {
+                    let fullRange = NSRange(location: openRun.location, length: (closeRun.location + closeRun.length) - openRun.location)
+                    let openRange = NSRange(location: openRun.location, length: openRun.length)
+                    let innerRange = NSRange(location: openEnd, length: innerLen)
+                    let closeRange = NSRange(location: closeRun.location, length: closeRun.length)
+                    results.append(ScannedInlineCodeSpan(
+                        fullRange: fullRange,
+                        openRange: openRange,
+                        innerRange: innerRange,
+                        closeRange: closeRange
+                    ))
+                    cursorByLength[openRun.length] = cursor + 1
+                    i = closeRunIdx + 1
+                    continue
+                }
+            }
+            i += 1
+        }
+
+        return results
+    }
+
     private struct ScannedMarkdownLink {
         let openSyntaxRange: NSRange      // `[` or `![`
         let labelRange: NSRange           // `label`
         let trailingSyntaxRange: NSRange  // `](url)`
     }
 
+    /// Linear-time $O(N)$ Markdown link & image scanner (`[label](url)` and `![alt](url)`).
+    /// Precomputes balanced parentheses in one pass and uses an explicit bracket stack to avoid $O(N^2)$ rescanning on unmatched `[` or `](`.
     private static func scanMarkdownLinks(
         nsString: NSString,
         range: NSRange,
         isDelimiterProtected: (NSRange) -> Bool
     ) -> [ScannedMarkdownLink] {
-        var results: [ScannedMarkdownLink] = []
         let end = NSMaxRange(range)
+        guard range.length >= 4 else { return [] }
+
+        // Pass 1: Precompute matching ')' for every '(' in O(N) time using a stack
+        var matchingCloseParen: [Int: Int] = [:]
+        var parenStack: [Int] = []
+        var pIdx = range.location
+        while pIdx < end {
+            let ch = nsString.character(at: pIdx)
+            if ch == 0x5C { // '\' escape
+                pIdx += 2
+                continue
+            }
+            if ch == 0x28 { // '('
+                if !isDelimiterProtected(NSRange(location: pIdx, length: 1)) {
+                    parenStack.append(pIdx)
+                }
+            } else if ch == 0x29 { // ')'
+                if !isDelimiterProtected(NSRange(location: pIdx, length: 1)),
+                   let openParen = parenStack.popLast() {
+                    matchingCloseParen[openParen] = pIdx
+                }
+            }
+            pIdx += 1
+        }
+
+        // Pass 2: Single linear scan with an open-bracket stack
+        struct OpenBracketEntry {
+            let openStart: Int
+            let bracketPos: Int
+            let isImage: Bool
+        }
+
+        var results: [ScannedMarkdownLink] = []
+        var openStack: [OpenBracketEntry] = []
         var idx = range.location
 
         while idx < end {
             let ch = nsString.character(at: idx)
-            let isImage = (ch == 0x21 && idx + 1 < end && nsString.character(at: idx + 1) == 0x5B)
-            let isBracket = (ch == 0x5B)
-
-            guard isImage || isBracket else {
-                idx += 1
-                continue
-            }
-
-            let openStart = idx
-            let bracketPos = isImage ? idx + 1 : idx
-            let openLen = isImage ? 2 : 1
-            let openSyntaxRange = NSRange(location: openStart, length: openLen)
-            if isDelimiterProtected(openSyntaxRange) {
-                idx = bracketPos + 1
-                continue
-            }
-
-            // Scan for matching `]` followed immediately by `(`
-            var scan = bracketPos + 1
-            var bracketDepth = 1
-            var closeBracketPos: Int? = nil
-            while scan < end {
-                let cRange = NSRange(location: scan, length: 1)
-                if !isDelimiterProtected(cRange) {
-                    let c = nsString.character(at: scan)
-                    if c == 0x5B {
-                        bracketDepth += 1
-                    } else if c == 0x5D {
-                        bracketDepth -= 1
-                        if bracketDepth == 0 {
-                            closeBracketPos = scan
-                            break
+            if ch == 0x21 && idx + 1 < end && nsString.character(at: idx + 1) == 0x5B { // `![`
+                let openSyntaxRange = NSRange(location: idx, length: 2)
+                if !isDelimiterProtected(openSyntaxRange) {
+                    openStack.append(OpenBracketEntry(openStart: idx, bracketPos: idx + 1, isImage: true))
+                    idx += 2
+                    continue
+                }
+            } else if ch == 0x5B { // `[`
+                let openSyntaxRange = NSRange(location: idx, length: 1)
+                if !isDelimiterProtected(openSyntaxRange) {
+                    openStack.append(OpenBracketEntry(openStart: idx, bracketPos: idx, isImage: false))
+                    idx += 1
+                    continue
+                }
+            } else if ch == 0x5D { // `]`
+                let closeRange = NSRange(location: idx, length: 1)
+                if !isDelimiterProtected(closeRange), let open = openStack.popLast() {
+                    if idx + 1 < end,
+                       nsString.character(at: idx + 1) == 0x28,
+                       !isDelimiterProtected(NSRange(location: idx, length: 2)),
+                       let closeParen = matchingCloseParen[idx + 1] {
+                        let labelRange = NSRange(location: open.bracketPos + 1, length: idx - (open.bracketPos + 1))
+                        if labelRange.length > 0 || open.isImage {
+                            let openSyntaxRange = NSRange(location: open.openStart, length: open.isImage ? 2 : 1)
+                            let trailingRange = NSRange(location: idx, length: (closeParen + 1) - idx)
+                            results.append(ScannedMarkdownLink(
+                                openSyntaxRange: openSyntaxRange,
+                                labelRange: labelRange,
+                                trailingSyntaxRange: trailingRange
+                            ))
+                            openStack.removeAll(keepingCapacity: true)
+                            idx = closeParen + 1
+                            continue
                         }
                     }
                 }
-                scan += 1
             }
-
-            guard let closeBracket = closeBracketPos,
-                  closeBracket + 1 < end,
-                  nsString.character(at: closeBracket + 1) == 0x28,
-                  !isDelimiterProtected(NSRange(location: closeBracket, length: 2)) else {
-                idx = bracketPos + 1
-                continue
-            }
-
-            // Scan for matching `)` with balanced parentheses support
-            var urlScan = closeBracket + 2
-            var parenDepth = 1
-            var closeParenPos: Int? = nil
-            while urlScan < end {
-                let c = nsString.character(at: urlScan)
-                if c == 0x5C {
-                    urlScan += 2
-                    continue
-                }
-                if c == 0x28 {
-                    parenDepth += 1
-                } else if c == 0x29 {
-                    parenDepth -= 1
-                    if parenDepth == 0 {
-                        closeParenPos = urlScan
-                        break
-                    }
-                }
-                urlScan += 1
-            }
-
-            guard let closeParen = closeParenPos else {
-                idx = bracketPos + 1
-                continue
-            }
-
-            let labelRange = NSRange(location: bracketPos + 1, length: closeBracket - (bracketPos + 1))
-            let trailingRange = NSRange(location: closeBracket, length: (closeParen + 1) - closeBracket)
-            if labelRange.length > 0 || isImage {
-                results.append(ScannedMarkdownLink(
-                    openSyntaxRange: openSyntaxRange,
-                    labelRange: labelRange,
-                    trailingSyntaxRange: trailingRange
-                ))
-                idx = closeParen + 1
-            } else {
-                idx = bracketPos + 1
-            }
+            idx += 1
         }
 
         return results

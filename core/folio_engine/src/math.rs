@@ -152,10 +152,12 @@ impl MathLayoutPlan {
     }
 }
 
+const MAX_PARSE_DEPTH: usize = 64;
+
 pub fn parse_latex(latex: &str) -> MathNode {
     let chars: Vec<char> = latex.trim().chars().collect();
     let mut index = 0;
-    parse_sequence(&chars, &mut index, false)
+    parse_sequence(&chars, &mut index, false, false, 0)
 }
 
 pub fn plain_text_summary(latex: &str) -> String {
@@ -497,14 +499,47 @@ fn map_blackboard(ch: char) -> char {
     }
 }
 
-fn parse_sequence(chars: &[char], index: &mut usize, stop_on_right_command: bool) -> MathNode {
+fn is_right_delimiter_command(chars: &[char], index: usize) -> bool {
+    const PREFIX: [char; 6] = ['\\', 'r', 'i', 'g', 'h', 't'];
+    if index + PREFIX.len() > chars.len() {
+        return false;
+    }
+    if chars[index..index + PREFIX.len()] != PREFIX {
+        return false;
+    }
+    if index + PREFIX.len() < chars.len() && chars[index + PREFIX.len()].is_ascii_alphabetic() {
+        return false;
+    }
+    true
+}
+
+fn parse_sequence(
+    chars: &[char],
+    index: &mut usize,
+    stop_on_right_command: bool,
+    stop_on_close_brace: bool,
+    depth: usize,
+) -> MathNode {
+    if depth > MAX_PARSE_DEPTH {
+        if *index < chars.len() {
+            *index += 1;
+        }
+        return MathNode::Text(String::new(), MathFontStyle::RomanUpright);
+    }
+
     let mut nodes = Vec::new();
 
     while *index < chars.len() {
         let ch = chars[*index];
 
         if ch == '}' {
-            break;
+            if stop_on_close_brace {
+                break;
+            } else {
+                *index += 1;
+                nodes.push(MathNode::Text("}".to_string(), MathFontStyle::RomanUpright));
+                continue;
+            }
         }
 
         if ch.is_whitespace() {
@@ -512,14 +547,11 @@ fn parse_sequence(chars: &[char], index: &mut usize, stop_on_right_command: bool
             continue;
         }
 
-        if stop_on_right_command && ch == '\\' {
-            let rem: String = chars[*index..].iter().take(6).collect();
-            if rem == "\\right" {
-                break;
-            }
+        if stop_on_right_command && ch == '\\' && is_right_delimiter_command(chars, *index) {
+            break;
         }
 
-        let Some(atom) = parse_atom(chars, index) else {
+        let Some(atom) = parse_atom(chars, index, depth + 1) else {
             continue;
         };
 
@@ -535,10 +567,10 @@ fn parse_sequence(chars: &[char], index: &mut usize, stop_on_right_command: bool
             }
             if chars[*index] == '_' {
                 *index += 1;
-                sub_node = Some(Box::new(parse_script_argument(chars, index)));
+                sub_node = Some(Box::new(parse_script_argument(chars, index, depth + 1)));
             } else if chars[*index] == '^' {
                 *index += 1;
-                sup_node = Some(Box::new(parse_script_argument(chars, index)));
+                sup_node = Some(Box::new(parse_script_argument(chars, index, depth + 1)));
             } else if chars[*index] == '\'' {
                 *index += 1;
                 let prime_node = MathNode::Text("′".to_string(), MathFontStyle::OperatorSymbol);
@@ -570,7 +602,13 @@ fn parse_sequence(chars: &[char], index: &mut usize, stop_on_right_command: bool
     }
 }
 
-fn parse_script_argument(chars: &[char], index: &mut usize) -> MathNode {
+fn parse_script_argument(chars: &[char], index: &mut usize, depth: usize) -> MathNode {
+    if depth > MAX_PARSE_DEPTH {
+        if *index < chars.len() {
+            *index += 1;
+        }
+        return MathNode::Text(String::new(), MathFontStyle::ItalicVariable);
+    }
     while *index < chars.len() && chars[*index].is_whitespace() {
         *index += 1;
     }
@@ -578,12 +616,19 @@ fn parse_script_argument(chars: &[char], index: &mut usize) -> MathNode {
         return MathNode::Text(String::new(), MathFontStyle::ItalicVariable);
     }
     if chars[*index] == '{' {
-        return parse_braced_group(chars, index);
+        return parse_braced_group(chars, index, depth + 1);
     }
-    parse_atom(chars, index).unwrap_or(MathNode::Text(String::new(), MathFontStyle::ItalicVariable))
+    parse_atom(chars, index, depth + 1)
+        .unwrap_or(MathNode::Text(String::new(), MathFontStyle::ItalicVariable))
 }
 
-fn parse_braced_group(chars: &[char], index: &mut usize) -> MathNode {
+fn parse_braced_group(chars: &[char], index: &mut usize, depth: usize) -> MathNode {
+    if depth > MAX_PARSE_DEPTH {
+        if *index < chars.len() {
+            *index += 1;
+        }
+        return MathNode::Text(String::new(), MathFontStyle::ItalicVariable);
+    }
     while *index < chars.len() && chars[*index].is_whitespace() {
         *index += 1;
     }
@@ -592,13 +637,13 @@ fn parse_braced_group(chars: &[char], index: &mut usize) -> MathNode {
     }
     if chars[*index] == '{' {
         *index += 1;
-        let inside = parse_sequence(chars, index, false);
+        let inside = parse_sequence(chars, index, false, true, depth + 1);
         if *index < chars.len() && chars[*index] == '}' {
             *index += 1;
         }
         inside
     } else {
-        parse_atom(chars, index)
+        parse_atom(chars, index, depth + 1)
             .unwrap_or(MathNode::Text(String::new(), MathFontStyle::ItalicVariable))
     }
 }
@@ -698,7 +743,13 @@ fn read_delimiter_token(chars: &[char], index: &mut usize) -> String {
     }
 }
 
-fn parse_atom(chars: &[char], index: &mut usize) -> Option<MathNode> {
+fn parse_atom(chars: &[char], index: &mut usize, depth: usize) -> Option<MathNode> {
+    if depth > MAX_PARSE_DEPTH {
+        if *index < chars.len() {
+            *index += 1;
+        }
+        return None;
+    }
     while *index < chars.len() && chars[*index].is_whitespace() {
         *index += 1;
     }
@@ -708,7 +759,7 @@ fn parse_atom(chars: &[char], index: &mut usize) -> Option<MathNode> {
 
     let ch = chars[*index];
     if ch == '{' {
-        return Some(parse_braced_group(chars, index));
+        return Some(parse_braced_group(chars, index, depth + 1));
     }
 
     if ch == '\\' {
@@ -740,8 +791,8 @@ fn parse_atom(chars: &[char], index: &mut usize) -> Option<MathNode> {
 
         return Some(match cmd.as_str() {
             "frac" | "dfrac" | "tfrac" => {
-                let num = parse_braced_group(chars, index);
-                let den = parse_braced_group(chars, index);
+                let num = parse_braced_group(chars, index, depth + 1);
+                let den = parse_braced_group(chars, index, depth + 1);
                 MathNode::Fraction {
                     numerator: Box::new(num),
                     denominator: Box::new(den),
@@ -756,21 +807,18 @@ fn parse_atom(chars: &[char], index: &mut usize) -> Option<MathNode> {
                         *index += 1;
                     }
                 }
-                let rad = parse_braced_group(chars, index);
+                let rad = parse_braced_group(chars, index, depth + 1);
                 MathNode::Sqrt {
                     radicand: Box::new(rad),
                 }
             }
             "left" => {
                 let left_delim = read_delimiter_token(chars, index);
-                let body = parse_sequence(chars, index, true);
+                let body = parse_sequence(chars, index, true, false, depth + 1);
                 let mut right_delim = ")".to_string();
-                if *index < chars.len() && chars[*index] == '\\' {
-                    let rem: String = chars[*index..].iter().take(6).collect();
-                    if rem == "\\right" {
-                        *index += 6;
-                        right_delim = read_delimiter_token(chars, index);
-                    }
+                if *index < chars.len() && chars[*index] == '\\' && is_right_delimiter_command(chars, *index) {
+                    *index += 6;
+                    right_delim = read_delimiter_token(chars, index);
                 }
                 MathNode::Delimited {
                     left: left_delim,
@@ -806,27 +854,27 @@ fn parse_atom(chars: &[char], index: &mut usize) -> Option<MathNode> {
                 MathNode::Text(raw, MathFontStyle::ItalicVariable)
             }
             "hat" | "widehat" => MathNode::Accent {
-                base: Box::new(parse_braced_group(chars, index)),
+                base: Box::new(parse_braced_group(chars, index, depth + 1)),
                 mark: "\u{0302}".to_string(),
             },
             "bar" | "overline" => MathNode::Accent {
-                base: Box::new(parse_braced_group(chars, index)),
+                base: Box::new(parse_braced_group(chars, index, depth + 1)),
                 mark: "\u{0304}".to_string(),
             },
             "vec" | "overrightarrow" => MathNode::Accent {
-                base: Box::new(parse_braced_group(chars, index)),
+                base: Box::new(parse_braced_group(chars, index, depth + 1)),
                 mark: "\u{20D7}".to_string(),
             },
             "tilde" | "widetilde" => MathNode::Accent {
-                base: Box::new(parse_braced_group(chars, index)),
+                base: Box::new(parse_braced_group(chars, index, depth + 1)),
                 mark: "\u{0303}".to_string(),
             },
             "dot" => MathNode::Accent {
-                base: Box::new(parse_braced_group(chars, index)),
+                base: Box::new(parse_braced_group(chars, index, depth + 1)),
                 mark: "\u{0307}".to_string(),
             },
             "ddot" => MathNode::Accent {
-                base: Box::new(parse_braced_group(chars, index)),
+                base: Box::new(parse_braced_group(chars, index, depth + 1)),
                 mark: "\u{0308}".to_string(),
             },
             "quad" => MathNode::Space(12.0),
