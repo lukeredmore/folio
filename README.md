@@ -40,7 +40,9 @@ Opening any `.md` / Markdown file inside Zed automatically transforms the editor
 - **Structured Tables & LaTeX Math Cards:** Inactive pipe tables render as aligned bordered table cells with bold headers; `$...$` and `$$...$$` expressions render as native GPUI math canvases.
 
 ### 2. Build & Run the Standalone macOS `Folio.app`
-Launch directly via Bazel:
+Download the latest prebuilt rolling release: [**`Folio.dmg`**](https://github.com/lukeredmore/folio/releases/latest/download/Folio.dmg) (see [`macos/README.md`](macos/README.md) for `.dmg` packaging and rolling auto-update details).
+
+Or launch directly from source via Bazel:
 ```bash
 bazel run //:FolioApp
 ```
