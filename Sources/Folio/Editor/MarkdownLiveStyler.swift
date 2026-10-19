@@ -72,6 +72,14 @@ public final class MarkdownLiveStyler {
     /// Marks a source newline inside an inactive paragraph that renders as a space (CommonMark soft line break).
     public static let softLineBreakAttributeKey = NSAttributedString.Key("FolioSoftLineBreak")
 
+    private struct DeferredInlineStyle {
+        let line: Int
+        let range: NSRange
+        let baseFont: NSFont
+        let isActive: Bool
+        let dimFactor: CGFloat
+    }
+
     private enum ProseLineKind: Equatable {
         case paragraph
         case listItem
@@ -163,18 +171,18 @@ public final class MarkdownLiveStyler {
     // Inline regexes
     private static let escapeRegex = try! NSRegularExpression(pattern: ##"\\([!\"#$%&'()*+,\-./:;<=>?@\[\\\]^_`{|}~])"##)
     private static let htmlBrRegex = try! NSRegularExpression(pattern: #"<br\s*/?>"#, options: [.caseInsensitive])
-    private static let boldItalicRegex = try! NSRegularExpression(pattern: #"(?<!\*)\*\*\*(?!\*)(?=\S)((?:(?!\*\*\*)[^\n])+?)(?<=\S)\*\*\*(?!\*)|(?<![\p{L}\p{N}_])___(?!_)(?=\S)((?:(?!___)[^\n])+?)(?<=\S)___(?![\p{L}\p{N}_])"#)
-    private static let boldAsteriskRegex = try! NSRegularExpression(pattern: #"(?<!\*)\*\*(?!\*)(?=\S)((?:(?!\*\*)[^\n])+?)(?<=\S)\*\*(?!\*)"#)
-    private static let boldUnderscoreRegex = try! NSRegularExpression(pattern: #"(?<![\p{L}\p{N}_])__(?!_)(?=\S)((?:(?!__)[^\n])+?)(?<=\S)__(?![\p{L}\p{N}_])"#)
-    private static let italicAsteriskRegex = try! NSRegularExpression(pattern: #"(?<!\*)\*(?!\*)(?=\S)((?:[^\*\n]|\*\*(?=\S)[^\*\n]+?(?<=\S)\*\*)+?)(?<=\S)\*(?!\*)"#)
-    private static let italicUnderscoreRegex = try! NSRegularExpression(pattern: #"(?<![\p{L}\p{N}_])_(?!_)(?=\S)((?:[^_\n]|__(?=\S)[^_\n]+?(?<=\S)__|(?<=[\p{L}\p{N}])_(?=[\p{L}\p{N}]))+?)(?<=\S)_(?![\p{L}\p{N}_])"#)
-    private static let strikeRegex = try! NSRegularExpression(pattern: #"(?<!~)(~~)(?!~)(?=\S)((?:(?!~~)[^\n])+?)(?<=\S)(~~)(?!~)"#)
-    private static let highlightRegex = try! NSRegularExpression(pattern: #"(?<!=)(==)(?!=)(?=\S)((?:(?!==)[^\n])+?)(?<=\S)(==)(?!=)"#)
+    private static let boldItalicRegex = try! NSRegularExpression(pattern: #"(?<!\*)\*\*\*(?!\*)(?=\S)((?:(?!\*\*\*)[\s\S])+?)(?<=\S)\*\*\*(?!\*)|(?<![\p{L}\p{N}_])___(?!_)(?=\S)((?:(?!___)[\s\S])+?)(?<=\S)___(?![\p{L}\p{N}_])"#)
+    private static let boldAsteriskRegex = try! NSRegularExpression(pattern: #"(?<!\*)\*\*(?!\*)(?=\S)((?:(?!\*\*)[\s\S])+?)(?<=\S)\*\*(?!\*)"#)
+    private static let boldUnderscoreRegex = try! NSRegularExpression(pattern: #"(?<![\p{L}\p{N}_])__(?!_)(?=\S)((?:(?!__)[\s\S])+?)(?<=\S)__(?![\p{L}\p{N}_])"#)
+    private static let italicAsteriskRegex = try! NSRegularExpression(pattern: #"(?<!\*)\*(?!\*)(?=\S)((?:[^\*]|\*\*(?=\S)[^\*]+?(?<=\S)\*\*)+?)(?<=\S)\*(?!\*)"#)
+    private static let italicUnderscoreRegex = try! NSRegularExpression(pattern: #"(?<![\p{L}\p{N}_])_(?!_)(?=\S)((?:[^_]|__(?=\S)[^_]+?(?<=\S)__|(?<=[\p{L}\p{N}])_(?=[\p{L}\p{N}]))+?)(?<=\S)_(?![\p{L}\p{N}_])"#)
+    private static let strikeRegex = try! NSRegularExpression(pattern: #"(?<!~)(~~)(?!~)(?=\S)((?:(?!~~)[\s\S])+?)(?<=\S)(~~)(?!~)"#)
+    private static let highlightRegex = try! NSRegularExpression(pattern: #"(?<!=)(==)(?!=)(?=\S)((?:(?!==)[\s\S])+?)(?<=\S)(==)(?!=)"#)
     private static let inlineMathRegex = try! NSRegularExpression(pattern: #"(?<!\$)(\$)(?!\$)(?=\S)([^\$\n]+?)(?<=\S)(?<!\$)(\$)(?!\$)"#)
     private static let autolinkRegex = try! NSRegularExpression(pattern: #"(<)((?:https?://|mailto:)[^>\s]+|[a-zA-Z0-9._%+\-]+@(?:[a-zA-Z0-9\-]+\.)+[a-zA-Z]{2,})(>)"#)
     private static let multiSpaceRegex = try! NSRegularExpression(pattern: #"[ \t]{2,}"#)
-    private static let leadingSpaceRegex = try! NSRegularExpression(pattern: #"^[ \t]+"#)
-    private static let trailingSpaceRegex = try! NSRegularExpression(pattern: #"[ \t]+$"#)
+    private static let leadingSpaceRegex = try! NSRegularExpression(pattern: #"^[ \t]+"#, options: [.anchorsMatchLines])
+    private static let trailingSpaceRegex = try! NSRegularExpression(pattern: #"[ \t]+$"#, options: [.anchorsMatchLines])
 
     private static let latexCommandRegex = try! NSRegularExpression(pattern: #"\\[a-zA-Z]+|\\[^a-zA-Z\s]"#)
     private static let latexBracesRegex = try! NSRegularExpression(pattern: #"[\{\}\^_]"#)
@@ -238,11 +246,18 @@ public final class MarkdownLiveStyler {
             }
         }
         var astLinksByLine: [Int: [CmarkAstInline]] = [:]
-        for inl in specAST.inlines where (inl.kind == 5 || inl.kind == 6) && inl.startLine == inl.endLine && inl.startLine > 0 {
+        for inl in specAST.inlines where (inl.kind == 5 || inl.kind == 6) && inl.endLine >= inl.startLine && inl.startLine > 0 {
             astLinksByLine[inl.startLine, default: []].append(inl)
         }
         var lineRecords: [Int: (lineRange: NSRange, contentRange: NSRange, lineText: String, isActive: Bool, dimFactor: CGFloat)] = [:]
         var proseLineKinds: [Int: ProseLineKind] = [:]
+        // Inline styling of multi-line paragraph lines runs after soft breaks are known, so a
+        // span that crosses a soft line break (e.g. `[a\nb](url)`) is styled as one span.
+        var multiLineParagraphLines = Set<Int>()
+        for block in specAST.blocks where block.kind == 8 && block.startLine > 0 && block.endLine > block.startLine {
+            multiLineParagraphLines.formUnion(block.startLine...block.endLine)
+        }
+        var deferredProseInline: [DeferredInlineStyle] = []
 
         var inCodeFence = false
         var currentFenceChar: Character = "`"
@@ -730,17 +745,23 @@ public final class MarkdownLiveStyler {
                     dimFactor: dimFactor
                 )
 
-                styleInlineMarkdown(
-                    in: storage,
-                    string: string,
-                    range: inlineRange,
-                    baseFont: bqFont,
-                    isActiveLine: isActiveLine,
-                    theme: theme,
-                    dimFactor: dimFactor,
-                    normalizeWhitespace: !isActiveLine,
-                    decorations: &decorations
-                )
+                if multiLineParagraphLines.contains(lineNumber) && proseLineKinds[lineNumber] != nil {
+                    deferredProseInline.append(DeferredInlineStyle(
+                        line: lineNumber, range: inlineRange, baseFont: bqFont, isActive: isActiveLine, dimFactor: dimFactor
+                    ))
+                } else {
+                    styleInlineMarkdown(
+                        in: storage,
+                        string: string,
+                        range: inlineRange,
+                        baseFont: bqFont,
+                        isActiveLine: isActiveLine,
+                        theme: theme,
+                        dimFactor: dimFactor,
+                        normalizeWhitespace: !isActiveLine,
+                        decorations: &decorations
+                    )
+                }
 
                 index = NSMaxRange(lineRange)
                 lineNumber += 1
@@ -860,17 +881,23 @@ public final class MarkdownLiveStyler {
                     storage.addAttribute(.foregroundColor, value: baseColor.withAlphaComponent(dimFactor), range: textRange)
                 }
 
-                styleInlineMarkdown(
-                    in: storage,
-                    string: string,
-                    range: textRange,
-                    baseFont: baseFont,
-                    isActiveLine: isActiveLine,
-                    theme: theme,
-                    dimFactor: dimFactor,
-                    normalizeWhitespace: !isActiveLine,
-                    decorations: &decorations
-                )
+                if multiLineParagraphLines.contains(lineNumber) && proseLineKinds[lineNumber] != nil {
+                    deferredProseInline.append(DeferredInlineStyle(
+                        line: lineNumber, range: textRange, baseFont: baseFont, isActive: isActiveLine, dimFactor: dimFactor
+                    ))
+                } else {
+                    styleInlineMarkdown(
+                        in: storage,
+                        string: string,
+                        range: textRange,
+                        baseFont: baseFont,
+                        isActiveLine: isActiveLine,
+                        theme: theme,
+                        dimFactor: dimFactor,
+                        normalizeWhitespace: !isActiveLine,
+                        decorations: &decorations
+                    )
+                }
 
                 index = NSMaxRange(lineRange)
                 lineNumber += 1
@@ -952,17 +979,23 @@ public final class MarkdownLiveStyler {
                     storage.addAttribute(.foregroundColor, value: baseColor.withAlphaComponent(dimFactor), range: bodyRange)
                 }
 
-                styleInlineMarkdown(
-                    in: storage,
-                    string: string,
-                    range: bodyRange,
-                    baseFont: baseFont,
-                    isActiveLine: isActiveLine,
-                    theme: theme,
-                    dimFactor: dimFactor,
-                    normalizeWhitespace: !isActiveLine,
-                    decorations: &decorations
-                )
+                if multiLineParagraphLines.contains(lineNumber) && proseLineKinds[lineNumber] != nil {
+                    deferredProseInline.append(DeferredInlineStyle(
+                        line: lineNumber, range: bodyRange, baseFont: baseFont, isActive: isActiveLine, dimFactor: dimFactor
+                    ))
+                } else {
+                    styleInlineMarkdown(
+                        in: storage,
+                        string: string,
+                        range: bodyRange,
+                        baseFont: baseFont,
+                        isActiveLine: isActiveLine,
+                        theme: theme,
+                        dimFactor: dimFactor,
+                        normalizeWhitespace: !isActiveLine,
+                        decorations: &decorations
+                    )
+                }
 
                 index = NSMaxRange(lineRange)
                 lineNumber += 1
@@ -1094,17 +1127,23 @@ public final class MarkdownLiveStyler {
                 storage.addAttribute(.foregroundColor, value: baseColor.withAlphaComponent(dimFactor), range: contentRange)
             }
 
-            styleInlineMarkdown(
-                in: storage,
-                string: string,
-                range: contentRange,
-                baseFont: baseFont,
-                isActiveLine: isActiveLine,
-                theme: theme,
-                dimFactor: dimFactor,
-                normalizeWhitespace: !isActiveLine,
-                decorations: &decorations
-            )
+            if multiLineParagraphLines.contains(lineNumber) && proseLineKinds[lineNumber] != nil {
+                deferredProseInline.append(DeferredInlineStyle(
+                    line: lineNumber, range: contentRange, baseFont: baseFont, isActive: isActiveLine, dimFactor: dimFactor
+                ))
+            } else {
+                styleInlineMarkdown(
+                    in: storage,
+                    string: string,
+                    range: contentRange,
+                    baseFont: baseFont,
+                    isActiveLine: isActiveLine,
+                    theme: theme,
+                    dimFactor: dimFactor,
+                    normalizeWhitespace: !isActiveLine,
+                    decorations: &decorations
+                )
+            }
 
             index = NSMaxRange(lineRange)
             lineNumber += 1
@@ -1117,25 +1156,60 @@ public final class MarkdownLiveStyler {
             proseLineKinds: proseLineKinds
         )
 
+        // Style each run of lines joined by soft breaks as one inline range.
+        var runStart = 0
+        for i in deferredProseInline.indices {
+            let item = deferredProseInline[i]
+            let continuesRun = i + 1 < deferredProseInline.count
+                && deferredProseInline[i + 1].line == item.line + 1
+                && lineRecords[item.line].map { rec in
+                    NSMaxRange(rec.contentRange) < fullLength
+                        && storage.attribute(softLineBreakAttributeKey, at: NSMaxRange(rec.contentRange), effectiveRange: nil) != nil
+                } == true
+            guard !continuesRun else { continue }
+            let first = deferredProseInline[runStart]
+            let joined = i > runStart
+            let runRange = NSRange(location: first.range.location, length: NSMaxRange(item.range) - first.range.location)
+            styleInlineMarkdown(
+                in: storage,
+                string: string,
+                range: joined ? runRange : first.range,
+                baseFont: first.baseFont,
+                isActiveLine: joined ? false : first.isActive,
+                theme: theme,
+                dimFactor: first.dimFactor,
+                normalizeWhitespace: joined ? true : !first.isActive,
+                decorations: &decorations
+            )
+            runStart = i + 1
+        }
+
         // Apply cmark-gfm AST-resolved reference links ([text][ref], [text][], [text])
         // and GFM extended autolinks (www.example.com, https://...)
         if !astLinksByLine.isEmpty {
             for (ln, links) in astLinksByLine {
-                guard let rec = lineRecords[ln] else { continue }
-                let utf8 = rec.lineText.utf8
-                for link in links {
-                    let startByte = max(0, link.startColumn - 1)
-                    let endByte = min(utf8.count, link.endColumn)
-                    guard endByte > startByte,
-                          let startIdx = utf8.index(utf8.startIndex, offsetBy: startByte, limitedBy: utf8.endIndex),
-                          let endIdx = utf8.index(utf8.startIndex, offsetBy: endByte, limitedBy: utf8.endIndex) else {
+                guard var rec = lineRecords[ln] else { continue }
+                for reported in links {
+                    let link = correctedInlineStart(reported, lineRecords: lineRecords)
+                    let spanLines = link.startLine...link.endLine
+                    if link.endLine > link.startLine {
+                        // A multi-line span is only one visual span when its lines are joined.
+                        let joined = (link.startLine..<link.endLine).allSatisfy { l in
+                            guard let r = lineRecords[l], NSMaxRange(r.contentRange) < fullLength else { return false }
+                            return storage.attribute(softLineBreakAttributeKey, at: NSMaxRange(r.contentRange), effectiveRange: nil) != nil
+                        }
+                        guard joined else { continue }
+                    }
+                    guard let docStart = documentOffset(lineRecords[link.startLine], byteColumn: link.startColumn - 1),
+                          let docEnd = documentOffset(lineRecords[link.endLine], byteColumn: link.endColumn),
+                          docEnd > docStart else {
                         continue
                     }
-                    let localNSRange = NSRange(startIdx..<endIdx, in: rec.lineText)
-                    let docRange = NSRange(location: rec.contentRange.location + localNSRange.location, length: localNSRange.length)
+                    let docRange = NSRange(location: docStart, length: docEnd - docStart)
                     guard NSMaxRange(docRange) <= fullLength, docRange.length > 0 else { continue }
+                    rec.isActive = spanLines.contains { lineRecords[$0]?.isActive ?? false }
 
-                    let spanText = String(rec.lineText[startIdx..<endIdx])
+                    let spanText = nsString.substring(with: docRange)
                     if spanText.hasPrefix("[") || spanText.hasPrefix("![") {
                         let isImg = spanText.hasPrefix("![")
                         let openLen = isImg ? 2 : 1
@@ -1229,6 +1303,51 @@ public final class MarkdownLiveStyler {
                 storage.addAttribute(softLineBreakAttributeKey, value: true, range: NSRange(location: newlineLocation, length: 1))
             }
         }
+    }
+
+    /// cmark-gfm reports the closing line as the start line of a link that crosses a line break
+    /// (e.g. `3:36-3:10` for a link that starts on line 2). When the reported start is not `[` or
+    /// `!`, uses the nearest earlier line that has one at the reported start column.
+    private static func correctedInlineStart(
+        _ inline: CmarkAstInline,
+        lineRecords: [Int: (lineRange: NSRange, contentRange: NSRange, lineText: String, isActive: Bool, dimFactor: CGFloat)]
+    ) -> CmarkAstInline {
+        let col = inline.startColumn - 1
+        let startsWithBracket: (Int) -> Bool = { line in
+            guard let rec = lineRecords[line] else { return false }
+            let bytes = Array(rec.lineText.utf8)
+            return col >= 0 && col < bytes.count && (bytes[col] == UInt8(ascii: "[") || bytes[col] == UInt8(ascii: "!"))
+        }
+        guard !startsWithBracket(inline.startLine) else { return inline }
+        var line = inline.startLine - 1
+        while line >= 1, lineRecords[line] != nil {
+            if startsWithBracket(line) {
+                return CmarkAstInline(
+                    kind: inline.kind,
+                    startLine: line,
+                    startColumn: inline.startColumn,
+                    endLine: inline.endLine,
+                    endColumn: inline.endColumn,
+                    url: inline.url,
+                    literal: inline.literal
+                )
+            }
+            line -= 1
+        }
+        return inline
+    }
+
+    /// UTF-16 document offset of a 0-based UTF-8 byte column in a line's content.
+    private static func documentOffset(
+        _ rec: (lineRange: NSRange, contentRange: NSRange, lineText: String, isActive: Bool, dimFactor: CGFloat)?,
+        byteColumn: Int
+    ) -> Int? {
+        guard let rec = rec else { return nil }
+        let utf8 = rec.lineText.utf8
+        guard let idx = utf8.index(utf8.startIndex, offsetBy: max(0, min(byteColumn, utf8.count)), limitedBy: utf8.endIndex) else {
+            return nil
+        }
+        return rec.contentRange.location + NSRange(utf8.startIndex..<idx, in: rec.lineText).length
     }
 
     private static func canJoinProseLines(_ current: ProseLineKind?, _ next: ProseLineKind?) -> Bool {
@@ -2267,16 +2386,12 @@ public final class MarkdownLiveStyler {
     ) {
         guard range.length > 0 else { return }
 
-        // 1. Collapse leading spaces/tabs on the range
-        if let leadMatch = leadingSpaceRegex.firstMatch(in: string, options: [], range: range),
-           !isInCodeOrMath(leadMatch.range) {
-            collapseWhitespaceRange(in: storage, range: leadMatch.range)
-        }
-
-        // 2. Collapse trailing spaces/tabs on the range
-        if let trailMatch = trailingSpaceRegex.firstMatch(in: string, options: [], range: range),
-           !isInCodeOrMath(trailMatch.range) {
-            collapseWhitespaceRange(in: storage, range: trailMatch.range)
+        // 1-2. Collapse leading and trailing spaces/tabs on each source line of the range
+        for regex in [leadingSpaceRegex, trailingSpaceRegex] {
+            regex.enumerateMatches(in: string, options: [], range: range) { match, _, _ in
+                guard let match = match, match.range.length > 0, !isInCodeOrMath(match.range) else { return }
+                collapseWhitespaceRange(in: storage, range: match.range)
+            }
         }
 
         // 3. Collapse extra spaces in runs of 2+ internal spaces/tabs (preserving the first space)

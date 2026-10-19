@@ -101,6 +101,38 @@ final class SoftLineBreakTests: XCTestCase {
         XCTAssertEqual(fragments, 1, "Three source lines of one paragraph lay out as one visual line")
     }
 
+    func testInlineSpansAcrossSoftLineBreaksRenderAsOneSpan() {
+        let text = "- Copy the beds to your [own\n  layouts](https://example.com/layouts) and keep **bold\n  words** together.\n\n# End"
+        let storage = style(text, cursor: (text as NSString).length)
+        let ns = text as NSString
+
+        let underline = storage.attribute(.underlineStyle, at: ns.range(of: "layouts]").location, effectiveRange: nil) as? Int
+        XCTAssertEqual(underline, NSUnderlineStyle.single.rawValue, "Link label on the second source line is styled as a link")
+        let openBracketFont = storage.attribute(.font, at: ns.range(of: "[own").location, effectiveRange: nil) as? NSFont
+        XCTAssertLessThanOrEqual(openBracketFont?.pointSize ?? 99, 0.2, "Link syntax is folded")
+
+        let boldFont = storage.attribute(.font, at: ns.range(of: "words**").location, effectiveRange: nil) as? NSFont
+        XCTAssertTrue(boldFont?.fontDescriptor.symbolicTraits.contains(.bold) ?? false, "Bold span that crosses a soft break is bold")
+    }
+
+    func testReferenceLinkAcrossSoftLineBreakIsStyled() {
+        let text = "See the [reference\nlink][ref] here.\n\n[ref]: https://example.com/ref\n\n# End"
+        let storage = style(text, cursor: (text as NSString).length)
+        let ns = text as NSString
+        let underline = storage.attribute(.underlineStyle, at: ns.range(of: "link]").location, effectiveRange: nil) as? Int
+        XCTAssertEqual(underline, NSUnderlineStyle.single.rawValue)
+        let trailingFont = storage.attribute(.font, at: ns.range(of: "][ref]").location, effectiveRange: nil) as? NSFont
+        XCTAssertLessThanOrEqual(trailingFont?.pointSize ?? 99, 0.2, "Reference syntax is folded")
+    }
+
+    func testActiveParagraphKeepsInlineStylingPerLine() {
+        let text = "Keep **bold\nwords** apart.\n\n# End"
+        let storage = style(text, cursor: 2)
+        let ns = text as NSString
+        let markerColor = storage.attribute(.font, at: ns.range(of: "**bold").location, effectiveRange: nil) as? NSFont
+        XCTAssertGreaterThan(markerColor?.pointSize ?? 0, 1, "Source markers stay visible while the paragraph is being edited")
+    }
+
     func testReflowParagraphRangeAndReplacement() {
         let text = "Intro\n\none two three four five six\nseven\n\nOutro"
         guard let edit = MarkdownSourceReflow.reflowParagraph(in: text, line: 4, width: 15) else {
