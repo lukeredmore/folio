@@ -157,8 +157,8 @@ public final class MarkdownLiveStyler {
     private static let boldItalicRegex = try! NSRegularExpression(pattern: #"(?<!\*)\*\*\*(?!\*)(?=\S)(.+?)(?<=\S)\*\*\*(?!\*)|(?<![\p{L}\p{N}_])___(?!_)(?=\S)(.+?)(?<=\S)___(?![\p{L}\p{N}_])"#)
     private static let boldAsteriskRegex = try! NSRegularExpression(pattern: #"(?<!\*)\*\*(?!\*)(?=\S)(.+?)(?<=\S)\*\*(?!\*)"#)
     private static let boldUnderscoreRegex = try! NSRegularExpression(pattern: #"(?<![\p{L}\p{N}_])__(?!_)(?=\S)(.+?)(?<=\S)__(?![\p{L}\p{N}_])"#)
-    private static let italicAsteriskRegex = try! NSRegularExpression(pattern: #"(?<!\*)\*(?!\*)(?=\S)((?:[^\*\n]+|\*\*[^\*\n]+?\*\*)+?)(?<=\S)\*(?!\*)"#)
-    private static let italicUnderscoreRegex = try! NSRegularExpression(pattern: #"(?<![\p{L}\p{N}_])_(?!_)(?=\S)((?:[^_\n]+|__[^_\n]+?__|(?<=[\p{L}\p{N}])_(?=[\p{L}\p{N}]))+?)(?<=\S)_(?![\p{L}\p{N}_])"#)
+    private static let italicAsteriskRegex = try! NSRegularExpression(pattern: #"(?<!\*)\*(?!\*)(?=\S)((?:[^\*\n]|\*\*[^\*\n]+?\*\*)+?)(?<=\S)\*(?!\*)"#)
+    private static let italicUnderscoreRegex = try! NSRegularExpression(pattern: #"(?<![\p{L}\p{N}_])_(?!_)(?=\S)((?:[^_\n]|__[^_\n]+?__|(?<=[\p{L}\p{N}])_(?=[\p{L}\p{N}]))+?)(?<=\S)_(?![\p{L}\p{N}_])"#)
     private static let strikeRegex = try! NSRegularExpression(pattern: #"(?<!~)(~~)(?!~)(?=\S)(.+?)(?<=\S)(~~)(?!~)"#)
     private static let highlightRegex = try! NSRegularExpression(pattern: #"(?<!=)(==)(?!=)(?=\S)(.+?)(?<=\S)(==)(?!=)"#)
     // CommonMark-compliant inline code regex: matches exact backtick run length (e.g. `` ` `` or `code`) without splitting multi-backticks

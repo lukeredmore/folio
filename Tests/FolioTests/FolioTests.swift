@@ -1,4 +1,5 @@
 import AppKit
+import SwiftUI
 import XCTest
 @testable import Folio
 
@@ -705,6 +706,58 @@ final class FolioTests: XCTestCase {
         let bareAutolinkUnderline = storage.attribute(.underlineStyle, at: bareAutolinkRange.location, effectiveRange: nil) as? Int
         XCTAssertEqual(bareAutolinkColor, theme.linkNSColor)
         XCTAssertEqual(bareAutolinkUnderline, NSUnderlineStyle.single.rawValue)
+    }
+
+    @MainActor
+    func testUnmatchedEmphasisDoesNotBacktrackOrHang() throws {
+        // Regression test for catastrophic O(2^N) backtracking when a line contains an unmatched
+        // opening `_` or `*` delimiter (such as `_subscriptions: Vec<Subscription>` inside inline code
+        // in AGENTS.md) followed by 40+ characters without a matching closing delimiter.
+        let pathologicalMarkdown = """
+        # Agent Guidelines
+
+        - When calling `cx.subscribe`, `cx.observe`, etc., never drop the returned `Subscription` without storing it (e.g., `cx.subscribe(...).detach()` is almost always a bug, unless `cx` is the `App` itself). Store subscriptions in a `_subscriptions: Vec<Subscription>` field on the struct so they are tied to the entity's lifetime.
+        - Another line with unmatched *asterisk delimiter followed by a long sequence of words that has no closing asterisk anywhere on the line at all.
+        - And an unmatched _underscore delimiter followed by a very long sequence of characters without any closing underscore anywhere on this line either!
+        """
+
+        let start = CFAbsoluteTimeGetCurrent()
+        let storage = NSTextStorage(string: pathologicalMarkdown)
+        _ = MarkdownLiveStyler.applyStyles(
+            to: storage,
+            theme: .daylight,
+            typography: .default,
+            sourceCodeMode: false,
+            focusMode: false,
+            selectedRange: NSRange(location: 0, length: 0),
+            containerWidth: 720
+        )
+        let elapsed = CFAbsoluteTimeGetCurrent() - start
+        XCTAssertLessThan(elapsed, 0.1, "Styling unmatched emphasis delimiters should be O(N) and complete in <100ms, took \(elapsed)s")
+
+        // Also verify full MainWindowView + HybridMarkdownTextView layout with AGENTS.md files if present on disk
+        let candidatePaths = [
+            "/Users/lukeredmore/Developer/Folio/third_party/zed/upstream/AGENTS.md",
+            "/Users/lukeredmore/Developer/PDLaunch/AGENTS.md"
+        ]
+        let vm = EditorWorkspaceViewModel()
+        let window = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 901, height: 1036),
+            styleMask: [.titled, .resizable],
+            backing: .buffered,
+            defer: false
+        )
+        window.contentView = NSHostingView(rootView: MainWindowView(viewModel: vm))
+        window.displayIfNeeded()
+
+        for path in candidatePaths where FileManager.default.fileExists(atPath: path) {
+            let t0 = CFAbsoluteTimeGetCurrent()
+            vm.openFile(at: URL(fileURLWithPath: path))
+            RunLoop.main.run(mode: .default, before: Date().addingTimeInterval(0.02))
+            window.displayIfNeeded()
+            let dt = CFAbsoluteTimeGetCurrent() - t0
+            XCTAssertLessThan(dt, 0.5, "Opening and rendering \(path) should complete in <0.5s, took \(dt)s")
+        }
     }
 }
 

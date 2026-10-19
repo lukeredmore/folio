@@ -697,7 +697,9 @@ public struct HybridMarkdownEditorRepresentable: NSViewRepresentable {
         scrollView.documentView = textView
 
         // Set initial text and apply styling
+        context.coordinator.isProgrammaticUpdate = true
         textView.string = viewModel.markdownText
+        context.coordinator.isProgrammaticUpdate = false
         textView.typographySettings = viewModel.typography
         context.coordinator.updateInsets(for: scrollView, textView: textView, theme: viewModel.theme)
         context.coordinator.restyle(textView: textView)
