@@ -20,11 +20,15 @@ ENGINE_VERSION="$(awk -F'"' '/^version[[:space:]]*=/ { print $2; exit }' "$SCRIP
 if [[ -n "${FOLIO_VERSION:-}" ]]; then
   /usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString $FOLIO_VERSION" "$PLIST_PATH"
 fi
+/usr/libexec/PlistBuddy -c "Set :CFBundleIconFile AppIcon" "$PLIST_PATH"
+/usr/libexec/PlistBuddy -c "Set :FolioBuildChannel release" "$PLIST_PATH" 2>/dev/null || \
+  /usr/libexec/PlistBuddy -c "Add :FolioBuildChannel string release" "$PLIST_PATH"
 /usr/libexec/PlistBuddy -c "Set :CFBundleVersion $BUILD_NUM" "$PLIST_PATH"
 /usr/libexec/PlistBuddy -c "Set :FolioCommitSHA $COMMIT_SHA" "$PLIST_PATH" 2>/dev/null || \
   /usr/libexec/PlistBuddy -c "Add :FolioCommitSHA string $COMMIT_SHA" "$PLIST_PATH"
 /usr/libexec/PlistBuddy -c "Set :FolioEngineVersion $ENGINE_VERSION" "$PLIST_PATH" 2>/dev/null || \
   /usr/libexec/PlistBuddy -c "Add :FolioEngineVersion string $ENGINE_VERSION" "$PLIST_PATH"
+rm -f "$SCRIPT_DIR/Folio.app/Contents/Resources/AppIcon-Dev.icns"
 
 # Re-sign bundle so macOS accepts the stamped Info.plist
 SIGN_IDENTITY="${APPLE_CODESIGN_IDENTITY:--}"

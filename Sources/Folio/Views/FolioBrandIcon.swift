@@ -1,5 +1,6 @@
 import AppKit
 import CoreGraphics
+import CoreText
 import SwiftUI
 
 /// Renders the Folio app icon and wordmark.
@@ -8,8 +9,110 @@ public enum FolioBrandIcon {
         NSColor(srgbRed: r / 255.0, green: g / 255.0, blue: b / 255.0, alpha: a)
     }
 
+    /// Determines whether the current process is running a local/Bazel/temporary development build
+    /// rather than a stamped release build.
+    public static func isRunningDevBuild(
+        bundle: Bundle = .main,
+        environment: [String: String] = ProcessInfo.processInfo.environment
+    ) -> Bool {
+        let resolvedPath = bundle.bundleURL.resolvingSymlinksInPath().path
+        let rawPath = bundle.bundleURL.path
+        let combinedPath = resolvedPath == rawPath ? rawPath : "\(rawPath):\(resolvedPath)"
+        return isRunningDevBuild(
+            bundlePath: combinedPath,
+            infoDictionary: bundle.infoDictionary,
+            environment: environment
+        )
+    }
+
+    /// Pure helper for determining whether a bundle/environment represents a dev or Bazel build.
+    public static func isRunningDevBuild(
+        bundlePath: String,
+        infoDictionary: [String: Any]?,
+        environment: [String: String] = [:]
+    ) -> Bool {
+        if let override = environment["FOLIO_DEV_ICON"]?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() {
+            if ["1", "true", "yes"].contains(override) {
+                return true
+            }
+            if ["0", "false", "no"].contains(override) {
+                return false
+            }
+        }
+
+        let bazelEnvKeys = [
+            "BUILD_WORKSPACE_DIRECTORY",
+            "BUILD_WORKING_DIRECTORY",
+            "RUNFILES_DIR",
+            "JAVA_RUNFILES",
+            "TEST_TMPDIR",
+            "TEST_SRCDIR",
+        ]
+        for key in bazelEnvKeys {
+            if let value = environment[key], !value.isEmpty {
+                return true
+            }
+        }
+
+        let devPathMarkers = [
+            "/bazel-out/",
+            "/bazel-bin/",
+            "/_bazel_",
+            ".runfiles/",
+            "/bazel_temp.",
+            "/worktrees/",
+        ]
+        for marker in devPathMarkers {
+            if bundlePath.contains(marker) {
+                return true
+            }
+        }
+
+        if let channel = (infoDictionary?["FolioBuildChannel"] as? String)?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .lowercased()
+        {
+            if channel == "dev" || channel == "debug" {
+                return true
+            }
+            if channel == "release" {
+                return false
+            }
+        }
+
+        if let commitSHA = (infoDictionary?["FolioCommitSHA"] as? String)?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .lowercased()
+        {
+            if commitSHA.isEmpty || commitSHA == "dev" {
+                return true
+            }
+        }
+
+        return false
+    }
+
+    /// Creates a vector-rendered macOS app icon `NSImage` for the current runtime environment
+    /// (automatically badged with `DEV` when running via Bazel or an unstamped dev build).
+    public static func makeCurrentAppIconImage(
+        pixelSize: Int = 512,
+        isDark: Bool = false,
+        bundle: Bundle = .main,
+        environment: [String: String] = ProcessInfo.processInfo.environment
+    ) -> NSImage {
+        makeAppIconImage(
+            pixelSize: pixelSize,
+            isDark: isDark,
+            isDevBuild: isRunningDevBuild(bundle: bundle, environment: environment)
+        )
+    }
+
     /// Creates a vector-rendered macOS app icon `NSImage`.
-    public static func makeAppIconImage(pixelSize: Int = 512, isDark: Bool = false) -> NSImage {
+    public static func makeAppIconImage(
+        pixelSize: Int = 512,
+        isDark: Bool = false,
+        isDevBuild: Bool = false
+    ) -> NSImage {
         let rep = NSBitmapImageRep(
             bitmapDataPlanes: nil,
             pixelsWide: pixelSize,
@@ -27,7 +130,13 @@ public enum FolioBrandIcon {
         NSGraphicsContext.saveGraphicsState()
         if let ctx = NSGraphicsContext(bitmapImageRep: rep) {
             NSGraphicsContext.current = ctx
-            drawSquircleIcon(in: ctx.cgContext, canvasSize: CGFloat(pixelSize), includeMacOSMargin: true, isDark: isDark)
+            drawSquircleIcon(
+                in: ctx.cgContext,
+                canvasSize: CGFloat(pixelSize),
+                includeMacOSMargin: true,
+                isDark: isDark,
+                isDevBuild: isDevBuild
+            )
         }
         NSGraphicsContext.restoreGraphicsState()
 
@@ -41,7 +150,8 @@ public enum FolioBrandIcon {
         in cg: CGContext,
         canvasSize: CGFloat,
         includeMacOSMargin: Bool = true,
-        isDark: Bool = false
+        isDark: Bool = false,
+        isDevBuild: Bool = false
     ) {
         cg.saveGState()
         cg.translateBy(x: 0, y: canvasSize)
@@ -155,6 +265,10 @@ public enum FolioBrandIcon {
         cg.setFillColor((isDark ? srgb(24, 28, 34, 0.78) : srgb(51, 65, 85, 0.78)).cgColor)
         cg.fillPath()
 
+        if isDevBuild {
+            drawDevBanner(in: cg, unit: unit, colorSpace: colorSpace)
+        }
+
         cg.restoreGState()
 
         // Outer squircle border
@@ -165,6 +279,79 @@ public enum FolioBrandIcon {
         cg.strokePath()
         cg.restoreGState()
 
+        cg.restoreGState()
+    }
+
+    /// Draws a high-contrast `DEV` pill badge in the 120x120 squircle coordinate space.
+    private static func drawDevBanner(
+        in cg: CGContext,
+        unit: CGFloat,
+        colorSpace: CGColorSpace
+    ) {
+        let badgeRect = CGRect(x: 34, y: 76, width: 78, height: 32)
+        let badgePath = CGPath(
+            roundedRect: badgeRect,
+            cornerWidth: 9.5,
+            cornerHeight: 9.5,
+            transform: nil
+        )
+
+        // Drop shadow behind the DEV pill
+        cg.saveGState()
+        cg.setShadow(
+            offset: CGSize(width: 0, height: -3.5 * unit),
+            blur: 8.0 * unit,
+            color: srgb(15, 23, 42, 0.38).cgColor
+        )
+        cg.addPath(badgePath)
+        cg.setFillColor(srgb(234, 88, 12, 1.0).cgColor)
+        cg.fillPath()
+        cg.restoreGState()
+
+        // Vibrant orange-red fill gradient
+        cg.saveGState()
+        cg.addPath(badgePath)
+        cg.clip()
+        let badgeColors = [
+            srgb(249, 115, 22, 1.0).cgColor,
+            srgb(217, 56, 15, 1.0).cgColor,
+        ] as CFArray
+        if let gradient = CGGradient(colorsSpace: colorSpace, colors: badgeColors, locations: [0.0, 1.0]) {
+            cg.drawLinearGradient(
+                gradient,
+                start: CGPoint(x: badgeRect.minX, y: badgeRect.minY),
+                end: CGPoint(x: badgeRect.minX, y: badgeRect.maxY),
+                options: [.drawsBeforeStartLocation, .drawsAfterEndLocation]
+            )
+        }
+        cg.restoreGState()
+
+        // Crisp high-contrast border around the DEV pill
+        cg.saveGState()
+        cg.addPath(badgePath)
+        cg.setStrokeColor(srgb(255, 255, 255, 0.94).cgColor)
+        cg.setLineWidth(2.2)
+        cg.strokePath()
+        cg.restoreGState()
+
+        // Bold "DEV" label centered inside the pill (unflip Y locally for CoreText)
+        cg.saveGState()
+        cg.translateBy(x: badgeRect.midX, y: badgeRect.midY)
+        cg.scaleBy(x: 1, y: -1)
+
+        let font = NSFont.systemFont(ofSize: 20.5, weight: .heavy)
+        let attributes: [NSAttributedString.Key: Any] = [
+            .font: font,
+            .foregroundColor: srgb(255, 255, 255, 1.0),
+            .kern: 1.2,
+        ]
+        let attrString = NSAttributedString(string: "DEV", attributes: attributes)
+        let line = CTLineCreateWithAttributedString(attrString)
+        let glyphBounds = CTLineGetBoundsWithOptions(line, .useGlyphPathBounds)
+
+        cg.textMatrix = .identity
+        cg.textPosition = CGPoint(x: -glyphBounds.midX, y: -glyphBounds.midY)
+        CTLineDraw(line, cg)
         cg.restoreGState()
     }
 }

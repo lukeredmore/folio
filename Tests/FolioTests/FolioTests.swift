@@ -1101,6 +1101,114 @@ final class FolioTests: XCTestCase {
             "Queued offline edit must be flushed to the remote server upon reconnection"
         )
     }
+
+    func testDevBuildIconDetectionAndBannerRendering() throws {
+        // 1. Stamped installed release build in /Applications should NOT use dev icon
+        XCTAssertFalse(
+            FolioBrandIcon.isRunningDevBuild(
+                bundlePath: "/Applications/Folio.app",
+                infoDictionary: [
+                    "FolioBuildChannel": "release",
+                    "FolioCommitSHA": "54b4d68",
+                ],
+                environment: [:]
+            )
+        )
+
+        // 2. Legacy stamped installed build (no FolioBuildChannel, real commit SHA) should NOT use dev icon
+        XCTAssertFalse(
+            FolioBrandIcon.isRunningDevBuild(
+                bundlePath: "/Applications/Folio.app",
+                infoDictionary: [
+                    "FolioCommitSHA": "54b4d68",
+                ],
+                environment: [:]
+            )
+        )
+
+        // 3. Unstamped Bazel Info.plist (FolioBuildChannel=dev or FolioCommitSHA=dev) SHOULD use dev icon
+        XCTAssertTrue(
+            FolioBrandIcon.isRunningDevBuild(
+                bundlePath: "/Applications/Folio.app",
+                infoDictionary: [
+                    "FolioBuildChannel": "dev",
+                    "FolioCommitSHA": "dev",
+                ],
+                environment: [:]
+            )
+        )
+
+        // 4. Bazel temporary unpacked bundle or bazel-out archive SHOULD use dev icon
+        XCTAssertTrue(
+            FolioBrandIcon.isRunningDevBuild(
+                bundlePath: "/private/var/folders/xy/z/T/bazel_temp.abc123/Folio.app",
+                infoDictionary: ["FolioBuildChannel": "release", "FolioCommitSHA": "54b4d68"],
+                environment: [:]
+            )
+        )
+        XCTAssertTrue(
+            FolioBrandIcon.isRunningDevBuild(
+                bundlePath: "/private/var/tmp/_bazel_user/hash/execroot/_main/bazel-out/darwin_arm64-fastbuild/bin/macos/FolioApp/FolioApp_archive-root/Folio.app",
+                infoDictionary: ["FolioBuildChannel": "release", "FolioCommitSHA": "54b4d68"],
+                environment: [:]
+            )
+        )
+
+        // 5. Bazel runtime environment variables (bazel run) SHOULD use dev icon
+        XCTAssertTrue(
+            FolioBrandIcon.isRunningDevBuild(
+                bundlePath: "/Applications/Folio.app",
+                infoDictionary: ["FolioBuildChannel": "release", "FolioCommitSHA": "54b4d68"],
+                environment: ["BUILD_WORKSPACE_DIRECTORY": "/Users/dev/Folio"]
+            )
+        )
+
+        // 6. Explicit FOLIO_DEV_ICON override takes precedence
+        XCTAssertTrue(
+            FolioBrandIcon.isRunningDevBuild(
+                bundlePath: "/Applications/Folio.app",
+                infoDictionary: ["FolioBuildChannel": "release", "FolioCommitSHA": "54b4d68"],
+                environment: ["FOLIO_DEV_ICON": "1"]
+            )
+        )
+        XCTAssertFalse(
+            FolioBrandIcon.isRunningDevBuild(
+                bundlePath: "/private/var/folders/xy/z/T/bazel_temp.abc123/Folio.app",
+                infoDictionary: ["FolioBuildChannel": "dev", "FolioCommitSHA": "dev"],
+                environment: ["BUILD_WORKSPACE_DIRECTORY": "/Users/dev/Folio", "FOLIO_DEV_ICON": "0"]
+            )
+        )
+
+        // 7. Verify DEV banner rendering alters lower-right badge pixels compared to release icon
+        let releaseImage = FolioBrandIcon.makeAppIconImage(pixelSize: 128, isDark: false, isDevBuild: false)
+        let devImage = FolioBrandIcon.makeAppIconImage(pixelSize: 128, isDark: false, isDevBuild: true)
+
+        guard let releaseTIFF = releaseImage.tiffRepresentation,
+              let devTIFF = devImage.tiffRepresentation,
+              let releaseRep = NSBitmapImageRep(data: releaseTIFF),
+              let devRep = NSBitmapImageRep(data: devTIFF) else {
+            XCTFail("Expected bitmap representations for rendered app icons")
+            return
+        }
+
+        // Top-left squircle area (outside the DEV badge) should match between release and dev icons
+        XCTAssertEqual(releaseRep.colorAt(x: 40, y: 36), devRep.colorAt(x: 40, y: 36))
+
+        // Lower-right badge region should differ markedly due to the orange/white DEV banner
+        var differingBadgePixels = 0
+        for y in 80..<106 {
+            for x in 48..<104 {
+                if releaseRep.colorAt(x: x, y: y) != devRep.colorAt(x: x, y: y) {
+                    differingBadgePixels += 1
+                }
+            }
+        }
+        XCTAssertGreaterThan(
+            differingBadgePixels,
+            500,
+            "Expected DEV badge to render prominently in the lower-right region of the dev app icon"
+        )
+    }
 }
 
 private final class MockRemoteTransport: RemoteFileTransport, @unchecked Sendable {
