@@ -41,6 +41,7 @@ public enum BlockDecorationKind: Equatable {
     case mathBlockRendered(latex: String, fullBlockRange: NSRange, dimFactor: CGFloat)
     case inlineMathRendered(latex: String, range: NSRange, fontSize: CGFloat, dimFactor: CGFloat)
     case inlineCode(range: NSRange, fontSize: CGFloat, dimFactor: CGFloat)
+    case listBullet(range: NSRange, dimFactor: CGFloat)
     case horizontalRule
     case tableRow(
         isHeader: Bool,
@@ -782,7 +783,6 @@ public final class MarkdownLiveStyler {
             // 7. Check Task List (- [ ] / - [x] / 1. [x])
             if let match = taskListRegex.firstMatch(in: string, options: [], range: contentRange) {
                 let leadingWSRange = match.range(at: 1)
-                let markerRange = match.range(at: 2)
                 let spaceAfterMarkerRange = match.range(at: 3)
                 let boxRange = match.range(at: 4)
                 let spaceAfterBoxRange = match.range(at: 5)
@@ -795,15 +795,6 @@ public final class MarkdownLiveStyler {
                 let baseIndent: CGFloat = 10.0 + CGFloat(nestLevel) * 18.0
                 let textIndent: CGFloat = baseIndent + 26.0
                 previousListTextIndent = textIndent
-
-                let listPara = NSMutableParagraphStyle()
-                listPara.firstLineHeadIndent = isActiveLine ? 0.0 : baseIndent
-                listPara.headIndent = textIndent
-                listPara.lineHeightMultiple = typography.lineHeightMultiple
-                listPara.lineSpacing = max(1.0, typography.lineSpacing * 0.70)
-                listPara.paragraphSpacing = max(2.5, typography.paragraphSpacing * 0.35)
-                listPara.tailIndent = effectiveContainerWidth
-                storage.addAttribute(.paragraphStyle, value: listPara, range: lineRange)
 
                 let bulletPrefixRange = NSRange(
                     location: leadingWSRange.location,
@@ -824,13 +815,29 @@ public final class MarkdownLiveStyler {
                     .kern: 0.0
                 ], range: boxRange)
 
+                let syntaxFont = NSFont.monospacedSystemFont(ofSize: max(11.0, theme.baseFontSize * 0.85), weight: .regular)
+                let activePrefixW = isActiveLine
+                    ? (nsString.substring(with: bulletPrefixRange) as NSString).size(withAttributes: [.font: syntaxFont]).width
+                    : 0.0
+
+                let listPara = NSMutableParagraphStyle()
+                listPara.firstLineHeadIndent = isActiveLine ? max(0.0, baseIndent - activePrefixW) : baseIndent
+                listPara.headIndent = textIndent
+                listPara.lineHeightMultiple = typography.lineHeightMultiple
+                listPara.lineSpacing = max(1.0, typography.lineSpacing * 0.70)
+                listPara.paragraphSpacing = max(2.5, typography.paragraphSpacing * 0.35)
+                listPara.tailIndent = effectiveContainerWidth
+                storage.addAttribute(.paragraphStyle, value: listPara, range: lineRange)
+
+                let boxW = (nsString.substring(with: boxRange) as NSString).size(withAttributes: [.font: boxFont]).width
                 if !isActiveLine && spaceAfterBoxRange.length > 0 {
-                    let boxW = (nsString.substring(with: boxRange) as NSString).size(withAttributes: [.font: boxFont]).width
                     let desiredGap = max(4.0, (textIndent - baseIndent) - boxW)
                     collapseWhitespaceRange(in: storage, range: spaceAfterBoxRange)
                     storage.addAttribute(.kern, value: desiredGap, range: NSRange(location: spaceAfterBoxRange.location, length: 1))
-                } else {
-                    _ = markerRange
+                } else if isActiveLine && spaceAfterBoxRange.length > 0 {
+                    let spaceW = (nsString.substring(with: spaceAfterBoxRange) as NSString).size(withAttributes: [.font: baseFont]).width
+                    let extraKern = max(0.0, (textIndent - baseIndent) - boxW - spaceW)
+                    storage.addAttribute(.kern, value: extraKern, range: NSRange(location: NSMaxRange(spaceAfterBoxRange) - 1, length: 1))
                 }
 
                 if isChecked {
@@ -875,8 +882,15 @@ public final class MarkdownLiveStyler {
                 let textIndent: CGFloat = baseIndent + markerAdvance
                 previousListTextIndent = textIndent
 
+                let markerFont = theme.bodyFont(size: effectiveBaseSize, bold: true)
+                let markerStr = nsString.substring(with: markerSymbolRange) as NSString
+                let markerW = markerStr.size(withAttributes: [.font: markerFont]).width
+                let leadW = isActiveLine && leadingWSRange.length > 0
+                    ? (nsString.substring(with: leadingWSRange) as NSString).size(withAttributes: [.font: markerFont]).width
+                    : 0.0
+
                 let listPara = NSMutableParagraphStyle()
-                listPara.firstLineHeadIndent = isActiveLine ? 0.0 : baseIndent
+                listPara.firstLineHeadIndent = isActiveLine ? max(0.0, baseIndent - leadW) : baseIndent
                 listPara.headIndent = textIndent
                 listPara.lineHeightMultiple = typography.lineHeightMultiple
                 listPara.lineSpacing = max(1.0, typography.lineSpacing * 0.70)
@@ -884,20 +898,25 @@ public final class MarkdownLiveStyler {
                 listPara.tailIndent = effectiveContainerWidth
                 storage.addAttribute(.paragraphStyle, value: listPara, range: lineRange)
 
-                let markerFont = theme.bodyFont(size: effectiveBaseSize, bold: true)
                 storage.addAttributes([
                     .font: markerFont,
-                    .foregroundColor: theme.linkNSColor.withAlphaComponent(dimFactor),
+                    .foregroundColor: (!isActiveLine && !isOrdered)
+                        ? NSColor.clear
+                        : theme.linkNSColor.withAlphaComponent(dimFactor),
                     .kern: 0.0
                 ], range: markerSymbolRange)
 
                 if !isActiveLine {
+                    if !isOrdered {
+                        decorations.append(LineDecoration(
+                            lineRange: lineRange,
+                            kind: .listBullet(range: markerSymbolRange, dimFactor: dimFactor)
+                        ))
+                    }
                     if leadingWSRange.length > 0 {
                         collapseWhitespaceRange(in: storage, range: leadingWSRange)
                     }
                     if postMarkerWSRange.length > 0 {
-                        let markerStr = nsString.substring(with: markerSymbolRange) as NSString
-                        let markerW = markerStr.size(withAttributes: [.font: markerFont]).width
                         let desiredGap = max(4.0, markerAdvance - markerW)
                         collapseWhitespaceRange(in: storage, range: postMarkerWSRange)
                         storage.addAttribute(.kern, value: desiredGap, range: NSRange(location: postMarkerWSRange.location, length: 1))
@@ -907,6 +926,14 @@ public final class MarkdownLiveStyler {
                         .font: markerFont,
                         .foregroundColor: theme.linkNSColor.withAlphaComponent(dimFactor)
                     ], range: NSRange(location: leadingWSRange.location, length: NSMaxRange(postMarkerWSRange) - leadingWSRange.location))
+                    if !isOrdered && markerStr.isEqual(to: "*") {
+                        storage.addAttribute(.baselineOffset, value: -effectiveBaseSize * 0.14, range: markerSymbolRange)
+                    }
+                    if postMarkerWSRange.length > 0 {
+                        let postW = (nsString.substring(with: postMarkerWSRange) as NSString).size(withAttributes: [.font: markerFont]).width
+                        let extraKern = max(0.0, markerAdvance - markerW - postW)
+                        storage.addAttribute(.kern, value: extraKern, range: NSRange(location: NSMaxRange(postMarkerWSRange) - 1, length: 1))
+                    }
                 }
 
                 if dimFactor < 1.0 {
@@ -1032,8 +1059,14 @@ public final class MarkdownLiveStyler {
             if let listIndent = previousListTextIndent,
                let leadMatch = leadingSpaceRegex.firstMatch(in: string, options: [], range: contentRange),
                indentationColumnCount(nsString: nsString, range: leadMatch.range) >= 2 {
+                let leadW = isActiveLine && leadMatch.range.length > 0
+                    ? (nsString.substring(with: leadMatch.range) as NSString).size(withAttributes: [.font: baseFont]).width
+                    : 0.0
+                if !isActiveLine && leadMatch.range.length > 0 {
+                    collapseWhitespaceRange(in: storage, range: leadMatch.range)
+                }
                 let contPara = NSMutableParagraphStyle()
-                contPara.firstLineHeadIndent = isActiveLine ? 0.0 : listIndent
+                contPara.firstLineHeadIndent = isActiveLine ? max(0.0, listIndent - leadW) : listIndent
                 contPara.headIndent = listIndent
                 contPara.lineHeightMultiple = typography.lineHeightMultiple
                 contPara.lineSpacing = max(1.0, typography.lineSpacing * 0.70)

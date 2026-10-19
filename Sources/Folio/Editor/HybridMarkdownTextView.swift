@@ -368,6 +368,28 @@ public final class HybridMarkdownTextView: NSTextView {
                 currentTheme.codeBackgroundNSColor.withAlphaComponent(dimFactor).setFill()
                 NSBezierPath(roundedRect: pillRect, xRadius: 4.0, yRadius: 4.0).fill()
 
+            case let .listBullet(bulletRange, dimFactor):
+                let bulletGlyphs = layoutManager.glyphRange(forCharacterRange: bulletRange, actualCharacterRange: nil)
+                guard bulletGlyphs.location != NSNotFound else { continue }
+                var bulletRect = layoutManager.boundingRect(forGlyphRange: bulletGlyphs, in: textContainer)
+                bulletRect.origin.x += origin.x
+                bulletRect.origin.y += origin.y
+
+                let lineFrag = layoutManager.lineFragmentRect(forGlyphAt: bulletGlyphs.location, effectiveRange: nil)
+                let glyphLoc = layoutManager.location(forGlyphAt: bulletGlyphs.location)
+                let baselineY = origin.y + lineFrag.minY + glyphLoc.y
+                let baseFont = currentTheme.bodyFont(size: currentTheme.baseFontSize * typographySettings.fontSizeScale)
+                let midY = baselineY - (baseFont.ascender + baseFont.descender) * 0.5
+                let dotDiameter: CGFloat = 5.5
+                let dotRect = NSRect(
+                    x: bulletRect.midX - dotDiameter * 0.5,
+                    y: midY - dotDiameter * 0.5,
+                    width: dotDiameter,
+                    height: dotDiameter
+                )
+                currentTheme.linkNSColor.withAlphaComponent(dimFactor).setFill()
+                NSBezierPath(ovalIn: dotRect).fill()
+
             case .horizontalRule:
                 let hrColor = currentTheme.isDark
                     ? NSColor.white.withAlphaComponent(0.18)

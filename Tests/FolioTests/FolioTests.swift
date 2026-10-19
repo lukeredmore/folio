@@ -839,4 +839,45 @@ final class FolioTests: XCTestCase {
         XCTAssertTrue(summary4.contains("→"))
         _ = (node2, node3, node4)
     }
+
+    @MainActor
+    func testListBulletCenteringAndConsistentIndentation() throws {
+        let md = "* Active item\n* Inactive item\n"
+        let storage = NSTextStorage(string: md)
+        let doc = MarkdownLiveStyler.applyStyles(
+            to: storage,
+            theme: .daylight,
+            typography: .default,
+            sourceCodeMode: false,
+            focusMode: false,
+            selectedRange: NSRange(location: 0, length: 0),
+            containerWidth: 720
+        )
+
+        let ns = md as NSString
+        let activeLineLoc = ns.range(of: "* Active item").location
+        let inactiveLineLoc = ns.range(of: "* Inactive item").location
+
+        let activePara = storage.attribute(.paragraphStyle, at: activeLineLoc, effectiveRange: nil) as? NSParagraphStyle
+        let inactivePara = storage.attribute(.paragraphStyle, at: inactiveLineLoc, effectiveRange: nil) as? NSParagraphStyle
+
+        XCTAssertNotNil(activePara)
+        XCTAssertNotNil(inactivePara)
+        XCTAssertEqual(activePara?.firstLineHeadIndent, inactivePara?.firstLineHeadIndent, "Active and inactive top-level list items must have identical firstLineHeadIndent")
+        XCTAssertEqual(activePara?.headIndent, inactivePara?.headIndent, "Active and inactive list items must have identical hanging headIndent")
+
+        // Active '*' marker should have negative baselineOffset so it is vertically centered
+        let activeBaselineOffset = storage.attribute(.baselineOffset, at: activeLineLoc, effectiveRange: nil) as? CGFloat
+        XCTAssertNotNil(activeBaselineOffset)
+        XCTAssertLessThan(activeBaselineOffset ?? 0, 0, "Active '*' marker should have negative baseline offset to vertically center the asterisk")
+
+        // Inactive unordered list item should emit a .listBullet decoration
+        let hasListBullet = doc.decorations.contains { dec in
+            if case let .listBullet(range, _) = dec.kind {
+                return range.location == inactiveLineLoc
+            }
+            return false
+        }
+        XCTAssertTrue(hasListBullet, "Inactive unordered list item should emit a .listBullet decoration for vertically centered bullet dot rendering")
+    }
 }
