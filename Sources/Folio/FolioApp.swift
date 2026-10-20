@@ -488,16 +488,47 @@ public struct FolioApp: App {
 
             // MARK: - Themes Menu
             CommandMenu("Themes") {
-                ForEach(EditorTheme.allCases) { themeOption in
+                ForEach(EditorTheme.builtInThemes) { themeOption in
                     Button {
-                        viewModel.theme = themeOption
+                        viewModel.selectTheme(themeOption)
                     } label: {
-                        if viewModel.theme == themeOption {
-                            Text("✓ \(themeOption.rawValue)")
+                        if viewModel.theme.id == themeOption.id {
+                            Text(viewModel.isCurrentThemeModified ? "✓ \(themeOption.name) (Edited)" : "✓ \(themeOption.name)")
                         } else {
-                            Text("   \(themeOption.rawValue)")
+                            Text("   \(themeOption.name)")
                         }
                     }
+                }
+
+                if !viewModel.customThemes.isEmpty {
+                    Divider()
+                    ForEach(viewModel.customThemes) { customTheme in
+                        Button {
+                            viewModel.selectTheme(customTheme)
+                        } label: {
+                            if viewModel.theme.id == customTheme.id {
+                                Text(viewModel.isCurrentThemeModified ? "✓ \(customTheme.name) (Edited)" : "✓ \(customTheme.name)")
+                            } else {
+                                Text("   \(customTheme.name)")
+                            }
+                        }
+                    }
+                }
+
+                Divider()
+
+                Button("Customize Theme & Typography…") {
+                    viewModel.showSettingsModal = true
+                }
+
+                if viewModel.isCurrentThemeModified {
+                    Button("Reset Theme to Saved Defaults") {
+                        viewModel.resetCurrentTheme()
+                    }
+                }
+
+                Button("Reset Character & Spacing Defaults") {
+                    viewModel.resetTypographyToDefaults()
                 }
             }
         }

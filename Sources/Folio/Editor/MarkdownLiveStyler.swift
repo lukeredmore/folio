@@ -490,7 +490,7 @@ public final class MarkdownLiveStyler {
     public static func applyStyles(
         to storage: NSTextStorage,
         theme: EditorTheme,
-        typography: EditorTypographySettings = .default,
+        typography: EditorTypographySettings? = nil,
         sourceCodeMode: Bool,
         focusMode: Bool,
         selectedRange: NSRange,
@@ -498,6 +498,7 @@ public final class MarkdownLiveStyler {
         prettyMode: Bool = true,
         baseDirectoryURL: URL? = nil
     ) -> MarkdownDocumentAnalysis {
+        let typography = typography ?? theme.typography
         let string = storage.string
         let nsString = string as NSString
         let fullLength = nsString.length
@@ -1201,7 +1202,7 @@ public final class MarkdownLiveStyler {
                 bqPara.paragraphSpacing = max(3.0, typography.paragraphSpacing * 0.45)
                 bqPara.tailIndent = effectiveContainerWidth
 
-                var bqFont = theme.bodyFont(size: effectiveBaseSize, italic: theme == .parchment || theme == .editorial)
+                var bqFont = theme.bodyFont(size: effectiveBaseSize, italic: theme.italicBlockquotes)
                 var bqColor = theme.blockquoteTextNSColor.withAlphaComponent(dimFactor)
                 var inlineRange = bodyRange
 

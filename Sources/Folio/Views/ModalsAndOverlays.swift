@@ -402,30 +402,55 @@ public struct StatusBarView: View {
 
             // Theme quick selector menu
             Menu {
-                ForEach(EditorTheme.allCases) { themeOption in
-                    Button {
-                        viewModel.theme = themeOption
-                    } label: {
-                        HStack {
-                            Text(themeOption.rawValue)
-                            if viewModel.theme == themeOption {
-                                Image(systemName: "checkmark")
+                Section("Default Themes") {
+                    ForEach(EditorTheme.builtInThemes) { themeOption in
+                        Button {
+                            viewModel.selectTheme(themeOption)
+                        } label: {
+                            HStack {
+                                Text(themeOption.name)
+                                if viewModel.theme.id == themeOption.id {
+                                    Image(systemName: "checkmark")
+                                }
                             }
                         }
                     }
+                }
+
+                if !viewModel.customThemes.isEmpty {
+                    Section("Saved Themes") {
+                        ForEach(viewModel.customThemes) { themeOption in
+                            Button {
+                                viewModel.selectTheme(themeOption)
+                            } label: {
+                                HStack {
+                                    Text(themeOption.name)
+                                    if viewModel.theme.id == themeOption.id {
+                                        Image(systemName: "checkmark")
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                Divider()
+
+                Button("Customize Theme…") {
+                    viewModel.showSettingsModal = true
                 }
             } label: {
                 HStack(spacing: 4) {
                     Image(systemName: "paintpalette")
                         .font(.system(size: 11))
-                    Text(viewModel.theme.rawValue)
+                    Text(viewModel.isCurrentThemeModified ? "\(viewModel.theme.name) *" : viewModel.theme.name)
                         .font(.system(size: 11))
                 }
                 .foregroundColor(viewModel.theme.secondaryTextColor)
             }
             .menuStyle(.borderlessButton)
             .fixedSize()
-            .help("Switch Theme")
+            .help("Switch or Customize Theme")
 
             // Typography & Layout Settings button
             Button {
@@ -443,7 +468,7 @@ public struct StatusBarView: View {
             .popover(isPresented: $viewModel.showSettingsModal, arrowEdge: .top) {
                 EditorSettingsView(viewModel: viewModel)
             }
-            .help("Typography & Editor Settings (Cmd+,)")
+            .help("Theme, Typography & Editor Settings (Cmd+,)")
 
             // Right: Word Count Popover button
             Button {
@@ -600,32 +625,435 @@ public struct StatusBarView: View {
 }
 
 public struct EditorSettingsView: View {
-    @ObservedObject var viewModel: EditorWorkspaceViewModel
+    public enum SettingsTab: String, CaseIterable, Identifiable, Sendable {
+        case fonts = "Fonts"
+        case colors = "Colors"
+        case spacing = "Spacing"
+        case editor = "Editor"
 
-    public init(viewModel: EditorWorkspaceViewModel) {
+        public var id: String { rawValue }
+
+        public var icon: String {
+            switch self {
+            case .fonts: return "textformat"
+            case .colors: return "paintpalette"
+            case .spacing: return "arrow.up.and.down.text.horizontal"
+            case .editor: return "gearshape"
+            }
+        }
+    }
+
+    @ObservedObject var viewModel: EditorWorkspaceViewModel
+    @State private var selectedTab: SettingsTab
+    @State private var isSavingNewTheme: Bool = false
+    @State private var newThemeName: String = ""
+
+    public init(viewModel: EditorWorkspaceViewModel, initialTab: SettingsTab = .fonts) {
         self.viewModel = viewModel
+        self._selectedTab = State(initialValue: initialTab)
     }
 
     public var body: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            HStack {
-                Label("Typography & Layout Settings", systemImage: "textformat.size")
-                    .font(.system(size: 13.5, weight: .semibold))
-                Spacer()
-                Button("Reset Defaults") {
-                    viewModel.resetTypographyToDefaults()
+        VStack(alignment: .leading, spacing: 12) {
+            headerSection
+            themeGallerySection
+            tabPickerSection
+
+            ScrollView(.vertical, showsIndicators: false) {
+                VStack(alignment: .leading, spacing: 12) {
+                    switch selectedTab {
+                    case .fonts:
+                        fontsSection
+                    case .colors:
+                        colorsSection
+                    case .spacing:
+                        characterAndSpacingSection
+                    case .editor:
+                        editorAndUpdatesSection
+                    }
                 }
-                .controlSize(.small)
+                .padding(.top, 2)
+                .padding(.bottom, 4)
+            }
+        }
+        .padding(16)
+        .frame(width: 460, height: 585)
+    }
+
+    // MARK: - Header & Theme Bar
+
+    @ViewBuilder
+    private var headerSection: some View {
+        HStack(spacing: 6) {
+            Image(systemName: "paintbrush.pointed.fill")
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundColor(.accentColor)
+
+            Text("Theme Settings")
+                .font(.system(size: 13.5, weight: .semibold))
+
+            if viewModel.isCurrentThemeModified {
+                Text("Edited")
+                    .font(.system(size: 10, weight: .semibold))
+                    .foregroundColor(.orange)
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 2)
+                    .background(Capsule().fill(Color.orange.opacity(0.15)))
             }
 
-            Divider()
+            Spacer(minLength: 4)
 
-            // Section 1: Body Typography
-            VStack(alignment: .leading, spacing: 8) {
-                Text("BODY TYPOGRAPHY")
-                    .font(.system(size: 10, weight: .bold))
-                    .foregroundColor(.secondary)
+            if viewModel.defaultPresetForCurrentTheme != nil {
+                Button("Reset to Default") {
+                    viewModel.resetCurrentThemeToDefault()
+                }
+                .controlSize(.small)
+                .disabled(!viewModel.canResetCurrentPresetToDefault)
+                .help("Reset '\(viewModel.theme.name)' back to its factory default preset")
+            } else if viewModel.isCurrentThemeModified {
+                Button("Revert") {
+                    viewModel.resetCurrentTheme()
+                }
+                .controlSize(.small)
+                .help("Revert unsaved changes back to '\(viewModel.theme.name)'")
+            }
 
+            if viewModel.isCurrentThemeModified {
+                Button("Save") {
+                    viewModel.saveCurrentTheme()
+                }
+                .controlSize(.small)
+                .buttonStyle(.borderedProminent)
+                .help("Save changes to '\(viewModel.theme.name)'")
+            } else {
+                Button("Save") {
+                    viewModel.saveCurrentTheme()
+                }
+                .controlSize(.small)
+                .disabled(true)
+                .help("Save changes to '\(viewModel.theme.name)'")
+            }
+
+            Button("Save As…") {
+                newThemeName = viewModel.isCurrentThemeModified
+                    ? "\(viewModel.theme.name) Custom"
+                    : "\(viewModel.theme.name) Copy"
+                isSavingNewTheme.toggle()
+            }
+            .controlSize(.small)
+            .help("Save current settings as a new named theme")
+
+            if !viewModel.theme.isPresetTheme {
+                Button(role: .destructive) {
+                    viewModel.deleteCustomTheme(id: viewModel.theme.id)
+                } label: {
+                    Image(systemName: "trash")
+                }
+                .controlSize(.small)
+                .help("Delete custom theme '\(viewModel.theme.name)'")
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var themeGallerySection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            if isSavingNewTheme {
+                HStack(spacing: 6) {
+                    TextField("New theme name…", text: $newThemeName)
+                        .textFieldStyle(.roundedBorder)
+                        .font(.system(size: 12))
+                        .onSubmit {
+                            commitNewTheme()
+                        }
+                    Button("Save Theme") {
+                        commitNewTheme()
+                    }
+                    .controlSize(.small)
+                    .buttonStyle(.borderedProminent)
+                    .keyboardShortcut(.defaultAction)
+
+                    Button("Cancel") {
+                        isSavingNewTheme = false
+                    }
+                    .controlSize(.small)
+                }
+                .padding(8)
+                .background(
+                    RoundedRectangle(cornerRadius: 8)
+                        .fill(Color.primary.opacity(0.04))
+                )
+            }
+
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 8) {
+                    ForEach(viewModel.availableThemes) { candidate in
+                        themeSwatchCard(for: candidate)
+                    }
+                }
+                .padding(.vertical, 2)
+                .padding(.horizontal, 1)
+            }
+        }
+    }
+
+    private func themeSwatchCard(for candidate: EditorTheme) -> some View {
+        let isSelected = viewModel.theme.id == candidate.id
+        let displayTheme = isSelected ? viewModel.theme : candidate
+
+        return Button {
+            viewModel.selectTheme(candidate)
+        } label: {
+            VStack(alignment: .leading, spacing: 6) {
+                HStack(alignment: .firstTextBaseline, spacing: 4) {
+                    Text("Aa")
+                        .font(.system(size: 15, weight: .bold, design: swatchFontDesign(for: displayTheme)))
+                        .foregroundColor(displayTheme.headingColor)
+
+                    Spacer(minLength: 4)
+
+                    Circle()
+                        .fill(displayTheme.linkColor)
+                        .frame(width: 7, height: 7)
+                }
+
+                VStack(alignment: .leading, spacing: 2) {
+                    RoundedRectangle(cornerRadius: 1.5)
+                        .fill(displayTheme.textColor.opacity(0.65))
+                        .frame(width: 44, height: 2.5)
+                    RoundedRectangle(cornerRadius: 1.5)
+                        .fill(displayTheme.secondaryTextColor.opacity(0.5))
+                        .frame(width: 30, height: 2.5)
+                }
+
+                HStack(spacing: 3) {
+                    Text(candidate.name)
+                        .font(.system(size: 10.5, weight: isSelected ? .semibold : .medium))
+                        .foregroundColor(displayTheme.textColor)
+                        .lineLimit(1)
+
+                    if !candidate.isPresetTheme {
+                        Image(systemName: "sparkles")
+                            .font(.system(size: 8))
+                            .foregroundColor(displayTheme.linkColor)
+                    } else if displayTheme.isModifiedFromDefaultPreset {
+                        Circle()
+                            .fill(displayTheme.linkColor.opacity(0.85))
+                            .frame(width: 4.5, height: 4.5)
+                    }
+                }
+            }
+            .padding(.horizontal, 9)
+            .padding(.vertical, 7)
+            .frame(width: 86, alignment: .leading)
+            .background(
+                RoundedRectangle(cornerRadius: 8)
+                    .fill(displayTheme.editorBackgroundColor)
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 8)
+                    .strokeBorder(
+                        isSelected ? Color.accentColor : Color.primary.opacity(0.14),
+                        lineWidth: isSelected ? 2.0 : 1.0
+                    )
+            )
+            .shadow(color: Color.black.opacity(isSelected ? 0.10 : 0.03), radius: 2, x: 0, y: 1)
+        }
+        .buttonStyle(.plain)
+    }
+
+    private func swatchFontDesign(for theme: EditorTheme) -> Font.Design {
+        let family = theme.bodyFontFamily.lowercased()
+        if family.contains("mono") || family.contains("menlo") {
+            return .monospaced
+        } else if family.contains("serif") || family.contains("charter") || family.contains("palatino") || family.contains("georgia") || family.contains("baskerville") || family.contains("times") {
+            return .serif
+        }
+        return .default
+    }
+
+    @ViewBuilder
+    private var tabPickerSection: some View {
+        Picker("Category", selection: $selectedTab) {
+            ForEach(SettingsTab.allCases) { tab in
+                Text(tab.rawValue).tag(tab)
+            }
+        }
+        .pickerStyle(.segmented)
+        .labelsHidden()
+    }
+
+    // MARK: - Tab 1: Fonts & Heading Style
+
+    @ViewBuilder
+    private var fontsSection: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            settingsCard(title: "FONT FAMILIES & SIZE") {
+                fontPickerRow(
+                    title: "Body Font",
+                    selection: $viewModel.theme.bodyFontFamily,
+                    options: EditorTheme.bodyFontChoices
+                )
+
+                Divider().opacity(0.5)
+
+                fontPickerRow(
+                    title: "Heading Font",
+                    selection: $viewModel.theme.headingFontFamily,
+                    options: EditorTheme.headingFontChoices
+                )
+
+                Divider().opacity(0.5)
+
+                fontPickerRow(
+                    title: "Code Font",
+                    selection: $viewModel.theme.codeFontFamily,
+                    options: EditorTheme.codeFontChoices
+                )
+
+                Divider().opacity(0.5)
+
+                settingSliderRow(
+                    title: "Base Font Size",
+                    valueText: String(format: "%.1f pt", viewModel.theme.baseFontSize),
+                    value: $viewModel.theme.baseFontSize,
+                    range: 12.0...24.0,
+                    step: 0.5
+                )
+            }
+
+            settingsCard(title: "HEADINGS & EMPHASIS") {
+                HStack {
+                    Text("Heading Weight")
+                        .font(.system(size: 12))
+                    Spacer()
+                    Picker("Heading Weight", selection: $viewModel.theme.headingWeightStyle) {
+                        ForEach(HeadingWeightStyle.allCases) { style in
+                            Text(style.displayName).tag(style)
+                        }
+                    }
+                    .labelsHidden()
+                    .frame(width: 245)
+                }
+
+                Divider().opacity(0.5)
+
+                HStack(spacing: 20) {
+                    Toggle("Italic H3 Subheadings", isOn: $viewModel.theme.italicH3)
+                        .font(.system(size: 12))
+                    Toggle("Italic Blockquotes", isOn: $viewModel.theme.italicBlockquotes)
+                        .font(.system(size: 12))
+                    Spacer(minLength: 0)
+                }
+            }
+
+            // Live miniature preview of the active theme's fonts & colors
+            VStack(alignment: .leading, spacing: 5) {
+                HStack {
+                    Text("Headings & Prose Preview")
+                        .font(Font(viewModel.theme.headingFont(level: 3, scale: 0.92)))
+                        .foregroundColor(viewModel.theme.headingColor)
+                    Spacer()
+                    Text(viewModel.theme.name)
+                        .font(.system(size: 10, weight: .medium))
+                        .foregroundColor(viewModel.theme.secondaryTextColor)
+                }
+
+                Text("The quick brown fox jumps over the lazy dog.")
+                    .font(Font(viewModel.theme.bodyFont(size: min(17, max(12, viewModel.theme.baseFontSize * 0.88)))))
+                    .foregroundColor(viewModel.theme.textColor)
+
+                HStack(spacing: 8) {
+                    Text("> Quoted note")
+                        .font(Font(viewModel.theme.bodyFont(size: 12, italic: viewModel.theme.italicBlockquotes)))
+                        .foregroundColor(viewModel.theme.blockquoteTextColor)
+
+                    Text("let theme = \"\(viewModel.theme.name)\"")
+                        .font(Font(viewModel.theme.codeFont(size: 11.5)))
+                        .foregroundColor(viewModel.theme.inlineCodeColor)
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 2)
+                        .background(
+                            RoundedRectangle(cornerRadius: 4)
+                                .fill(viewModel.theme.codeBackgroundColor)
+                        )
+                }
+            }
+            .padding(11)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(
+                RoundedRectangle(cornerRadius: 9)
+                    .fill(viewModel.theme.editorBackgroundColor)
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 9)
+                    .strokeBorder(Color.primary.opacity(0.12), lineWidth: 1)
+            )
+        }
+    }
+
+    // MARK: - Tab 2: Theme Colors & Appearance
+
+    @ViewBuilder
+    private var colorsSection: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            settingsCard(title: "WINDOW APPEARANCE") {
+                HStack {
+                    VStack(alignment: .leading, spacing: 1) {
+                        Text("Dark Appearance")
+                            .font(.system(size: 12, weight: .medium))
+                        Text("Controls window chrome, scrollbars, and dark syntax contrast")
+                            .font(.system(size: 10.5))
+                            .foregroundColor(.secondary)
+                    }
+                    Spacer()
+                    Toggle("", isOn: $viewModel.theme.isDark)
+                        .labelsHidden()
+                        .toggleStyle(.switch)
+                        .controlSize(.small)
+                }
+            }
+
+            settingsCard(title: "PALETTE SWATCHES") {
+                LazyVGrid(
+                    columns: [
+                        GridItem(.flexible(), spacing: 10),
+                        GridItem(.flexible(), spacing: 10)
+                    ],
+                    alignment: .leading,
+                    spacing: 8
+                ) {
+                    themeColorRow("Editor Surface", color: $viewModel.theme.editorBackground)
+                    themeColorRow("Sidebar Surface", color: $viewModel.theme.sidebarBackground)
+                    themeColorRow("Body Text", color: $viewModel.theme.text)
+                    themeColorRow("Heading Text", color: $viewModel.theme.heading)
+                    themeColorRow("Secondary Text", color: $viewModel.theme.secondaryText)
+                    themeColorRow("Links & Accent", color: $viewModel.theme.link)
+                    themeColorRow("Code Block Fill", color: $viewModel.theme.codeBackground)
+                    themeColorRow("Inline Code", color: $viewModel.theme.inlineCode)
+                    themeColorRow("Syntax Tokens", color: $viewModel.theme.markdownToken)
+                    themeColorRow("Blockquotes", color: $viewModel.theme.blockquoteText)
+                }
+            }
+        }
+    }
+
+    // MARK: - Tab 3: Character, Line & Spacing
+
+    @ViewBuilder
+    private var characterAndSpacingSection: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            settingsCard(
+                title: "BODY & PARAGRAPH SPACING",
+                trailingHeader: {
+                    Button("Reset Spacing Defaults") {
+                        viewModel.resetTypographyToDefaults()
+                    }
+                    .controlSize(.mini)
+                    .disabled(viewModel.typography == .default)
+                    .help("Reset character, line, paragraph, and column spacing to standard defaults while keeping your theme's fonts and colors")
+                }
+            ) {
                 settingSliderRow(
                     title: "Font Size Scale",
                     valueText: "\(Int(round(viewModel.typography.fontSizeScale * 100)))%",
@@ -667,14 +1095,7 @@ public struct EditorSettingsView: View {
                 )
             }
 
-            Divider()
-
-            // Section 2: Headings & Horizontal Rules
-            VStack(alignment: .leading, spacing: 8) {
-                Text("TITLES & HORIZONTAL LINES")
-                    .font(.system(size: 10, weight: .bold))
-                    .foregroundColor(.secondary)
-
+            settingsCard(title: "HEADINGS & COLUMN LAYOUT") {
                 settingSliderRow(
                     title: "Title Letter Spacing",
                     valueText: String(format: "%+.2f pt", viewModel.typography.headingCharacterSpacing),
@@ -699,18 +1120,6 @@ public struct EditorSettingsView: View {
                     step: 0.5
                 )
 
-                Toggle("Show H1 / H2 Heading Underlines", isOn: $viewModel.typography.showHeadingUnderlines)
-                    .font(.system(size: 12))
-            }
-
-            Divider()
-
-            // Section 3: Page Layout & Editor Options
-            VStack(alignment: .leading, spacing: 8) {
-                Text("PAGE LAYOUT & EDITOR")
-                    .font(.system(size: 10, weight: .bold))
-                    .foregroundColor(.secondary)
-
                 settingSliderRow(
                     title: "Max Column Width",
                     valueText: "\(Int(viewModel.typography.maxColumnWidth)) px",
@@ -719,9 +1128,24 @@ public struct EditorSettingsView: View {
                     step: 20.0
                 )
 
+                Divider().opacity(0.5)
+
+                Toggle("Show H1 / H2 Heading Underlines", isOn: $viewModel.typography.showHeadingUnderlines)
+                    .font(.system(size: 12))
+            }
+        }
+    }
+
+    // MARK: - Tab 4: Editor & Software Updates
+
+    @ViewBuilder
+    private var editorAndUpdatesSection: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            settingsCard(title: "MARKDOWN EDITING") {
                 Toggle("Pretty Mode (Render Images, Mermaid, SVGs & Inline HTML)", isOn: $viewModel.prettyModeEnabled)
                     .font(.system(size: 12))
 
+                Divider().opacity(0.5)
                 HStack {
                     Text("Wrap Markdown Source At")
                         .font(.system(size: 12))
@@ -732,32 +1156,17 @@ public struct EditorSettingsView: View {
                         }
                     }
                     .labelsHidden()
-                    .frame(width: 120)
+                    .frame(width: 150)
                 }
                 .help("Rewraps a paragraph's source lines when you finish editing it. Line breaks inside a paragraph never show in the rendered view.")
 
-                HStack {
-                    Toggle("Continuous Spellcheck", isOn: $viewModel.spellCheckEnabled)
-                        .font(.system(size: 12))
-                    Spacer()
-                    Picker("Theme", selection: $viewModel.theme) {
-                        ForEach(EditorTheme.allCases) { themeOption in
-                            Text(themeOption.rawValue).tag(themeOption)
-                        }
-                    }
-                    .labelsHidden()
-                    .frame(width: 120)
-                }
+                Divider().opacity(0.5)
+
+                Toggle("Continuous Spellcheck", isOn: $viewModel.spellCheckEnabled)
+                    .font(.system(size: 12))
             }
 
-            Divider()
-
-            // Section 4: Software Updates & Build Info
-            VStack(alignment: .leading, spacing: 8) {
-                Text("SOFTWARE UPDATES & BUILD")
-                    .font(.system(size: 10, weight: .bold))
-                    .foregroundColor(.secondary)
-
+            settingsCard(title: "SOFTWARE UPDATES & BUILD") {
                 HStack {
                     VStack(alignment: .leading, spacing: 2) {
                         Text("Folio \(AppUpdateManager.shared.currentVersion.displayString)")
@@ -775,6 +1184,8 @@ public struct EditorSettingsView: View {
                     .controlSize(.small)
                 }
 
+                Divider().opacity(0.5)
+
                 Toggle("Automatically check for updates on launch", isOn: Binding(
                     get: { AppUpdateManager.shared.autoCheckForUpdates },
                     set: { AppUpdateManager.shared.autoCheckForUpdates = $0 }
@@ -782,8 +1193,113 @@ public struct EditorSettingsView: View {
                 .font(.system(size: 12))
             }
         }
-        .padding(16)
-        .frame(width: 390)
+    }
+
+    // MARK: - Shared Row & Card Helpers
+
+    private func settingsCard<Content: View>(
+        title: String,
+        @ViewBuilder content: () -> Content
+    ) -> some View {
+        settingsCard(title: title, trailingHeader: { EmptyView() }, content: content)
+    }
+
+    private func settingsCard<Trailing: View, Content: View>(
+        title: String,
+        @ViewBuilder trailingHeader: () -> Trailing,
+        @ViewBuilder content: () -> Content
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                Text(title)
+                    .font(.system(size: 10, weight: .bold))
+                    .foregroundColor(.secondary)
+                Spacer()
+                trailingHeader()
+            }
+
+            VStack(alignment: .leading, spacing: 8) {
+                content()
+            }
+            .padding(10)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(
+                RoundedRectangle(cornerRadius: 9)
+                    .fill(Color.primary.opacity(0.035))
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 9)
+                    .strokeBorder(Color.primary.opacity(0.07), lineWidth: 1)
+            )
+        }
+    }
+
+    private func commitNewTheme() {
+        let trimmed = newThemeName.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+        viewModel.saveCurrentTheme(as: trimmed)
+        isSavingNewTheme = false
+        newThemeName = ""
+    }
+
+    private func fontPickerRow(
+        title: String,
+        selection: Binding<String>,
+        options: [(label: String, value: String)]
+    ) -> some View {
+        HStack {
+            Text(title)
+                .font(.system(size: 12))
+            Spacer()
+            Picker(title, selection: selection) {
+                ForEach(options, id: \.value) { option in
+                    Text(option.label).tag(option.value)
+                }
+                if !options.contains(where: { $0.value == selection.wrappedValue }) {
+                    Text(selection.wrappedValue).tag(selection.wrappedValue)
+                }
+            }
+            .labelsHidden()
+            .frame(width: 245)
+        }
+    }
+
+    private func themeColorRow(_ label: String, color: Binding<ThemeColorRGBA>) -> some View {
+        HStack(spacing: 8) {
+            VStack(alignment: .leading, spacing: 1) {
+                Text(label)
+                    .font(.system(size: 11.5, weight: .medium))
+                    .lineLimit(1)
+                Text(color.wrappedValue.hexString)
+                    .font(.system(size: 9.5, design: .monospaced))
+                    .foregroundColor(.secondary)
+            }
+
+            Spacer(minLength: 4)
+
+            ColorPicker(
+                "",
+                selection: Binding<Color>(
+                    get: { color.wrappedValue.color },
+                    set: { newColor in
+                        color.wrappedValue = ThemeColorRGBA(nsColor: NSColor(newColor))
+                    }
+                ),
+                supportsOpacity: true
+            )
+            .labelsHidden()
+            .fixedSize()
+        }
+        .padding(.horizontal, 9)
+        .padding(.vertical, 6)
+        .background(
+            RoundedRectangle(cornerRadius: 7)
+                .fill(Color.primary.opacity(0.03))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 7)
+                .strokeBorder(Color.primary.opacity(0.07), lineWidth: 1)
+        )
     }
 
     private func settingSliderRow(
@@ -796,15 +1312,17 @@ public struct EditorSettingsView: View {
         HStack(spacing: 10) {
             Text(title)
                 .font(.system(size: 12))
-                .frame(width: 135, alignment: .leading)
+                .frame(width: 132, alignment: .leading)
 
             Slider(
                 value: Binding<Double>(
                     get: { Double(value.wrappedValue) },
-                    set: { value.wrappedValue = CGFloat($0) }
+                    set: { raw in
+                        let stepped = (CGFloat(raw) / step).rounded() * step
+                        value.wrappedValue = min(range.upperBound, max(range.lowerBound, stepped))
+                    }
                 ),
-                in: Double(range.lowerBound)...Double(range.upperBound),
-                step: Double(step)
+                in: Double(range.lowerBound)...Double(range.upperBound)
             )
 
             Text(valueText)
