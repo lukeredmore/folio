@@ -2170,6 +2170,143 @@ final class FolioTests: XCTestCase {
             mergeElapsed * 1000
         ))
     }
+
+    @MainActor
+    func testExtensibleThemeSystemAndTypographyDefaults() throws {
+        let defaultsSuiteName = "com.folio.tests.themes.\(UUID().uuidString)"
+        let testDefaults = UserDefaults(suiteName: defaultsSuiteName)!
+        defer { testDefaults.removePersistentDomain(forName: defaultsSuiteName) }
+
+        // 1. Default presets are available as built-in themes
+        XCTAssertEqual(EditorTheme.builtInThemes.map(\.name), [
+            "Daylight", "Midnight", "Parchment", "Editorial", "Classic", "Modernist"
+        ])
+
+        let vm1 = EditorWorkspaceViewModel(userDefaults: testDefaults)
+        XCTAssertEqual(vm1.theme, .daylight)
+        XCTAssertEqual(vm1.typography, .default)
+        XCTAssertFalse(vm1.isCurrentThemeModified)
+
+        // 2. Customize fonts, colors, and character/line/spacing settings on the active theme
+        vm1.selectTheme(.editorial)
+        XCTAssertEqual(vm1.theme.name, "Editorial")
+        XCTAssertFalse(vm1.isCurrentThemeModified)
+
+        vm1.theme.bodyFontFamily = "Avenir Next"
+        vm1.theme.headingFontFamily = "Baskerville"
+        vm1.theme.codeFontFamily = "Menlo"
+        vm1.theme.baseFontSize = 18.5
+        vm1.theme.headingWeightStyle = .bold
+        vm1.theme.italicH3 = false
+        vm1.theme.italicBlockquotes = true
+        vm1.theme.isDark = true
+        vm1.theme.editorBackground = ThemeColorRGBA(r: 0.08, g: 0.09, b: 0.12)
+        vm1.theme.text = ThemeColorRGBA(r: 0.92, g: 0.93, b: 0.95)
+        vm1.theme.link = ThemeColorRGBA(r: 0.40, g: 0.75, b: 0.98)
+
+        vm1.typography.fontSizeScale = 1.15
+        vm1.typography.lineHeightMultiple = 1.48
+        vm1.typography.lineSpacing = 4.5
+        vm1.typography.paragraphSpacing = 16.0
+        vm1.typography.characterSpacing = 0.25
+        vm1.typography.headingCharacterSpacing = 0.60
+        vm1.typography.headingSpacingScale = 1.25
+        vm1.typography.headingUnderlineOffset = 8.0
+        vm1.typography.showHeadingUnderlines = false
+        vm1.typography.maxColumnWidth = 920.0
+
+        // Typography and theme.typography stay synchronized
+        XCTAssertEqual(vm1.theme.typography, vm1.typography)
+        XCTAssertTrue(vm1.isCurrentThemeModified)
+
+        // 3. Save customized fonts, colors, and spacing as a brand-new named theme
+        let savedTheme = vm1.saveCurrentTheme(as: "Noir Journal")
+        XCTAssertFalse(savedTheme.isBuiltIn)
+        XCTAssertEqual(savedTheme.name, "Noir Journal")
+        XCTAssertEqual(vm1.theme, savedTheme)
+        XCTAssertEqual(vm1.customThemes, [savedTheme])
+        XCTAssertFalse(vm1.isCurrentThemeModified)
+
+        // 4. Verify persistence of custom themes and active theme across launches
+        let vm2 = EditorWorkspaceViewModel(userDefaults: testDefaults)
+        XCTAssertEqual(vm2.customThemes.count, 1)
+        XCTAssertEqual(vm2.theme, savedTheme)
+        XCTAssertEqual(vm2.theme.bodyFontFamily, "Avenir Next")
+        XCTAssertEqual(vm2.theme.headingFontFamily, "Baskerville")
+        XCTAssertEqual(vm2.theme.codeFontFamily, "Menlo")
+        XCTAssertEqual(vm2.theme.baseFontSize, 18.5, accuracy: 0.001)
+        XCTAssertEqual(vm2.theme.editorBackground, ThemeColorRGBA(r: 0.08, g: 0.09, b: 0.12))
+        XCTAssertEqual(vm2.typography.lineSpacing, 4.5, accuracy: 0.001)
+        XCTAssertEqual(vm2.typography.characterSpacing, 0.25, accuracy: 0.001)
+        XCTAssertEqual(vm2.typography.maxColumnWidth, 920.0, accuracy: 0.001)
+        XCTAssertFalse(vm2.typography.showHeadingUnderlines)
+
+        // 5. Resetting character/line/spacing defaults keeps custom theme fonts and colors intact
+        vm2.resetTypographyToDefaults()
+        XCTAssertEqual(vm2.typography, .default)
+        XCTAssertEqual(vm2.theme.typography, .default)
+        XCTAssertEqual(vm2.theme.bodyFontFamily, "Avenir Next")
+        XCTAssertEqual(vm2.theme.headingFontFamily, "Baskerville")
+        XCTAssertEqual(vm2.theme.editorBackground, ThemeColorRGBA(r: 0.08, g: 0.09, b: 0.12))
+        XCTAssertTrue(vm2.isCurrentThemeModified)
+
+        // 6. Revert unsaved edits back to saved custom theme, then update and delete
+        vm2.resetCurrentTheme()
+        XCTAssertFalse(vm2.isCurrentThemeModified)
+        XCTAssertEqual(vm2.typography.lineSpacing, 4.5, accuracy: 0.001)
+
+        vm2.theme.baseFontSize = 20.0
+        XCTAssertTrue(vm2.isCurrentThemeModified)
+        vm2.updateCurrentCustomTheme()
+        XCTAssertFalse(vm2.isCurrentThemeModified)
+        XCTAssertEqual(vm2.customThemes.first?.baseFontSize, 20.0)
+
+        // 7. MarkdownLiveStyler applies the custom theme's embedded typography and colors
+        let textStorage = NSTextStorage(string: "# Heading\n\n> Quoted line\n\nBody paragraph")
+        MarkdownLiveStyler.applyStyles(
+            to: textStorage,
+            theme: vm2.theme,
+            sourceCodeMode: false,
+            focusMode: false,
+            selectedRange: NSRange(location: 0, length: 0)
+        )
+        let bodyAttrs = textStorage.attributes(at: textStorage.string.count - 4, effectiveRange: nil)
+        let bodyFont = bodyAttrs[.font] as? NSFont
+        XCTAssertNotNil(bodyFont)
+        XCTAssertEqual(bodyFont?.pointSize ?? 0, 20.0 * 1.15, accuracy: 0.5)
+
+        // 8. Delete custom theme falls back cleanly to its base preset (.editorial)
+        vm2.deleteCustomTheme(id: savedTheme.id)
+        XCTAssertTrue(vm2.customThemes.isEmpty)
+        XCTAssertEqual(vm2.theme, .editorial)
+
+        // 9. Preset-named themes can be modified and saved in-place, then reset to factory default
+        XCTAssertFalse(vm2.canResetCurrentPresetToDefault)
+        vm2.theme.baseFontSize = 19.0
+        vm2.typography.lineSpacing = 6.0
+        XCTAssertTrue(vm2.isCurrentThemeModified)
+        XCTAssertTrue(vm2.canResetCurrentPresetToDefault)
+
+        let savedPreset = vm2.saveCurrentTheme()
+        XCTAssertTrue(savedPreset.isPresetTheme)
+        XCTAssertEqual(savedPreset.id, "Editorial")
+        XCTAssertEqual(savedPreset.name, "Editorial")
+        XCTAssertFalse(vm2.isCurrentThemeModified, "Saving a preset-named theme in-place clears the unsaved state")
+        XCTAssertTrue(vm2.canResetCurrentPresetToDefault, "Saved preset still differs from factory default and can be reset")
+
+        // Switching to another preset and back preserves the saved preset modifications
+        vm2.selectTheme(id: "Daylight")
+        XCTAssertEqual(vm2.theme, .daylight)
+        vm2.selectTheme(id: "Editorial")
+        XCTAssertEqual(vm2.theme.baseFontSize, 19.0, accuracy: 0.001)
+        XCTAssertEqual(vm2.typography.lineSpacing, 6.0, accuracy: 0.001)
+
+        // Resetting the preset to default restores the factory Editorial preset
+        vm2.resetCurrentThemeToDefault()
+        XCTAssertEqual(vm2.theme, .editorial)
+        XCTAssertFalse(vm2.canResetCurrentPresetToDefault)
+        XCTAssertFalse(vm2.isCurrentThemeModified)
+    }
 }
 
 private final class MockRemoteTransport: RemoteFileTransport, @unchecked Sendable {

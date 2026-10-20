@@ -121,7 +121,7 @@ public struct WorkspaceSearchMatch: Identifiable, Equatable, Sendable {
     public let matchRangeInFile: NSRange
 }
 
-public struct EditorTypographySettings: Equatable, Codable, Sendable {
+public struct EditorTypographySettings: Equatable, Hashable, Codable, Sendable {
     /// Multiplier applied to the theme's base font size (0.80 ... 1.50)
     public var fontSizeScale: CGFloat = 1.0
     /// Line height multiple applied to body and list paragraphs (1.0 ... 2.0)
