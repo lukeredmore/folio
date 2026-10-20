@@ -52,9 +52,11 @@ extension HybridMarkdownTextView {
             return
         }
 
+        let visibleChars = visibleDecorationCharacterRange(for: rect)
         for (decIdx, dec) in lineDecorations.enumerated() {
             if case .codeFenceBody = dec.kind { continue }
             if case .codeFenceEnd = dec.kind { continue }
+            if let visible = visibleChars, !Self.decorationSpan(decorationSpan(at: decIdx), touches: visible) { continue }
 
             let glyphRange = layoutManager.glyphRange(forCharacterRange: dec.lineRange, actualCharacterRange: nil)
             guard glyphRange.location != NSNotFound else { continue }
