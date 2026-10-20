@@ -39,6 +39,8 @@ final class WorkspaceAndPersistenceTests: XCTestCase {
         defer { testDefaults.removePersistentDomain(forName: defaultsSuiteName) }
 
         let vm = EditorWorkspaceViewModel(userDefaults: testDefaults)
+
+        vm.autoSaveDelay = 0
         vm.loadWorkspaceFolder(tempDir)
 
         // Flat list should only contain the 3 Markdown files
@@ -79,6 +81,7 @@ final class WorkspaceAndPersistenceTests: XCTestCase {
         // 1. Launch #1: Configure workspace folder, open file, sidebar state, collapsed folders, theme, and editor modes
         do {
             let vm1 = EditorWorkspaceViewModel(userDefaults: testDefaults)
+            vm1.autoSaveDelay = 0
             vm1.loadWorkspaceFolder(tempDir)
             vm1.openFile(at: fileA)
             vm1.openFile(at: fileB)
@@ -99,6 +102,7 @@ final class WorkspaceAndPersistenceTests: XCTestCase {
         // 2. Launch #2: Verify full state restoration from UserDefaults
         do {
             let vm2 = EditorWorkspaceViewModel(userDefaults: testDefaults)
+            vm2.autoSaveDelay = 0
             XCTAssertEqual(vm2.workspaceFolderURL?.standardizedFileURL, tempDir.standardizedFileURL)
             XCTAssertEqual(Set(vm2.flatMarkdownFiles.map(\.name)), ["Alpha.md", "Beta.md"])
             XCTAssertEqual(vm2.currentFileURL?.standardizedFileURL, fileB.standardizedFileURL)
@@ -135,6 +139,7 @@ final class WorkspaceAndPersistenceTests: XCTestCase {
         // 3. Launch #3: Verify auto-saved file and its undo history are restored intact across relaunch
         do {
             let vm3 = EditorWorkspaceViewModel(userDefaults: testDefaults)
+            vm3.autoSaveDelay = 0
             XCTAssertEqual(vm3.currentFileURL?.standardizedFileURL, fileB.standardizedFileURL)
             XCTAssertEqual(vm3.markdownText, "# Beta Heading\nAuto-saved edit across relaunch!")
             XCTAssertFalse(vm3.isDirty)
@@ -152,6 +157,7 @@ final class WorkspaceAndPersistenceTests: XCTestCase {
         // 4. Launch #4: Verify untitled draft session is restored intact
         do {
             let vm4 = EditorWorkspaceViewModel(userDefaults: testDefaults)
+            vm4.autoSaveDelay = 0
             XCTAssertNil(vm4.currentFileURL)
             XCTAssertEqual(vm4.markdownText, "# Scratchpad Draft\nRemember this untitled note on relaunch.")
             XCTAssertFalse(vm4.isDirty)
@@ -167,6 +173,7 @@ final class WorkspaceAndPersistenceTests: XCTestCase {
         try FileManager.default.removeItem(at: tempDir)
         do {
             let vm5 = EditorWorkspaceViewModel(userDefaults: testDefaults)
+            vm5.autoSaveDelay = 0
             XCTAssertNotEqual(vm5.workspaceFolderURL?.standardizedFileURL, tempDir.standardizedFileURL)
             XCTAssertNil(vm5.currentFileURL)
             XCTAssertEqual(vm5.markdownText, EditorWorkspaceViewModel.defaultWelcomeDocument)

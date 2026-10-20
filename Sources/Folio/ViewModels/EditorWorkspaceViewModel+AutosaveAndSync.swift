@@ -13,7 +13,7 @@ extension EditorWorkspaceViewModel {
                 // Before overwriting disk, verify whether an external process modified the file since our last save
                 if let currentDiskText = try? String(contentsOf: url, encoding: .utf8),
                    currentDiskText != lastSavedDiskContent,
-                   !recentSelfWrittenContents.contains(currentDiskText) {
+                   !recentSelfWrites.contains(currentDiskText) {
                     let mergeResult = ThreeWayDocumentMerger.merge(
                         base: lastSavedDiskContent,
                         local: markdownText,
@@ -79,10 +79,7 @@ extension EditorWorkspaceViewModel {
 
     func performDiskWrite(_ content: String, to url: URL) {
         do {
-            recentSelfWrittenContents.append(content)
-            if recentSelfWrittenContents.count > 128 {
-                recentSelfWrittenContents.removeFirst(recentSelfWrittenContents.count - 128)
-            }
+            recentSelfWrites.record(content)
             lastSavedDiskContent = content
             let utf8Data = Data(content.utf8)
             if FileManager.default.fileExists(atPath: url.path) {
@@ -101,9 +98,7 @@ extension EditorWorkspaceViewModel {
             }
 
             if remoteWorkspaceManager.isRemoteURL(url) {
-                Task { @MainActor in
-                    await remoteWorkspaceManager.saveRemoteFile(at: url, content: content)
-                }
+                enqueueRemoteUpload(content, to: url)
             }
         } catch {
             NSSound.beep()
@@ -111,6 +106,7 @@ extension EditorWorkspaceViewModel {
     }
 
     func flushPendingAutoSaveBeforeSwitchingFile() {
+        flushPendingAutoSave()
         guard let url = currentFileURL,
               activeConflict == nil,
               autoSaveEnabled,
@@ -133,7 +129,7 @@ extension EditorWorkspaceViewModel {
         // Ignore self-writes when no conflict is active and disk matches our buffer
         if activeConflict == nil,
            diskContent == markdownText,
-           (diskContent == lastSavedDiskContent || recentSelfWrittenContents.contains(diskContent)) {
+           (diskContent == lastSavedDiskContent || recentSelfWrites.contains(diskContent)) {
             lastSavedDiskContent = diskContent
             return
         }
@@ -141,7 +137,7 @@ extension EditorWorkspaceViewModel {
         // Also ignore asynchronous watcher echo from an older self-write that we already superseded
         if activeConflict == nil,
            diskContent != markdownText,
-           recentSelfWrittenContents.contains(diskContent),
+           recentSelfWrites.contains(diskContent),
            markdownText == lastSavedDiskContent {
             return
         }
