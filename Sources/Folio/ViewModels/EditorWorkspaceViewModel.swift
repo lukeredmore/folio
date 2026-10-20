@@ -61,6 +61,7 @@ public final class EditorWorkspaceViewModel: ObservableObject {
             userDefaults.set(sourceCodeMode, forKey: Self.sourceCodeModeDefaultsKey)
         }
     }
+    @Published public var prettyModeEnabled: Bool = true
     @Published public var focusMode: Bool = false {
         didSet {
             guard !isRestoringState else { return }
@@ -742,6 +743,16 @@ public final class EditorWorkspaceViewModel: ObservableObject {
         insertSnippetAtCursor(snippet, cursorOffsetFromStart: 4)
     }
 
+    public func insertMermaidBlock() {
+        let snippet = "\n```mermaid\ngraph TD\n    A[Start] --> B[End]\n```\n"
+        insertSnippetAtCursor(snippet, cursorOffsetFromStart: 12)
+    }
+
+    public func insertSVGBlock() {
+        let snippet = "\n```svg\n<svg viewBox=\"0 0 120 40\"><rect x=\"4\" y=\"4\" width=\"112\" height=\"32\" rx=\"6\" fill=\"#3b82f6\"/><text x=\"60\" y=\"25\" fill=\"#ffffff\" text-anchor=\"middle\" font-size=\"13\">SVG</text></svg>\n```\n"
+        insertSnippetAtCursor(snippet, cursorOffsetFromStart: 8)
+    }
+
     public func insertHorizontalRule() {
         let snippet = "\n---\n"
         insertSnippetAtCursor(snippet, cursorOffsetFromStart: snippet.count)
@@ -1384,6 +1395,13 @@ public final class EditorWorkspaceViewModel: ObservableObject {
     | **Editor Engine** | Native `NSTextStorage` + `TextKit` | Sub-millisecond restyling |
     | **State Sync** | Direct in-memory Swift state | Zero IPC serialization |
     | **Themes** | 6 Native `EditorTheme` Palettes | Instant switching |
+    ### Rich Media, Diagrams & Inline HTML (Pretty Mode)
+    Press <kbd>Cmd+Shift+P</kbd> for the Command Palette or toggle **Pretty Mode** with <kbd>Cmd+Shift+Backslash</kbd> to render <mark>inline HTML highlights</mark>, <u>underlines</u>, H<sub>2</sub>O, and x<sup>2</sup>.
+    ```mermaid
+    flowchart LR
+        Markdown["Markdown Source"] --> Engine["Folio Rust Engine"]
+        Engine --> Native["120Hz Native Canvas"]
+    ```
     """
 }
 

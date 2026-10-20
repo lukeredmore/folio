@@ -1,20 +1,25 @@
 pub mod ffi;
 pub mod markdown;
 pub mod math;
+pub mod mermaid;
 pub mod reflow;
 pub mod stats;
 pub mod theme;
 
 pub use markdown::{
-    analyze_markdown_document, compute_newline_continuation, parse_cmark_gfm_ast,
-    render_gfm_to_html, render_markdown_to_html, replace_code_fence_language, CmarkAstAnalysis,
-    CmarkBlockSpan, CmarkInlineSpan, MarkdownAnalysis, MarkdownBlockDecoration,
-    MarkdownBlockDecorationKind, NewlineAction, OutlineHeadingItem, SyntaxFoldSpan,
-    SyntaxTokenKind,
+    analyze_markdown_document, analyze_markdown_document_with_options,
+    compute_newline_continuation, parse_cmark_gfm_ast, render_gfm_to_html, render_markdown_to_html,
+    replace_code_fence_language, CmarkAstAnalysis, CmarkBlockSpan, CmarkInlineSpan,
+    HtmlInlineTagKind, MarkdownAnalysis, MarkdownBlockDecoration, MarkdownBlockDecorationKind,
+    NewlineAction, OutlineHeadingItem, SyntaxFoldSpan, SyntaxTokenKind,
 };
 pub use math::{
     layout_latex, layout_math_node, parse_latex, plain_text_summary, MathDrawPrimitive,
     MathFontStyle, MathLayoutPlan, MathNode,
+};
+pub use mermaid::{
+    detect_mermaid_kind, normalize_svg_markup, render_mermaid_to_svg, MermaidDiagramKind,
+    MermaidRenderResult,
 };
 pub use reflow::{reflow_markdown, reflow_paragraph_at_line, ParagraphReflow};
 pub use stats::DocumentStats;
@@ -103,6 +108,65 @@ mod tests {
         assert_eq!(table_rows[1].1, true); // Separator row
         assert_eq!(table_rows[2].0, false); // Body row
         assert_eq!(table_rows[2].1, false);
+    }
+
+    #[test]
+    fn test_rich_media_images_mermaid_svg_and_inline_html() {
+        let md = "\
+# Rich Media Doc
+Here is ![Diagram](./diagram.png \"Diagram Title\") and <img src=\"icon.svg\" alt=\"Icon\" width=\"48\" height=\"32\" />.
+Press <kbd>Cmd+P</kbd> with <mark>highlighted</mark> and <u>underlined</u> and <sup>2</sup> + H<sub>2</sub>O.
+
+```mermaid
+flowchart LR
+    Start[Editor] --> Parse[Mermaid Engine]
+    Parse --> Render[SVG Output]
+```
+
+```svg
+<svg viewBox=\"0 0 120 60\"><rect width=\"120\" height=\"60\" fill=\"#4f46e5\"/></svg>
+```
+
+<svg width=\"80\" height=\"40\"><circle cx=\"40\" cy=\"20\" r=\"15\"/></svg>
+";
+        let analysis = analyze_markdown_document_with_options(md, 0, false, false, true, false);
+        let images: Vec<_> = analysis
+            .block_decorations
+            .iter()
+            .filter(|b| matches!(b.kind, MarkdownBlockDecorationKind::Image { .. }))
+            .collect();
+        assert_eq!(images.len(), 2);
+
+        let mermaids: Vec<_> = analysis
+            .block_decorations
+            .iter()
+            .filter(|b| matches!(b.kind, MarkdownBlockDecorationKind::MermaidBlock { .. }))
+            .collect();
+        assert_eq!(mermaids.len(), 1);
+
+        let svgs: Vec<_> = analysis
+            .block_decorations
+            .iter()
+            .filter(|b| matches!(b.kind, MarkdownBlockDecorationKind::SvgBlock { .. }))
+            .collect();
+        assert_eq!(svgs.len(), 2);
+
+        let html_inlines: Vec<_> = analysis
+            .block_decorations
+            .iter()
+            .filter(|b| matches!(b.kind, MarkdownBlockDecorationKind::HtmlInline { .. }))
+            .collect();
+        assert_eq!(html_inlines.len(), 5);
+
+        // When pretty_mode is false, all rich media blocks and inline tags are marked active/revealed
+        let raw_analysis = analyze_markdown_document_with_options(md, 0, false, false, false, false);
+        assert!(raw_analysis.block_decorations.iter().all(|b| match &b.kind {
+            MarkdownBlockDecorationKind::Image { is_active, .. }
+            | MarkdownBlockDecorationKind::MermaidBlock { is_active, .. }
+            | MarkdownBlockDecorationKind::SvgBlock { is_active, .. }
+            | MarkdownBlockDecorationKind::HtmlInline { is_active, .. } => *is_active,
+            _ => true,
+        }));
     }
 
     #[test]

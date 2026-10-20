@@ -39,7 +39,9 @@ public final class HybridMarkdownTextView: NSTextView {
         ("json", "JSON", ["json", "jsonc"]),
         ("yaml", "YAML", ["yaml", "yml"]),
         ("toml", "TOML", ["toml"]),
-        ("html", "HTML / XML", ["html", "xml", "svg"]),
+        ("html", "HTML / XML", ["html", "xml"]),
+        ("svg", "SVG Vector", ["svg"]),
+        ("mermaid", "Mermaid Diagram", ["mermaid", "mmd"]),
         ("css", "CSS / SCSS", ["css", "scss"]),
         ("sql", "SQL", ["sql"])
     ]
@@ -156,6 +158,7 @@ public final class HybridMarkdownTextView: NSTextView {
         let origin = self.textContainerOrigin
         let fullContentWidth = self.bounds.width - origin.x * 2
         let contentWidth = proseColumnWidth > 0 ? proseColumnWidth : fullContentWidth
+        var imageXOffsetByLineLocation: [Int: CGFloat] = [:]
 
         for (decIdx, dec) in lineDecorations.enumerated() {
             if case .codeFenceBody = dec.kind { continue }
@@ -373,6 +376,255 @@ public final class HybridMarkdownTextView: NSTextView {
                     glyphIndex = NSMaxRange(pieceGlyphs)
                 }
 
+            case let .kbdPill(kbdRange, kbdFontSize, dimFactor):
+                let kbdGlyphs = layoutManager.glyphRange(forCharacterRange: kbdRange, actualCharacterRange: nil)
+                guard kbdGlyphs.location != NSNotFound else { continue }
+                var kbdRect = layoutManager.boundingRect(forGlyphRange: kbdGlyphs, in: textContainer)
+                kbdRect.origin.x += origin.x
+                kbdRect.origin.y += origin.y
+
+                let lineFrag = layoutManager.lineFragmentRect(forGlyphAt: kbdGlyphs.location, effectiveRange: nil)
+                let glyphLoc = layoutManager.location(forGlyphAt: kbdGlyphs.location)
+                let baselineOffset = (self.textStorage?.attribute(.baselineOffset, at: kbdRange.location, effectiveRange: nil) as? CGFloat) ?? 0.0
+                let baselineY = origin.y + lineFrag.minY + glyphLoc.y - baselineOffset
+                let kbdFont = currentTheme.codeFont(size: kbdFontSize)
+                let pillTop = baselineY - kbdFont.ascender - 2.5
+                let pillHeight = kbdFont.ascender + abs(kbdFont.descender) + 5.0
+                let pillRect = NSRect(
+                    x: kbdRect.minX - 4.0,
+                    y: pillTop,
+                    width: kbdRect.width + 8.0,
+                    height: pillHeight
+                )
+                let shadowRect = pillRect.offsetBy(dx: 0, dy: 1.5)
+                let shadowColor = NSColor.black.withAlphaComponent((currentTheme.isDark ? 0.45 : 0.08) * dimFactor)
+                shadowColor.setFill()
+                NSBezierPath(roundedRect: shadowRect, xRadius: 4.5, yRadius: 4.5).fill()
+
+                currentTheme.codeBackgroundNSColor.withAlphaComponent(dimFactor).setFill()
+                NSBezierPath(roundedRect: pillRect, xRadius: 4.5, yRadius: 4.5).fill()
+
+                let borderColor = currentTheme.isDark
+                    ? NSColor.white.withAlphaComponent(0.22 * dimFactor)
+                    : NSColor.black.withAlphaComponent(0.16 * dimFactor)
+                borderColor.setStroke()
+                let borderPath = NSBezierPath(roundedRect: pillRect.insetBy(dx: 0.5, dy: 0.5), xRadius: 4.5, yRadius: 4.5)
+                borderPath.lineWidth = 1.0
+                borderPath.stroke()
+
+            case let .mermaidBlockRendered(mermaidSource, fullBlockRange, dimFactor):
+                let blockGlyphs = layoutManager.glyphRange(forCharacterRange: fullBlockRange, actualCharacterRange: nil)
+                guard blockGlyphs.location != NSNotFound else { continue }
+                var blockRect = layoutManager.boundingRect(forGlyphRange: blockGlyphs, in: textContainer)
+                blockRect.origin.x = origin.x
+                blockRect.origin.y += origin.y
+                blockRect.size.width = contentWidth
+
+                let cardRect = blockRect.insetBy(dx: 0, dy: 3)
+                currentTheme.codeBackgroundNSColor.withAlphaComponent(dimFactor).setFill()
+                NSBezierPath(roundedRect: cardRect, xRadius: 8.0, yRadius: 8.0).fill()
+
+                let (img, _) = FolioMediaImageCache.shared.mermaidImage(for: mermaidSource, isDark: currentTheme.isDark)
+                let innerRect = cardRect.insetBy(dx: 16.0, dy: 12.0)
+                if let img = img, img.size.width > 0, img.size.height > 0, innerRect.width > 10, innerRect.height > 10 {
+                    let intrinsicSize = img.size
+                    let scale = min(1.0, min(innerRect.width / intrinsicSize.width, innerRect.height / intrinsicSize.height))
+                    let drawW = intrinsicSize.width * scale
+                    let drawH = intrinsicSize.height * scale
+                    let drawRect = NSRect(
+                        x: innerRect.midX - drawW * 0.5,
+                        y: innerRect.midY - drawH * 0.5,
+                        width: drawW,
+                        height: drawH
+                    )
+                    img.draw(in: drawRect, from: .zero, operation: .sourceOver, fraction: dimFactor, respectFlipped: true, hints: nil)
+                }
+
+                // Draw subtle "MERMAID" badge in top-right corner
+                let badgeAttrs: [NSAttributedString.Key: Any] = [
+                    .font: NSFont.monospacedSystemFont(ofSize: 9.5, weight: .semibold),
+                    .foregroundColor: currentTheme.secondaryTextNSColor.withAlphaComponent(dimFactor * 0.85)
+                ]
+                let badgeStr = "MERMAID" as NSString
+                let badgeSize = badgeStr.size(withAttributes: badgeAttrs)
+                badgeStr.draw(
+                    at: NSPoint(x: cardRect.maxX - badgeSize.width - 10.0, y: cardRect.minY + 6.0),
+                    withAttributes: badgeAttrs
+                )
+
+            case let .svgBlockRendered(svgSource, fullBlockRange, dimFactor):
+                let blockGlyphs = layoutManager.glyphRange(forCharacterRange: fullBlockRange, actualCharacterRange: nil)
+                guard blockGlyphs.location != NSNotFound else { continue }
+                var blockRect = layoutManager.boundingRect(forGlyphRange: blockGlyphs, in: textContainer)
+                blockRect.origin.x = origin.x
+                blockRect.origin.y += origin.y
+                blockRect.size.width = contentWidth
+
+                let cardRect = blockRect.insetBy(dx: 0, dy: 3)
+                currentTheme.codeBackgroundNSColor.withAlphaComponent(dimFactor).setFill()
+                NSBezierPath(roundedRect: cardRect, xRadius: 8.0, yRadius: 8.0).fill()
+
+                let (img, _) = FolioMediaImageCache.shared.svgImage(for: svgSource)
+                let innerRect = cardRect.insetBy(dx: 16.0, dy: 12.0)
+                if let img = img, img.size.width > 0, img.size.height > 0, innerRect.width > 10, innerRect.height > 10 {
+                    let intrinsicSize = img.size
+                    let scale = min(1.0, min(innerRect.width / intrinsicSize.width, innerRect.height / intrinsicSize.height))
+                    let drawW = intrinsicSize.width * scale
+                    let drawH = intrinsicSize.height * scale
+                    let drawRect = NSRect(
+                        x: innerRect.midX - drawW * 0.5,
+                        y: innerRect.midY - drawH * 0.5,
+                        width: drawW,
+                        height: drawH
+                    )
+                    img.draw(in: drawRect, from: .zero, operation: .sourceOver, fraction: dimFactor, respectFlipped: true, hints: nil)
+                }
+
+                let badgeAttrs: [NSAttributedString.Key: Any] = [
+                    .font: NSFont.monospacedSystemFont(ofSize: 9.5, weight: .semibold),
+                    .foregroundColor: currentTheme.secondaryTextNSColor.withAlphaComponent(dimFactor * 0.85)
+                ]
+                let badgeStr = "SVG" as NSString
+                let badgeSize = badgeStr.size(withAttributes: badgeAttrs)
+                badgeStr.draw(
+                    at: NSPoint(x: cardRect.maxX - badgeSize.width - 10.0, y: cardRect.minY + 6.0),
+                    withAttributes: badgeAttrs
+                )
+
+            case let .imageRendered(url, alt, fullRange, explicitWidth, explicitHeight, baseDirectoryURL, dimFactor):
+                let lineFrag = layoutManager.lineFragmentRect(forGlyphAt: glyphRange.location, effectiveRange: nil)
+                let imgGlyphIdx = layoutManager.glyphIndexForCharacter(at: fullRange.location)
+                let glyphX = (imgGlyphIdx != NSNotFound && imgGlyphIdx < layoutManager.numberOfGlyphs)
+                    ? layoutManager.location(forGlyphAt: imgGlyphIdx).x
+                    : 0.0
+                let lineKey = dec.lineRange.location
+                let currentOffset = imageXOffsetByLineLocation[lineKey] ?? 0.0
+                let startX = origin.x + max(glyphX, currentOffset)
+                let remainingWidth = max(80.0, (origin.x + contentWidth) - startX)
+
+                let isVideo = FolioMediaImageCache.isVideoURL(url)
+                let loadedImg = FolioMediaImageCache.shared.image(
+                    for: url,
+                    baseDirectoryURL: baseDirectoryURL,
+                    isDark: currentTheme.isDark
+                )
+
+                if let img = loadedImg, img.size.width > 0, img.size.height > 0 {
+                    let intrinsicSize = img.size
+                    let aspect = intrinsicSize.height / max(1.0, intrinsicSize.width)
+                    let targetW: CGFloat
+                    let targetH: CGFloat
+                    if let ew = explicitWidth, let eh = explicitHeight {
+                        targetW = ew
+                        targetH = eh
+                    } else if let ew = explicitWidth {
+                        targetW = ew
+                        targetH = round(ew * aspect)
+                    } else if let eh = explicitHeight {
+                        targetH = eh
+                        targetW = round(eh / max(0.01, aspect))
+                    } else {
+                        targetW = intrinsicSize.width
+                        targetH = intrinsicSize.height
+                    }
+                    let maxDrawH = max(18.0, lineFrag.height - 6.0)
+                    let scale = min(1.0, min(remainingWidth / max(1.0, targetW), maxDrawH / max(1.0, targetH)))
+                    let drawW = targetW * scale
+                    let drawH = targetH * scale
+                    let drawRect = NSRect(
+                        x: startX,
+                        y: origin.y + lineFrag.minY + (lineFrag.height - drawH) * 0.5,
+                        width: drawW,
+                        height: drawH
+                    )
+                    img.draw(in: drawRect, from: .zero, operation: .sourceOver, fraction: dimFactor, respectFlipped: true, hints: nil)
+
+                    if isVideo {
+                        let circleRadius: CGFloat = 20.0
+                        let circleRect = NSRect(
+                            x: drawRect.midX - circleRadius,
+                            y: drawRect.midY - circleRadius,
+                            width: circleRadius * 2.0,
+                            height: circleRadius * 2.0
+                        )
+                        NSColor.black.withAlphaComponent(0.62 * dimFactor).setFill()
+                        NSBezierPath(ovalIn: circleRect).fill()
+
+                        let playTriangle = NSBezierPath()
+                        playTriangle.move(to: NSPoint(x: drawRect.midX - 5.0, y: drawRect.midY - 7.5))
+                        playTriangle.line(to: NSPoint(x: drawRect.midX - 5.0, y: drawRect.midY + 7.5))
+                        playTriangle.line(to: NSPoint(x: drawRect.midX + 8.0, y: drawRect.midY))
+                        playTriangle.close()
+                        NSColor.white.withAlphaComponent(0.95 * dimFactor).setFill()
+                        playTriangle.fill()
+                    }
+                    imageXOffsetByLineLocation[lineKey] = (startX - origin.x) + drawW + 8.0
+                } else {
+                    // Compact placeholder card for pending/missing image or video
+                    let cardWidth = min(remainingWidth, max(200.0, min(380.0, explicitWidth ?? 360.0)))
+                    let cardHeight = min(50.0, max(38.0, lineFrag.height - 6.0))
+                    let cardRect = NSRect(
+                        x: startX,
+                        y: origin.y + lineFrag.minY + (lineFrag.height - cardHeight) * 0.5,
+                        width: cardWidth,
+                        height: cardHeight
+                    )
+                    imageXOffsetByLineLocation[lineKey] = (startX - origin.x) + cardWidth + 8.0
+
+                    currentTheme.codeBackgroundNSColor.withAlphaComponent(dimFactor).setFill()
+                    NSBezierPath(roundedRect: cardRect, xRadius: 7.0, yRadius: 7.0).fill()
+
+                    let cardBorder = currentTheme.isDark
+                        ? NSColor.white.withAlphaComponent(0.10 * dimFactor)
+                        : NSColor.black.withAlphaComponent(0.08 * dimFactor)
+                    cardBorder.setStroke()
+                    let strokePath = NSBezierPath(roundedRect: cardRect.insetBy(dx: 0.5, dy: 0.5), xRadius: 7.0, yRadius: 7.0)
+                    strokePath.lineWidth = 1.0
+                    strokePath.stroke()
+
+                    let badgeLabel = isVideo ? "▶ VIDEO" : "IMAGE"
+                    let badgeAttrs: [NSAttributedString.Key: Any] = [
+                        .font: NSFont.monospacedSystemFont(ofSize: 10.5, weight: .semibold),
+                        .foregroundColor: currentTheme.linkNSColor.withAlphaComponent(dimFactor)
+                    ]
+                    let badgeStr = badgeLabel as NSString
+                    let badgeSize = badgeStr.size(withAttributes: badgeAttrs)
+                    let pillRect = NSRect(
+                        x: cardRect.minX + 12.0,
+                        y: cardRect.midY - badgeSize.height * 0.5 - 3.0,
+                        width: badgeSize.width + 12.0,
+                        height: badgeSize.height + 6.0
+                    )
+                    currentTheme.linkNSColor.withAlphaComponent(0.14 * dimFactor).setFill()
+                    NSBezierPath(roundedRect: pillRect, xRadius: 4.5, yRadius: 4.5).fill()
+                    badgeStr.draw(
+                        at: NSPoint(x: pillRect.minX + 6.0, y: pillRect.minY + 3.0),
+                        withAttributes: badgeAttrs
+                    )
+
+                    let titleText = alt.isEmpty ? (url as NSString).lastPathComponent : alt
+                    let titleAttrs: [NSAttributedString.Key: Any] = [
+                        .font: currentTheme.bodyFont(size: 12.0, bold: true),
+                        .foregroundColor: currentTheme.textNSColor.withAlphaComponent(dimFactor)
+                    ]
+                    let subAttrs: [NSAttributedString.Key: Any] = [
+                        .font: currentTheme.codeFont(size: 10.5),
+                        .foregroundColor: currentTheme.secondaryTextNSColor.withAlphaComponent(dimFactor * 0.85)
+                    ]
+                    let textX = pillRect.maxX + 10.0
+                    NSGraphicsContext.saveGraphicsState()
+                    NSBezierPath(rect: cardRect.insetBy(dx: 8.0, dy: 2.0)).addClip()
+                    (titleText as NSString).draw(
+                        at: NSPoint(x: textX, y: cardRect.midY - 14.0),
+                        withAttributes: titleAttrs
+                    )
+                    (url as NSString).draw(
+                        at: NSPoint(x: textX, y: cardRect.midY + 1.0),
+                        withAttributes: subAttrs
+                    )
+                    NSGraphicsContext.restoreGraphicsState()
+                }
+
             case let .listBullet(bulletRange, dimFactor):
                 let bulletGlyphs = layoutManager.glyphRange(forCharacterRange: bulletRange, actualCharacterRange: nil)
                 guard bulletGlyphs.location != NSNotFound else { continue }
@@ -557,6 +809,110 @@ public final class HybridMarkdownTextView: NSTextView {
             replaceCharacters(in: contentRange, with: newLineContent)
             didChangeText()
         }
+    }
+
+    private var mediaHoverTrackingArea: NSTrackingArea?
+
+    public override func updateTrackingAreas() {
+        super.updateTrackingAreas()
+        if let existing = mediaHoverTrackingArea {
+            removeTrackingArea(existing)
+        }
+        let area = NSTrackingArea(
+            rect: .zero,
+            options: [.mouseMoved, .activeInKeyWindow, .inVisibleRect],
+            owner: self,
+            userInfo: nil
+        )
+        addTrackingArea(area)
+        mediaHoverTrackingArea = area
+    }
+
+    public func imageAltTooltip(at point: NSPoint) -> String? {
+        guard !isSourceCodeMode, let layoutManager = self.layoutManager else { return nil }
+        let origin = self.textContainerOrigin
+        let fullContentWidth = self.bounds.width - origin.x * 2
+        let contentWidth = proseColumnWidth > 0 ? proseColumnWidth : fullContentWidth
+        var imageXOffsetByLineLocation: [Int: CGFloat] = [:]
+
+        for dec in lineDecorations {
+            guard case let .imageRendered(url, alt, fullRange, explicitWidth, explicitHeight, baseDirectoryURL, _) = dec.kind else {
+                continue
+            }
+            let glyphRange = layoutManager.glyphRange(forCharacterRange: dec.lineRange, actualCharacterRange: nil)
+            guard glyphRange.location != NSNotFound else { continue }
+            let lineFrag = layoutManager.lineFragmentRect(forGlyphAt: glyphRange.location, effectiveRange: nil)
+            let imgGlyphIdx = layoutManager.glyphIndexForCharacter(at: fullRange.location)
+            let glyphX = (imgGlyphIdx != NSNotFound && imgGlyphIdx < layoutManager.numberOfGlyphs)
+                ? layoutManager.location(forGlyphAt: imgGlyphIdx).x
+                : 0.0
+            let lineKey = dec.lineRange.location
+            let currentOffset = imageXOffsetByLineLocation[lineKey] ?? 0.0
+            let startX = origin.x + max(glyphX, currentOffset)
+            let remainingWidth = max(80.0, (origin.x + contentWidth) - startX)
+
+            let loadedImg = FolioMediaImageCache.shared.image(
+                for: url,
+                baseDirectoryURL: baseDirectoryURL,
+                isDark: currentTheme.isDark
+            )
+
+            let hitRect: NSRect
+            if let img = loadedImg, img.size.width > 0, img.size.height > 0 {
+                let intrinsicSize = img.size
+                let aspect = intrinsicSize.height / max(1.0, intrinsicSize.width)
+                let targetW: CGFloat
+                let targetH: CGFloat
+                if let ew = explicitWidth, let eh = explicitHeight {
+                    targetW = ew
+                    targetH = eh
+                } else if let ew = explicitWidth {
+                    targetW = ew
+                    targetH = round(ew * aspect)
+                } else if let eh = explicitHeight {
+                    targetH = eh
+                    targetW = round(eh / max(0.01, aspect))
+                } else {
+                    targetW = intrinsicSize.width
+                    targetH = intrinsicSize.height
+                }
+                let maxDrawH = max(18.0, lineFrag.height - 6.0)
+                let scale = min(1.0, min(remainingWidth / max(1.0, targetW), maxDrawH / max(1.0, targetH)))
+                let drawW = targetW * scale
+                let drawH = targetH * scale
+                hitRect = NSRect(
+                    x: startX,
+                    y: origin.y + lineFrag.minY + (lineFrag.height - drawH) * 0.5,
+                    width: drawW,
+                    height: drawH
+                )
+                imageXOffsetByLineLocation[lineKey] = (startX - origin.x) + drawW + 8.0
+            } else {
+                let cardWidth = min(remainingWidth, max(200.0, min(380.0, explicitWidth ?? 360.0)))
+                let cardHeight = min(50.0, max(38.0, lineFrag.height - 6.0))
+                hitRect = NSRect(
+                    x: startX,
+                    y: origin.y + lineFrag.minY + (lineFrag.height - cardHeight) * 0.5,
+                    width: cardWidth,
+                    height: cardHeight
+                )
+                imageXOffsetByLineLocation[lineKey] = (startX - origin.x) + cardWidth + 8.0
+            }
+
+            if hitRect.contains(point) {
+                return alt.isEmpty ? nil : alt
+            }
+        }
+        return nil
+    }
+
+    public override func mouseMoved(with event: NSEvent) {
+        let point = convert(event.locationInWindow, from: nil)
+        let tip = imageAltTooltip(at: point)
+        if self.toolTip != tip {
+            self.toolTip = tip
+        }
+        super.mouseMoved(with: event)
     }
 
     public override func mouseDown(with event: NSEvent) {
@@ -752,6 +1108,12 @@ public struct HybridMarkdownEditorRepresentable: NSViewRepresentable {
             name: NSView.frameDidChangeNotification,
             object: scrollView
         )
+        NotificationCenter.default.addObserver(
+            context.coordinator,
+            selector: #selector(Coordinator.mediaImageDidLoad(_:)),
+            name: FolioMediaImageCache.imageDidLoadNotification,
+            object: nil
+        )
         scrollView.postsFrameChangedNotifications = true
 
         return scrollView
@@ -785,6 +1147,8 @@ public struct HybridMarkdownEditorRepresentable: NSViewRepresentable {
         } else if context.coordinator.lastTheme != viewModel.theme ||
                   context.coordinator.lastTypography != viewModel.typography ||
                   context.coordinator.lastSourceMode != viewModel.sourceCodeMode ||
+                  context.coordinator.lastPrettyMode != viewModel.prettyModeEnabled ||
+                  context.coordinator.lastFileURL != viewModel.currentFileURL ||
                   context.coordinator.lastFocusMode != viewModel.focusMode {
             context.coordinator.restyle(textView: textView)
         }
@@ -814,6 +1178,8 @@ public struct HybridMarkdownEditorRepresentable: NSViewRepresentable {
         var lastTheme: EditorTheme?
         var lastTypography: EditorTypographySettings?
         var lastSourceMode: Bool?
+        var lastPrettyMode: Bool?
+        var lastFileURL: URL?
         var lastFocusMode: Bool?
         var lastActiveLineRange: NSRange?
         var lastContentWidth: CGFloat = 0
@@ -828,6 +1194,12 @@ public struct HybridMarkdownEditorRepresentable: NSViewRepresentable {
 
         init(viewModel: EditorWorkspaceViewModel) {
             self.viewModel = viewModel
+        }
+
+        @objc func mediaImageDidLoad(_ notification: Notification) {
+            guard let tv = textView else { return }
+            restyle(textView: tv)
+            tv.needsDisplay = true
         }
 
         @objc func scrollViewFrameDidChange(_ notification: Notification) {
@@ -990,6 +1362,7 @@ public struct HybridMarkdownEditorRepresentable: NSViewRepresentable {
             isRestyling = true
             let sel = textView.selectedRange()
             let contentWidth = currentContentWidth(for: textView)
+            let baseDir = viewModel.currentFileURL?.deletingLastPathComponent() ?? viewModel.workspaceFolderURL
 
             let analysis = MarkdownLiveStyler.applyStyles(
                 to: storage,
@@ -998,7 +1371,9 @@ public struct HybridMarkdownEditorRepresentable: NSViewRepresentable {
                 sourceCodeMode: viewModel.sourceCodeMode,
                 focusMode: viewModel.focusMode,
                 selectedRange: sel,
-                containerWidth: contentWidth
+                containerWidth: contentWidth,
+                prettyMode: viewModel.prettyModeEnabled,
+                baseDirectoryURL: baseDir
             )
 
             // Clear any spellchecker squiggles on code/math/table decorations
@@ -1028,6 +1403,8 @@ public struct HybridMarkdownEditorRepresentable: NSViewRepresentable {
             lastTheme = viewModel.theme
             lastTypography = viewModel.typography
             lastSourceMode = viewModel.sourceCodeMode
+            lastPrettyMode = viewModel.prettyModeEnabled
+            lastFileURL = viewModel.currentFileURL
             lastFocusMode = viewModel.focusMode
             lastContentWidth = contentWidth
 

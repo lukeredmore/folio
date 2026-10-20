@@ -1,6 +1,6 @@
 use folio_engine::markdown::{
-    analyze_markdown_document, MarkdownBlockDecoration, MarkdownBlockDecorationKind,
-    SyntaxFoldSpan, SyntaxTokenKind,
+    analyze_markdown_document_with_options, HtmlInlineTagKind, MarkdownBlockDecoration,
+    MarkdownBlockDecorationKind, SyntaxFoldSpan, SyntaxTokenKind,
 };
 use folio_engine::math::plain_text_summary;
 use std::ops::Range;
@@ -51,10 +51,41 @@ pub enum ZedBlockDecoration {
         columns: Vec<String>,
         line_range: Range<usize>,
     },
+    ImageCard {
+        alt: String,
+        url: String,
+        title: Option<String>,
+        width: Option<u32>,
+        height: Option<u32>,
+        is_html: bool,
+        is_active: bool,
+        span_range: Range<usize>,
+    },
+    MermaidDiagramCard {
+        source: String,
+        svg: String,
+        width: f32,
+        height: f32,
+        is_active: bool,
+        line_range: Range<usize>,
+    },
+    SvgGraphicCard {
+        svg: String,
+        width: f32,
+        height: f32,
+        is_active: bool,
+        line_range: Range<usize>,
+    },
+    HtmlInlineStyle {
+        tag: HtmlInlineTagKind,
+        content_range: Range<usize>,
+        is_active: bool,
+        span_range: Range<usize>,
+    },
 }
 
 /// Computes Zed `FoldMap` fold ranges from Folio's active-line-aware syntax folding spans
-/// and inline math block decorations.
+/// and inline math / rich media block decorations.
 pub fn compute_zed_folds(
     fold_spans: &[SyntaxFoldSpan],
     blocks: &[MarkdownBlockDecoration],
@@ -174,6 +205,68 @@ pub fn translate_block_decorations(
                     line_range: range,
                 });
             }
+            MarkdownBlockDecorationKind::Image {
+                alt,
+                url,
+                title,
+                width,
+                height,
+                is_html,
+                is_active,
+            } => {
+                out.push(ZedBlockDecoration::ImageCard {
+                    alt: alt.clone(),
+                    url: url.clone(),
+                    title: title.clone(),
+                    width: *width,
+                    height: *height,
+                    is_html: *is_html,
+                    is_active: *is_active,
+                    span_range: range,
+                });
+            }
+            MarkdownBlockDecorationKind::MermaidBlock {
+                source,
+                svg,
+                width,
+                height,
+                is_active,
+            } => {
+                out.push(ZedBlockDecoration::MermaidDiagramCard {
+                    source: source.clone(),
+                    svg: svg.clone(),
+                    width: *width,
+                    height: *height,
+                    is_active: *is_active,
+                    line_range: range,
+                });
+            }
+            MarkdownBlockDecorationKind::SvgBlock {
+                svg,
+                width,
+                height,
+                is_active,
+            } => {
+                out.push(ZedBlockDecoration::SvgGraphicCard {
+                    svg: svg.clone(),
+                    width: *width,
+                    height: *height,
+                    is_active: *is_active,
+                    line_range: range,
+                });
+            }
+            MarkdownBlockDecorationKind::HtmlInline {
+                tag,
+                content_range,
+                is_active,
+            } => {
+                out.push(ZedBlockDecoration::HtmlInlineStyle {
+                    tag: *tag,
+                    content_range: content_range.clone(),
+                    is_active: *is_active,
+                    span_range: range,
+                });
+            }
         }
     }
     out
@@ -185,8 +278,26 @@ pub fn analyze_buffer_for_zed(
     cursor_byte_range: Range<usize>,
     is_dark: bool,
 ) -> (Vec<ZedFoldRange>, Vec<ZedBlockDecoration>) {
-    let analysis = analyze_markdown_document(text, cursor_byte_range.start, false, false);
+    analyze_buffer_for_zed_with_options(text, cursor_byte_range, is_dark, true)
+}
+
+/// Runs a full pass over a buffer snapshot with explicit `pretty_mode` control.
+pub fn analyze_buffer_for_zed_with_options(
+    text: &str,
+    cursor_byte_range: Range<usize>,
+    is_dark: bool,
+    pretty_mode: bool,
+) -> (Vec<ZedFoldRange>, Vec<ZedBlockDecoration>) {
+    let analysis = analyze_markdown_document_with_options(
+        text,
+        cursor_byte_range.start,
+        false,
+        false,
+        pretty_mode,
+        is_dark,
+    );
     let folds = compute_zed_folds(&analysis.syntax_fold_spans, &analysis.block_decorations);
     let blocks = translate_block_decorations(&analysis.block_decorations, is_dark);
     (folds, blocks)
 }
+

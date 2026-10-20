@@ -1,4 +1,5 @@
 import AppKit
+import AVFoundation
 import Foundation
 import FolioEngineFFI
 
@@ -39,8 +40,20 @@ public enum BlockDecorationKind: Equatable {
     case mathBlockBody(isActive: Bool)
     case mathBlockEnd(isActive: Bool)
     case mathBlockRendered(latex: String, fullBlockRange: NSRange, dimFactor: CGFloat)
+    case mermaidBlockRendered(mermaidSource: String, fullBlockRange: NSRange, dimFactor: CGFloat)
+    case svgBlockRendered(svgSource: String, fullBlockRange: NSRange, dimFactor: CGFloat)
+    case imageRendered(
+        url: String,
+        alt: String,
+        fullRange: NSRange,
+        explicitWidth: CGFloat?,
+        explicitHeight: CGFloat?,
+        baseDirectoryURL: URL?,
+        dimFactor: CGFloat
+    )
     case inlineMathRendered(latex: String, range: NSRange, fontSize: CGFloat, dimFactor: CGFloat)
     case inlineCode(range: NSRange, fontSize: CGFloat, dimFactor: CGFloat)
+    case kbdPill(range: NSRange, fontSize: CGFloat, dimFactor: CGFloat)
     case listBullet(range: NSRange, dimFactor: CGFloat)
     case horizontalRule
     case tableRow(
@@ -65,6 +78,263 @@ public struct MarkdownDocumentAnalysis {
     public let decorations: [LineDecoration]
 }
 
+/// Shared cache and loader for local, data-URI, remote, SVG, and Mermaid-generated `NSImage` assets.
+public final class FolioMediaImageCache: @unchecked Sendable {
+    public static let shared = FolioMediaImageCache()
+    public static let imageDidLoadNotification = Notification.Name("FolioMediaImageDidLoadNotification")
+
+    private let lock = NSLock()
+    private var imageCache: [String: NSImage] = [:]
+    private var svgStringCache: [String: String] = [:]
+    private var inFlightRemoteURLs: Set<String> = []
+
+    public init() {}
+
+    public func mermaidImage(for source: String, isDark: Bool) -> (image: NSImage?, svg: String) {
+        let key = "mermaid:\(isDark ? "dark" : "light"):\(source)"
+        lock.lock()
+        let cachedImg = imageCache[key]
+        let cachedSVG = svgStringCache[key]
+        lock.unlock()
+
+        if let svg = cachedSVG, let img = cachedImg {
+            return (img, svg)
+        }
+
+        let svg = MarkdownLiveStyler.renderMermaidSVG(source, isDark: isDark)
+        let img = svg.data(using: .utf8).flatMap { NSImage(data: $0) }
+        lock.lock()
+        svgStringCache[key] = svg
+        if let img = img {
+            imageCache[key] = img
+        }
+        lock.unlock()
+        return (img, svg)
+    }
+
+    public func svgImage(for rawSVG: String) -> (image: NSImage?, svg: String) {
+        let key = "svg:\(rawSVG)"
+        lock.lock()
+        let cachedImg = imageCache[key]
+        let cachedSVG = svgStringCache[key]
+        lock.unlock()
+
+        if let svg = cachedSVG, let img = cachedImg {
+            return (img, svg)
+        }
+
+        let normalized = MarkdownLiveStyler.normalizeSVG(rawSVG)
+        let img = normalized.data(using: .utf8).flatMap { NSImage(data: $0) }
+        lock.lock()
+        svgStringCache[key] = normalized
+        if let img = img {
+            imageCache[key] = img
+        }
+        lock.unlock()
+        return (img, normalized)
+    }
+
+    public func displaySize(
+        for rawSource: String,
+        explicitWidth: CGFloat? = nil,
+        explicitHeight: CGFloat? = nil,
+        maxColumnWidth: CGFloat = 680.0,
+        baseDirectoryURL: URL? = nil,
+        isDark: Bool = false
+    ) -> (size: NSSize, isLoaded: Bool) {
+        if let img = image(for: rawSource, baseDirectoryURL: baseDirectoryURL, isDark: isDark),
+           img.size.width > 0,
+           img.size.height > 0 {
+            let natW = img.size.width
+            let natH = img.size.height
+            let aspect = natH / max(1.0, natW)
+            let targetW: CGFloat
+            let targetH: CGFloat
+            if let ew = explicitWidth, let eh = explicitHeight {
+                targetW = ew
+                targetH = eh
+            } else if let ew = explicitWidth {
+                targetW = ew
+                targetH = round(ew * aspect)
+            } else if let eh = explicitHeight {
+                targetH = eh
+                targetW = round(eh / max(0.01, aspect))
+            } else {
+                targetW = natW
+                targetH = natH
+            }
+            let maxW = max(120.0, maxColumnWidth)
+            let maxH: CGFloat = 420.0
+            let scale = min(1.0, min(maxW / max(1.0, targetW), maxH / max(1.0, targetH)))
+            return (NSSize(width: ceil(targetW * scale), height: ceil(targetH * scale)), true)
+        }
+        let fallbackW = min(max(120.0, maxColumnWidth), explicitWidth ?? 360.0)
+        return (NSSize(width: fallbackW, height: 48.0), false)
+    }
+
+    public func image(for rawSource: String, baseDirectoryURL: URL? = nil, isDark: Bool = false) -> NSImage? {
+        let trimmed = rawSource.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return nil }
+
+        let cacheKey = "\(baseDirectoryURL?.path ?? "")|\(isDark ? "1" : "0")|\(trimmed)"
+        lock.lock()
+        if let cached = imageCache[cacheKey] {
+            lock.unlock()
+            return cached
+        }
+        lock.unlock()
+
+        // 1. Inline <svg ...> string
+        if trimmed.lowercased().hasPrefix("<svg") {
+            let (img, _) = svgImage(for: trimmed)
+            if let img = img {
+                storeImage(img, forKey: cacheKey)
+            }
+            return img
+        }
+
+        // 2. data: URI (e.g. data:image/svg+xml;utf8,<svg...> or data:image/png;base64,...)
+        if trimmed.lowercased().hasPrefix("data:") {
+            if let commaIdx = trimmed.firstIndex(of: ",") {
+                let header = String(trimmed[..<commaIdx]).lowercased()
+                let payload = String(trimmed[trimmed.index(after: commaIdx)...])
+                if header.contains(";base64") {
+                    if let data = Data(base64Encoded: payload, options: .ignoreUnknownCharacters) {
+                        if header.contains("image/svg"), let svgStr = String(data: data, encoding: .utf8) {
+                            let (img, _) = svgImage(for: svgStr)
+                            if let img = img { storeImage(img, forKey: cacheKey) }
+                            return img
+                        } else if let img = NSImage(data: data) {
+                            storeImage(img, forKey: cacheKey)
+                            return img
+                        }
+                    }
+                } else {
+                    let decoded = payload.removingPercentEncoding ?? payload
+                    if header.contains("image/svg") || decoded.lowercased().contains("<svg") {
+                        let (img, _) = svgImage(for: decoded)
+                        if let img = img { storeImage(img, forKey: cacheKey) }
+                        return img
+                    } else if let data = decoded.data(using: .utf8), let img = NSImage(data: data) {
+                        storeImage(img, forKey: cacheKey)
+                        return img
+                    }
+                }
+            }
+            return nil
+        }
+
+        // 3. Remote HTTP/HTTPS URL (check cache or fetch asynchronously)
+        if trimmed.lowercased().hasPrefix("http://") || trimmed.lowercased().hasPrefix("https://") {
+            if let url = URL(string: trimmed) {
+                triggerRemoteFetchIfNeeded(url: url, cacheKey: cacheKey)
+            }
+            return nil
+        }
+
+        // 4. Local file:// URL, ~/path, /absolute/path, or relative path
+        let resolvedFileURL: URL?
+        if trimmed.lowercased().hasPrefix("file://"), let url = URL(string: trimmed) {
+            resolvedFileURL = url
+        } else {
+            let unescaped = trimmed.removingPercentEncoding ?? trimmed
+            if unescaped.hasPrefix("~/") {
+                let expanded = (unescaped as NSString).expandingTildeInPath
+                resolvedFileURL = URL(fileURLWithPath: expanded)
+            } else if unescaped.hasPrefix("/") {
+                resolvedFileURL = URL(fileURLWithPath: unescaped)
+            } else {
+                let baseDir = baseDirectoryURL ?? URL(fileURLWithPath: FileManager.default.currentDirectoryPath, isDirectory: true)
+                resolvedFileURL = baseDir.appendingPathComponent(unescaped).standardizedFileURL
+            }
+        }
+
+        if let fileURL = resolvedFileURL, FileManager.default.fileExists(atPath: fileURL.path) {
+            let ext = fileURL.pathExtension.lowercased()
+            if ext == "svg",
+               let rawSVG = try? String(contentsOf: fileURL, encoding: .utf8) {
+                let (img, _) = svgImage(for: rawSVG)
+                if let img = img {
+                    storeImage(img, forKey: cacheKey)
+                    return img
+                }
+            }
+            if ["mp4", "mov", "m4v", "webm"].contains(ext) {
+                let asset = AVAsset(url: fileURL)
+                let generator = AVAssetImageGenerator(asset: asset)
+                generator.appliesPreferredTrackTransform = true
+                generator.maximumSize = CGSize(width: 960, height: 540)
+                if let cgImg = try? generator.copyCGImage(at: CMTime(seconds: 0.1, preferredTimescale: 600), actualTime: nil) {
+                    let img = NSImage(cgImage: cgImg, size: NSSize(width: cgImg.width, height: cgImg.height))
+                    storeImage(img, forKey: cacheKey)
+                    return img
+                }
+            }
+            if let data = try? Data(contentsOf: fileURL), let img = NSImage(data: data) {
+                storeImage(img, forKey: cacheKey)
+                return img
+            }
+            if let img = NSImage(contentsOf: fileURL) {
+                storeImage(img, forKey: cacheKey)
+                return img
+            }
+        }
+
+        return nil
+    }
+
+    public static func isVideoURL(_ rawURL: String) -> Bool {
+        let lower = rawURL.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        let pathPart = lower.split(separator: "?").first.map(String.init) ?? lower
+        return pathPart.hasSuffix(".mp4")
+            || pathPart.hasSuffix(".mov")
+            || pathPart.hasSuffix(".m4v")
+            || pathPart.hasSuffix(".webm")
+            || lower.hasPrefix("data:video/")
+    }
+
+    private func storeImage(_ image: NSImage, forKey key: String) {
+        lock.lock()
+        imageCache[key] = image
+        lock.unlock()
+    }
+
+    private func triggerRemoteFetchIfNeeded(url: URL, cacheKey: String) {
+        lock.lock()
+        if inFlightRemoteURLs.contains(cacheKey) || imageCache[cacheKey] != nil {
+            lock.unlock()
+            return
+        }
+        inFlightRemoteURLs.insert(cacheKey)
+        lock.unlock()
+
+        let task = URLSession.shared.dataTask(with: url) { [weak self] data, response, _ in
+            guard let self = self else { return }
+            defer {
+                self.lock.lock()
+                self.inFlightRemoteURLs.remove(cacheKey)
+                self.lock.unlock()
+            }
+            guard let data = data, !data.isEmpty else { return }
+            let mime = (response as? HTTPURLResponse)?.mimeType?.lowercased() ?? ""
+            var loadedImage: NSImage?
+            if mime.contains("svg") || url.pathExtension.lowercased() == "svg",
+               let svgStr = String(data: data, encoding: .utf8) {
+                loadedImage = self.svgImage(for: svgStr).image
+            } else {
+                loadedImage = NSImage(data: data)
+            }
+            if let img = loadedImage {
+                self.storeImage(img, forKey: cacheKey)
+                DispatchQueue.main.async {
+                    NotificationCenter.default.post(name: Self.imageDidLoadNotification, object: url)
+                }
+            }
+        }
+        task.resume()
+    }
+}
+
 public final class MarkdownLiveStyler {
 
     public static let collapsedTokenAttributeKey = NSAttributedString.Key("FolioCollapsedSyntaxToken")
@@ -84,6 +354,27 @@ public final class MarkdownLiveStyler {
         case paragraph
         case listItem
         case blockquote(nestLevel: Int)
+    }
+
+    /// Renders a Mermaid diagram source block (`flowchart`/`graph`, `sequenceDiagram`, `classDiagram`, `stateDiagram`, `pie`)
+    /// into a self-contained SVG string via `folio_engine`.
+    public static func renderMermaidSVG(_ source: String, isDark: Bool = false) -> String {
+        return source.withCString { srcPtr in
+            guard let resPtr = ot_engine_render_mermaid_svg(srcPtr, isDark) else { return "" }
+            defer { ot_engine_free_mermaid_result(resPtr) }
+            guard let svgPtr = resPtr.pointee.svg else { return "" }
+            return String(cString: svgPtr)
+        }
+    }
+
+    /// Sanitizes and normalizes an SVG markup snippet (adding `xmlns` and `viewBox` if missing) via `folio_engine`.
+    public static func normalizeSVG(_ rawSVG: String) -> String {
+        return rawSVG.withCString { svgPtr in
+            guard let resPtr = ot_engine_normalize_svg(svgPtr) else { return "" }
+            defer { ot_engine_free_mermaid_result(resPtr) }
+            guard let outPtr = resPtr.pointee.svg else { return "" }
+            return String(cString: outPtr)
+        }
     }
 
     /// Renders Markdown to specification-compliant HTML using the upstream `cmark-gfm` parser in `folio_engine`.
@@ -171,6 +462,14 @@ public final class MarkdownLiveStyler {
     // Inline regexes
     private static let escapeRegex = try! NSRegularExpression(pattern: ##"\\([!\"#$%&'()*+,\-./:;<=>?@\[\\\]^_`{|}~])"##)
     private static let htmlBrRegex = try! NSRegularExpression(pattern: #"<br\s*/?>"#, options: [.caseInsensitive])
+    private static let htmlImgTagRegex = try! NSRegularExpression(pattern: #"<img\b([^>]*?)/?>"#, options: [.caseInsensitive])
+    private static let htmlVideoTagRegex = try! NSRegularExpression(pattern: #"<video\b([^>]*?)(?:/>|>(.*?)</video\s*>)"#, options: [.caseInsensitive])
+    private static let htmlPairedTagRegex = try! NSRegularExpression(
+        pattern: #"(<(kbd|u|ins|mark|sup|sub|b|strong|i|em|s|del|strike|code|summary)\b[^>]*>)(.*?)(</\2\s*>)"#,
+        options: [.caseInsensitive]
+    )
+    private static let htmlDetailsTagRegex = try! NSRegularExpression(pattern: #"</?details\b[^>]*>"#, options: [.caseInsensitive])
+    private static let htmlAttrRegex = try! NSRegularExpression(pattern: #"\b([a-zA-Z_-]+)\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'=<>`]+))"#)
     private static let boldItalicRegex = try! NSRegularExpression(pattern: #"(?<!\*)\*\*\*(?!\*)(?=\S)((?:(?!\*\*\*)[\s\S])+?)(?<=\S)\*\*\*(?!\*)|(?<![\p{L}\p{N}_])___(?!_)(?=\S)((?:(?!___)[\s\S])+?)(?<=\S)___(?![\p{L}\p{N}_])"#)
     private static let boldAsteriskRegex = try! NSRegularExpression(pattern: #"(?<!\*)\*\*(?!\*)(?=\S)((?:(?!\*\*)[\s\S])+?)(?<=\S)\*\*(?!\*)"#)
     private static let boldUnderscoreRegex = try! NSRegularExpression(pattern: #"(?<![\p{L}\p{N}_])__(?!_)(?=\S)((?:(?!__)[\s\S])+?)(?<=\S)__(?![\p{L}\p{N}_])"#)
@@ -195,7 +494,9 @@ public final class MarkdownLiveStyler {
         sourceCodeMode: Bool,
         focusMode: Bool,
         selectedRange: NSRange,
-        containerWidth: CGFloat = 0
+        containerWidth: CGFloat = 0,
+        prettyMode: Bool = true,
+        baseDirectoryURL: URL? = nil
     ) -> MarkdownDocumentAnalysis {
         let string = storage.string
         let nsString = string as NSString
@@ -318,11 +619,108 @@ public final class MarkdownLiveStyler {
                 let infoStr = nsString.substring(with: fenceMatch.range(at: 2)).trimmingCharacters(in: .whitespaces)
                 let fenceChar = markerStr.first ?? "`"
                 if !(fenceChar == "`" && infoStr.contains("`")) {
+                    let lang = infoStr.split(whereSeparator: { $0.isWhitespace }).first.map(String.init) ?? ""
+                    let lowerLang = lang.lowercased()
+
+                    // When Pretty Mode is active, scan ahead for ```mermaid or ```svg blocks and render them as visual cards if inactive
+                    if prettyMode && (lowerLang == "mermaid" || lowerLang == "svg") {
+                        var blockLines: [(lineRange: NSRange, contentRange: NSRange, text: String, isActive: Bool)] = [
+                            (lineRange, contentRange, lineText, isActiveLine)
+                        ]
+                        var scanIndex = NSMaxRange(lineRange)
+                        var scanLineCount = 1
+                        var foundClosingFence = false
+                        let openFenceLen = markerStr.count
+
+                        while scanIndex < fullLength {
+                            let nextLR = nsString.lineRange(for: NSRange(location: scanIndex, length: 0))
+                            let nextCR = strippedLineContentRange(nsString: nsString, lineRange: nextLR)
+                            let nextText = nsString.substring(with: nextCR)
+                            let nextActive = isLineActive(lineRange: nextLR, activeLineRange: activeLineRange, selectedRange: selectedRange)
+                            blockLines.append((nextLR, nextCR, nextText, nextActive))
+                            scanIndex = NSMaxRange(nextLR)
+                            scanLineCount += 1
+
+                            let leadingSpaces = nextText.prefix(while: { $0 == " " }).count
+                            let afterLeading = String(nextText.dropFirst(leadingSpaces))
+                            let fenceRun = afterLeading.prefix(while: { $0 == fenceChar })
+                            let restAfterFence = afterLeading.dropFirst(fenceRun.count).trimmingCharacters(in: .whitespaces)
+                            if leadingSpaces <= 3 && fenceRun.count >= openFenceLen && restAfterFence.isEmpty {
+                                foundClosingFence = true
+                                break
+                            }
+                        }
+
+                        let fullBlockRange = NSRange(location: lineRange.location, length: scanIndex - lineRange.location)
+                        let isDiagramBlockActive = blockLines.contains(where: { $0.isActive }) ||
+                            NSIntersectionRange(fullBlockRange, selectedRange).length > 0
+
+                        if foundClosingFence && !isDiagramBlockActive && blockLines.count >= 3 {
+                            let bodySource = blockLines
+                                .dropFirst()
+                                .dropLast()
+                                .map(\.text)
+                                .joined(separator: "\n")
+                                .trimmingCharacters(in: .whitespacesAndNewlines)
+
+                            if !bodySource.isEmpty {
+                                previousListTextIndent = nil
+                                let blockDim: CGFloat = (focusMode && !isDiagramBlockActive) ? 0.30 : 1.0
+                                let diagramImg: NSImage? = (lowerLang == "mermaid")
+                                    ? FolioMediaImageCache.shared.mermaidImage(for: bodySource, isDark: theme.isDark).image
+                                    : FolioMediaImageCache.shared.svgImage(for: bodySource).image
+                                let availW = max(200.0, effectiveContainerWidth - 32.0)
+                                let totalCardHeight: CGFloat
+                                if let img = diagramImg, img.size.width > 0, img.size.height > 0 {
+                                    let scale = min(1.0, availW / img.size.width)
+                                    let naturalH = round(img.size.height * scale) + 28.0
+                                    totalCardHeight = min(640.0, max(96.0, naturalH))
+                                } else {
+                                    totalCardHeight = lowerLang == "mermaid" ? 220.0 : 190.0
+                                }
+                                let perLineHeight = max(6.0, round(totalCardHeight / CGFloat(blockLines.count)))
+                                let hiddenLineFont = theme.bodyFont(size: min(effectiveBaseSize, max(4.0, perLineHeight * 0.6)))
+
+                                for (bIdx, bLine) in blockLines.enumerated() {
+                                    let cardPara = NSMutableParagraphStyle()
+                                    cardPara.alignment = .center
+                                    cardPara.lineSpacing = 0.0
+                                    cardPara.paragraphSpacingBefore = 0.0
+                                    cardPara.paragraphSpacing = (bIdx == blockLines.count - 1) ? max(6.0, typography.paragraphSpacing * 0.55) : 0.0
+                                    cardPara.minimumLineHeight = perLineHeight
+                                    cardPara.maximumLineHeight = perLineHeight
+                                    cardPara.tailIndent = effectiveContainerWidth
+                                    storage.addAttributes([
+                                        .font: hiddenLineFont,
+                                        .foregroundColor: NSColor.clear,
+                                        .paragraphStyle: cardPara,
+                                        .kern: 0.0
+                                    ], range: bLine.lineRange)
+                                }
+
+                                if lowerLang == "mermaid" {
+                                    decorations.append(LineDecoration(
+                                        lineRange: fullBlockRange,
+                                        kind: .mermaidBlockRendered(mermaidSource: bodySource, fullBlockRange: fullBlockRange, dimFactor: blockDim)
+                                    ))
+                                } else {
+                                    decorations.append(LineDecoration(
+                                        lineRange: fullBlockRange,
+                                        kind: .svgBlockRendered(svgSource: bodySource, fullBlockRange: fullBlockRange, dimFactor: blockDim)
+                                    ))
+                                }
+
+                                index = scanIndex
+                                lineNumber += scanLineCount
+                                continue
+                            }
+                        }
+                    }
+
                     inCodeFence = true
                     currentFenceChar = fenceChar
                     currentFenceLength = markerStr.count
-                    let lang = infoStr.split(whereSeparator: { $0.isWhitespace }).first.map(String.init) ?? ""
-                    currentFenceLanguage = lang.lowercased()
+                    currentFenceLanguage = lowerLang
                     previousListTextIndent = nil
 
                     let codeMono = theme.codeFont(size: effectiveBaseSize * 0.88)
@@ -568,6 +966,100 @@ public final class MarkdownLiveStyler {
                 continue
             }
 
+            // 2b. Check Standalone Raw <svg ...> ... </svg> Block
+            let lowerTrimmedLine = trimmedLine.lowercased()
+            if lowerTrimmedLine.hasPrefix("<svg") {
+                previousListTextIndent = nil
+                var svgLines: [(lineRange: NSRange, contentRange: NSRange, text: String, isActive: Bool)] = [
+                    (lineRange, contentRange, lineText, isActiveLine)
+                ]
+                var scanIndex = NSMaxRange(lineRange)
+                var scanLineCount = 1
+                let isSingleLineSVG = lowerTrimmedLine.contains("</svg>") || lowerTrimmedLine.hasSuffix("/>")
+                var foundClosingSVG = isSingleLineSVG
+
+                if !isSingleLineSVG {
+                    while scanIndex < fullLength {
+                        let nextLR = nsString.lineRange(for: NSRange(location: scanIndex, length: 0))
+                        let nextCR = strippedLineContentRange(nsString: nsString, lineRange: nextLR)
+                        let nextText = nsString.substring(with: nextCR)
+                        let nextActive = isLineActive(lineRange: nextLR, activeLineRange: activeLineRange, selectedRange: selectedRange)
+                        svgLines.append((nextLR, nextCR, nextText, nextActive))
+                        scanIndex = NSMaxRange(nextLR)
+                        scanLineCount += 1
+                        if nextText.lowercased().contains("</svg>") {
+                            foundClosingSVG = true
+                            break
+                        }
+                    }
+                }
+
+                let fullBlockRange = NSRange(location: lineRange.location, length: scanIndex - lineRange.location)
+                let isSVGBlockActive = svgLines.contains(where: { $0.isActive }) ||
+                    NSIntersectionRange(fullBlockRange, selectedRange).length > 0
+                let blockDim: CGFloat = (focusMode && !isSVGBlockActive) ? 0.30 : 1.0
+
+                if foundClosingSVG {
+                    let combinedSVG = svgLines.map(\.text).joined(separator: "\n").trimmingCharacters(in: .whitespacesAndNewlines)
+                    if prettyMode && !isSVGBlockActive && !combinedSVG.isEmpty {
+                        let svgImg = FolioMediaImageCache.shared.svgImage(for: combinedSVG).image
+                        let availW = max(200.0, effectiveContainerWidth - 32.0)
+                        let totalCardHeight: CGFloat
+                        if let img = svgImg, img.size.width > 0, img.size.height > 0 {
+                            let scale = min(1.0, availW / img.size.width)
+                            let naturalH = round(img.size.height * scale) + 28.0
+                            totalCardHeight = min(640.0, max(96.0, naturalH))
+                        } else {
+                            totalCardHeight = 190.0
+                        }
+                        let perLineHeight = max(6.0, round(totalCardHeight / CGFloat(svgLines.count)))
+                        let hiddenLineFont = theme.bodyFont(size: min(effectiveBaseSize, max(4.0, perLineHeight * 0.6)))
+                        for (sIdx, sLine) in svgLines.enumerated() {
+                            let svgPara = NSMutableParagraphStyle()
+                            svgPara.alignment = .center
+                            svgPara.lineSpacing = 0.0
+                            svgPara.paragraphSpacingBefore = 0.0
+                            svgPara.paragraphSpacing = (sIdx == svgLines.count - 1) ? max(6.0, typography.paragraphSpacing * 0.55) : 0.0
+                            svgPara.minimumLineHeight = perLineHeight
+                            svgPara.maximumLineHeight = perLineHeight
+                            svgPara.tailIndent = effectiveContainerWidth
+                            storage.addAttributes([
+                                .font: hiddenLineFont,
+                                .foregroundColor: NSColor.clear,
+                                .paragraphStyle: svgPara,
+                                .kern: 0.0
+                            ], range: sLine.lineRange)
+                        }
+                        decorations.append(LineDecoration(
+                            lineRange: fullBlockRange,
+                            kind: .svgBlockRendered(svgSource: combinedSVG, fullBlockRange: fullBlockRange, dimFactor: blockDim)
+                        ))
+                    } else {
+                        let codeMono = theme.codeFont(size: effectiveBaseSize * 0.90)
+                        for sLine in svgLines {
+                            decorations.append(LineDecoration(lineRange: sLine.lineRange, kind: .codeFenceBody))
+                            let codePara = NSMutableParagraphStyle()
+                            codePara.lineSpacing = 2.0
+                            codePara.paragraphSpacing = 1.0
+                            codePara.firstLineHeadIndent = 14.0
+                            codePara.headIndent = 14.0
+                            codePara.tailIndent = effectiveContainerWidth
+                            storage.addAttributes([
+                                .font: codeMono,
+                                .foregroundColor: theme.textNSColor.withAlphaComponent(blockDim),
+                                .paragraphStyle: codePara,
+                                .kern: 0.0
+                            ], range: sLine.lineRange)
+                            highlightCodeLine(in: storage, range: sLine.contentRange, language: "svg", theme: theme, dimFactor: blockDim)
+                        }
+                    }
+
+                    index = scanIndex
+                    lineNumber += scanLineCount
+                    continue
+                }
+            }
+
             // 3. Check Horizontal Rule (--- / *** / ___)
             if contentRange.length >= 3,
                hrRegex.firstMatch(in: string, options: [], range: contentRange) != nil {
@@ -674,11 +1166,14 @@ public final class MarkdownLiveStyler {
                         in: storage,
                         string: string,
                         range: titleRange,
+                        lineRange: lineRange,
                         baseFont: hFont,
                         isActiveLine: isActiveLine,
                         theme: theme,
                         dimFactor: dimFactor,
                         normalizeWhitespace: !isActiveLine,
+                        prettyMode: prettyMode,
+                        baseDirectoryURL: baseDirectoryURL,
                         decorations: &decorations
                     )
                 }
@@ -754,11 +1249,14 @@ public final class MarkdownLiveStyler {
                         in: storage,
                         string: string,
                         range: inlineRange,
+                        lineRange: lineRange,
                         baseFont: bqFont,
                         isActiveLine: isActiveLine,
                         theme: theme,
                         dimFactor: dimFactor,
                         normalizeWhitespace: !isActiveLine,
+                        prettyMode: prettyMode,
+                        baseDirectoryURL: baseDirectoryURL,
                         decorations: &decorations
                     )
                 }
@@ -802,6 +1300,8 @@ public final class MarkdownLiveStyler {
                         typography: typography,
                         containerWidth: effectiveContainerWidth,
                         focusMode: focusMode,
+                        prettyMode: prettyMode,
+                        baseDirectoryURL: baseDirectoryURL,
                         decorations: &decorations
                     )
 
@@ -890,11 +1390,14 @@ public final class MarkdownLiveStyler {
                         in: storage,
                         string: string,
                         range: textRange,
+                        lineRange: lineRange,
                         baseFont: baseFont,
                         isActiveLine: isActiveLine,
                         theme: theme,
                         dimFactor: dimFactor,
                         normalizeWhitespace: !isActiveLine,
+                        prettyMode: prettyMode,
+                        baseDirectoryURL: baseDirectoryURL,
                         decorations: &decorations
                     )
                 }
@@ -988,11 +1491,14 @@ public final class MarkdownLiveStyler {
                         in: storage,
                         string: string,
                         range: bodyRange,
+                        lineRange: lineRange,
                         baseFont: baseFont,
                         isActiveLine: isActiveLine,
                         theme: theme,
                         dimFactor: dimFactor,
                         normalizeWhitespace: !isActiveLine,
+                        prettyMode: prettyMode,
+                        baseDirectoryURL: baseDirectoryURL,
                         decorations: &decorations
                     )
                 }
@@ -1051,11 +1557,14 @@ public final class MarkdownLiveStyler {
                             in: storage,
                             string: string,
                             range: contentRange,
+                            lineRange: lineRange,
                             baseFont: hFont,
                             isActiveLine: combinedActive,
                             theme: theme,
                             dimFactor: setextDim,
                             normalizeWhitespace: !combinedActive,
+                            prettyMode: prettyMode,
+                            baseDirectoryURL: baseDirectoryURL,
                             decorations: &decorations
                         )
 
@@ -1136,11 +1645,14 @@ public final class MarkdownLiveStyler {
                     in: storage,
                     string: string,
                     range: contentRange,
+                    lineRange: lineRange,
                     baseFont: baseFont,
                     isActiveLine: isActiveLine,
                     theme: theme,
                     dimFactor: dimFactor,
                     normalizeWhitespace: !isActiveLine,
+                    prettyMode: prettyMode,
+                    baseDirectoryURL: baseDirectoryURL,
                     decorations: &decorations
                 )
             }
@@ -1179,11 +1691,14 @@ public final class MarkdownLiveStyler {
                     in: storage,
                     string: string,
                     range: NSRange(location: segFirst.range.location, length: NSMaxRange(segLast.range) - segFirst.range.location),
+                    lineRange: (segmentStart == j) ? lineRecords[segFirst.line]?.lineRange : nil,
                     baseFont: first.baseFont,
                     isActiveLine: segFirst.isActive,
                     theme: theme,
                     dimFactor: segFirst.dimFactor,
                     normalizeWhitespace: !segFirst.isActive,
+                    prettyMode: prettyMode,
+                    baseDirectoryURL: baseDirectoryURL,
                     decorations: &decorations
                 )
                 segmentStart = j + 1
@@ -1266,16 +1781,34 @@ public final class MarkdownLiveStyler {
                             location: docRange.location + closeBracket,
                             length: docRange.length - closeBracket
                         )
-                        applyAttributesToVisibleCharacters(
-                            in: storage,
-                            range: labelRange,
-                            attributes: [
-                                .foregroundColor: theme.linkNSColor.withAlphaComponent(rec.dimFactor),
-                                .underlineStyle: NSUnderlineStyle.single.rawValue
-                            ]
-                        )
-                        styleSyntaxToken(in: storage, range: openSyntaxRange, isActiveLine: rec.isActive, theme: theme, dimFactor: rec.dimFactor)
-                        styleSyntaxToken(in: storage, range: trailingSyntaxRange, isActiveLine: rec.isActive, theme: theme, dimFactor: rec.dimFactor)
+                        if isImg && prettyMode && !rec.isActive && !link.url.isEmpty {
+                            let altStr = nsString.substring(with: labelRange)
+                            reserveMediaCardHeight(in: storage, lineRange: rec.lineRange, targetHeight: 176.0)
+                            collapseWhitespaceRange(in: storage, range: docRange)
+                            decorations.append(LineDecoration(
+                                lineRange: rec.lineRange,
+                                kind: .imageRendered(
+                                    url: link.url,
+                                    alt: altStr,
+                                    fullRange: docRange,
+                                    explicitWidth: nil,
+                                    explicitHeight: nil,
+                                    baseDirectoryURL: baseDirectoryURL,
+                                    dimFactor: rec.dimFactor
+                                )
+                            ))
+                        } else {
+                            applyAttributesToVisibleCharacters(
+                                in: storage,
+                                range: labelRange,
+                                attributes: [
+                                    .foregroundColor: theme.linkNSColor.withAlphaComponent(rec.dimFactor),
+                                    .underlineStyle: NSUnderlineStyle.single.rawValue
+                                ]
+                            )
+                            styleSyntaxToken(in: storage, range: openSyntaxRange, isActiveLine: rec.isActive || !prettyMode, theme: theme, dimFactor: rec.dimFactor)
+                            styleSyntaxToken(in: storage, range: trailingSyntaxRange, isActiveLine: rec.isActive || !prettyMode, theme: theme, dimFactor: rec.dimFactor)
+                        }
                     } else if !spanText.hasPrefix("<") {
                         // GFM extended bare autolink (e.g. www.example.com, https://example.com)
                         applyAttributesToVisibleCharacters(
@@ -1620,6 +2153,8 @@ public final class MarkdownLiveStyler {
         typography: EditorTypographySettings,
         containerWidth: CGFloat,
         focusMode: Bool,
+        prettyMode: Bool = true,
+        baseDirectoryURL: URL? = nil,
         decorations: inout [LineDecoration]
     ) {
         guard !rows.isEmpty else { return }
@@ -1732,11 +2267,14 @@ public final class MarkdownLiveStyler {
                         in: storage,
                         string: string,
                         range: cell.contentRange,
+                        lineRange: row.lineRange,
                         baseFont: cellFont,
                         isActiveLine: row.isActive,
                         theme: theme,
                         dimFactor: dimFactor,
                         normalizeWhitespace: !row.isActive,
+                        prettyMode: prettyMode,
+                        baseDirectoryURL: baseDirectoryURL,
                         decorations: &inlineTableDecorations
                     )
                     let cellAttr = storage.attributedSubstring(from: cell.contentRange)
@@ -1909,20 +2447,72 @@ public final class MarkdownLiveStyler {
         ranges.insert(range, at: low)
     }
 
+    private static func reserveMediaCardHeight(in storage: NSTextStorage, lineRange: NSRange, targetHeight: CGFloat) {
+        guard lineRange.length > 0, lineRange.location < storage.length else { return }
+        let currentPara = (storage.attribute(.paragraphStyle, at: lineRange.location, effectiveRange: nil) as? NSParagraphStyle)
+        let mutablePara = (currentPara?.mutableCopy() as? NSMutableParagraphStyle) ?? NSMutableParagraphStyle()
+        mutablePara.minimumLineHeight = max(mutablePara.minimumLineHeight, targetHeight)
+        mutablePara.maximumLineHeight = max(mutablePara.maximumLineHeight, targetHeight)
+        storage.addAttribute(.paragraphStyle, value: mutablePara, range: lineRange)
+    }
+
+    private static func parseHTMLMediaAttributes(attrsStr: String) -> (src: String, alt: String, width: CGFloat?, height: CGFloat?) {
+        let attrsNS = attrsStr as NSString
+        var src = ""
+        var alt = ""
+        var widthVal: CGFloat? = nil
+        var heightVal: CGFloat? = nil
+
+        htmlAttrRegex.enumerateMatches(in: attrsStr, options: [], range: NSRange(location: 0, length: attrsNS.length)) { attrMatch, _, _ in
+            guard let attrMatch = attrMatch else { return }
+            let name = attrsNS.substring(with: attrMatch.range(at: 1)).lowercased()
+            let valRange: NSRange
+            if attrMatch.range(at: 2).location != NSNotFound {
+                valRange = attrMatch.range(at: 2)
+            } else if attrMatch.range(at: 3).location != NSNotFound {
+                valRange = attrMatch.range(at: 3)
+            } else if attrMatch.range(at: 4).location != NSNotFound {
+                valRange = attrMatch.range(at: 4)
+            } else {
+                return
+            }
+            let val = attrsNS.substring(with: valRange)
+            switch name {
+            case "src":
+                src = val
+            case "alt", "title", "poster":
+                if alt.isEmpty || name == "alt" { alt = val }
+            case "width":
+                let numStr = val.replacingOccurrences(of: "px", with: "")
+                if let d = Double(numStr), d > 0 { widthVal = CGFloat(d) }
+            case "height":
+                let numStr = val.replacingOccurrences(of: "px", with: "")
+                if let d = Double(numStr), d > 0 { heightVal = CGFloat(d) }
+            default:
+                break
+            }
+        }
+        return (src, alt, widthVal, heightVal)
+    }
+
     private static func styleInlineMarkdown(
         in storage: NSTextStorage,
         string: String,
         range: NSRange,
+        lineRange: NSRange? = nil,
         baseFont: NSFont,
         isActiveLine: Bool,
         theme: EditorTheme,
         dimFactor: CGFloat,
         normalizeWhitespace: Bool = false,
+        prettyMode: Bool = true,
+        baseDirectoryURL: URL? = nil,
         decorations: inout [LineDecoration]
     ) {
         guard range.length > 0 else { return }
         let nsString = string as NSString
         let fontSize = baseFont.pointSize
+        let effectiveLineRange = lineRange ?? range
 
         // Ranges inside inline code or inline math are completely opaque to other inline syntax
         var codeAndMathRanges: [NSRange] = []
@@ -2043,28 +2633,60 @@ public final class MarkdownLiveStyler {
         htmlBrRegex.enumerateMatches(in: string, options: [], range: range) { match, _, _ in
             guard let match = match, !isInCodeOrMath(match.range) else { return }
             insertSortedRange(match.range, into: &protectedDelimiterRanges)
-            styleSyntaxToken(in: storage, range: match.range, isActiveLine: isActiveLine, theme: theme, dimFactor: dimFactor)
-            if !isActiveLine && match.range.length > 0 {
+            styleSyntaxToken(in: storage, range: match.range, isActiveLine: isActiveLine || !prettyMode, theme: theme, dimFactor: dimFactor)
+            if !isActiveLine && prettyMode && match.range.length > 0 {
                 storage.addAttribute(.kern, value: 6.0, range: NSRange(location: match.range.location, length: 1))
             }
         }
 
-        // 5. Links ([label](url)) and Images (![alt](url)) — scanned with code-span & balanced-paren awareness
+        let currentParaTail = (storage.attribute(.paragraphStyle, at: effectiveLineRange.location, effectiveRange: nil) as? NSParagraphStyle)?.tailIndent ?? 0.0
+        let maxMediaColumnWidth = currentParaTail > 120.0 ? max(200.0, currentParaTail - 16.0) : 660.0
+
+        // 5. Links ([label](url)), Images (![alt](url)), and Anchor Images ([![alt](img_url)](link_url)) — scanned with code-span & balanced-paren awareness
         let linkMatches = scanMarkdownLinks(nsString: nsString, range: range, isDelimiterProtected: isDelimiterProtected)
         for link in linkMatches {
-            insertSortedRange(link.openSyntaxRange, into: &protectedDelimiterRanges)
-            insertSortedRange(link.trailingSyntaxRange, into: &protectedDelimiterRanges)
+            if link.isImage && prettyMode && !isActiveLine && !link.url.isEmpty {
+                insertSortedRange(link.fullRange, into: &protectedDelimiterRanges)
+                let altStr = nsString.substring(with: link.labelRange)
+                let display = FolioMediaImageCache.shared.displaySize(
+                    for: link.url,
+                    explicitWidth: nil,
+                    explicitHeight: nil,
+                    maxColumnWidth: maxMediaColumnWidth,
+                    baseDirectoryURL: baseDirectoryURL,
+                    isDark: theme.isDark
+                )
+                let targetH = display.isLoaded ? max(26.0, display.size.height + 10.0) : 52.0
+                reserveMediaCardHeight(in: storage, lineRange: effectiveLineRange, targetHeight: targetH)
+                collapseWhitespaceRange(in: storage, range: link.fullRange)
+                decorations.append(LineDecoration(
+                    lineRange: effectiveLineRange,
+                    kind: .imageRendered(
+                        url: link.url,
+                        alt: altStr,
+                        fullRange: link.fullRange,
+                        explicitWidth: nil,
+                        explicitHeight: nil,
+                        baseDirectoryURL: baseDirectoryURL,
+                        dimFactor: dimFactor
+                    )
+                ))
+            } else {
+                insertSortedRange(link.openSyntaxRange, into: &protectedDelimiterRanges)
+                insertSortedRange(link.trailingSyntaxRange, into: &protectedDelimiterRanges)
 
-            applyAttributesToVisibleCharacters(
-                in: storage,
-                range: link.labelRange,
-                attributes: [
-                    .foregroundColor: theme.linkNSColor.withAlphaComponent(dimFactor),
-                    .underlineStyle: NSUnderlineStyle.single.rawValue
-                ]
-            )
-            styleSyntaxToken(in: storage, range: link.openSyntaxRange, isActiveLine: isActiveLine, theme: theme, dimFactor: dimFactor)
-            styleSyntaxToken(in: storage, range: link.trailingSyntaxRange, isActiveLine: isActiveLine, theme: theme, dimFactor: dimFactor)
+                applyAttributesToVisibleCharacters(
+                    in: storage,
+                    range: link.labelRange,
+                    attributes: [
+                        .foregroundColor: theme.linkNSColor.withAlphaComponent(dimFactor),
+                        .underlineStyle: NSUnderlineStyle.single.rawValue
+                    ]
+                )
+                let showTokens = isActiveLine || (link.isImage && !prettyMode)
+                styleSyntaxToken(in: storage, range: link.openSyntaxRange, isActiveLine: showTokens, theme: theme, dimFactor: dimFactor)
+                styleSyntaxToken(in: storage, range: link.trailingSyntaxRange, isActiveLine: showTokens, theme: theme, dimFactor: dimFactor)
+            }
         }
 
         // 5b. Autolinks (<https://...> or <user@example.com>)
@@ -2085,6 +2707,173 @@ public final class MarkdownLiveStyler {
             )
             styleSyntaxToken(in: storage, range: openAngle, isActiveLine: isActiveLine, theme: theme, dimFactor: dimFactor)
             styleSyntaxToken(in: storage, range: closeAngle, isActiveLine: isActiveLine, theme: theme, dimFactor: dimFactor)
+        }
+
+        // 5c. HTML <img ...> and <video ...> tags
+        for mediaRegex in [htmlImgTagRegex, htmlVideoTagRegex] {
+            mediaRegex.enumerateMatches(in: string, options: [], range: range) { match, _, _ in
+                guard let match = match, !isDelimiterProtected(match.range) else { return }
+                insertSortedRange(match.range, into: &protectedDelimiterRanges)
+
+                let attrsStr = nsString.substring(with: match.range(at: 1))
+                var (src, alt, widthVal, heightVal) = parseHTMLMediaAttributes(attrsStr: attrsStr)
+                if src.isEmpty && match.numberOfRanges > 2 && match.range(at: 2).location != NSNotFound {
+                    let innerStr = nsString.substring(with: match.range(at: 2))
+                    let innerParsed = parseHTMLMediaAttributes(attrsStr: innerStr)
+                    if !innerParsed.src.isEmpty {
+                        src = innerParsed.src
+                    }
+                }
+
+                if prettyMode && !isActiveLine && !src.isEmpty {
+                    let isVideo = FolioMediaImageCache.isVideoURL(src) || (mediaRegex === htmlVideoTagRegex)
+                    let display = FolioMediaImageCache.shared.displaySize(
+                        for: src,
+                        explicitWidth: widthVal,
+                        explicitHeight: heightVal,
+                        maxColumnWidth: maxMediaColumnWidth,
+                        baseDirectoryURL: baseDirectoryURL,
+                        isDark: theme.isDark
+                    )
+                    let targetH: CGFloat
+                    if display.isLoaded {
+                        targetH = max(26.0, display.size.height + 10.0)
+                    } else if isVideo {
+                        targetH = 56.0
+                    } else {
+                        targetH = 52.0
+                    }
+                    reserveMediaCardHeight(in: storage, lineRange: effectiveLineRange, targetHeight: targetH)
+                    collapseWhitespaceRange(in: storage, range: match.range)
+                    decorations.append(LineDecoration(
+                        lineRange: effectiveLineRange,
+                        kind: .imageRendered(
+                            url: src,
+                            alt: alt,
+                            fullRange: match.range,
+                            explicitWidth: widthVal,
+                            explicitHeight: heightVal,
+                            baseDirectoryURL: baseDirectoryURL,
+                            dimFactor: dimFactor
+                        )
+                    ))
+                } else {
+                    styleSyntaxToken(in: storage, range: match.range, isActiveLine: true, theme: theme, dimFactor: dimFactor)
+                }
+            }
+        }
+
+        // 5d. Inline HTML paired markup (<kbd>, <u>, <ins>, <mark>, <sup>, <sub>, <b>, <strong>, <i>, <em>, <s>, <del>, <code>, <summary>)
+        htmlPairedTagRegex.enumerateMatches(in: string, options: [], range: range) { match, _, _ in
+            guard let match = match else { return }
+            let openTagRange = match.range(at: 1)
+            let tagNameRange = match.range(at: 2)
+            let innerRange = match.range(at: 3)
+            let closeTagRange = match.range(at: 4)
+            guard !isDelimiterProtected(openTagRange), !isDelimiterProtected(closeTagRange) else { return }
+
+            insertSortedRange(openTagRange, into: &protectedDelimiterRanges)
+            insertSortedRange(closeTagRange, into: &protectedDelimiterRanges)
+
+            let tagName = nsString.substring(with: tagNameRange).lowercased()
+            let showRawTag = isActiveLine || !prettyMode
+
+            if prettyMode && innerRange.length > 0 {
+                switch tagName {
+                case "kbd":
+                    let kbdFontSize = fontSize * 0.84
+                    let kbdFont = theme.codeFont(size: kbdFontSize)
+                    applyAttributesToVisibleCharacters(
+                        in: storage,
+                        range: innerRange,
+                        attributes: [
+                            .font: kbdFont,
+                            .foregroundColor: theme.textNSColor.withAlphaComponent(dimFactor),
+                            inlineCodeFontAttributeKey: true
+                        ]
+                    )
+                    decorations.append(LineDecoration(
+                        lineRange: innerRange,
+                        kind: .kbdPill(range: innerRange, fontSize: kbdFontSize, dimFactor: dimFactor)
+                    ))
+                case "u", "ins":
+                    applyAttributesToVisibleCharacters(
+                        in: storage,
+                        range: innerRange,
+                        attributes: [.underlineStyle: NSUnderlineStyle.single.rawValue]
+                    )
+                case "mark":
+                    let highlightBg = theme.isDark
+                        ? NSColor(srgbRed: 0.55, green: 0.45, blue: 0.12, alpha: 0.55 * dimFactor)
+                        : NSColor(srgbRed: 1.0, green: 0.93, blue: 0.45, alpha: 0.65 * dimFactor)
+                    applyAttributesToVisibleCharacters(
+                        in: storage,
+                        range: innerRange,
+                        attributes: [.backgroundColor: highlightBg]
+                    )
+                case "sup":
+                    let subFont = theme.bodyFont(size: fontSize * 0.74)
+                    applyAttributesToVisibleCharacters(
+                        in: storage,
+                        range: innerRange,
+                        attributes: [
+                            .font: subFont,
+                            .baselineOffset: fontSize * 0.32
+                        ]
+                    )
+                case "sub":
+                    let subFont = theme.bodyFont(size: fontSize * 0.74)
+                    applyAttributesToVisibleCharacters(
+                        in: storage,
+                        range: innerRange,
+                        attributes: [
+                            .font: subFont,
+                            .baselineOffset: -fontSize * 0.18
+                        ]
+                    )
+                case "b", "strong", "summary":
+                    applyFontTraitToVisibleCharacters(in: storage, range: innerRange, trait: .boldFontMask, fallbackFont: baseFont)
+                case "i", "em":
+                    applyFontTraitToVisibleCharacters(in: storage, range: innerRange, trait: .italicFontMask, fallbackFont: baseFont)
+                case "s", "del", "strike":
+                    applyAttributesToVisibleCharacters(
+                        in: storage,
+                        range: innerRange,
+                        attributes: [
+                            .strikethroughStyle: NSUnderlineStyle.single.rawValue,
+                            .foregroundColor: theme.secondaryTextNSColor.withAlphaComponent(dimFactor)
+                        ]
+                    )
+                case "code":
+                    let codeFontSize = fontSize * 0.88
+                    let codeFont = theme.codeFont(size: codeFontSize)
+                    applyAttributesToVisibleCharacters(
+                        in: storage,
+                        range: innerRange,
+                        attributes: [
+                            .font: codeFont,
+                            .foregroundColor: theme.inlineCodeNSColor.withAlphaComponent(dimFactor),
+                            inlineCodeFontAttributeKey: true
+                        ]
+                    )
+                    decorations.append(LineDecoration(
+                        lineRange: innerRange,
+                        kind: .inlineCode(range: innerRange, fontSize: codeFontSize, dimFactor: dimFactor)
+                    ))
+                default:
+                    break
+                }
+            }
+
+            styleSyntaxToken(in: storage, range: openTagRange, isActiveLine: showRawTag, theme: theme, dimFactor: dimFactor)
+            styleSyntaxToken(in: storage, range: closeTagRange, isActiveLine: showRawTag, theme: theme, dimFactor: dimFactor)
+        }
+
+        // 5e. HTML <details> and </details> tags
+        htmlDetailsTagRegex.enumerateMatches(in: string, options: [], range: range) { match, _, _ in
+            guard let match = match, !isDelimiterProtected(match.range) else { return }
+            insertSortedRange(match.range, into: &protectedDelimiterRanges)
+            styleSyntaxToken(in: storage, range: match.range, isActiveLine: isActiveLine || !prettyMode, theme: theme, dimFactor: dimFactor)
         }
 
         // 6. Bold + Italic (***text*** or ___text___)
@@ -2272,9 +3061,12 @@ public final class MarkdownLiveStyler {
     }
 
     private struct ScannedMarkdownLink {
+        let isImage: Bool
+        let fullRange: NSRange
         let openSyntaxRange: NSRange      // `[` or `![`
         let labelRange: NSRange           // `label`
         let trailingSyntaxRange: NSRange  // `](url)`
+        let url: String
     }
 
     /// Linear-time $O(N)$ Markdown link & image scanner (`[label](url)` and `![alt](url)`).
@@ -2346,14 +3138,55 @@ public final class MarkdownLiveStyler {
                        let closeParen = matchingCloseParen[idx + 1] {
                         let labelRange = NSRange(location: open.bracketPos + 1, length: idx - (open.bracketPos + 1))
                         if labelRange.length > 0 || open.isImage {
+                            let rawDestRange = NSRange(location: idx + 2, length: max(0, closeParen - (idx + 2)))
+                            var rawDest = nsString.substring(with: rawDestRange).trimmingCharacters(in: .whitespacesAndNewlines)
+                            if rawDest.hasPrefix("<"), let closeAngleIdx = rawDest.firstIndex(of: ">") {
+                                rawDest = String(rawDest[rawDest.index(after: rawDest.startIndex)..<closeAngleIdx])
+                            } else if let spaceIdx = rawDest.firstIndex(where: { $0 == " " || $0 == "\t" }) {
+                                rawDest = String(rawDest[..<spaceIdx])
+                            }
+
+                            // Check for anchor image `[![alt](img_url)](link_url)`
+                            if open.isImage,
+                               let outer = openStack.last,
+                               !outer.isImage,
+                               outer.openStart + 1 == open.openStart,
+                               closeParen + 2 < end,
+                               nsString.character(at: closeParen + 1) == 0x5D,
+                               nsString.character(at: closeParen + 2) == 0x28,
+                               !isDelimiterProtected(NSRange(location: closeParen + 1, length: 2)),
+                               let outerCloseParen = matchingCloseParen[closeParen + 2] {
+                                openStack.removeLast()
+                                let openSyntaxRange = NSRange(location: outer.openStart, length: 3)
+                                let trailingRange = NSRange(location: idx, length: (outerCloseParen + 1) - idx)
+                                let fullRange = NSRange(location: outer.openStart, length: (outerCloseParen + 1) - outer.openStart)
+                                results.append(ScannedMarkdownLink(
+                                    isImage: true,
+                                    fullRange: fullRange,
+                                    openSyntaxRange: openSyntaxRange,
+                                    labelRange: labelRange,
+                                    trailingSyntaxRange: trailingRange,
+                                    url: rawDest
+                                ))
+                                openStack.removeAll(keepingCapacity: true)
+                                idx = outerCloseParen + 1
+                                continue
+                            }
+
                             let openSyntaxRange = NSRange(location: open.openStart, length: open.isImage ? 2 : 1)
                             let trailingRange = NSRange(location: idx, length: (closeParen + 1) - idx)
+                            let fullRange = NSRange(location: open.openStart, length: (closeParen + 1) - open.openStart)
                             results.append(ScannedMarkdownLink(
+                                isImage: open.isImage,
+                                fullRange: fullRange,
                                 openSyntaxRange: openSyntaxRange,
                                 labelRange: labelRange,
-                                trailingSyntaxRange: trailingRange
+                                trailingSyntaxRange: trailingRange,
+                                url: rawDest
                             ))
-                            openStack.removeAll(keepingCapacity: true)
+                            if !open.isImage {
+                                openStack.removeAll(keepingCapacity: true)
+                            }
                             idx = closeParen + 1
                             continue
                         }
@@ -2617,6 +3450,19 @@ public final class MarkdownLiveStyler {
                 functions: sharedFunctionsRegex,
                 keywordColorLight: NSColor(srgbRed: 0.72, green: 0.14, blue: 0.26, alpha: 1.0),
                 keywordColorDark: NSColor(srgbRed: 0.95, green: 0.45, blue: 0.55, alpha: 1.0)
+            )
+
+        case "mermaid", "mmd":
+            return LanguageSyntaxProfile(
+                keywords: try? NSRegularExpression(pattern: #"\b(flowchart|graph|sequenceDiagram|classDiagram|stateDiagram|stateDiagram-v2|pie|erDiagram|subgraph|end|participant|actor|class|title|direction|TD|TB|LR|RL|BT|showData)\b"#),
+                typesAndBuiltins: try? NSRegularExpression(pattern: #"-->|-\.->|==>|-->>|->>|--|==|\[\*\]"#),
+                attributesOrMacros: try? NSRegularExpression(pattern: #"\|[^\|]+\|"#),
+                comments: try? NSRegularExpression(pattern: #"%%.*$"#),
+                strings: sharedStringsRegex,
+                numbers: sharedNumbersRegex,
+                functions: sharedFunctionsRegex,
+                keywordColorLight: NSColor(srgbRed: 0.45, green: 0.18, blue: 0.72, alpha: 1.0),
+                keywordColorDark: NSColor(srgbRed: 0.76, green: 0.52, blue: 0.98, alpha: 1.0)
             )
 
         case "sql":

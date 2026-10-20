@@ -125,6 +125,24 @@ pub enum SyntaxTokenKind {
     TaskListMarker,
     HorizontalRule,
     TablePipeDelimiter,
+    HtmlTag,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum HtmlInlineTagKind {
+    Kbd,
+    Underline,
+    Strikethrough,
+    Mark,
+    Superscript,
+    Subscript,
+    Bold,
+    Italic,
+    Code,
+    LineBreak,
+    Details,
+    Summary,
+    Span,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -157,6 +175,33 @@ pub enum MarkdownBlockDecorationKind {
         is_header: bool,
         is_separator: bool,
         columns: Vec<String>,
+    },
+    Image {
+        alt: String,
+        url: String,
+        title: Option<String>,
+        width: Option<u32>,
+        height: Option<u32>,
+        is_html: bool,
+        is_active: bool,
+    },
+    MermaidBlock {
+        source: String,
+        svg: String,
+        width: f32,
+        height: f32,
+        is_active: bool,
+    },
+    SvgBlock {
+        svg: String,
+        width: f32,
+        height: f32,
+        is_active: bool,
+    },
+    HtmlInline {
+        tag: HtmlInlineTagKind,
+        content_range: Range<usize>,
+        is_active: bool,
     },
 }
 
@@ -381,6 +426,24 @@ pub fn analyze_markdown_document(
     source_code_mode: bool,
     focus_mode: bool,
 ) -> MarkdownAnalysis {
+    analyze_markdown_document_with_options(
+        text,
+        cursor_byte_offset,
+        source_code_mode,
+        focus_mode,
+        true,
+        true,
+    )
+}
+
+pub fn analyze_markdown_document_with_options(
+    text: &str,
+    cursor_byte_offset: usize,
+    source_code_mode: bool,
+    focus_mode: bool,
+    pretty_mode: bool,
+    is_dark: bool,
+) -> MarkdownAnalysis {
     if text.is_empty() {
         return MarkdownAnalysis::default();
     }
@@ -393,6 +456,16 @@ pub fn analyze_markdown_document(
     let mut fence_marker_char: u8 = b'`';
     let mut fence_marker_len: usize = 0;
     let mut current_fence_lang = String::new();
+    let mut fence_start_offset = 0usize;
+    let mut fence_start_line = 1usize;
+    let mut fence_lines: Vec<String> = Vec::new();
+    let mut fence_active = false;
+
+    let mut in_svg_block = false;
+    let mut svg_block_start_offset = 0usize;
+    let mut svg_block_start_line = 1usize;
+    let mut svg_block_lines: Vec<String> = Vec::new();
+    let mut svg_block_active = false;
 
     let mut in_math_block = false;
     let mut math_block_start_offset = 0usize;
@@ -421,6 +494,7 @@ pub fn analyze_markdown_document(
         let content_line = raw_line.trim_end_matches(&['\r', '\n'][..]);
         let content_end = line_start + content_line.len();
         let is_active_line = cursor_byte_offset >= line_start && cursor_byte_offset <= content_end;
+        let effective_active = is_active_line || !pretty_mode;
         let dim_factor = if focus_mode && !is_active_line {
             0.30
         } else {
@@ -460,6 +534,38 @@ pub fn analyze_markdown_document(
                     byte_offset: line_start,
                     line_number,
                 });
+            }
+            idx += 1;
+            continue;
+        }
+
+        // Handle multi-line raw <svg> ... </svg> block continuation
+        if in_svg_block {
+            if effective_active {
+                svg_block_active = true;
+            }
+            svg_block_lines.push(content_line.to_string());
+            if trimmed.contains("</svg>") {
+                let raw_svg = svg_block_lines.join("\n");
+                if let Some((norm_svg, w, h)) = crate::mermaid::normalize_svg_markup(&raw_svg) {
+                    syntax_fold_spans.push(SyntaxFoldSpan {
+                        byte_range: svg_block_start_offset..content_end,
+                        kind: SyntaxTokenKind::HtmlTag,
+                        is_revealed: svg_block_active,
+                    });
+                    block_decorations.push(MarkdownBlockDecoration {
+                        byte_range: svg_block_start_offset..line_end,
+                        line_number: svg_block_start_line,
+                        kind: MarkdownBlockDecorationKind::SvgBlock {
+                            svg: norm_svg,
+                            width: w,
+                            height: h,
+                            is_active: svg_block_active,
+                        },
+                    });
+                }
+                in_svg_block = false;
+                svg_block_lines.clear();
             }
             idx += 1;
             continue;
@@ -511,6 +617,10 @@ pub fn analyze_markdown_document(
                 fence_marker_char = f_char;
                 fence_marker_len = f_len;
                 current_fence_lang = lang.clone();
+                fence_start_offset = line_start;
+                fence_start_line = line_number;
+                fence_lines.clear();
+                fence_active = effective_active;
                 syntax_fold_spans.push(SyntaxFoldSpan {
                     byte_range: line_start..content_end,
                     kind: SyntaxTokenKind::CodeFenceDelimiter,
@@ -525,9 +635,15 @@ pub fn analyze_markdown_document(
                 continue;
             }
         } else {
+            if effective_active {
+                fence_active = true;
+            }
             if is_closing_code_fence(content_line, fence_marker_char, fence_marker_len) {
+                let finished_lang = current_fence_lang.to_ascii_lowercase();
+                let body_source = fence_lines.join("\n");
                 in_code_fence = false;
                 current_fence_lang.clear();
+                fence_lines.clear();
                 syntax_fold_spans.push(SyntaxFoldSpan {
                     byte_range: line_start..content_end,
                     kind: SyntaxTokenKind::CodeFenceDelimiter,
@@ -538,7 +654,39 @@ pub fn analyze_markdown_document(
                     line_number,
                     kind: MarkdownBlockDecorationKind::CodeFenceEnd,
                 });
+                if finished_lang == "mermaid" {
+                    let rendered = crate::mermaid::render_mermaid_to_svg(&body_source, is_dark);
+                    block_decorations.push(MarkdownBlockDecoration {
+                        byte_range: fence_start_offset..line_end,
+                        line_number: fence_start_line,
+                        kind: MarkdownBlockDecorationKind::MermaidBlock {
+                            source: body_source,
+                            svg: rendered.svg,
+                            width: rendered.width,
+                            height: rendered.height,
+                            is_active: fence_active,
+                        },
+                    });
+                } else if finished_lang == "svg"
+                    || (finished_lang == "xml" && body_source.trim_start().starts_with("<svg"))
+                {
+                    if let Some((norm_svg, w, h)) =
+                        crate::mermaid::normalize_svg_markup(&body_source)
+                    {
+                        block_decorations.push(MarkdownBlockDecoration {
+                            byte_range: fence_start_offset..line_end,
+                            line_number: fence_start_line,
+                            kind: MarkdownBlockDecorationKind::SvgBlock {
+                                svg: norm_svg,
+                                width: w,
+                                height: h,
+                                is_active: fence_active,
+                            },
+                        });
+                    }
+                }
             } else {
+                fence_lines.push(content_line.to_string());
                 block_decorations.push(MarkdownBlockDecoration {
                     byte_range: line_start..line_end,
                     line_number,
@@ -549,6 +697,40 @@ pub fn analyze_markdown_document(
             }
             idx += 1;
             continue;
+        }
+
+        // 1b. Standalone or multi-line <svg ...>...</svg> block outside code fences
+        if trimmed.starts_with("<svg") {
+            if trimmed.contains("</svg>") {
+                if let Some((norm_svg, w, h)) = crate::mermaid::normalize_svg_markup(trimmed) {
+                    syntax_fold_spans.push(SyntaxFoldSpan {
+                        byte_range: line_start..content_end,
+                        kind: SyntaxTokenKind::HtmlTag,
+                        is_revealed: effective_active,
+                    });
+                    block_decorations.push(MarkdownBlockDecoration {
+                        byte_range: line_start..line_end,
+                        line_number,
+                        kind: MarkdownBlockDecorationKind::SvgBlock {
+                            svg: norm_svg,
+                            width: w,
+                            height: h,
+                            is_active: effective_active,
+                        },
+                    });
+                    idx += 1;
+                    continue;
+                }
+            } else {
+                in_svg_block = true;
+                svg_block_start_offset = line_start;
+                svg_block_start_line = line_number;
+                svg_block_active = effective_active;
+                svg_block_lines.clear();
+                svg_block_lines.push(content_line.to_string());
+                idx += 1;
+                continue;
+            }
         }
 
         // 2. Display Math Block ($$ ... $$)
@@ -644,7 +826,7 @@ pub fn analyze_markdown_document(
                     &content_line[prefix_len..scan_end],
                     line_start + prefix_len,
                     line_number,
-                    is_active_line,
+                    effective_active,
                     dim_factor,
                     &mut syntax_fold_spans,
                     &mut block_decorations,
@@ -666,7 +848,7 @@ pub fn analyze_markdown_document(
                 let next_raw = raw_lines[idx + 1];
                 let next_end = next_start + next_raw.len();
                 let next_content_end = next_start + next_content_line.len();
-                let setext_active = is_active_line
+                let setext_active = effective_active
                     || (cursor_byte_offset >= next_start && cursor_byte_offset <= next_content_end);
 
                 headings.push(OutlineHeadingItem {
@@ -717,7 +899,7 @@ pub fn analyze_markdown_document(
                 &content_line[marker_len..],
                 line_start + marker_len,
                 line_number,
-                is_active_line,
+                effective_active,
                 dim_factor,
                 &mut syntax_fold_spans,
                 &mut block_decorations,
@@ -749,7 +931,7 @@ pub fn analyze_markdown_document(
                     content_line,
                     line_start,
                     line_number,
-                    is_active_line,
+                    effective_active,
                     dim_factor,
                     &mut syntax_fold_spans,
                     &mut block_decorations,
@@ -764,7 +946,7 @@ pub fn analyze_markdown_document(
             content_line,
             line_start,
             line_number,
-            is_active_line,
+            effective_active,
             dim_factor,
             &mut syntax_fold_spans,
             &mut block_decorations,
@@ -1473,9 +1655,94 @@ fn scan_inline_spans(
             }
         }
 
-        // 8. Markdown Image ![alt](url) or Link [label](url)
+        // 8. Markdown Anchor Image [![alt](img_url)](link_url), Image ![alt](url), or Link [label](url)
+        if bytes[i] == b'[' && i + 2 < bytes.len() && bytes[i + 1] == b'!' && bytes[i + 2] == b'[' {
+            let img_open = i + 2;
+            let next_bp = match cached_bracket_paren {
+                Some(Some(pos)) if pos > img_open => Some(pos),
+                Some(None) => None,
+                _ => {
+                    let found = line_slice[img_open + 1..]
+                        .find("](")
+                        .map(|rel| img_open + 1 + rel);
+                    cached_bracket_paren = Some(found);
+                    found
+                }
+            };
+            if let Some(img_bracket_close) = next_bp {
+                if !bytes[img_open + 1..img_bracket_close].contains(&b'[')
+                    && img_bracket_close >= img_open + 1
+                {
+                    let find_paren_close = |start_idx: usize| -> Option<usize> {
+                        let mut p_depth = 1usize;
+                        let mut p_idx = start_idx;
+                        while p_idx < bytes.len() {
+                            if bytes[p_idx] == b'\\' {
+                                p_idx += 2;
+                                continue;
+                            }
+                            if bytes[p_idx] == b'(' {
+                                p_depth += 1;
+                            } else if bytes[p_idx] == b')' {
+                                p_depth -= 1;
+                                if p_depth == 0 {
+                                    return Some(p_idx);
+                                }
+                            }
+                            p_idx += 1;
+                        }
+                        None
+                    };
+                    let img_url_start = img_bracket_close + 2;
+                    if let Some(img_paren_close) = find_paren_close(img_url_start) {
+                        if img_paren_close + 2 < bytes.len()
+                            && bytes[img_paren_close + 1] == b']'
+                            && bytes[img_paren_close + 2] == b'('
+                        {
+                            let outer_url_start = img_paren_close + 3;
+                            if let Some(outer_paren_close) = find_paren_close(outer_url_start) {
+                                syntax_fold_spans.push(SyntaxFoldSpan {
+                                    byte_range: (base_offset + i)..(base_offset + img_open + 1),
+                                    kind: SyntaxTokenKind::LinkSyntax,
+                                    is_revealed: is_active_line,
+                                });
+                                syntax_fold_spans.push(SyntaxFoldSpan {
+                                    byte_range: (base_offset + img_bracket_close)
+                                        ..(base_offset + outer_paren_close + 1),
+                                    kind: SyntaxTokenKind::LinkSyntax,
+                                    is_revealed: is_active_line,
+                                });
+                                let alt =
+                                    line_slice[img_open + 1..img_bracket_close].to_string();
+                                let (url, title) = parse_markdown_link_dest_and_title(
+                                    &line_slice[img_url_start..img_paren_close],
+                                );
+                                block_decorations.push(MarkdownBlockDecoration {
+                                    byte_range: (base_offset + i)
+                                        ..(base_offset + outer_paren_close + 1),
+                                    line_number,
+                                    kind: MarkdownBlockDecorationKind::Image {
+                                        alt,
+                                        url,
+                                        title,
+                                        width: None,
+                                        height: None,
+                                        is_html: false,
+                                        is_active: is_active_line,
+                                    },
+                                });
+                                i = outer_paren_close + 1;
+                                continue;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
         if bytes[i] == b'[' || (bytes[i] == b'!' && i + 1 < bytes.len() && bytes[i + 1] == b'[') {
-            let bracket_open = if bytes[i] == b'!' { i + 1 } else { i };
+            let is_image = bytes[i] == b'!';
+            let bracket_open = if is_image { i + 1 } else { i };
             let next_bp = match cached_bracket_paren {
                 Some(Some(pos)) if pos > bracket_open => Some(pos),
                 Some(None) => None,
@@ -1500,7 +1767,7 @@ fn scan_inline_spans(
                             kind: SyntaxTokenKind::LinkSyntax,
                             is_revealed: is_active_line,
                         });
-                        if bracket_close > bracket_open + 1 {
+                        if bracket_close > bracket_open + 1 && !is_image {
                             scan_inline_spans(
                                 &line_slice[bracket_open + 1..bracket_close],
                                 base_offset + bracket_open + 1,
@@ -1517,6 +1784,25 @@ fn scan_inline_spans(
                             kind: SyntaxTokenKind::LinkSyntax,
                             is_revealed: is_active_line,
                         });
+                        if is_image {
+                            let alt = line_slice[bracket_open + 1..bracket_close].to_string();
+                            let (url, title) = parse_markdown_link_dest_and_title(
+                                &line_slice[bracket_close + 2..paren_close],
+                            );
+                            block_decorations.push(MarkdownBlockDecoration {
+                                byte_range: (base_offset + i)..(base_offset + paren_close + 1),
+                                line_number,
+                                kind: MarkdownBlockDecorationKind::Image {
+                                    alt,
+                                    url,
+                                    title,
+                                    width: None,
+                                    height: None,
+                                    is_html: false,
+                                    is_active: is_active_line,
+                                },
+                            });
+                        }
                         i = paren_close + 1;
                         continue;
                     } else {
@@ -1530,16 +1816,16 @@ fn scan_inline_spans(
             }
         }
 
-        // 9. Autolinks (<https://...> or <mailto:...>, CommonMark §6.5)
+        // 9. Autolinks (<https://...> or <mailto:...>, CommonMark §6.5) and Inline HTML Markup
         if !no_closing_angle && bytes[i] == b'<' {
             if let Some(rel_close) = line_slice[i + 1..].find('>') {
-                let inner = &line_slice[i + 1..i + 1 + rel_close];
+                let close_idx = i + 1 + rel_close;
+                let inner = &line_slice[i + 1..close_idx];
                 if (inner.starts_with("http://")
                     || inner.starts_with("https://")
                     || inner.starts_with("mailto:"))
                     && !inner.contains(char::is_whitespace)
                 {
-                    let close_idx = i + 1 + rel_close;
                     syntax_fold_spans.push(SyntaxFoldSpan {
                         byte_range: (base_offset + i)..(base_offset + i + 1),
                         kind: SyntaxTokenKind::LinkSyntax,
@@ -1553,6 +1839,21 @@ fn scan_inline_spans(
                     i = close_idx + 1;
                     continue;
                 }
+
+                if let Some(next_i) = try_scan_inline_html_tag(
+                    line_slice,
+                    i,
+                    close_idx,
+                    base_offset,
+                    line_number,
+                    is_active_line,
+                    dim_factor,
+                    syntax_fold_spans,
+                    block_decorations,
+                ) {
+                    i = next_i;
+                    continue;
+                }
             } else {
                 no_closing_angle = true;
             }
@@ -1560,6 +1861,273 @@ fn scan_inline_spans(
 
         i += 1;
     }
+}
+
+fn parse_markdown_link_dest_and_title(raw: &str) -> (String, Option<String>) {
+    let trimmed = raw.trim();
+    if trimmed.is_empty() {
+        return (String::new(), None);
+    }
+    if let Some(after_angle) = trimmed.strip_prefix('<') {
+        if let Some(close_angle) = after_angle.find('>') {
+            let url = after_angle[..close_angle].to_string();
+            let rest = after_angle[close_angle + 1..].trim();
+            let title = parse_optional_link_title(rest);
+            return (url, title);
+        }
+    }
+    if let Some(ws_idx) = trimmed.find(char::is_whitespace) {
+        let url = trimmed[..ws_idx].to_string();
+        let rest = trimmed[ws_idx..].trim();
+        let title = parse_optional_link_title(rest);
+        (url, title)
+    } else {
+        (trimmed.to_string(), None)
+    }
+}
+
+fn parse_optional_link_title(rest: &str) -> Option<String> {
+    if rest.len() >= 2 {
+        if (rest.starts_with('"') && rest.ends_with('"'))
+            || (rest.starts_with('\'') && rest.ends_with('\''))
+            || (rest.starts_with('(') && rest.ends_with(')'))
+        {
+            return Some(rest[1..rest.len() - 1].to_string());
+        }
+    }
+    None
+}
+
+fn extract_html_attr(attrs: &str, name: &str) -> Option<String> {
+    let lower = attrs.to_ascii_lowercase();
+    let pat_eq = format!("{}=", name.to_ascii_lowercase());
+    let mut search_from = 0usize;
+    while let Some(rel) = lower[search_from..].find(&pat_eq) {
+        let pos = search_from + rel;
+        let valid_prefix = pos == 0
+            || lower.as_bytes()[pos - 1].is_ascii_whitespace()
+            || lower.as_bytes()[pos - 1] == b'/';
+        let val_start = pos + pat_eq.len();
+        if valid_prefix && val_start < attrs.len() {
+            let rest = attrs[val_start..].trim_start();
+            if let Some(stripped) = rest.strip_prefix('"') {
+                if let Some(end_q) = stripped.find('"') {
+                    return Some(stripped[..end_q].to_string());
+                }
+            } else if let Some(stripped) = rest.strip_prefix('\'') {
+                if let Some(end_q) = stripped.find('\'') {
+                    return Some(stripped[..end_q].to_string());
+                }
+            } else {
+                let end = rest
+                    .find(|c: char| c.is_whitespace() || c == '/' || c == '>')
+                    .unwrap_or(rest.len());
+                if end > 0 {
+                    return Some(rest[..end].to_string());
+                }
+            }
+        }
+        search_from = val_start;
+    }
+    None
+}
+
+#[allow(clippy::too_many_arguments)]
+fn try_scan_inline_html_tag(
+    line_slice: &str,
+    open_lt: usize,
+    open_gt: usize,
+    base_offset: usize,
+    line_number: usize,
+    is_active_line: bool,
+    dim_factor: f64,
+    syntax_fold_spans: &mut Vec<SyntaxFoldSpan>,
+    block_decorations: &mut Vec<MarkdownBlockDecoration>,
+) -> Option<usize> {
+    let raw_inner = line_slice[open_lt + 1..open_gt].trim();
+    if raw_inner.is_empty() {
+        return None;
+    }
+
+    // Handle standalone closing tags like </details> or </summary> on multi-line blocks
+    if let Some(closing_name) = raw_inner.strip_prefix('/') {
+        let cname = closing_name.trim().to_ascii_lowercase();
+        if matches!(cname.as_str(), "details" | "summary") {
+            syntax_fold_spans.push(SyntaxFoldSpan {
+                byte_range: (base_offset + open_lt)..(base_offset + open_gt + 1),
+                kind: SyntaxTokenKind::HtmlTag,
+                is_revealed: is_active_line,
+            });
+            return Some(open_gt + 1);
+        }
+        return None;
+    }
+
+    let without_self_close = raw_inner.trim_end_matches('/').trim();
+    let tag_end = without_self_close
+        .find(|c: char| c.is_whitespace())
+        .unwrap_or(without_self_close.len());
+    let tag_name = without_self_close[..tag_end].to_ascii_lowercase();
+    let attrs = &without_self_close[tag_end..];
+
+    // 1. <img ...>
+    if tag_name == "img" {
+        if let Some(src) = extract_html_attr(attrs, "src") {
+            let alt = extract_html_attr(attrs, "alt").unwrap_or_default();
+            let title = extract_html_attr(attrs, "title");
+            let width = extract_html_attr(attrs, "width")
+                .and_then(|w| w.trim_end_matches("px").parse::<u32>().ok());
+            let height = extract_html_attr(attrs, "height")
+                .and_then(|h| h.trim_end_matches("px").parse::<u32>().ok());
+            syntax_fold_spans.push(SyntaxFoldSpan {
+                byte_range: (base_offset + open_lt)..(base_offset + open_gt + 1),
+                kind: SyntaxTokenKind::HtmlTag,
+                is_revealed: is_active_line,
+            });
+            block_decorations.push(MarkdownBlockDecoration {
+                byte_range: (base_offset + open_lt)..(base_offset + open_gt + 1),
+                line_number,
+                kind: MarkdownBlockDecorationKind::Image {
+                    alt,
+                    url: src,
+                    title,
+                    width,
+                    height,
+                    is_html: true,
+                    is_active: is_active_line,
+                },
+            });
+            return Some(open_gt + 1);
+        }
+        return None;
+    }
+
+    // 2. <br> or <br/>
+    if tag_name == "br" {
+        syntax_fold_spans.push(SyntaxFoldSpan {
+            byte_range: (base_offset + open_lt)..(base_offset + open_gt + 1),
+            kind: SyntaxTokenKind::HtmlTag,
+            is_revealed: is_active_line,
+        });
+        block_decorations.push(MarkdownBlockDecoration {
+            byte_range: (base_offset + open_lt)..(base_offset + open_gt + 1),
+            line_number,
+            kind: MarkdownBlockDecorationKind::HtmlInline {
+                tag: HtmlInlineTagKind::LineBreak,
+                content_range: (base_offset + open_lt)..(base_offset + open_gt + 1),
+                is_active: is_active_line,
+            },
+        });
+        return Some(open_gt + 1);
+    }
+
+    // 3. Inline <svg ...>...</svg>
+    if tag_name == "svg" {
+        let after_open = &line_slice[open_gt + 1..];
+        let lower_after = after_open.to_ascii_lowercase();
+        if let Some(close_rel) = lower_after.find("</svg>") {
+            let svg_end = open_gt + 1 + close_rel + "</svg>".len();
+            let raw_svg = &line_slice[open_lt..svg_end];
+            if let Some((norm_svg, w, h)) = crate::mermaid::normalize_svg_markup(raw_svg) {
+                syntax_fold_spans.push(SyntaxFoldSpan {
+                    byte_range: (base_offset + open_lt)..(base_offset + svg_end),
+                    kind: SyntaxTokenKind::HtmlTag,
+                    is_revealed: is_active_line,
+                });
+                block_decorations.push(MarkdownBlockDecoration {
+                    byte_range: (base_offset + open_lt)..(base_offset + svg_end),
+                    line_number,
+                    kind: MarkdownBlockDecorationKind::SvgBlock {
+                        svg: norm_svg,
+                        width: w,
+                        height: h,
+                        is_active: is_active_line,
+                    },
+                });
+                return Some(svg_end);
+            }
+        }
+        return None;
+    }
+
+    // 4. Paired inline HTML tags (<kbd>, <u>, <ins>, <s>, <del>, <strike>, <mark>, <sup>, <sub>, <b>, <strong>, <i>, <em>, <code>, <details>, <summary>, <span>)
+    let inline_kind = match tag_name.as_str() {
+        "kbd" => Some(HtmlInlineTagKind::Kbd),
+        "u" | "ins" => Some(HtmlInlineTagKind::Underline),
+        "s" | "del" | "strike" => Some(HtmlInlineTagKind::Strikethrough),
+        "mark" => Some(HtmlInlineTagKind::Mark),
+        "sup" => Some(HtmlInlineTagKind::Superscript),
+        "sub" => Some(HtmlInlineTagKind::Subscript),
+        "b" | "strong" => Some(HtmlInlineTagKind::Bold),
+        "i" | "em" => Some(HtmlInlineTagKind::Italic),
+        "code" => Some(HtmlInlineTagKind::Code),
+        "details" => Some(HtmlInlineTagKind::Details),
+        "summary" => Some(HtmlInlineTagKind::Summary),
+        "span" => Some(HtmlInlineTagKind::Span),
+        _ => None,
+    }?;
+
+    let after_open = &line_slice[open_gt + 1..];
+    let lower_after = after_open.to_ascii_lowercase();
+    let close_pat = format!("</{}>", tag_name);
+    if let Some(close_rel) = lower_after.find(&close_pat) {
+        let content_start = open_gt + 1;
+        let content_end = content_start + close_rel;
+        let close_end = content_end + close_pat.len();
+
+        syntax_fold_spans.push(SyntaxFoldSpan {
+            byte_range: (base_offset + open_lt)..(base_offset + open_gt + 1),
+            kind: SyntaxTokenKind::HtmlTag,
+            is_revealed: is_active_line,
+        });
+        syntax_fold_spans.push(SyntaxFoldSpan {
+            byte_range: (base_offset + content_end)..(base_offset + close_end),
+            kind: SyntaxTokenKind::HtmlTag,
+            is_revealed: is_active_line,
+        });
+        block_decorations.push(MarkdownBlockDecoration {
+            byte_range: (base_offset + open_lt)..(base_offset + close_end),
+            line_number,
+            kind: MarkdownBlockDecorationKind::HtmlInline {
+                tag: inline_kind,
+                content_range: (base_offset + content_start)..(base_offset + content_end),
+                is_active: is_active_line,
+            },
+        });
+        if inline_kind == HtmlInlineTagKind::Code && content_end > content_start {
+            block_decorations.push(MarkdownBlockDecoration {
+                byte_range: (base_offset + content_start)..(base_offset + content_end),
+                line_number,
+                kind: MarkdownBlockDecorationKind::InlineCode,
+            });
+        } else if content_end > content_start {
+            scan_inline_spans(
+                &line_slice[content_start..content_end],
+                base_offset + content_start,
+                line_number,
+                is_active_line,
+                dim_factor,
+                syntax_fold_spans,
+                block_decorations,
+            );
+        }
+        return Some(close_end);
+    }
+
+    // Standalone <details> or <summary> opening tag on a multi-line HTML block
+    if matches!(
+        inline_kind,
+        HtmlInlineTagKind::Details | HtmlInlineTagKind::Summary
+    ) {
+        syntax_fold_spans.push(SyntaxFoldSpan {
+            byte_range: (base_offset + open_lt)..(base_offset + open_gt + 1),
+            kind: SyntaxTokenKind::HtmlTag,
+            is_revealed: is_active_line,
+        });
+        return Some(open_gt + 1);
+    }
+
+    None
 }
 
 // ============================================================================
@@ -1641,6 +2209,7 @@ extern "C" {
 }
 
 static CMARK_INIT: Once = Once::new();
+static CMARK_MUTEX: std::sync::Mutex<()> = std::sync::Mutex::new(());
 
 fn ensure_cmark_gfm_initialized() {
     CMARK_INIT.call_once(|| unsafe {
@@ -1659,6 +2228,7 @@ pub const DEFAULT_GFM_EXTENSIONS: &[&str] = &[
 /// Renders Markdown to HTML using the upstream `cmark-gfm` specification parser
 /// with the requested GFM syntax extensions.
 pub fn render_markdown_to_html(markdown: &str, extensions: &[&str]) -> String {
+    let _guard = CMARK_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
     ensure_cmark_gfm_initialized();
     unsafe {
         let mut options = CMARK_OPT_DEFAULT | CMARK_OPT_UNSAFE;
@@ -1779,6 +2349,7 @@ unsafe fn collect_node_plain_text(node: *mut CmarkNode, out: &mut String) {
 /// Parses Markdown using `cmark-gfm` and extracts all CommonMark + GFM block and inline spans,
 /// including 4-space indented code blocks, Setext headings, GFM tables, and resolved reference links.
 pub fn parse_cmark_gfm_ast(markdown: &str) -> CmarkAstAnalysis {
+    let _guard = CMARK_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
     ensure_cmark_gfm_initialized();
     let mut blocks = Vec::new();
     let mut inlines = Vec::new();
@@ -2504,6 +3075,33 @@ Here is a [reference link][ref] and a [shortcut] link.
                 std::hint::black_box(crate::math::layout_latex(&deep_supers(d), 16.0, false));
             }
         });
+    }
+
+    #[test]
+    fn test_anchor_image_scanning_folds_outer_link_syntax() {
+        let md = "[![Download Latest Folio.dmg](https://img.shields.io/badge/Download_Folio.dmg-blue)](https://github.com/lukeredmore/folio/releases/latest/download/Folio.dmg)";
+        let analysis = analyze_markdown_document(md, 99, false, false);
+        assert_eq!(analysis.syntax_fold_spans.len(), 2);
+        assert_eq!(analysis.syntax_fold_spans[0].byte_range, 0..3);
+        assert_eq!(analysis.syntax_fold_spans[1].byte_range, 28..md.len());
+
+        let img_decos: Vec<_> = analysis
+            .block_decorations
+            .iter()
+            .filter_map(|d| match &d.kind {
+                MarkdownBlockDecorationKind::Image { alt, url, .. } => {
+                    Some((d.byte_range.clone(), alt.clone(), url.clone()))
+                }
+                _ => None,
+            })
+            .collect();
+        assert_eq!(img_decos.len(), 1);
+        assert_eq!(img_decos[0].0, 0..md.len());
+        assert_eq!(img_decos[0].1, "Download Latest Folio.dmg");
+        assert_eq!(
+            img_decos[0].2,
+            "https://img.shields.io/badge/Download_Folio.dmg-blue"
+        );
     }
 }
 

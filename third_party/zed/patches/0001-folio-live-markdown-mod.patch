@@ -1,6 +1,6 @@
 --- a/crates/markdown_preview/src/lib.rs
 +++ b/crates/markdown_preview/src/lib.rs
-@@ -1,12 +1,22 @@
+@@ -1,12 +1,24 @@
  //! Zed `markdown_preview` crate (`crates/markdown_preview/src/lib.rs`).
 +//! Adds interactive editing to Zed's Markdown Preview canvas while preserving
 +//! untouched raw source mode in `crates/editor`, plus built-in Folio Markdown extension rules.
@@ -12,7 +12,9 @@
 +use folio_zed_extension::{
 +    extract_zed_outline_symbols, ZedOutlineSymbol, LANGUAGE_CONFIG_TOML, OUTLINE_SCM,
 +};
-+use folio_zed_mod::{FolioZedModSession, FolioZedRenderFrame, GpuiMathPrimitive};
++use folio_zed_mod::{
++    FolioZedModSession, FolioZedRenderFrame, GpuiMathPrimitive, ZedBlockDecoration,
++};
 +use gpui::{Bounds, PaintQuad, Pixels, Point, Rgba, ShapedGlyphRun, Size, WindowScene};
  use std::ops::Range;
  
@@ -25,7 +27,7 @@
  }
  
  impl MarkdownPreviewView {
-@@ -14,18 +24,236 @@
+@@ -14,18 +26,358 @@
          Self {
              active_editor: editor,
              selection: 0..0,
@@ -46,6 +48,21 @@
 +
 +    pub fn set_appearance_mode(&mut self, is_dark: bool) {
 +        self.folio_mod.is_dark = is_dark;
++    }
++
++    pub fn set_pretty_mode(&mut self, enabled: bool) {
++        self.folio_mod.set_pretty_mode(enabled);
++        MarkdownPreviewElement::prepaint(self);
++    }
++
++    pub fn toggle_pretty_mode(&mut self) -> bool {
++        let next = self.folio_mod.toggle_pretty_mode();
++        MarkdownPreviewElement::prepaint(self);
++        next
++    }
++
++    pub fn is_pretty_mode(&self) -> bool {
++        self.folio_mod.pretty_mode
 +    }
 +
 +    pub fn apply_source_edit(&mut self, new_source: String, new_selection: Range<usize>) {
@@ -260,6 +277,113 @@
 +                            corner_radius: 0.0,
 +                        });
 +                    }
++                }
++            }
++        }
++
++        if view.folio_mod.pretty_mode {
++            let bg = frame.theme.code_background;
++            let card_bg = Rgba {
++                r: bg.r as f32,
++                g: bg.g as f32,
++                b: bg.b as f32,
++                a: (bg.a * 0.65) as f32,
++            };
++            for block in &frame.block_decorations {
++                match block {
++                    ZedBlockDecoration::ImageCard {
++                        url,
++                        alt,
++                        width,
++                        height,
++                        is_active,
++                        ..
++                    } if !is_active => {
++                        let w = width.unwrap_or(320) as f32;
++                        let h = height.unwrap_or(180) as f32;
++                        scene.paint_quad(PaintQuad {
++                            bounds: Bounds {
++                                origin: Point {
++                                    x: Pixels(16.0),
++                                    y: Pixels(12.0),
++                                },
++                                size: Size {
++                                    width: Pixels(w),
++                                    height: Pixels(h),
++                                },
++                            },
++                            background: card_bg,
++                            corner_radius: 8.0,
++                        });
++                        let label = if alt.is_empty() { url.clone() } else { alt.clone() };
++                        scene.paint_glyph_run(ShapedGlyphRun {
++                            text: format!("🖼 {label}"),
++                            origin: Point {
++                                x: Pixels(24.0),
++                                y: Pixels(28.0),
++                            },
++                            font_size: 13.0,
++                            italic: false,
++                            bold: true,
++                            color: math_color,
++                        });
++                    }
++                    ZedBlockDecoration::MermaidDiagramCard {
++                        source,
++                        width,
++                        height,
++                        is_active,
++                        ..
++                    } if !is_active => {
++                        scene.paint_quad(PaintQuad {
++                            bounds: Bounds {
++                                origin: Point {
++                                    x: Pixels(16.0),
++                                    y: Pixels(12.0),
++                                },
++                                size: Size {
++                                    width: Pixels(*width),
++                                    height: Pixels(*height),
++                                },
++                            },
++                            background: card_bg,
++                            corner_radius: 10.0,
++                        });
++                        let first_line = source.lines().next().unwrap_or("diagram").trim();
++                        scene.paint_glyph_run(ShapedGlyphRun {
++                            text: format!("◇ Mermaid ({first_line})"),
++                            origin: Point {
++                                x: Pixels(24.0),
++                                y: Pixels(28.0),
++                            },
++                            font_size: 13.0,
++                            italic: false,
++                            bold: true,
++                            color: math_color,
++                        });
++                    }
++                    ZedBlockDecoration::SvgGraphicCard {
++                        width,
++                        height,
++                        is_active,
++                        ..
++                    } if !is_active => {
++                        scene.paint_quad(PaintQuad {
++                            bounds: Bounds {
++                                origin: Point {
++                                    x: Pixels(16.0),
++                                    y: Pixels(12.0),
++                                },
++                                size: Size {
++                                    width: Pixels(*width),
++                                    height: Pixels(*height),
++                                },
++                            },
++                            background: card_bg,
++                            corner_radius: 8.0,
++                        });
++                    }
++                    _ => {}
 +                }
 +            }
 +        }

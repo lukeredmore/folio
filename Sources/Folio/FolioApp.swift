@@ -314,6 +314,15 @@ public struct FolioApp: App {
                 }
                 .keyboardShortcut("m", modifiers: [.command, .option])
 
+                Button("Mermaid Diagram") {
+                    viewModel.insertMermaidBlock()
+                }
+                .keyboardShortcut("d", modifiers: [.command, .option])
+
+                Button("SVG Block") {
+                    viewModel.insertSVGBlock()
+                }
+
                 Button("Quote") {
                     viewModel.insertBlockquote()
                 }
@@ -428,6 +437,9 @@ public struct FolioApp: App {
                 .keyboardShortcut("3", modifiers: [.command, .control])
 
                 Divider()
+
+                Toggle("Pretty Mode (Render Media, Diagrams & HTML)", isOn: $viewModel.prettyModeEnabled)
+                    .keyboardShortcut("\\", modifiers: [.command, .shift])
 
                 Toggle("Source Code Mode", isOn: $viewModel.sourceCodeMode)
                     .keyboardShortcut("/", modifiers: [.command])

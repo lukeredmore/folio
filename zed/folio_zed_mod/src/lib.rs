@@ -4,12 +4,13 @@ pub mod math_canvas;
 pub mod theme_sync;
 
 pub use editor_session::{FolioZedModSession, FolioZedRenderFrame};
-pub use folio_engine::markdown::NewlineAction;
+pub use folio_engine;
+pub use folio_engine::markdown::{HtmlInlineTagKind, NewlineAction};
 pub use inlay_folding::{
-    analyze_buffer_for_zed, compute_zed_folds, translate_block_decorations, ZedBlockDecoration,
-    ZedFoldRange,
+    analyze_buffer_for_zed, analyze_buffer_for_zed_with_options, compute_zed_folds,
+    translate_block_decorations, ZedBlockDecoration, ZedFoldRange,
 };
-pub use math_canvas::{build_gpui_math_canvas, GpuiMathPrimitive, GpuiMathCanvasDescriptor};
+pub use math_canvas::{build_gpui_math_canvas, GpuiMathCanvasDescriptor, GpuiMathPrimitive};
 pub use theme_sync::{ZedAppearanceMode, ZedThemeOverrides};
 
 #[cfg(test)]
@@ -74,4 +75,54 @@ mod tests {
             FolioZedModSession::set_code_fence_language(code_doc, 0, "rust").unwrap();
         assert_eq!(updated_code, "```rust\nprint(1)\n```\n");
     }
+
+    #[test]
+    fn test_zed_mod_images_mermaid_svg_html_and_pretty_mode_toggle() {
+        let mut session = FolioZedModSession::new(true);
+        let doc = "# Title\n![Arch](arch.png)\n<kbd>Cmd+K</kbd> and <mark>note</mark>\n```mermaid\ngraph TD\n  A --> B\n```\n```svg\n<svg viewBox=\"0 0 80 40\"><rect width=\"80\" height=\"40\"/></svg>\n```\n";
+        let frame = session.evaluate_buffer(doc, 0..0);
+        assert!(frame.pretty_mode);
+        assert!(frame.block_decorations.iter().any(|d| matches!(
+            d,
+            ZedBlockDecoration::ImageCard {
+                is_active: false,
+                ..
+            }
+        )));
+        assert!(frame.block_decorations.iter().any(|d| matches!(
+            d,
+            ZedBlockDecoration::MermaidDiagramCard {
+                is_active: false,
+                ..
+            }
+        )));
+        assert!(frame.block_decorations.iter().any(|d| matches!(
+            d,
+            ZedBlockDecoration::SvgGraphicCard {
+                is_active: false,
+                ..
+            }
+        )));
+        assert!(frame.block_decorations.iter().any(|d| matches!(
+            d,
+            ZedBlockDecoration::HtmlInlineStyle {
+                tag: HtmlInlineTagKind::Kbd,
+                is_active: false,
+                ..
+            }
+        )));
+
+        // Toggling pretty_mode off reveals raw source across all rich blocks/inlines
+        assert!(!session.toggle_pretty_mode());
+        let raw_frame = session.evaluate_buffer(doc, 0..0);
+        assert!(!raw_frame.pretty_mode);
+        assert!(raw_frame.block_decorations.iter().all(|d| match d {
+            ZedBlockDecoration::ImageCard { is_active, .. }
+            | ZedBlockDecoration::MermaidDiagramCard { is_active, .. }
+            | ZedBlockDecoration::SvgGraphicCard { is_active, .. }
+            | ZedBlockDecoration::HtmlInlineStyle { is_active, .. } => *is_active,
+            _ => true,
+        }));
+    }
 }
+

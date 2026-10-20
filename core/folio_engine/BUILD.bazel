@@ -9,6 +9,7 @@ ENGINE_SRCS = [
     "src/lib.rs",
     "src/markdown.rs",
     "src/math.rs",
+    "src/mermaid.rs",
     "src/reflow.rs",
     "src/stats.rs",
     "src/theme.rs",
@@ -22,6 +23,7 @@ rust_library(
     edition = "2021",
     deps = [
         "//third_party/cmark_gfm:cmark_gfm",
+        "@crates//:mermaid-rs-renderer",
     ],
 )
 
@@ -33,6 +35,7 @@ rust_static_library(
     edition = "2021",
     deps = [
         "//third_party/cmark_gfm:cmark_gfm",
+        "@crates//:mermaid-rs-renderer",
     ],
 )
 

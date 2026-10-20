@@ -124,3 +124,54 @@ fn test_folio_zed_extension_is_built_in_to_modded_zed_build() {
     assert_eq!(symbols[1].text, "Section");
     assert_eq!(symbols[2].text, "Subsection");
 }
+
+#[test]
+fn test_zed_markdown_preview_rich_media_and_pretty_mode_toggle() {
+    let md = concat!(
+        "# Rich Media\n",
+        "![Architecture](docs/arch.png)\n",
+        "Press <kbd>Cmd+P</kbd> for <mark>Pretty</mark> mode.\n",
+        "```mermaid\n",
+        "flowchart LR\n",
+        "    A[Source] --> B[Pretty]\n",
+        "```\n",
+        "<svg width=\"160\" height=\"80\"><rect width=\"160\" height=\"80\" fill=\"#4B6BFB\"/></svg>\n"
+    );
+    let mut preview = MarkdownPreviewView::new(Editor::new(md));
+    preview.set_selection(0..0);
+
+    let mut scene = WindowScene::new();
+    MarkdownPreviewElement::prepaint(&mut preview);
+    MarkdownPreviewElement::paint(&preview, &mut scene);
+
+    assert!(preview.is_pretty_mode());
+    let visible = preview.render_canvas_visible_text();
+    // Inactive lines hide raw HTML tags and image syntax in pretty mode
+    assert!(
+        !visible.contains("<kbd>") && !visible.contains("</kbd>"),
+        "Pretty mode should fold inactive HTML tags: {visible:?}"
+    );
+    assert!(
+        !visible.contains("(docs/arch.png)"),
+        "Pretty mode should fold inactive image URL syntax: {visible:?}"
+    );
+    assert!(
+        !visible.contains("<svg") && !visible.contains("```mermaid"),
+        "Pretty mode should fold inactive Mermaid fences and raw SVG tags: {visible:?}"
+    );
+    assert!(
+        !scene.quads.is_empty() && !scene.glyph_runs.is_empty(),
+        "Pretty mode should paint quads and labels for inactive images, Mermaid diagrams, and SVGs"
+    );
+
+    // Toggling pretty mode off reveals raw image syntax, HTML tags, Mermaid source, and SVG markup
+    assert!(!preview.toggle_pretty_mode());
+    assert!(!preview.is_pretty_mode());
+    let raw_visible = preview.render_canvas_visible_text();
+    assert!(raw_visible.contains("![Architecture](docs/arch.png)"));
+    assert!(raw_visible.contains("<kbd>Cmd+P</kbd>"));
+    assert!(raw_visible.contains("<mark>Pretty</mark>"));
+    assert!(raw_visible.contains("flowchart LR\n    A[Source] --> B[Pretty]"));
+    assert!(raw_visible.contains("<svg width=\"160\" height=\"80\">"));
+}
+
