@@ -334,6 +334,20 @@ public struct StatusBarView: View {
             .buttonStyle(.plain)
             .help("Toggle Source Code Mode (Cmd+/)")
 
+            Button {
+                viewModel.prettyModeEnabled.toggle()
+            } label: {
+                HStack(spacing: 4) {
+                    Image(systemName: viewModel.prettyModeEnabled ? "sparkles" : "sparkles.rectangle.stack")
+                        .font(.system(size: 11.5))
+                    Text(viewModel.prettyModeEnabled ? "Pretty" : "Raw Media")
+                        .font(.system(size: 11, weight: .medium))
+                }
+                .foregroundColor(viewModel.prettyModeEnabled && !viewModel.sourceCodeMode ? viewModel.theme.linkColor : viewModel.theme.secondaryTextColor)
+            }
+            .buttonStyle(.plain)
+            .help("Toggle Pretty Mode for Images, Mermaid, SVGs & Inline HTML (Cmd+Shift+\\)")
+
             // Active mode badges (Focus Mode / Typewriter Mode)
             if viewModel.focusMode {
                 modeBadge(title: "Focus Mode", icon: "eye") {
@@ -617,6 +631,9 @@ public struct EditorSettingsView: View {
                     range: 560.0...1280.0,
                     step: 20.0
                 )
+
+                Toggle("Pretty Mode (Render Images, Mermaid, SVGs & Inline HTML)", isOn: $viewModel.prettyModeEnabled)
+                    .font(.system(size: 12))
 
                 HStack {
                     Text("Wrap Markdown Source At")

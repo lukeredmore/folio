@@ -8,3 +8,7 @@ description = "Folio native Markdown & 2D LaTeX rendering engine (shared across 
 [lib]
 name = "folio_engine"
 crate-type = ["rlib", "staticlib"]
+
+[dependencies]
+mermaid-rs-renderer = { version = "0.3.1", default-features = false }
+

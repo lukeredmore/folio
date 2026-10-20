@@ -1,0 +1,30 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 160" width="640" height="160">
+  <defs>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#0f172a"/>
+      <stop offset="100%" stop-color="#1e293b"/>
+    </linearGradient>
+    <linearGradient id="accent" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#3b82f6"/>
+      <stop offset="100%" stop-color="#8b5cf6"/>
+    </linearGradient>
+  </defs>
+  <rect width="640" height="160" rx="14" fill="url(#bg)"/>
+  <rect x="24" y="28" width="168" height="104" rx="10" fill="#1e293b" stroke="#3b82f6" stroke-width="2"/>
+  <text x="108" y="72" text-anchor="middle" fill="#f8fafc" font-family="-apple-system, SF Pro Display, sans-serif" font-size="15" font-weight="700">folio_engine</text>
+  <text x="108" y="96" text-anchor="middle" fill="#94a3b8" font-family="-apple-system, SF Pro Text, sans-serif" font-size="12">Rust AST + Mermaid</text>
+
+  <path d="M 196 80 L 232 80" stroke="url(#accent)" stroke-width="3" stroke-linecap="round"/>
+  <polygon points="236,80 226,74 226,86" fill="#6366f1"/>
+
+  <rect x="240" y="28" width="168" height="104" rx="10" fill="#1e293b" stroke="#6366f1" stroke-width="2"/>
+  <text x="324" y="72" text-anchor="middle" fill="#f8fafc" font-family="-apple-system, SF Pro Display, sans-serif" font-size="15" font-weight="700">FolioApp (macOS)</text>
+  <text x="324" y="96" text-anchor="middle" fill="#94a3b8" font-family="-apple-system, SF Pro Text, sans-serif" font-size="12">AppKit + TextKit Live</text>
+
+  <path d="M 412 80 L 448 80" stroke="url(#accent)" stroke-width="3" stroke-linecap="round"/>
+  <polygon points="452,80 442,74 442,86" fill="#8b5cf6"/>
+
+  <rect x="456" y="28" width="160" height="104" rx="10" fill="#1e293b" stroke="#8b5cf6" stroke-width="2"/>
+  <text x="536" y="72" text-anchor="middle" fill="#f8fafc" font-family="-apple-system, SF Pro Display, sans-serif" font-size="15" font-weight="700">folio_zed_mod</text>
+  <text x="536" y="96" text-anchor="middle" fill="#94a3b8" font-family="-apple-system, SF Pro Text, sans-serif" font-size="12">GPUI + Buffer Inlays</text>
+</svg>

@@ -235,7 +235,7 @@ index e6f258c..ced9eb6 100644
  html5ever.workspace = true
  language.workspace = true
 diff --git a/crates/markdown/src/html/html_rendering.rs b/crates/markdown/src/html/html_rendering.rs
-index e1c2ba0..aab3c41 100644
+index e1c2ba0..05c22c1 100644
 --- a/crates/markdown/src/html/html_rendering.rs
 +++ b/crates/markdown/src/html/html_rendering.rs
 @@ -165,7 +165,7 @@ impl MarkdownElement {
@@ -247,8 +247,19 @@ index e1c2ba0..aab3c41 100644
                  &list_item.source_range,
                  markdown_end,
              );
+@@ -453,6 +453,10 @@ impl MarkdownElement {
+             .image_resolver
+             .as_ref()
+             .and_then(|resolve| resolve(image.dest_url.as_ref(), cx))
++            .or_else(|| {
++                crate::decode_data_url_image(image.dest_url.as_ref())
++                    .map(gpui::ImageSource::from)
++            })
+         else {
+             return;
+         };
 diff --git a/crates/markdown/src/markdown.rs b/crates/markdown/src/markdown.rs
-index 10bd60d..873a043 100644
+index 10bd60d..14e3e63 100644
 --- a/crates/markdown/src/markdown.rs
 +++ b/crates/markdown/src/markdown.rs
 @@ -69,6 +69,7 @@ pub type CodeSpanLinkCallback = Arc<dyn Fn(&str, &App) -> Option<SharedString> +
@@ -259,7 +270,15 @@ index 10bd60d..873a043 100644
  /// Invoked when a mermaid diagram's zoom level changes (via scroll gesture or
  /// the reset button), so a scroll container can keep the diagram anchored.
  pub type MermaidZoomCallback = Rc<dyn Fn(&mut Window, &mut App)>;
-@@ -517,6 +518,9 @@ pub struct Markdown {
+@@ -501,6 +502,7 @@ pub struct Markdown {
+     language_registry: Option<Arc<LanguageRegistry>>,
+     fallback_code_block_language: Option<LanguageName>,
+     options: MarkdownOptions,
++    pretty_mode: bool,
+     mermaid_state: MermaidState,
+     _mermaid_theme_subscription: Option<Subscription>,
+     /// Per-diagram view state (current tab, zoom, scroll position, and pending
+@@ -517,6 +519,9 @@ pub struct Markdown {
      context_menu_selected_markdown: Option<SharedString>,
      search_highlights: Rc<[Range<usize>]>,
      active_search_highlight: Option<usize>,
@@ -269,7 +288,7 @@ index 10bd60d..873a043 100644
  }
  
  #[derive(Clone, Copy, Default)]
-@@ -684,6 +688,34 @@ impl Markdown {
+@@ -684,6 +689,34 @@ impl Markdown {
          } else {
              None
          };
@@ -304,7 +323,15 @@ index 10bd60d..873a043 100644
          let mut this = Self {
              source,
              selection: Selection::default(),
-@@ -712,6 +744,9 @@ impl Markdown {
+@@ -701,6 +734,7 @@ impl Markdown {
+             language_registry,
+             fallback_code_block_language,
+             options,
++            pretty_mode: true,
+             mermaid_state: MermaidState::default(),
+             _mermaid_theme_subscription: theme_subscription,
+             mermaid_views: HashMap::default(),
+@@ -712,11 +746,30 @@ impl Markdown {
              context_menu_selected_markdown: None,
              search_highlights: Rc::default(),
              active_search_highlight: None,
@@ -314,7 +341,28 @@ index 10bd60d..873a043 100644
          };
          this.parse(cx);
          this
-@@ -1034,6 +1069,103 @@ impl Markdown {
+     }
+ 
++    pub fn pretty_mode(&self) -> bool {
++        self.pretty_mode
++    }
++
++    pub fn set_pretty_mode(&mut self, enabled: bool, cx: &mut Context<Self>) {
++        if self.pretty_mode != enabled {
++            self.pretty_mode = enabled;
++            cx.notify();
++        }
++    }
++
++    pub fn toggle_pretty_mode(&mut self, cx: &mut Context<Self>) {
++        self.pretty_mode = !self.pretty_mode;
++        cx.notify();
++    }
++
+     pub fn new_text(source: SharedString, cx: &mut Context<Self>) -> Self {
+         Self::new_with_options(
+             source,
+@@ -1034,6 +1087,103 @@ impl Markdown {
          cx.notify();
      }
  
@@ -418,7 +466,7 @@ index 10bd60d..873a043 100644
      pub fn reset(&mut self, source: SharedString, cx: &mut Context<Self>) {
          if &source == self.source() {
              if self.pending_parse.is_none() {
-@@ -1051,7 +1183,9 @@ impl Markdown {
+@@ -1051,7 +1201,9 @@ impl Markdown {
              self.pending_heading_scroll = None;
          }
          self.source = source;
@@ -429,7 +477,36 @@ index 10bd60d..873a043 100644
          self.autoscroll_request = None;
          self.pending_autoscroll = None;
          self.pending_parse = None;
-@@ -1483,6 +1617,10 @@ impl Selection {
+@@ -1314,26 +1466,9 @@ impl Markdown {
+ 
+             for (range, event) in &events {
+                 if let MarkdownEvent::Start(MarkdownTag::Image { dest_url, .. }) = event
+-                    && let Some(data_url) = dest_url.strip_prefix("data:")
++                    && let Some(image) = decode_data_url_image(dest_url.as_ref())
+                 {
+-                    let Some((mime_info, data)) = data_url.split_once(',') else {
+-                        continue;
+-                    };
+-                    let Some((mime_type, encoding)) = mime_info.split_once(';') else {
+-                        continue;
+-                    };
+-                    let Some(format) = ImageFormat::from_mime_type(mime_type) else {
+-                        continue;
+-                    };
+-                    let is_base64 = encoding == "base64";
+-                    if is_base64
+-                        && let Some(bytes) = base64::prelude::BASE64_STANDARD
+-                            .decode(data)
+-                            .log_with_level(Level::Debug)
+-                    {
+-                        let image = Arc::new(Image::from_bytes(format, bytes));
+-                        images_by_source_offset.insert(range.start, image);
+-                    }
++                    images_by_source_offset.insert(range.start, image);
+                 }
+             }
+ 
+@@ -1483,6 +1618,10 @@ impl Selection {
      fn tail(&self) -> usize {
          if self.reversed { self.end } else { self.start }
      }
@@ -440,7 +517,7 @@ index 10bd60d..873a043 100644
  }
  
  #[derive(Debug, Clone, Default)]
-@@ -1741,6 +1879,7 @@ pub struct MarkdownElement {
+@@ -1741,6 +1880,7 @@ pub struct MarkdownElement {
      code_span_link: Option<CodeSpanLinkCallback>,
      on_source_click: Option<SourceClickCallback>,
      on_checkbox_toggle: Option<CheckboxToggleCallback>,
@@ -448,7 +525,7 @@ index 10bd60d..873a043 100644
      on_mermaid_zoom: Option<MermaidZoomCallback>,
      image_resolver: Option<Box<dyn Fn(&str, &App) -> Option<ImageSource>>>,
      show_root_block_markers: bool,
-@@ -1768,6 +1907,7 @@ impl MarkdownElement {
+@@ -1768,6 +1908,7 @@ impl MarkdownElement {
              code_span_link: None,
              on_source_click: None,
              on_checkbox_toggle: None,
@@ -456,7 +533,7 @@ index 10bd60d..873a043 100644
              on_mermaid_zoom: None,
              image_resolver: None,
              show_root_block_markers: false,
-@@ -1856,6 +1996,14 @@ impl MarkdownElement {
+@@ -1856,6 +1997,14 @@ impl MarkdownElement {
          self
      }
  
@@ -471,7 +548,75 @@ index 10bd60d..873a043 100644
      /// Registers a callback invoked when a mermaid diagram's zoom level changes.
      /// Consumers that scroll the markdown can use this to keep the diagram's
      /// position anchored while it grows or shrinks.
-@@ -2252,7 +2400,7 @@ impl MarkdownElement {
+@@ -1983,6 +2132,16 @@ impl MarkdownElement {
+                             });
+                         }
+                     })
++            } else if !self.style.prevent_mouse_interaction && self.on_source_edit.is_some() {
++                let markdown = self.markdown.clone();
++                let edit_offset = (range.start + 2).min(range.end);
++                wrapper.cursor_pointer().on_click(move |_, window, cx| {
++                    let focus_handle = markdown.update(cx, |md, cx| {
++                        md.set_selection_range(edit_offset..edit_offset, cx);
++                        md.focus_handle.clone()
++                    });
++                    window.focus(&focus_handle, cx);
++                })
+             } else {
+                 wrapper
+             };
+@@ -2009,6 +2168,50 @@ impl MarkdownElement {
+         builder.push_image_child(image_element);
+     }
+ 
++    fn render_inline_svg_card(
++        &self,
++        block_start: usize,
++        edit_offset: usize,
++        svg_image: Arc<Image>,
++        cx: &App,
++    ) -> AnyElement {
++        let border_color = cx.theme().colors().border_variant;
++        let bg_color = cx.theme().colors().surface_background;
++        let wrapper = div()
++            .id(("markdown-svg-card", block_start))
++            .w_full()
++            .my_1()
++            .p_2()
++            .rounded_md()
++            .border_1()
++            .border_color(border_color)
++            .bg(bg_color)
++            .flex()
++            .justify_center()
++            .child(
++                img(ImageSource::Image(svg_image))
++                    .id(("markdown-svg-img", block_start))
++                    .min_w_0()
++                    .max_w_full()
++                    .max_h(px(480.)),
++            );
++        if !self.style.prevent_mouse_interaction && self.on_source_edit.is_some() {
++            let markdown = self.markdown.clone();
++            wrapper
++                .cursor_pointer()
++                .on_click(move |_, window, cx| {
++                    let focus_handle = markdown.update(cx, |md, cx| {
++                        md.set_selection_range(edit_offset..edit_offset, cx);
++                        md.focus_handle.clone()
++                    });
++                    window.focus(&focus_handle, cx);
++                })
++                .into_any_element()
++        } else {
++            wrapper.into_any_element()
++        }
++    }
++
+     fn push_markdown_paragraph(
+         &self,
+         builder: &mut MarkdownElementBuilder,
+@@ -2252,7 +2455,7 @@ impl MarkdownElement {
      fn push_markdown_list_item(
          &self,
          builder: &mut MarkdownElementBuilder,
@@ -480,7 +625,7 @@ index 10bd60d..873a043 100644
          range: &Range<usize>,
          markdown_end: usize,
      ) {
-@@ -2265,7 +2413,7 @@ impl MarkdownElement {
+@@ -2265,7 +2468,7 @@ impl MarkdownElement {
                  })
                  .h_flex()
                  .items_start()
@@ -489,7 +634,7 @@ index 10bd60d..873a043 100644
              range,
              markdown_end,
          );
-@@ -2289,8 +2437,11 @@ impl MarkdownElement {
+@@ -2289,8 +2492,11 @@ impl MarkdownElement {
              return;
          }
  
@@ -501,7 +646,7 @@ index 10bd60d..873a043 100644
              && (rendered_text
                  .image_link_for_position(window.mouse_position())
                  .is_some()
-@@ -2341,7 +2492,9 @@ impl MarkdownElement {
+@@ -2341,7 +2547,9 @@ impl MarkdownElement {
                          let position_result =
                              rendered_text.source_index_for_position(event.position);
  
@@ -512,7 +657,7 @@ index 10bd60d..873a043 100644
                              if let Some(footnote_ref) =
                                  rendered_text.footnote_ref_for_source_index(source_index)
                              {
-@@ -2618,16 +2771,55 @@ impl Element for MarkdownElement {
+@@ -2618,16 +2826,59 @@ impl Element for MarkdownElement {
              }
          };
  
@@ -522,6 +667,7 @@ index 10bd60d..873a043 100644
 +            images,
 +            active_root_block,
 +            render_mermaid_diagrams,
++            pretty_mode,
 +            mermaid_state,
 +            selection,
 +            is_editable_focused,
@@ -538,13 +684,16 @@ index 10bd60d..873a043 100644
                  markdown.images_by_source_offset.clone(),
                  markdown.active_root_block,
                  markdown.options.render_mermaid_diagrams,
++                markdown.pretty_mode,
                  markdown.mermaid_state.clone(),
 +                markdown.selection.clone(),
 +                focused,
              )
          };
 +        install_folio_panic_hook();
-+        let active_line_range: Option<Range<usize>> = if is_editable_focused {
++        let active_line_range: Option<Range<usize>> = if !pretty_mode {
++            Some(0..parsed_markdown.source.len().saturating_add(1))
++        } else if is_editable_focused {
 +            let src = parsed_markdown.source.as_ref();
 +            let len = src.len();
 +            let mut head = selection.head().min(len);
@@ -569,7 +718,7 @@ index 10bd60d..873a043 100644
          let mut builder = MarkdownElementBuilder::new(
              &self.style.container_style,
              self.style.base_text_style.clone(),
-@@ -2641,6 +2833,9 @@ impl Element for MarkdownElement {
+@@ -2641,6 +2892,9 @@ impl Element for MarkdownElement {
          };
          let mut code_block_ids = HashSet::default();
          let mut current_code_block_text = None;
@@ -579,7 +728,38 @@ index 10bd60d..873a043 100644
  
          let mut current_img_block_range: Option<Range<usize>> = None;
          let mut handled_html_block = false;
-@@ -2738,6 +2933,16 @@ impl Element for MarkdownElement {
+@@ -2695,6 +2949,19 @@ impl Element for MarkdownElement {
+                 MarkdownEvent::Start(tag) => {
+                     match tag {
+                         MarkdownTag::Image { dest_url, .. } => {
++                            let img_on_active_line = self.on_source_edit.is_some()
++                                && is_range_on_active_line(&active_line_range, range);
++                            if !pretty_mode || img_on_active_line {
++                                if let Some(raw_img) = parsed_markdown.source.get(range.clone()) {
++                                    current_img_block_range = Some(range.clone());
++                                    builder.push_control_chars(
++                                        raw_img,
++                                        range.clone(),
++                                        muted_color,
++                                    );
++                                }
++                                continue;
++                            }
+                             let alt_text = collect_image_alt_text(
+                                 &parsed_markdown.events[index..],
+                                 &parsed_markdown.source,
+@@ -2714,6 +2981,10 @@ impl Element for MarkdownElement {
+                                 .image_resolver
+                                 .as_ref()
+                                 .and_then(|resolve| resolve(dest_url.as_ref(), cx))
++                                .or_else(|| {
++                                    decode_data_url_image(dest_url.as_ref())
++                                        .map(ImageSource::from)
++                                })
+                             {
+                                 current_img_block_range = Some(range.clone());
+                                 self.push_markdown_image(
+@@ -2738,6 +3009,16 @@ impl Element for MarkdownElement {
                                  markdown_end,
                                  text_align_override,
                              );
@@ -596,7 +776,7 @@ index 10bd60d..873a043 100644
                          }
                          MarkdownTag::Heading { level, .. } => {
                              let text_align_override = builder
-@@ -2751,6 +2956,43 @@ impl Element for MarkdownElement {
+@@ -2751,6 +3032,43 @@ impl Element for MarkdownElement {
                                  markdown_end,
                                  text_align_override,
                              );
@@ -640,7 +820,7 @@ index 10bd60d..873a043 100644
                          }
                          MarkdownTag::BlockQuote(kind) => {
                              self.push_markdown_block_quote(
-@@ -2759,9 +3001,60 @@ impl Element for MarkdownElement {
+@@ -2759,9 +3077,61 @@ impl Element for MarkdownElement {
                                  range,
                                  markdown_end,
                              );
@@ -694,15 +874,52 @@ index 10bd60d..873a043 100644
 +                            }
                          }
 -                        MarkdownTag::CodeBlock { kind, .. } => {
+-                            if render_mermaid_diagrams
 +                        MarkdownTag::CodeBlock { kind, metadata } => {
 +                            let block_on_active_line =
 +                                is_range_on_active_line(&active_line_range, range);
-                             if render_mermaid_diagrams
++                            if pretty_mode
++                                && render_mermaid_diagrams
 +                                && !(self.on_source_edit.is_some() && block_on_active_line)
                                  && let Some(mermaid_diagram) =
                                      parsed_markdown.mermaid_diagrams.get(&range.start)
                              {
-@@ -2810,6 +3103,14 @@ impl Element for MarkdownElement {
+@@ -2799,6 +3169,34 @@ impl Element for MarkdownElement {
+                                 continue;
+                             }
+ 
++                            if pretty_mode
++                                && !(self.on_source_edit.is_some() && block_on_active_line)
++                                && metadata.is_fenced_closed
++                                && matches!(
++                                    kind,
++                                    CodeBlockKind::FencedLang(lang)
++                                        if lang.trim().eq_ignore_ascii_case("svg")
++                                )
++                                && let Some(raw_svg) =
++                                    parsed_markdown.source.get(metadata.content_range.clone())
++                                && let Some((normalized_svg, _, _)) =
++                                    folio_zed_mod::folio_engine::normalize_svg_markup(raw_svg)
++                            {
++                                let svg_image = Arc::new(Image::from_bytes(
++                                    ImageFormat::Svg,
++                                    normalized_svg.into_bytes(),
++                                ));
++                                let svg_el = self.render_inline_svg_card(
++                                    range.start,
++                                    metadata.content_range.start,
++                                    svg_image,
++                                    cx,
++                                );
++                                builder.push_sourced_element(metadata.content_range.clone(), svg_el);
++                                rendered_mermaid_block = true;
++                                continue;
++                            }
++
+                             current_code_block_text = match &self.code_block_renderer {
+                                 CodeBlockRenderer::Default {
+                                     copy_button_visibility,
+@@ -2810,6 +3208,14 @@ impl Element for MarkdownElement {
                              };
  
                              let language = parsed_markdown.code_block_language(kind);
@@ -717,7 +934,7 @@ index 10bd60d..873a043 100644
  
                              let is_indented = matches!(kind, CodeBlockKind::Indented);
                              let scroll_handle = if self.style.code_block_overflow_x_scroll {
-@@ -2889,6 +3190,37 @@ impl Element for MarkdownElement {
+@@ -2889,15 +3295,72 @@ impl Element for MarkdownElement {
                                      builder.push_text_style(self.style.code_block.text.to_owned());
                                      builder.push_code_block(language);
                                      builder.push_div(code_block, range, markdown_end);
@@ -755,7 +972,45 @@ index 10bd60d..873a043 100644
                                  }
                                  (CodeBlockRenderer::Custom { .. }, _) => {}
                              }
-@@ -2912,9 +3244,83 @@ impl Element for MarkdownElement {
+                         }
+                         MarkdownTag::HtmlBlock => {
+                             builder.push_div(div(), range, markdown_end);
+-                            if let Some(block) = parsed_markdown.html_blocks.get(&range.start) {
+-                                self.render_html_block(block, &mut builder, markdown_end, cx);
+-                                handled_html_block = true;
++                            let html_on_active_line = self.on_source_edit.is_some()
++                                && is_range_on_active_line(&active_line_range, range);
++                            if pretty_mode && !html_on_active_line {
++                                if let Some(raw_html) = parsed_markdown.source.get(range.clone()) {
++                                    let trimmed = raw_html.trim();
++                                    if trimmed.starts_with("<svg")
++                                        && trimmed.ends_with("</svg>")
++                                        && let Some((normalized_svg, _, _)) =
++                                            folio_zed_mod::folio_engine::normalize_svg_markup(trimmed)
++                                    {
++                                        let svg_image = Arc::new(Image::from_bytes(
++                                            ImageFormat::Svg,
++                                            normalized_svg.into_bytes(),
++                                        ));
++                                        let svg_el = self.render_inline_svg_card(
++                                            range.start,
++                                            range.start,
++                                            svg_image,
++                                            cx,
++                                        );
++                                        builder.push_sourced_element(range.clone(), svg_el);
++                                        handled_html_block = true;
++                                        continue;
++                                    }
++                                }
++                                if let Some(block) = parsed_markdown.html_blocks.get(&range.start) {
++                                    self.render_html_block(block, &mut builder, markdown_end, cx);
++                                    handled_html_block = true;
++                                }
+                             }
+                         }
+                         MarkdownTag::List(bullet_index) => {
+@@ -2912,9 +3375,83 @@ impl Element for MarkdownElement {
                              );
                          }
                          MarkdownTag::Item => {
@@ -841,7 +1096,7 @@ index 10bd60d..873a043 100644
                                  let source = &parsed_markdown.source()[range.clone()];
                                  let checkbox = Checkbox::new(
                                      ElementId::Name(source.to_string().into()),
-@@ -2933,37 +3339,225 @@ impl Element for MarkdownElement {
+@@ -2933,37 +3470,225 @@ impl Element for MarkdownElement {
                                      checkbox.visualization_only(true)
                                  };
  
@@ -1090,7 +1345,7 @@ index 10bd60d..873a043 100644
                              builder.push_text_style(TextStyleRefinement {
                                  strikethrough: Some(StrikethroughStyle {
                                      thickness: px(1.),
-@@ -2974,6 +3568,39 @@ impl Element for MarkdownElement {
+@@ -2974,6 +3699,39 @@ impl Element for MarkdownElement {
                          }
                          MarkdownTag::Link { dest_url, .. } => {
                              if builder.code_block_stack.is_empty() {
@@ -1130,7 +1385,7 @@ index 10bd60d..873a043 100644
                                  builder.link_depth += 1;
                                  builder.push_link(dest_url.clone(), range.clone());
                                  let style = self
-@@ -3139,19 +3766,49 @@ impl Element for MarkdownElement {
+@@ -3139,19 +3897,49 @@ impl Element for MarkdownElement {
                          self.pop_markdown_paragraph(&mut builder);
                      }
                      MarkdownTagEnd::Heading(_) => {
@@ -1181,7 +1436,7 @@ index 10bd60d..873a043 100644
  
                          if let CodeBlockRenderer::Default {
                              copy_button_visibility,
-@@ -3159,10 +3816,13 @@ impl Element for MarkdownElement {
+@@ -3159,10 +3947,13 @@ impl Element for MarkdownElement {
                              ..
                          } = &self.code_block_renderer
                              && (*copy_button_visibility != CopyButtonVisibility::Hidden
@@ -1196,7 +1451,7 @@ index 10bd60d..873a043 100644
                              builder.modify_current_div(|el| {
                                  let any_hover = copy_button_visibility
                                      == CopyButtonVisibility::VisibleOnHover
-@@ -3179,6 +3839,7 @@ impl Element for MarkdownElement {
+@@ -3179,6 +3970,7 @@ impl Element for MarkdownElement {
                                          format!("markdown_code_block_buttons_{}", range.end)
                                      })
                                      .gap_0p5()
@@ -1204,7 +1459,7 @@ index 10bd60d..873a043 100644
                                      .absolute()
                                      .bg(cx.theme().colors().editor_background)
                                      .when_else(
-@@ -3188,6 +3849,18 @@ impl Element for MarkdownElement {
+@@ -3188,6 +3980,18 @@ impl Element for MarkdownElement {
                                          },
                                          |this| this.top_1p5().right_1p5(),
                                      )
@@ -1223,7 +1478,7 @@ index 10bd60d..873a043 100644
                                      .when(
                                          wrap_button_visibility != WrapButtonVisibility::Hidden,
                                          |this| {
-@@ -3229,13 +3902,51 @@ impl Element for MarkdownElement {
+@@ -3229,13 +4033,51 @@ impl Element for MarkdownElement {
                      MarkdownTagEnd::Item => {
                          self.pop_markdown_list_item(&mut builder);
                      }
@@ -1279,7 +1534,7 @@ index 10bd60d..873a043 100644
                          }
                      }
                      MarkdownTagEnd::Table => {
-@@ -3286,15 +3997,49 @@ impl Element for MarkdownElement {
+@@ -3286,54 +4128,166 @@ impl Element for MarkdownElement {
                      );
                  }
                  MarkdownEvent::Code => {
@@ -1327,9 +1582,139 @@ index 10bd60d..873a043 100644
 +                        );
 +                    }
                  }
-                 MarkdownEvent::Html => {
+-                MarkdownEvent::Html => {
++                MarkdownEvent::Html | MarkdownEvent::InlineHtml => {
                      let html = &parsed_markdown.source[range.clone()];
-@@ -3355,6 +4100,148 @@ impl Element for MarkdownElement {
++                    let html_on_active_line = is_range_on_active_line(&active_line_range, range);
+                     if html.starts_with("<!--") {
+                         builder.html_comment = true;
+                     }
+                     if html.trim_end().ends_with("-->") {
+                         builder.html_comment = false;
++                        if html_on_active_line {
++                            builder.push_control_chars(html, range.clone(), muted_color);
++                        }
+                         continue;
+                     }
+                     if builder.html_comment {
++                        if html_on_active_line {
++                            builder.push_control_chars(html, range.clone(), muted_color);
++                        }
+                         continue;
+                     }
+-                    builder.push_text(html, range.clone());
+-                }
+-                MarkdownEvent::InlineHtml => {
+-                    let html = &parsed_markdown.source[range.clone()];
+                     if let Some(code) = html
+                         .strip_prefix("<code>")
+                         .and_then(|html| html.strip_suffix("</code>"))
+                     {
+                         let code_start = range.start + "<code>".len();
++                        let code_end = code_start + code.len();
++                        if html_on_active_line {
++                            builder.push_control_chars(
++                                &parsed_markdown.source[range.start..code_start],
++                                range.start..code_start,
++                                muted_color,
++                            );
++                        }
+                         self.push_markdown_code_span(
+                             &mut builder,
+                             code,
+-                            code_start..code_start + code.len(),
++                            code_start..code_end,
+                             cx,
+                         );
++                        if html_on_active_line {
++                            builder.push_control_chars(
++                                &parsed_markdown.source[code_end..range.end],
++                                code_end..range.end,
++                                muted_color,
++                            );
++                        }
+                         continue;
+                     }
+-                    if html.starts_with("<code>") {
+-                        builder.push_text_style(self.style.inline_code.clone());
+-                        continue;
+-                    }
+-                    if html.trim_end().starts_with("</code>") {
+-                        builder.pop_text_style();
++                    let trimmed = html.trim();
++                    let lower = trimmed.to_ascii_lowercase();
++                    if lower == "<br>" || lower == "<br/>" || lower == "<br />" {
++                        if html_on_active_line {
++                            builder.push_control_chars(html, range.clone(), muted_color);
++                        } else {
++                            builder.push_line_break(range.clone());
++                        }
+                         continue;
+                     }
+-                    builder.push_text(&parsed_markdown.source[range.clone()], range.clone());
++                    if lower.starts_with("<img") && lower.ends_with('>') {
++                        if html_on_active_line {
++                            builder.push_control_chars(html, range.clone(), muted_color);
++                            continue;
++                        }
++                        if let Some((src, alt, width, height)) = parse_inline_html_img_tag(trimmed)
++                            && let Some(image_source) = self
++                                .image_resolver
++                                .as_ref()
++                                .and_then(|resolve| resolve(&src, cx))
++                                .or_else(|| {
++                                    images
++                                        .get(&range.start)
++                                        .cloned()
++                                        .or_else(|| decode_data_url_image(&src))
++                                        .map(ImageSource::Image)
++                                })
++                        {
++                            self.push_markdown_image(
++                                &mut builder,
++                                range,
++                                image_source,
++                                src.into(),
++                                (!alt.is_empty()).then(|| alt.into()),
++                                width,
++                                height,
++                            );
++                            continue;
++                        }
++                    }
++                    if let Some(tag_action) = classify_inline_html_tag(&lower, &self.style, cx) {
++                        match tag_action {
++                            InlineHtmlTagAction::Open(style) => {
++                                if html_on_active_line {
++                                    builder.push_control_chars(html, range.clone(), muted_color);
++                                }
++                                builder.push_text_style(style);
++                                continue;
++                            }
++                            InlineHtmlTagAction::Close => {
++                                builder.pop_text_style();
++                                if html_on_active_line {
++                                    builder.push_control_chars(html, range.clone(), muted_color);
++                                }
++                                continue;
++                            }
++                            InlineHtmlTagAction::StructuralHide => {
++                                if html_on_active_line {
++                                    builder.push_control_chars(html, range.clone(), muted_color);
++                                }
++                                continue;
++                            }
++                        }
++                    }
++                    if html_on_active_line {
++                        builder.push_control_chars(html, range.clone(), muted_color);
++                    } else {
++                        builder.push_text(html, range.clone());
++                    }
+                 }
+                 MarkdownEvent::Rule => {
+                     builder.push_div(
+@@ -3355,6 +4309,148 @@ impl Element for MarkdownElement {
                  MarkdownEvent::TaskListMarker(_) => {
                      // handled inside the `MarkdownTag::Item` case
                  }
@@ -1478,7 +1863,7 @@ index 10bd60d..873a043 100644
                  MarkdownEvent::FootnoteReference(label) => {
                      builder.push_footnote_ref(label.clone(), range.clone());
                      builder.push_text_style(self.style.link.clone());
-@@ -3373,6 +4260,7 @@ impl Element for MarkdownElement {
+@@ -3373,6 +4469,7 @@ impl Element for MarkdownElement {
                  .update(cx, |markdown, _| markdown.clear_code_block_scroll_handles());
          }
          let mut rendered_markdown = builder.build();
@@ -1486,7 +1871,7 @@ index 10bd60d..873a043 100644
          #[cfg(test)]
          if let Some(on_render) = self.on_render.as_ref() {
              on_render(rendered_markdown.text.clone());
-@@ -3401,57 +4289,1229 @@ impl Element for MarkdownElement {
+@@ -3401,57 +4498,1398 @@ impl Element for MarkdownElement {
          hitbox
      }
  
@@ -2256,6 +2641,167 @@ index 10bd60d..873a043 100644
 +    len
 +}
 +
++pub(crate) fn decode_data_url_image(dest_url: &str) -> Option<Arc<Image>> {
++    let rest = dest_url.strip_prefix("data:")?;
++    if let Some((mime, b64)) = rest.split_once(";base64,") {
++        let format = ImageFormat::from_mime_type(mime)?;
++        let bytes = base64::engine::general_purpose::STANDARD
++            .decode(b64.trim())
++            .ok()?;
++        return Some(Arc::new(Image::from_bytes(format, bytes)));
++    }
++    if let Some((mime_part, raw_payload)) = rest.split_once(',') {
++        let mime = mime_part.split(';').next().unwrap_or(mime_part).trim();
++        if mime.eq_ignore_ascii_case("image/svg+xml") {
++            let decoded = percent_decode_str(raw_payload);
++            let normalized = folio_zed_mod::folio_engine::normalize_svg_markup(&decoded)
++                .map(|(svg, _, _)| svg)
++                .unwrap_or(decoded);
++            return Some(Arc::new(Image::from_bytes(
++                ImageFormat::Svg,
++                normalized.into_bytes(),
++            )));
++        }
++    }
++    None
++}
++
++fn percent_decode_str(input: &str) -> String {
++    let bytes = input.as_bytes();
++    let mut out = Vec::with_capacity(bytes.len());
++    let mut i = 0;
++    while i < bytes.len() {
++        if bytes[i] == b'%' && i + 2 < bytes.len() {
++            if let (Some(hi), Some(lo)) = (
++                (bytes[i + 1] as char).to_digit(16),
++                (bytes[i + 2] as char).to_digit(16),
++            ) {
++                out.push(((hi << 4) | lo) as u8);
++                i += 3;
++                continue;
++            }
++        }
++        out.push(bytes[i]);
++        i += 1;
++    }
++    String::from_utf8(out).unwrap_or_else(|_| input.to_string())
++}
++
++enum InlineHtmlTagAction {
++    Open(TextStyleRefinement),
++    Close,
++    StructuralHide,
++}
++
++fn classify_inline_html_tag(
++    lower: &str,
++    markdown_style: &MarkdownStyle,
++    cx: &App,
++) -> Option<InlineHtmlTagAction> {
++    let tag_inner = lower.strip_prefix('<')?.strip_suffix('>')?.trim();
++    if let Some(closing) = tag_inner.strip_prefix('/') {
++        let name = closing.split_whitespace().next()?;
++        return match name {
++            "code" | "kbd" | "u" | "ins" | "b" | "strong" | "i" | "em" | "s" | "del"
++            | "strike" | "mark" | "sup" | "sub" | "summary" => Some(InlineHtmlTagAction::Close),
++            "span" | "details" => Some(InlineHtmlTagAction::StructuralHide),
++            _ => None,
++        };
++    }
++    if tag_inner.ends_with('/') {
++        return None;
++    }
++    let name = tag_inner.split(|c: char| c.is_whitespace() || c == '/').next()?;
++    let colors = cx.theme().colors();
++    match name {
++        "code" => Some(InlineHtmlTagAction::Open(markdown_style.inline_code.clone())),
++        "kbd" => {
++            let mut style = markdown_style.inline_code.clone();
++            style.font_weight = Some(FontWeight::MEDIUM);
++            style.background_color = Some(colors.surface_background);
++            style.underline = Some(gpui::UnderlineStyle {
++                thickness: px(1.),
++                color: Some(colors.border),
++                wavy: false,
++            });
++            Some(InlineHtmlTagAction::Open(style))
++        }
++        "u" | "ins" => Some(InlineHtmlTagAction::Open(TextStyleRefinement {
++            underline: Some(gpui::UnderlineStyle {
++                thickness: px(1.),
++                color: None,
++                wavy: false,
++            }),
++            ..Default::default()
++        })),
++        "b" | "strong" | "summary" => Some(InlineHtmlTagAction::Open(TextStyleRefinement {
++            font_weight: Some(FontWeight::BOLD),
++            ..Default::default()
++        })),
++        "i" | "em" => Some(InlineHtmlTagAction::Open(TextStyleRefinement {
++            font_style: Some(FontStyle::Italic),
++            ..Default::default()
++        })),
++        "s" | "del" | "strike" => Some(InlineHtmlTagAction::Open(TextStyleRefinement {
++            strikethrough: Some(gpui::StrikethroughStyle {
++                thickness: px(1.),
++                color: None,
++            }),
++            ..Default::default()
++        })),
++        "mark" => Some(InlineHtmlTagAction::Open(TextStyleRefinement {
++            background_color: Some(gpui::hsla(0.13, 0.90, 0.55, 0.30)),
++            ..Default::default()
++        })),
++        "sup" | "sub" => Some(InlineHtmlTagAction::Open(TextStyleRefinement {
++            color: Some(colors.text_accent),
++            ..Default::default()
++        })),
++        "span" | "details" => Some(InlineHtmlTagAction::StructuralHide),
++        _ => None,
++    }
++}
++
++fn extract_html_attr(tag: &str, attr_name: &str) -> Option<String> {
++    let lower = tag.to_ascii_lowercase();
++    let needle = format!("{attr_name}=");
++    let start_idx = lower.find(&needle)?;
++    let after = &tag[start_idx + needle.len()..].trim_start();
++    if let Some(quoted) = after.strip_prefix('"') {
++        let end = quoted.find('"')?;
++        Some(quoted[..end].to_string())
++    } else if let Some(quoted) = after.strip_prefix('\'') {
++        let end = quoted.find('\'')?;
++        Some(quoted[..end].to_string())
++    } else {
++        let end = after
++            .find(|c: char| c.is_whitespace() || c == '>' || c == '/')
++            .unwrap_or(after.len());
++        (end > 0).then(|| after[..end].to_string())
++    }
++}
++
++fn parse_html_dimension_attr(val: &str) -> Option<DefiniteLength> {
++    let trimmed = val.trim();
++    if let Some(pct) = trimmed.strip_suffix('%') {
++        let v: f32 = pct.trim().parse().ok()?;
++        return Some(relative(v / 100.0));
++    }
++    let px_str = trimmed.strip_suffix("px").unwrap_or(trimmed).trim();
++    let v: f32 = px_str.parse().ok()?;
++    (v > 0.0).then(|| px(v).into())
++}
++
++fn parse_inline_html_img_tag(
++    tag: &str,
++) -> Option<(String, String, Option<DefiniteLength>, Option<DefiniteLength>)> {
++    let src = extract_html_attr(tag, "src")?;
++    let alt = extract_html_attr(tag, "alt").unwrap_or_default();
++    let width = extract_html_attr(tag, "width").and_then(|w| parse_html_dimension_attr(&w));
++    let height = extract_html_attr(tag, "height").and_then(|h| parse_html_dimension_attr(&h));
++    Some((src, alt, width, height))
++}
++
 +fn handle_editable_markdown_keystroke(
 +    keystroke: &gpui::Keystroke,
 +    markdown: &Entity<Markdown>,
@@ -2293,6 +2839,14 @@ index 10bd60d..873a043 100644
 +    // Formatting & selection shortcuts with platform modifier (Cmd on macOS, Ctrl elsewhere)
 +    if modifiers.platform || modifiers.control {
 +        match key {
++            "\\" if !modifiers.alt && modifiers.shift => {
++                window.prevent_default();
++                cx.stop_propagation();
++                markdown.update(cx, |md, cx| {
++                    md.toggle_pretty_mode(cx);
++                });
++                return true;
++            }
 +            "b" if !modifiers.alt && !modifiers.shift => {
 +                window.prevent_default();
 +                cx.stop_propagation();
@@ -2761,7 +3315,7 @@ index 10bd60d..873a043 100644
      }
  }
  
-@@ -3924,6 +5984,22 @@ impl MarkdownElementBuilder {
+@@ -3924,6 +6362,22 @@ impl MarkdownElementBuilder {
          }
      }
  
@@ -2784,7 +3338,7 @@ index 10bd60d..873a043 100644
      fn push_text_style(&mut self, style: TextStyleRefinement) {
          self.text_style_stack.push(style);
      }
-@@ -4156,12 +6232,29 @@ impl MarkdownElementBuilder {
+@@ -4156,12 +6610,29 @@ impl MarkdownElementBuilder {
          source_range: Range<usize>,
          highlights: Option<&ResolvedHighlights>,
      ) {
@@ -2816,7 +3370,7 @@ index 10bd60d..873a043 100644
  
          // Compute the base text style once
          let text_style = self.text_style();
-@@ -4176,22 +6269,26 @@ impl MarkdownElementBuilder {
+@@ -4176,22 +6647,26 @@ impl MarkdownElementBuilder {
              };
              let mut offset = 0;
              for (run_range, highlight_id) in runs.iter() {
@@ -2854,7 +3408,7 @@ index 10bd60d..873a043 100644
              }
  
              if offset < text.len() {
-@@ -4209,8 +6306,19 @@ impl MarkdownElementBuilder {
+@@ -4209,8 +6684,19 @@ impl MarkdownElementBuilder {
              self.pending_line
                  .text
                  .truncate(self.pending_line.text.len() - 1);
@@ -2876,7 +3430,7 @@ index 10bd60d..873a043 100644
          }
      }
  
-@@ -4300,17 +6408,30 @@ impl MarkdownElementBuilder {
+@@ -4300,17 +6786,30 @@ impl MarkdownElementBuilder {
  
      fn flush_text(&mut self) {
          let text_align = self.text_style().text_align;
@@ -2910,7 +3464,7 @@ index 10bd60d..873a043 100644
              })
              .unwrap_or_default();
          let text = StyledText::new(line.text).with_runs(line.runs);
-@@ -4349,6 +6470,7 @@ impl MarkdownElementBuilder {
+@@ -4349,6 +6848,7 @@ impl MarkdownElementBuilder {
                  image_links: self.rendered_image_links.into(),
                  footnote_refs: self.rendered_footnote_refs.into(),
              },
@@ -2918,7 +3472,7 @@ index 10bd60d..873a043 100644
          }
      }
  }
-@@ -4630,14 +6752,27 @@ impl RenderedLine {
+@@ -4630,14 +7130,27 @@ impl RenderedLine {
              return self.layout.len();
          }
  
@@ -2950,7 +3504,7 @@ index 10bd60d..873a043 100644
      }
  
      fn source_index_for_rendered_index(&self, rendered_index: usize) -> usize {
-@@ -4645,14 +6780,21 @@ impl RenderedLine {
+@@ -4645,14 +7158,21 @@ impl RenderedLine {
              return self.source_end;
          }
  
@@ -2976,7 +3530,7 @@ index 10bd60d..873a043 100644
      }
  
      /// Returns the source index for use as an exclusive range end at a word/selection boundary.
-@@ -4669,9 +6811,17 @@ impl RenderedLine {
+@@ -4669,9 +7189,17 @@ impl RenderedLine {
              .binary_search_by_key(&rendered_index, |probe| probe.rendered_index)
          {
              Ok(ix) => ix,
@@ -2996,7 +3550,7 @@ index 10bd60d..873a043 100644
              }
          };
  
-@@ -4679,7 +6829,9 @@ impl RenderedLine {
+@@ -4679,7 +7207,9 @@ impl RenderedLine {
          if ix > 0 {
              let prev_mapping = &self.source_mappings[ix - 1];
              let mapping = &self.source_mappings[ix];
@@ -3007,7 +3561,7 @@ index 10bd60d..873a043 100644
              let prev_source_end = prev_mapping.source_index + prev_segment_len;
              if prev_source_end < mapping.source_index {
                  return prev_source_end;
-@@ -4803,6 +6955,7 @@ fn source_index_for_rendered(mappings: &[SourceMapping], rendered_index: usize)
+@@ -4803,6 +7333,7 @@ fn source_index_for_rendered(mappings: &[SourceMapping], rendered_index: usize)
  pub struct RenderedMarkdown {
      element: AnyElement,
      text: RenderedText,
@@ -3015,7 +3569,7 @@ index 10bd60d..873a043 100644
  }
  
  #[derive(Clone)]
-@@ -4948,8 +7101,20 @@ impl RenderedText {
+@@ -4948,8 +7479,20 @@ impl RenderedText {
              }
  
              // Track fallback for Y-coordinate based matching
@@ -3038,7 +3592,7 @@ index 10bd60d..873a043 100644
              }
  
              // Handle gap between lines
-@@ -4991,7 +7156,10 @@ impl RenderedText {
+@@ -4991,7 +7534,10 @@ impl RenderedText {
              if source_index > line.source_end {
                  continue;
              }
@@ -3050,7 +3604,7 @@ index 10bd60d..873a043 100644
              let source_index = source_index.max(line_source_start);
              let line_height = line.layout.line_height();
              let rendered_index_within_line = line.rendered_index_for_source_index(source_index);
-@@ -5006,11 +7174,18 @@ impl RenderedText {
+@@ -5006,11 +7552,18 @@ impl RenderedText {
              if source_index > line.source_end {
                  continue;
              }
@@ -3072,7 +3626,7 @@ index 10bd60d..873a043 100644
  
              let scope = line.language.as_ref().map(|l| l.default_scope());
              let classifier = CharClassifier::new(scope);
-@@ -5053,7 +7228,10 @@ impl RenderedText {
+@@ -5053,7 +7606,10 @@ impl RenderedText {
              if source_index > line.source_end {
                  continue;
              }
@@ -3084,7 +3638,7 @@ index 10bd60d..873a043 100644
              return line_source_start..line.source_end;
          }
  
-@@ -5067,7 +7245,10 @@ impl RenderedText {
+@@ -5067,7 +7623,10 @@ impl RenderedText {
              if range.start > line.source_end {
                  continue;
              }
@@ -3096,7 +3650,7 @@ index 10bd60d..873a043 100644
              if range.end < line_source_start {
                  break;
              }
-@@ -5086,6 +7267,8 @@ impl RenderedText {
+@@ -5086,6 +7645,8 @@ impl RenderedText {
              }
              .min(text.len());
  
@@ -3105,7 +3659,7 @@ index 10bd60d..873a043 100644
              accumulator.push_str(&text[start..end]);
              accumulator.push('\n');
          }
-@@ -5119,13 +7302,19 @@ impl RenderedText {
+@@ -5119,13 +7680,19 @@ impl RenderedText {
  struct MarkdownInputHandler {
      markdown: Entity<Markdown>,
      rendered_text: RenderedText,
@@ -3126,7 +3680,7 @@ index 10bd60d..873a043 100644
          }
      }
  }
-@@ -5169,21 +7358,32 @@ impl InputHandler for MarkdownInputHandler {
+@@ -5169,21 +7736,32 @@ impl InputHandler for MarkdownInputHandler {
  
      fn replace_text_in_range(
          &mut self,
@@ -3168,7 +3722,7 @@ index 10bd60d..873a043 100644
      }
  
      fn unmark_text(&mut self, _: &mut Window, _: &mut App) {}
-@@ -5225,7 +7425,7 @@ impl InputHandler for MarkdownInputHandler {
+@@ -5225,7 +7803,7 @@ impl InputHandler for MarkdownInputHandler {
      }
  
      fn accepts_text_input(&mut self, _: &mut Window, _: &mut App) -> bool {
@@ -3177,7 +3731,7 @@ index 10bd60d..873a043 100644
      }
  }
  
-@@ -5456,7 +7656,7 @@ mod tests {
+@@ -5456,7 +8034,7 @@ mod tests {
          assert!(vertical_clipped_position.y > px(80.));
          assert!(vertical_clipped_position.y < px(200.));
  
@@ -3186,7 +3740,7 @@ index 10bd60d..873a043 100644
          assert_eq!(
              cx.update(|window, cx| handler.character_index_for_point(
                  horizontal_clipped_position,
-@@ -5497,7 +7697,7 @@ mod tests {
+@@ -5497,7 +8075,7 @@ mod tests {
              .expect("revealed character position")
              + point(px(0.1), first_line.layout.line_height() / 2.);
          assert!(revealed_position.x > px(0.) && revealed_position.x < px(300.));
@@ -3195,7 +3749,7 @@ index 10bd60d..873a043 100644
          assert_eq!(
              cx.update(|window, cx| handler.character_index_for_point(
                  revealed_position,
-@@ -9376,4 +11576,260 @@ mod tests {
+@@ -9376,4 +11954,260 @@ mod tests {
          (321, "- a\n  > b\n  ```\n  c\n  ```\n- d\n", &["c\n"]),
          (324, "1. ```\n   foo\n   ```\n\n   bar\n", &["foo\n"]),
      ];
@@ -3456,6 +4010,35 @@ index 10bd60d..873a043 100644
 +    }
  }
 +
+diff --git a/crates/markdown/src/mermaid.rs b/crates/markdown/src/mermaid.rs
+index 63aae2a..364cd4d 100644
+--- a/crates/markdown/src/mermaid.rs
++++ b/crates/markdown/src/mermaid.rs
+@@ -218,8 +218,22 @@ impl CachedMermaidDiagram {
+             async move |this, cx| {
+                 let value = cx
+                     .background_spawn(async move {
+-                        let svg_string =
+-                            mermaid_render::render_to_svg(&contents.contents, &mermaid_theme)?;
++                        let svg_string = match mermaid_render::render_to_svg(
++                            &contents.contents,
++                            &mermaid_theme,
++                        ) {
++                            Ok(svg) => svg,
++                            Err(primary_err) => {
++                                let fallback = folio_zed_mod::folio_engine::render_mermaid_to_svg(
++                                    &contents.contents,
++                                    false,
++                                );
++                                if fallback.svg.is_empty() {
++                                    return Err(anyhow::anyhow!("{primary_err}"));
++                                }
++                                fallback.svg
++                            }
++                        };
+                         let tree = svg_renderer
+                             .parse_svg(svg_string.as_bytes())
+                             .map_err(|error| anyhow::anyhow!("{error}"))?;
 diff --git a/crates/markdown/src/parser.rs b/crates/markdown/src/parser.rs
 index 8ac2ea9..3ee6e9e 100644
 --- a/crates/markdown/src/parser.rs
@@ -3529,7 +4112,7 @@ index 1df6d72..07a8679 100644
  language.workspace = true
  log.workspace = true
 diff --git a/crates/markdown_preview/src/markdown_preview_view.rs b/crates/markdown_preview/src/markdown_preview_view.rs
-index 3b0e9f6..a0fc906 100644
+index 3b0e9f6..22b8c53 100644
 --- a/crates/markdown_preview/src/markdown_preview_view.rs
 +++ b/crates/markdown_preview/src/markdown_preview_view.rs
 @@ -19,7 +19,7 @@ use gpui::{
@@ -3784,7 +4367,42 @@ index 3b0e9f6..a0fc906 100644
      fn refresh_preview(view_handle: WeakEntity<Self>, window: &mut Window, cx: &mut App) {
          if let Some(view) = view_handle.upgrade() {
              let preview_is_focused = view.read(cx).focus_handle.contains_focused(window, cx);
-@@ -1719,6 +1909,12 @@ impl Item for MarkdownPreviewView {
+@@ -1532,9 +1722,13 @@ fn resolve_preview_image(
+         ))));
+     }
+ 
+-    let decoded = urlencoding::decode(dest_url)
++    let raw_path = dest_url
++        .strip_prefix("file://localhost")
++        .or_else(|| dest_url.strip_prefix("file://"))
++        .unwrap_or(dest_url);
++    let decoded = urlencoding::decode(raw_path)
+         .map(|decoded| decoded.into_owned())
+-        .unwrap_or_else(|_| dest_url.to_string());
++        .unwrap_or_else(|_| raw_path.to_string());
+     let workspace_relative_path = ['/', '\\']
+         .iter()
+         .find_map(|prefix| decoded.strip_prefix(*prefix));
+@@ -1568,13 +1762,15 @@ fn resolve_preview_image(
+         }
+     }
+ 
+-    let path = if let (Some(stripped), Some(root)) = (workspace_relative_path, workspace_directory)
+-    {
++    let path = if client_path_style.has_root(Path::new(&decoded)) && Path::new(&decoded).exists() {
++        PathBuf::from(&decoded)
++    } else if let (Some(stripped), Some(root)) = (workspace_relative_path, workspace_directory) {
+         client_path_style.join_path(root, stripped).ok()?
+     } else if client_path_style.has_root(Path::new(&decoded)) {
+         PathBuf::from(decoded)
+     } else {
+-        client_path_style.join_path(base_directory?, decoded).ok()?
++        let fallback_base = base_directory.or(workspace_directory)?;
++        client_path_style.join_path(fallback_base, decoded).ok()?
+     };
+ 
+     path.exists()
+@@ -1719,6 +1915,12 @@ impl Item for MarkdownPreviewView {
          }
      }
  
@@ -3797,7 +4415,7 @@ index 3b0e9f6..a0fc906 100644
      fn can_save(&self, cx: &App) -> bool {
          self.active_editor
              .as_ref()
-@@ -1877,6 +2073,11 @@ impl Render for MarkdownPreviewView {
+@@ -1877,6 +2079,11 @@ impl Render for MarkdownPreviewView {
              .on_action(cx.listener(MarkdownPreviewView::increase_font_size))
              .on_action(cx.listener(MarkdownPreviewView::decrease_font_size))
              .on_action(cx.listener(MarkdownPreviewView::reset_font_size))

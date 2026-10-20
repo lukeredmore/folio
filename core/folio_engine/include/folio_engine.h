@@ -227,8 +227,33 @@ void ot_engine_free_paragraph_reflow(OTParagraphReflow result);
 // Free the returned string with ot_engine_free_string().
 char* ot_engine_reflow_markdown(const char* markdown_utf8, uint32_t width);
 
+// ============================================================================
+// 7. Mermaid Diagram & SVG Renderer
+// ============================================================================
+
+typedef struct OTMermaidRenderResult {
+    char* svg;
+    double width;
+    double height;
+} OTMermaidRenderResult;
+
+// Renders a Mermaid diagram source string into a standalone SVG with intrinsic dimensions.
+// Free the returned result with ot_engine_free_mermaid_result().
+OTMermaidRenderResult* ot_engine_render_mermaid_svg(
+    const char* mermaid_utf8,
+    bool is_dark
+);
+
+// Validates and normalizes an inline or fenced <svg>...</svg> string and extracts its dimensions.
+// Returns NULL if the input does not contain valid <svg>...</svg> markup.
+// Free the returned result with ot_engine_free_mermaid_result().
+OTMermaidRenderResult* ot_engine_normalize_svg(const char* svg_utf8);
+
+void ot_engine_free_mermaid_result(OTMermaidRenderResult* result);
+
 #ifdef __cplusplus
 }
 #endif
 
 #endif // FOLIO_ENGINE_H
+

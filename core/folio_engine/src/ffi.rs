@@ -546,3 +546,62 @@ pub unsafe extern "C" fn ot_engine_reflow_markdown(
     let out = crate::reflow::reflow_markdown(markdown, width as usize);
     CString::new(out).unwrap_or_default().into_raw()
 }
+
+#[repr(C)]
+#[derive(Debug)]
+pub struct OTMermaidRenderResult {
+    pub svg: *mut c_char,
+    pub width: f64,
+    pub height: f64,
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn ot_engine_render_mermaid_svg(
+    mermaid_utf8: *const c_char,
+    is_dark: bool,
+) -> *mut OTMermaidRenderResult {
+    let source = if mermaid_utf8.is_null() {
+        ""
+    } else {
+        CStr::from_ptr(mermaid_utf8).to_str().unwrap_or("")
+    };
+    let rendered = crate::mermaid::render_mermaid_to_svg(source, is_dark);
+    let svg_ptr = CString::new(rendered.svg).unwrap_or_default().into_raw();
+    Box::into_raw(Box::new(OTMermaidRenderResult {
+        svg: svg_ptr,
+        width: rendered.width as f64,
+        height: rendered.height as f64,
+    }))
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn ot_engine_normalize_svg(
+    svg_utf8: *const c_char,
+) -> *mut OTMermaidRenderResult {
+    let source = if svg_utf8.is_null() {
+        ""
+    } else {
+        CStr::from_ptr(svg_utf8).to_str().unwrap_or("")
+    };
+    if let Some((norm_svg, w, h)) = crate::mermaid::normalize_svg_markup(source) {
+        let svg_ptr = CString::new(norm_svg).unwrap_or_default().into_raw();
+        Box::into_raw(Box::new(OTMermaidRenderResult {
+            svg: svg_ptr,
+            width: w as f64,
+            height: h as f64,
+        }))
+    } else {
+        ptr::null_mut()
+    }
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn ot_engine_free_mermaid_result(result: *mut OTMermaidRenderResult) {
+    if result.is_null() {
+        return;
+    }
+    let res = Box::from_raw(result);
+    if !res.svg.is_null() {
+        let _ = CString::from_raw(res.svg);
+    }
+}

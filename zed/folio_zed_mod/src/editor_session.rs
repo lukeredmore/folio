@@ -1,9 +1,11 @@
-use crate::inlay_folding::{analyze_buffer_for_zed, ZedBlockDecoration, ZedFoldRange};
+use crate::inlay_folding::{
+    analyze_buffer_for_zed_with_options, ZedBlockDecoration, ZedFoldRange,
+};
 use crate::math_canvas::{build_gpui_math_canvas, GpuiMathCanvasDescriptor};
 use crate::theme_sync::ZedThemeOverrides;
 use folio_engine::markdown::{
-    compute_newline_continuation, replace_code_fence_language, MarkdownBlockDecorationKind,
-    NewlineAction, OutlineHeadingItem,
+    analyze_markdown_document_with_options, compute_newline_continuation,
+    replace_code_fence_language, MarkdownBlockDecorationKind, NewlineAction, OutlineHeadingItem,
 };
 use folio_engine::stats::DocumentStats;
 use std::ops::Range;
@@ -18,6 +20,7 @@ pub struct FolioZedRenderFrame {
     pub outline: Vec<OutlineHeadingItem>,
     pub stats: DocumentStats,
     pub theme: ZedThemeOverrides,
+    pub pretty_mode: bool,
 }
 
 /// Lightweight in-buffer WYSIWYG controller attached to a Zed `Editor` instance for `.md` / `.markdown` buffers.
@@ -26,6 +29,7 @@ pub struct FolioZedRenderFrame {
 pub struct FolioZedModSession {
     pub enabled: bool,
     pub is_dark: bool,
+    pub pretty_mode: bool,
 }
 
 impl Default for FolioZedModSession {
@@ -39,7 +43,17 @@ impl FolioZedModSession {
         Self {
             enabled: true,
             is_dark,
+            pretty_mode: true,
         }
+    }
+
+    pub fn set_pretty_mode(&mut self, pretty_mode: bool) {
+        self.pretty_mode = pretty_mode;
+    }
+
+    pub fn toggle_pretty_mode(&mut self) -> bool {
+        self.pretty_mode = !self.pretty_mode;
+        self.pretty_mode
     }
 
     /// Computes a complete `FolioZedRenderFrame` for Zed's `EditorElement::prepaint` and `paint`.
@@ -67,17 +81,24 @@ impl FolioZedModSession {
                 outline: raw_analysis.headings,
                 stats,
                 theme,
+                pretty_mode: self.pretty_mode,
             };
         }
 
-        let analysis = folio_engine::markdown::analyze_markdown_document(
+        let analysis = analyze_markdown_document_with_options(
             buffer_text,
             cursor_byte_range.start,
             false,
             false,
+            self.pretty_mode,
+            theme.is_dark,
         );
-        let (folds, block_decorations) =
-            analyze_buffer_for_zed(buffer_text, cursor_byte_range, theme.is_dark);
+        let (folds, block_decorations) = analyze_buffer_for_zed_with_options(
+            buffer_text,
+            cursor_byte_range,
+            theme.is_dark,
+            self.pretty_mode,
+        );
 
         let mut display_math_canvases = Vec::new();
         for dec in &block_decorations {
@@ -118,6 +139,7 @@ impl FolioZedModSession {
             outline: analysis.headings,
             stats,
             theme,
+            pretty_mode: self.pretty_mode,
         }
     }
 
