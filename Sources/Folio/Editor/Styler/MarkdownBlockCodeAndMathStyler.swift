@@ -109,9 +109,11 @@ extension MarkdownLiveStyler {
         guard !bodySource.isEmpty else { return nil }
 
         let blockDim: CGFloat = (focusMode && !isDiagramBlockActive) ? 0.30 : 1.0
-        let diagramImg: NSImage? = (lowerLang == "mermaid")
-            ? FolioMediaImageCache.shared.mermaidImage(for: bodySource, isDark: theme.isDark).image
-            : FolioMediaImageCache.shared.svgImage(for: bodySource).image
+        // Rendered in the background; until it is ready, the card reserves a default height.
+        let diagramImg = DiagramImageRenderer.shared.image(for: DiagramImageRenderer.Key(
+            kind: lowerLang == "mermaid" ? .mermaid(isDark: theme.isDark) : .svg,
+            source: bodySource
+        ))
         let availW = max(200.0, effectiveContainerWidth - 32.0)
         let totalCardHeight: CGFloat
         if let img = diagramImg, img.size.width > 0, img.size.height > 0 {

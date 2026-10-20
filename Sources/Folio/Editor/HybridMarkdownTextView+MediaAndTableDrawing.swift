@@ -25,7 +25,8 @@ extension HybridMarkdownTextView {
             currentTheme.codeBackgroundNSColor.withAlphaComponent(dimFactor).setFill()
             NSBezierPath(roundedRect: cardRect, xRadius: 8.0, yRadius: 8.0).fill()
 
-            let (img, _) = FolioMediaImageCache.shared.mermaidImage(for: mermaidSource, isDark: currentTheme.isDark)
+            let diagramKey = DiagramImageRenderer.Key(kind: .mermaid(isDark: currentTheme.isDark), source: mermaidSource)
+            let img = DiagramImageRenderer.shared.image(for: diagramKey, prioritize: true)
             let innerRect = cardRect.insetBy(dx: 16.0, dy: 12.0)
             if let img = img, img.size.width > 0, img.size.height > 0, innerRect.width > 10, innerRect.height > 10 {
                 let intrinsicSize = img.size
@@ -39,6 +40,8 @@ extension HybridMarkdownTextView {
                     height: drawH
                 )
                 img.draw(in: drawRect, from: .zero, operation: .sourceOver, fraction: dimFactor, respectFlipped: true, hints: nil)
+            } else {
+                drawDiagramPlaceholder(in: innerRect, key: diagramKey, dimFactor: dimFactor)
             }
 
             // Draw subtle "MERMAID" badge in top-right corner
@@ -65,7 +68,8 @@ extension HybridMarkdownTextView {
             currentTheme.codeBackgroundNSColor.withAlphaComponent(dimFactor).setFill()
             NSBezierPath(roundedRect: cardRect, xRadius: 8.0, yRadius: 8.0).fill()
 
-            let (img, _) = FolioMediaImageCache.shared.svgImage(for: svgSource)
+            let diagramKey = DiagramImageRenderer.Key(kind: .svg, source: svgSource)
+            let img = DiagramImageRenderer.shared.image(for: diagramKey, prioritize: true)
             let innerRect = cardRect.insetBy(dx: 16.0, dy: 12.0)
             if let img = img, img.size.width > 0, img.size.height > 0, innerRect.width > 10, innerRect.height > 10 {
                 let intrinsicSize = img.size
@@ -79,6 +83,8 @@ extension HybridMarkdownTextView {
                     height: drawH
                 )
                 img.draw(in: drawRect, from: .zero, operation: .sourceOver, fraction: dimFactor, respectFlipped: true, hints: nil)
+            } else {
+                drawDiagramPlaceholder(in: innerRect, key: diagramKey, dimFactor: dimFactor)
             }
 
             let badgeAttrs: [NSAttributedString.Key: Any] = [
