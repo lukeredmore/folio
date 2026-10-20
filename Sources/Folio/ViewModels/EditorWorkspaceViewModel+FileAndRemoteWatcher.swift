@@ -79,7 +79,7 @@ extension EditorWorkspaceViewModel {
             let content = try String(contentsOf: url, encoding: .utf8)
             activeConflict = nil
             dismissExternalUpdateNotice()
-            recentSelfWrittenContents.removeAll()
+            recentSelfWrites.removeAll()
             isApplyingInternalStateChange = true
             currentFileURL = url
             markdownText = content
@@ -110,6 +110,8 @@ extension EditorWorkspaceViewModel {
     }
 
     public func saveDocument() {
+        pendingAutoSaveWorkItem?.cancel()
+        pendingAutoSaveWorkItem = nil
         if let url = currentFileURL {
             writeDocument(to: url)
         } else {

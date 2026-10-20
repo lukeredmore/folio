@@ -34,6 +34,8 @@ final class ExtremeScaleSyncAndMergeTests: XCTestCase {
         try baseDoc.write(to: fileURL, atomically: true, encoding: .utf8)
 
         let vm = EditorWorkspaceViewModel(userDefaults: testDefaults)
+
+        vm.autoSaveDelay = 0
         vm.openFile(at: fileURL)
 
         let externalDoc = [
@@ -129,6 +131,8 @@ final class ExtremeScaleSyncAndMergeTests: XCTestCase {
         try "Step 0".write(to: stressFile, atomically: true, encoding: .utf8)
 
         let vm = EditorWorkspaceViewModel(userDefaults: testDefaults)
+
+        vm.autoSaveDelay = 0
         vm.openFile(at: stressFile)
 
         let totalSteps = 1_000

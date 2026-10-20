@@ -28,6 +28,8 @@ final class ExternalSyncAndConflictTests: XCTestCase {
         try initialText.write(to: fileURL, atomically: true, encoding: .utf8)
 
         let vm = EditorWorkspaceViewModel(userDefaults: testDefaults)
+
+        vm.autoSaveDelay = 0
         vm.openFile(at: fileURL)
         XCTAssertEqual(vm.markdownText, initialText)
         XCTAssertNil(vm.externalUpdateNotice)
@@ -87,6 +89,8 @@ final class ExternalSyncAndConflictTests: XCTestCase {
         try baseText.write(to: fileURL, atomically: true, encoding: .utf8)
 
         let vm = EditorWorkspaceViewModel(userDefaults: testDefaults)
+
+        vm.autoSaveDelay = 0
         vm.openFile(at: fileURL)
 
         // 1. Test clean 3-way auto-merge when local and external edit different sections concurrently:
@@ -197,6 +201,8 @@ final class ExternalSyncAndConflictTests: XCTestCase {
         try "".write(to: emptyFile, atomically: true, encoding: .utf8)
 
         let vm = EditorWorkspaceViewModel(userDefaults: testDefaults)
+
+        vm.autoSaveDelay = 0
         vm.openFile(at: emptyFile)
         XCTAssertEqual(vm.markdownText, "")
 
