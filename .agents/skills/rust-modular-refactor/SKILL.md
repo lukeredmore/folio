@@ -9,19 +9,20 @@ description: >-
 # Rust Modular Refactoring & Shared Behavior Testing Skill
 
 ## When to Activate
-- Any Rust file in `core/**/src` or `zed/**/src` approaches or exceeds **250 lines** (hard failure at **350 lines**).
-- Adding or refactoring tests (all tests **must** live in `<crate>/tst/` or `tst/specs/`, never inline in `src/`).
+- Any Rust file in `core/` or `zed/` or any Swift file in `Sources/` or `Tests/` approaches or exceeds **250 lines** (hard failure at **350 lines**).
+- Adding or refactoring tests (all Rust tests **must** live in `<crate>/tst/` or `tst/specs/`, never inline in `src/`; all Swift tests **must** live in focused domain-specific `*Tests.swift` files under `Tests/FolioTests/`, never in a monolithic `FolioTests.swift`).
 - Implementing or modifying markdown parsing, active-line folding, keystroke editing, math layout, or paragraph reflow shared between Zed and Standalone Folio.
 
 ---
 
 ## 1. Anti-Monolith Rules (Hard Guardrails)
 1. **Max File Length**:
-   - Target **<= 250 lines** per `.rs` file in `src/`.
+   - Target **<= 250 lines** per `.rs` or `.swift` file.
    - Hard ceiling: **350 lines** (enforced by `./scripts/audit_slop.sh`).
-2. **Zero Inline Tests in `src/`**:
+2. **Zero Inline Tests in `src/` & No Monolithic Test Files**:
    - Never place `#[cfg(test)]` or `#[test]` inside `src/**.rs`.
-   - Place crate tests in `<crate>/tst/*.rs` and wire them via `[[test]]` in `Cargo.toml` and `rust_test` in `BUILD.bazel`.
+   - Place Rust crate tests in `<crate>/tst/*.rs` and wire them via `[[test]]` in `Cargo.toml` and `rust_test` in `BUILD.bazel`.
+   - Place Swift tests in focused domain-specific `*Tests.swift` files (`<= 350` lines each) under `Tests/FolioTests/`.
 3. **No Linter Tampering**:
    - `allow_attributes = "deny"` is enforced in workspace Clippy lints. Do not silence `clippy::too_many_lines` or `clippy::cognitive_complexity` with `#[allow(...)]`; split the function or module instead.
 4. **Minimal Zed Patch Surface**:
