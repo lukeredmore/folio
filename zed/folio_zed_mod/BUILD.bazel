@@ -20,8 +20,25 @@ rust_library(
 
 rust_test(
     name = "folio_zed_mod_test",
-    crate = ":folio_zed_mod",
+    srcs = ["tst/session_tests.rs"],
     edition = "2021",
+    deps = [
+        ":folio_zed_mod",
+        "//core/folio_engine",
+    ],
+)
+
+rust_test(
+    name = "folio_zed_mod_behavior_test",
+    srcs = ["tst/behavior_suite.rs"],
+    data = [
+        "//tst/specs:all_behavior_specs",
+    ],
+    edition = "2021",
+    deps = [
+        ":folio_zed_mod",
+        "//core/folio_engine",
+    ],
 )
 
 alias(

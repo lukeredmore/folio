@@ -1,6 +1,6 @@
 use mermaid_rs_renderer::{
-    DiagramKind, LayoutConfig, Theme, compute_layout, measure_svg_dimensions, parse_mermaid,
-    render::render_svg_with_dimensions,
+    compute_layout, measure_svg_dimensions, parse_mermaid, render::render_svg_with_dimensions,
+    DiagramKind, LayoutConfig, Theme,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -335,110 +335,5 @@ fn extract_svg_viewbox_size(tag: &str) -> Option<(f32, f32)> {
         Some((nums[2], nums[3]))
     } else {
         None
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_flowchart_mermaid_to_svg() {
-        let src = r#"
-flowchart LR
-    A[Client App] -->|HTTP Request| B(API Gateway)
-    B --> C{Authenticated?}
-    C -->|Yes| D[(Database)]
-    C -.->|No| E([Reject 401])
-"#;
-        let res = render_mermaid_to_svg(src, true);
-        assert_eq!(res.kind, MermaidDiagramKind::Flowchart);
-        assert_eq!(res.node_count, 5);
-        assert_eq!(res.edge_count, 4);
-        assert!(res.svg.starts_with("<svg"));
-        assert!(res.svg.contains(r#"fill="none""#));
-        assert!(!res.svg.contains(r#"fill="transparent""#));
-        assert!(res.svg.contains("Client App"));
-        assert!(res.svg.contains("API Gateway"));
-        assert!(res.svg.contains("Authenticated?"));
-        assert!(res.width >= 200.0);
-        assert!(res.height >= 100.0);
-    }
-
-    #[test]
-    fn test_sequence_diagram_to_svg() {
-        let src = r#"
-sequenceDiagram
-    participant U as User
-    participant F as Folio Editor
-    U->>F: Edit Markdown
-    F-->>U: Render Pretty Mode
-"#;
-        let res = render_mermaid_to_svg(src, false);
-        assert_eq!(res.kind, MermaidDiagramKind::Sequence);
-        assert_eq!(res.node_count, 2);
-        assert_eq!(res.edge_count, 2);
-        assert!(res.svg.contains("Folio Editor"));
-        assert!(res.svg.contains("Render Pretty") && res.svg.contains("Mode"));
-    }
-
-    #[test]
-    fn test_pie_and_state_and_class_diagrams() {
-        let pie = "pie title Languages\n\"Rust\" : 60\n\"Swift\" : 40";
-        let pie_res = render_mermaid_to_svg(pie, true);
-        assert_eq!(pie_res.kind, MermaidDiagramKind::Pie);
-        assert_eq!(pie_res.node_count, 2);
-        assert!(pie_res.svg.contains("Rust"));
-        assert!(pie_res.svg.contains("60%"));
-
-        let state = "stateDiagram-v2\n[*] --> Idle\nIdle --> Editing : type\nEditing --> [*]";
-        let state_res = render_mermaid_to_svg(state, false);
-        assert_eq!(state_res.kind, MermaidDiagramKind::State);
-        assert!(state_res.node_count >= 3);
-
-        let cls = "classDiagram\nclass Document {\n+String title\n+render()\n}\nDocument --> Block : contains";
-        let cls_res = render_mermaid_to_svg(cls, true);
-        assert_eq!(cls_res.kind, MermaidDiagramKind::Class);
-        assert_eq!(cls_res.node_count, 2);
-        assert_eq!(cls_res.edge_count, 1);
-    }
-
-    #[test]
-    fn test_normalize_svg_markup() {
-        let raw = r#"<svg viewBox="0 0 240 120"><circle cx="60" cy="60" r="40" fill="red"/></svg>"#;
-        let (norm, w, h) = normalize_svg_markup(raw).expect("valid svg");
-        assert_eq!(w, 240.0);
-        assert_eq!(h, 120.0);
-        assert!(norm.contains(r#"xmlns="http://www.w3.org/2000/svg""#));
-        assert!(norm.contains(r#"width="240""#));
-        assert!(norm.contains(r#"height="120""#));
-    }
-
-    #[test]
-    fn test_flowchart_ampersand_in_quoted_label_and_cyclic_state_diagram() {
-        let src = r#"
-flowchart LR
-    Parser["Markdown AST"] --> Styler["Live Buffer Folds & Inlays"]
-    Styler --> Media["Async Image / Video / Mermaid Loader"]
-"#;
-        let res = render_mermaid_to_svg(src, false);
-        assert_eq!(res.node_count, 3);
-        assert!(res.svg.contains("Live Buffer Folds &amp; Inlays"));
-        assert!(!res.svg.contains(r#"Inlays""#));
-
-        let state = r#"
-stateDiagram-v2
-    [*] --> Folded
-    Folded --> Expanded : Cursor enters block
-    Expanded --> Folded : Cursor leaves block
-    Expanded --> Editing : User types syntax
-    Editing --> Expanded : Live preview updates
-"#;
-        let state_res = render_mermaid_to_svg(state, false);
-        assert_eq!(state_res.kind, MermaidDiagramKind::State);
-        assert!(state_res.node_count >= 4);
-        assert!(state_res.height >= 180.0);
-        assert!(state_res.svg.contains("Cursor enters block"));
-        assert!(state_res.svg.contains("Cursor leaves block"));
     }
 }

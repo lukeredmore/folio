@@ -7,3 +7,14 @@ description = "Folio Typora-style hybrid Markdown + native LaTeX GPUI mod for Ze
 
 [dependencies]
 folio_engine = { path = "../../core/folio_engine" }
+
+[[test]]
+name = "session_tests"
+path = "tst/session_tests.rs"
+
+[[test]]
+name = "behavior_suite"
+path = "tst/behavior_suite.rs"
+
+[lints]
+workspace = true

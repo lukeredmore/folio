@@ -5,12 +5,33 @@ load("@rules_rust//rust:defs.bzl", "rust_library", "rust_static_library", "rust_
 package(default_visibility = ["//visibility:public"])
 
 ENGINE_SRCS = [
-    "src/ffi.rs",
+    "src/ffi/editing_ffi.rs",
+    "src/ffi/markdown_ffi.rs",
+    "src/ffi/math_ffi.rs",
+    "src/ffi/mod.rs",
     "src/lib.rs",
-    "src/markdown.rs",
-    "src/math.rs",
+    "src/markdown/analyzer.rs",
+    "src/markdown/block_handlers.rs",
+    "src/markdown/block_scanner.rs",
+    "src/markdown/cmark_ast.rs",
+    "src/markdown/cmark_sys.rs",
+    "src/markdown/editing.rs",
+    "src/markdown/html_inline.rs",
+    "src/markdown/inline_helpers.rs",
+    "src/markdown/inline_scanner.rs",
+    "src/markdown/mod.rs",
+    "src/markdown/newline.rs",
+    "src/markdown/tables.rs",
+    "src/markdown/types.rs",
+    "src/math/ast.rs",
+    "src/math/commands.rs",
+    "src/math/layout.rs",
+    "src/math/mod.rs",
+    "src/math/parser.rs",
+    "src/math/symbols.rs",
     "src/mermaid.rs",
-    "src/reflow.rs",
+    "src/reflow/mod.rs",
+    "src/reflow/protected.rs",
     "src/stats.rs",
     "src/theme.rs",
 ]
@@ -60,8 +81,41 @@ cc_library(
 
 rust_test(
     name = "folio_engine_test",
-    crate = ":folio_engine",
+    srcs = ["tst/engine_tests.rs"],
+    edition = "2021",
+    deps = [":folio_engine"],
+)
+
+rust_test(
+    name = "cmark_gfm_spec_test",
+    srcs = ["tst/cmark_gfm_spec_tests.rs"],
     data = [
         "//third_party/markdown_spec:all_spec_files",
     ],
+    edition = "2021",
+    deps = [":folio_engine"],
+)
+
+rust_test(
+    name = "markdown_scan_test",
+    srcs = ["tst/markdown_scan_tests.rs"],
+    edition = "2021",
+    deps = [":folio_engine"],
+)
+
+rust_test(
+    name = "reflow_test",
+    srcs = ["tst/reflow_tests.rs"],
+    edition = "2021",
+    deps = [":folio_engine"],
+)
+
+rust_test(
+    name = "behavior_suite_test",
+    srcs = ["tst/behavior_suite.rs"],
+    data = [
+        "//tst/specs:all_behavior_specs",
+    ],
+    edition = "2021",
+    deps = [":folio_engine"],
 )

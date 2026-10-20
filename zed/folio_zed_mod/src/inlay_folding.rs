@@ -136,140 +136,140 @@ pub fn translate_block_decorations(
     blocks: &[MarkdownBlockDecoration],
     is_dark: bool,
 ) -> Vec<ZedBlockDecoration> {
-    let mut out = Vec::with_capacity(blocks.len());
-    for block in blocks {
-        let range = block.byte_range.clone();
-        match &block.kind {
-            MarkdownBlockDecorationKind::HeadingUnderline { level } => {
-                if *level <= 2 {
-                    out.push(ZedBlockDecoration::HeadingRule {
-                        level: *level as u8,
-                        line_range: range,
-                    });
-                }
-            }
-            MarkdownBlockDecorationKind::Blockquote { nest_level } => {
-                out.push(ZedBlockDecoration::BlockquoteBar {
-                    nest_level: *nest_level as u8,
-                    line_range: range,
-                });
-            }
-            MarkdownBlockDecorationKind::CodeFenceStart { language } => {
-                let c = folio_engine::theme::language_accent_color(language, is_dark);
-                out.push(ZedBlockDecoration::CodeFenceHeader {
-                    language: language.clone(),
-                    accent_rgba: (c.r as f32, c.g as f32, c.b as f32, c.a as f32),
-                    line_range: range,
-                });
-            }
-            MarkdownBlockDecorationKind::CodeFenceBody { .. } => {
-                out.push(ZedBlockDecoration::CodeFenceRow {
-                    is_end: false,
-                    line_range: range,
-                });
-            }
-            MarkdownBlockDecorationKind::CodeFenceEnd => {
-                out.push(ZedBlockDecoration::CodeFenceRow {
-                    is_end: true,
-                    line_range: range,
-                });
-            }
-            MarkdownBlockDecorationKind::InlineCode => {
-                out.push(ZedBlockDecoration::InlineCodePill { span_range: range });
-            }
-            MarkdownBlockDecorationKind::MathBlockRendered {
-                latex,
-                is_active,
-                dim_factor,
-            } => {
-                out.push(ZedBlockDecoration::DisplayMathCard {
-                    latex: latex.clone(),
-                    line_range: range,
-                    is_active: *is_active,
-                    dim_factor: *dim_factor as f32,
-                });
-            }
-            MarkdownBlockDecorationKind::InlineMathRendered { .. } => {}
-            MarkdownBlockDecorationKind::HorizontalRule => {
-                out.push(ZedBlockDecoration::HorizontalRule { line_range: range });
-            }
-            MarkdownBlockDecorationKind::TableRow {
-                is_header,
-                is_separator,
-                columns,
-            } => {
-                out.push(ZedBlockDecoration::TableRow {
-                    is_header: *is_header,
-                    is_separator: *is_separator,
-                    columns: columns.clone(),
-                    line_range: range,
-                });
-            }
-            MarkdownBlockDecorationKind::Image {
-                alt,
-                url,
-                title,
-                width,
-                height,
-                is_html,
-                is_active,
-            } => {
-                out.push(ZedBlockDecoration::ImageCard {
-                    alt: alt.clone(),
-                    url: url.clone(),
-                    title: title.clone(),
-                    width: *width,
-                    height: *height,
-                    is_html: *is_html,
-                    is_active: *is_active,
-                    span_range: range,
-                });
-            }
-            MarkdownBlockDecorationKind::MermaidBlock {
-                source,
-                svg,
-                width,
-                height,
-                is_active,
-            } => {
-                out.push(ZedBlockDecoration::MermaidDiagramCard {
-                    source: source.clone(),
-                    svg: svg.clone(),
-                    width: *width,
-                    height: *height,
-                    is_active: *is_active,
-                    line_range: range,
-                });
-            }
-            MarkdownBlockDecorationKind::SvgBlock {
-                svg,
-                width,
-                height,
-                is_active,
-            } => {
-                out.push(ZedBlockDecoration::SvgGraphicCard {
-                    svg: svg.clone(),
-                    width: *width,
-                    height: *height,
-                    is_active: *is_active,
-                    line_range: range,
-                });
-            }
-            MarkdownBlockDecorationKind::HtmlInline {
-                tag,
-                content_range,
-                is_active,
-            } => {
-                out.push(ZedBlockDecoration::HtmlInlineStyle {
-                    tag: *tag,
-                    content_range: content_range.clone(),
-                    is_active: *is_active,
-                    span_range: range,
-                });
-            }
+    blocks
+        .iter()
+        .filter_map(|block| translate_single_block_decoration(block, is_dark))
+        .collect()
+}
+
+fn translate_single_block_decoration(
+    block: &MarkdownBlockDecoration,
+    is_dark: bool,
+) -> Option<ZedBlockDecoration> {
+    let range = block.byte_range.clone();
+    match &block.kind {
+        MarkdownBlockDecorationKind::HeadingUnderline { level } => (*level <= 2).then_some(
+            ZedBlockDecoration::HeadingRule {
+                level: *level as u8,
+                line_range: range,
+            },
+        ),
+        MarkdownBlockDecorationKind::Blockquote { nest_level } => {
+            Some(ZedBlockDecoration::BlockquoteBar {
+                nest_level: *nest_level as u8,
+                line_range: range,
+            })
         }
+        MarkdownBlockDecorationKind::CodeFenceStart { language } => {
+            let c = folio_engine::theme::language_accent_color(language, is_dark);
+            Some(ZedBlockDecoration::CodeFenceHeader {
+                language: language.clone(),
+                accent_rgba: (c.r as f32, c.g as f32, c.b as f32, c.a as f32),
+                line_range: range,
+            })
+        }
+        MarkdownBlockDecorationKind::CodeFenceBody { .. } => {
+            Some(ZedBlockDecoration::CodeFenceRow {
+                is_end: false,
+                line_range: range,
+            })
+        }
+        MarkdownBlockDecorationKind::CodeFenceEnd => Some(ZedBlockDecoration::CodeFenceRow {
+            is_end: true,
+            line_range: range,
+        }),
+        MarkdownBlockDecorationKind::InlineCode => {
+            Some(ZedBlockDecoration::InlineCodePill { span_range: range })
+        }
+        MarkdownBlockDecorationKind::MathBlockRendered {
+            latex,
+            is_active,
+            dim_factor,
+        } => Some(ZedBlockDecoration::DisplayMathCard {
+            latex: latex.clone(),
+            line_range: range,
+            is_active: *is_active,
+            dim_factor: *dim_factor as f32,
+        }),
+        MarkdownBlockDecorationKind::InlineMathRendered { .. } => None,
+        MarkdownBlockDecorationKind::HorizontalRule => {
+            Some(ZedBlockDecoration::HorizontalRule { line_range: range })
+        }
+        MarkdownBlockDecorationKind::TableRow {
+            is_header,
+            is_separator,
+            columns,
+        } => Some(ZedBlockDecoration::TableRow {
+            is_header: *is_header,
+            is_separator: *is_separator,
+            columns: columns.clone(),
+            line_range: range,
+        }),
+        _ => translate_rich_media_decoration(&block.kind, range),
     }
-    out
+}
+
+fn translate_rich_media_decoration(
+    kind: &MarkdownBlockDecorationKind,
+    range: Range<usize>,
+) -> Option<ZedBlockDecoration> {
+    match kind {
+        MarkdownBlockDecorationKind::Image {
+            alt,
+            url,
+            title,
+            width,
+            height,
+            is_html,
+            is_active,
+        } => Some(ZedBlockDecoration::ImageCard {
+            alt: alt.clone(),
+            url: url.clone(),
+            title: title.clone(),
+            width: *width,
+            height: *height,
+            is_html: *is_html,
+            is_active: *is_active,
+            span_range: range,
+        }),
+        MarkdownBlockDecorationKind::MermaidBlock {
+            source,
+            svg,
+            width,
+            height,
+            is_active,
+        } => Some(ZedBlockDecoration::MermaidDiagramCard {
+            source: source.clone(),
+            svg: svg.clone(),
+            width: *width,
+            height: *height,
+            is_active: *is_active,
+            line_range: range,
+        }),
+        MarkdownBlockDecorationKind::SvgBlock {
+            svg,
+            width,
+            height,
+            is_active,
+        } => Some(ZedBlockDecoration::SvgGraphicCard {
+            svg: svg.clone(),
+            width: *width,
+            height: *height,
+            is_active: *is_active,
+            line_range: range,
+        }),
+        MarkdownBlockDecorationKind::HtmlInline {
+            tag,
+            content_range,
+            is_active,
+        } => Some(ZedBlockDecoration::HtmlInlineStyle {
+            tag: *tag,
+            content_range: content_range.clone(),
+            is_active: *is_active,
+            span_range: range,
+        }),
+        _ => None,
+    }
 }
 
 /// Runs a full pass over a buffer snapshot and returns Zed folds and block decorations.

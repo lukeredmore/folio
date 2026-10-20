@@ -251,9 +251,34 @@ OTMermaidRenderResult* ot_engine_normalize_svg(const char* svg_utf8);
 
 void ot_engine_free_mermaid_result(OTMermaidRenderResult* result);
 
+// ============================================================================
+// 8. Shared Cursor-Aware Markdown Editing Transformations
+// ============================================================================
+
+typedef struct OTCursorEditResult {
+    char* text;
+    size_t cursor_byte;
+} OTCursorEditResult;
+
+OTCursorEditResult ot_engine_apply_newline_at_cursor(const char* markdown_utf8, size_t cursor_byte);
+OTCursorEditResult ot_engine_toggle_symmetric_delimiter(
+    const char* markdown_utf8,
+    size_t cursor_byte,
+    const char* delimiter_utf8
+);
+OTCursorEditResult ot_engine_set_heading_level_at_cursor(
+    const char* markdown_utf8,
+    size_t cursor_byte,
+    uint8_t level
+);
+OTCursorEditResult ot_engine_toggle_task_checkbox_at_cursor(
+    const char* markdown_utf8,
+    size_t cursor_byte
+);
+void ot_engine_free_cursor_edit(OTCursorEditResult result);
+
 #ifdef __cplusplus
 }
 #endif
 
 #endif // FOLIO_ENGINE_H
-
