@@ -167,7 +167,7 @@ extension MarkdownLiveStyler {
 
         let combinedSVG = svgLines.map(\.text).joined(separator: "\n").trimmingCharacters(in: .whitespacesAndNewlines)
         if prettyMode && !isSVGBlockActive && !combinedSVG.isEmpty {
-            let svgImg = FolioMediaImageCache.shared.svgImage(for: combinedSVG).image
+            let svgImg = DiagramImageRenderer.shared.image(for: DiagramImageRenderer.Key(kind: .svg, source: combinedSVG))
             let availW = max(200.0, effectiveContainerWidth - 32.0)
             let totalCardHeight: CGFloat
             if let img = svgImg, img.size.width > 0, img.size.height > 0 {
