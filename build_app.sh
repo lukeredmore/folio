@@ -4,7 +4,8 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$SCRIPT_DIR"
 
-bazel build //:FolioApp
+# Release builds must be optimized: the default fastbuild mode ships an unoptimized Rust engine and Swift app.
+bazel build -c opt //:FolioApp
 
 BUILT_APP="$SCRIPT_DIR/bazel-bin/macos/FolioApp/FolioApp_archive-root/Folio.app"
 rm -rf "$SCRIPT_DIR/Folio.app"
