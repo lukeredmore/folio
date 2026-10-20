@@ -1,3 +1,5 @@
+#![deny(warnings)]
+
 pub mod editor_session;
 pub mod inlay_folding;
 pub mod math_canvas;

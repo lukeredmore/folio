@@ -1,3 +1,5 @@
+#![deny(warnings)]
+
 pub mod ffi;
 pub mod markdown;
 pub mod math;

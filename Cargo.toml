@@ -6,6 +6,9 @@ members = [
     "zed/folio_zed_extension",
 ]
 
+[workspace.lints.rust]
+warnings = "deny"
+
 [workspace.lints.clippy]
 allow_attributes = "deny"
 wildcard_imports = "deny"

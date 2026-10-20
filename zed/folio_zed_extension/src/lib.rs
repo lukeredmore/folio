@@ -1,3 +1,5 @@
+#![deny(warnings)]
+
 use folio_engine::markdown::{analyze_markdown_document, OutlineHeadingItem};
 
 pub const EXTENSION_TOML: &str = include_str!("../extension.toml");
