@@ -1295,7 +1295,7 @@ public struct ExternalUpdateBannerView: View {
                     .foregroundColor(.green)
 
                 VStack(alignment: .leading, spacing: 1) {
-                    Text(notice.summaryText)
+                    Text("\(notice.headlineText) in \(notice.fileURL.lastPathComponent) (\(notice.summaryText))")
                         .font(.system(size: 11.5, weight: .semibold))
                         .foregroundColor(viewModel.theme.textColor)
                     Text("Changed lines are highlighted in green in the editor.")
@@ -1603,8 +1603,9 @@ public struct ConflictResolverModalView: View {
                         Text(strategy.title).tag(strategy)
                     }
                 }
+                .labelsHidden()
                 .pickerStyle(.segmented)
-                .frame(width: 320)
+                .frame(width: 310)
             }
 
             HStack(alignment: .top, spacing: 10) {
