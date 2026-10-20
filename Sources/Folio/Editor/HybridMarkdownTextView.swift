@@ -4,6 +4,9 @@ import SwiftUI
 
 public final class HybridMarkdownTextView: NSTextView {
 
+    public weak var workspaceViewModel: EditorWorkspaceViewModel?
+    weak var editorCoordinator: HybridMarkdownEditorRepresentable.Coordinator?
+
     public var currentTheme: EditorTheme = .daylight {
         didSet { needsDisplay = true }
     }
@@ -16,6 +19,10 @@ public final class HybridMarkdownTextView: NSTextView {
         didSet { needsDisplay = true }
     }
 
+    public var externalUpdateHighlightRanges: [NSRange] = [] {
+        didSet { needsDisplay = true }
+    }
+
     public var proseColumnWidth: CGFloat = 0 {
         didSet { needsDisplay = true }
     }
@@ -24,6 +31,47 @@ public final class HybridMarkdownTextView: NSTextView {
     public var isSourceCodeMode: Bool = false
 
     public var onToggleCheckboxAtCharacterIndex: ((Int) -> Void)?
+
+    public func applyProgrammaticDocumentText(_ newText: String, selectedRange: NSRange) {
+        let coord = editorCoordinator
+        coord?.isProgrammaticUpdate = true
+        coord?.reflowAnchors.removeAll()
+        if self.string != newText {
+            self.string = newText
+        }
+        let nsLen = (self.string as NSString).length
+        let safeLoc = max(0, min(selectedRange.location, nsLen))
+        let safeLen = max(0, min(selectedRange.length, nsLen - safeLoc))
+        let clampedRange = NSRange(location: safeLoc, length: safeLen)
+        if self.selectedRange() != clampedRange {
+            self.setSelectedRange(clampedRange)
+        }
+        coord?.isProgrammaticUpdate = false
+        coord?.restyle(textView: self)
+    }
+
+    public override func breakUndoCoalescing() {
+        super.breakUndoCoalescing()
+        workspaceViewModel?.breakUndoCoalescing()
+    }
+
+    @objc public func undo(_ sender: Any?) {
+        workspaceViewModel?.undo()
+    }
+
+    @objc public func redo(_ sender: Any?) {
+        workspaceViewModel?.redo()
+    }
+
+    public override func validateUserInterfaceItem(_ item: NSValidatedUserInterfaceItem) -> Bool {
+        if item.action == #selector(undo(_:)) {
+            return workspaceViewModel?.canUndo ?? false
+        }
+        if item.action == #selector(redo(_:)) {
+            return workspaceViewModel?.canRedo ?? false
+        }
+        return super.validateUserInterfaceItem(item)
+    }
 
     private static let supportedCodeFenceLanguages: [(id: String, title: String, aliases: [String])] = [
         ("swift", "Swift", ["swift"]),
@@ -149,8 +197,7 @@ public final class HybridMarkdownTextView: NSTextView {
     public override func drawBackground(in rect: NSRect) {
         super.drawBackground(in: rect)
 
-        guard !isSourceCodeMode,
-              let layoutManager = self.layoutManager,
+        guard let layoutManager = self.layoutManager,
               let textContainer = self.textContainer else {
             return
         }
@@ -159,6 +206,42 @@ public final class HybridMarkdownTextView: NSTextView {
         let fullContentWidth = self.bounds.width - origin.x * 2
         let contentWidth = proseColumnWidth > 0 ? proseColumnWidth : fullContentWidth
         var imageXOffsetByLineLocation: [Int: CGFloat] = [:]
+
+        // Draw visual highlights for lines recently updated externally on disk / remote sync
+        if !externalUpdateHighlightRanges.isEmpty {
+            let nsLen = (self.string as NSString).length
+            let highlightFill = currentTheme.isDark
+                ? NSColor.systemGreen.withAlphaComponent(0.14)
+                : NSColor.systemGreen.withAlphaComponent(0.10)
+            let highlightBar = currentTheme.isDark
+                ? NSColor.systemGreen.withAlphaComponent(0.85)
+                : NSColor.systemGreen.withAlphaComponent(0.75)
+
+            for rawRange in externalUpdateHighlightRanges {
+                let clampedLoc = max(0, min(rawRange.location, nsLen))
+                let clampedLen = max(0, min(rawRange.length, nsLen - clampedLoc))
+                let safeRange = NSRange(location: clampedLoc, length: clampedLen)
+                let glyphRange = layoutManager.glyphRange(forCharacterRange: safeRange, actualCharacterRange: nil)
+                guard glyphRange.location != NSNotFound else { continue }
+                var boxRect = layoutManager.boundingRect(forGlyphRange: glyphRange, in: textContainer)
+                boxRect.origin.x = origin.x - 10.0
+                boxRect.origin.y += origin.y
+                boxRect.size.width = contentWidth + 20.0
+                boxRect.size.height = max(20.0, boxRect.size.height)
+                guard boxRect.insetBy(dx: -20, dy: -30).intersects(rect) else { continue }
+
+                highlightFill.setFill()
+                NSBezierPath(roundedRect: boxRect, xRadius: 5.0, yRadius: 5.0).fill()
+
+                let barRect = NSRect(x: origin.x - 10.0, y: boxRect.minY + 1.0, width: 3.5, height: max(4.0, boxRect.height - 2.0))
+                highlightBar.setFill()
+                NSBezierPath(roundedRect: barRect, xRadius: 1.75, yRadius: 1.75).fill()
+            }
+        }
+
+        guard !isSourceCodeMode else {
+            return
+        }
 
         for (decIdx, dec) in lineDecorations.enumerated() {
             if case .codeFenceBody = dec.kind { continue }
@@ -1074,7 +1157,7 @@ public struct HybridMarkdownEditorRepresentable: NSViewRepresentable {
         textView.isVerticallyResizable = true
         textView.isHorizontallyResizable = true
         textView.autoresizingMask = [.width]
-        textView.allowsUndo = true
+        textView.allowsUndo = false
         textView.isRichText = false
         textView.importsGraphics = false
         textView.isAutomaticQuoteSubstitutionEnabled = false
@@ -1085,6 +1168,9 @@ public struct HybridMarkdownEditorRepresentable: NSViewRepresentable {
         textView.isIncrementalSearchingEnabled = true
 
         textView.delegate = context.coordinator
+        textView.workspaceViewModel = viewModel
+        textView.editorCoordinator = context.coordinator
+        textView.externalUpdateHighlightRanges = viewModel.externalUpdateHighlightRanges
         context.coordinator.textView = textView
         viewModel.activeTextView = textView
 
@@ -1122,6 +1208,8 @@ public struct HybridMarkdownEditorRepresentable: NSViewRepresentable {
     public func updateNSView(_ scrollView: NSScrollView, context: Context) {
         guard let textView = scrollView.documentView as? HybridMarkdownTextView else { return }
         context.coordinator.viewModel = viewModel
+        textView.workspaceViewModel = viewModel
+        textView.editorCoordinator = context.coordinator
         viewModel.activeTextView = textView
 
         scrollView.backgroundColor = viewModel.theme.editorBackgroundNSColor
@@ -1132,18 +1220,15 @@ public struct HybridMarkdownEditorRepresentable: NSViewRepresentable {
         textView.isTypewriterMode = viewModel.typewriterMode
         textView.isSourceCodeMode = viewModel.sourceCodeMode
         textView.isContinuousSpellCheckingEnabled = viewModel.spellCheckEnabled
+        if textView.externalUpdateHighlightRanges != viewModel.externalUpdateHighlightRanges {
+            textView.externalUpdateHighlightRanges = viewModel.externalUpdateHighlightRanges
+        }
 
         context.coordinator.updateInsets(for: scrollView, textView: textView, theme: viewModel.theme)
 
         if !context.coordinator.isUpdatingFromTextView && textView.string != viewModel.markdownText {
             let savedSelection = textView.selectedRange()
-            context.coordinator.isProgrammaticUpdate = true
-            context.coordinator.reflowAnchors.removeAll()
-            textView.string = viewModel.markdownText
-            let safeLocation = min(savedSelection.location, (textView.string as NSString).length)
-            textView.setSelectedRange(NSRange(location: safeLocation, length: 0))
-            context.coordinator.isProgrammaticUpdate = false
-            context.coordinator.restyle(textView: textView)
+            textView.applyProgrammaticDocumentText(viewModel.markdownText, selectedRange: savedSelection)
         } else if context.coordinator.lastTheme != viewModel.theme ||
                   context.coordinator.lastTypography != viewModel.typography ||
                   context.coordinator.lastSourceMode != viewModel.sourceCodeMode ||
@@ -1268,16 +1353,19 @@ public struct HybridMarkdownEditorRepresentable: NSViewRepresentable {
             isUpdatingFromTextView = true
             let currentText = tv.string
             let sel = tv.selectedRange()
-            let undoManager = tv.undoManager
-            if undoManager?.isUndoing == true || undoManager?.isRedoing == true {
-                reflowAnchors.removeAll()
-            } else if !isApplyingReflow {
+            if !isApplyingReflow {
                 reflowAnchors.append(sel.location)
                 if reflowAnchors.count > 32 {
                     reflowAnchors.removeFirst(reflowAnchors.count - 32)
                 }
+                viewModel.isLiveKeystrokeInProgress = true
+                viewModel.handleEditorTextEdited(currentText, selectedRange: sel)
+                viewModel.isLiveKeystrokeInProgress = false
+            } else {
+                viewModel.withUndoMetadata(origin: .formattingAction, summary: "Reflow Paragraph") {
+                    viewModel.handleEditorTextEdited(currentText, selectedRange: sel)
+                }
             }
-            viewModel.handleEditorTextEdited(currentText, selectedRange: sel)
             restyle(textView: tv)
             tv.centerSelectionIfTypewriter()
             isUpdatingFromTextView = false

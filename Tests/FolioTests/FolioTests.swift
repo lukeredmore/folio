@@ -1306,23 +1306,28 @@ final class FolioTests: XCTestCase {
             XCTAssertFalse(vm2.isDirectoryExpanded(subfolderDir))
             XCTAssertEqual(vm2.recentFileURLs.map(\.lastPathComponent), ["Beta.md", "Alpha.md"])
 
-            // Make unsaved edits to the open file without saving to disk
+            // Make edits to the open file — verify they are automatically saved to disk immediately
             vm2.handleEditorTextEdited(
-                "# Beta Heading\nUnsaved in-progress edit across relaunch!",
+                "# Beta Heading\nAuto-saved edit across relaunch!",
                 selectedRange: NSRange(location: 25, length: 0)
             )
-            XCTAssertTrue(vm2.isDirty)
+            XCTAssertFalse(vm2.isDirty, "Open file edits should auto-save immediately with no dirty state")
+            XCTAssertEqual(
+                try String(contentsOf: fileB, encoding: .utf8),
+                "# Beta Heading\nAuto-saved edit across relaunch!"
+            )
         }
 
-        // 3. Launch #3: Verify unsaved dirty buffer on open file is restored intact
+        // 3. Launch #3: Verify auto-saved file and its undo history are restored intact across relaunch
         do {
             let vm3 = EditorWorkspaceViewModel(userDefaults: testDefaults)
             XCTAssertEqual(vm3.currentFileURL?.standardizedFileURL, fileB.standardizedFileURL)
-            XCTAssertEqual(vm3.markdownText, "# Beta Heading\nUnsaved in-progress edit across relaunch!")
-            XCTAssertTrue(vm3.isDirty)
+            XCTAssertEqual(vm3.markdownText, "# Beta Heading\nAuto-saved edit across relaunch!")
+            XCTAssertFalse(vm3.isDirty)
             XCTAssertEqual(vm3.pendingScrollToCharacterLocation, 25)
+            XCTAssertTrue(vm3.canUndo, "Undo timeline should persist across app launches")
 
-            // Now create a brand-new untitled draft and type into it without saving
+            // Now create a brand-new untitled draft and type into it without choosing a file path
             vm3.newDocument()
             vm3.handleEditorTextEdited(
                 "# Scratchpad Draft\nRemember this untitled note on relaunch.",
@@ -1335,7 +1340,7 @@ final class FolioTests: XCTestCase {
             let vm4 = EditorWorkspaceViewModel(userDefaults: testDefaults)
             XCTAssertNil(vm4.currentFileURL)
             XCTAssertEqual(vm4.markdownText, "# Scratchpad Draft\nRemember this untitled note on relaunch.")
-            XCTAssertTrue(vm4.isDirty)
+            XCTAssertFalse(vm4.isDirty)
             XCTAssertEqual(vm4.documentTitle, "Scratchpad Draft.md")
             XCTAssertEqual(vm4.pendingScrollToCharacterLocation, 19)
 
@@ -1522,6 +1527,648 @@ final class FolioTests: XCTestCase {
         )
         XCTAssertTrue(stateMermaid.contains("Live Buffer Folds &amp; Inlays"))
         XCTAssertFalse(stateMermaid.contains(">Inlays\"</text>"))
+    }
+
+    @MainActor
+    func testAutomaticAutosaveAndInfiniteUndoRedoAcrossEditsAndRelaunches() throws {
+        let suiteName = "com.folio.tests.infiniteundo.\(UUID().uuidString)"
+        guard let testDefaults = UserDefaults(suiteName: suiteName) else {
+            XCTFail("Failed to create isolated UserDefaults suite")
+            return
+        }
+        defer {
+            testDefaults.removePersistentDomain(forName: suiteName)
+        }
+
+        let tempDir = FileManager.default.temporaryDirectory
+            .appendingPathComponent("FolioInfiniteUndoTest-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
+        defer {
+            try? FileManager.default.removeItem(at: tempDir)
+        }
+
+        let fileA = tempDir.appendingPathComponent("NoteA.md")
+        let fileB = tempDir.appendingPathComponent("NoteB.md")
+        try "Line 0".write(to: fileA, atomically: true, encoding: .utf8)
+        try "Initial B".write(to: fileB, atomically: true, encoding: .utf8)
+
+        let vm = EditorWorkspaceViewModel(userDefaults: testDefaults)
+        vm.openFolder(at: tempDir)
+        vm.openFile(at: fileA)
+        XCTAssertEqual(vm.markdownText, "Line 0")
+        XCTAssertFalse(vm.canUndo)
+
+        // Perform 25 distinct edits (breaking undo coalescing between each) and verify each auto-saves immediately
+        for step in 1...25 {
+            vm.breakUndoCoalescing()
+            let updated = (0...step).map { "Line \($0)" }.joined(separator: "\n")
+            vm.handleEditorTextEdited(updated, selectedRange: NSRange(location: (updated as NSString).length, length: 0))
+            XCTAssertFalse(vm.isDirty)
+            XCTAssertEqual(try String(contentsOf: fileA, encoding: .utf8), updated)
+        }
+
+        XCTAssertEqual(vm.currentUndoStack.count, 25)
+        XCTAssertTrue(vm.canUndo)
+        XCTAssertFalse(vm.canRedo)
+
+        // Switch to fileB, perform edits there, and verify per-file undo isolation
+        vm.openFile(at: fileB)
+        XCTAssertEqual(vm.markdownText, "Initial B")
+        XCTAssertFalse(vm.canUndo)
+        vm.breakUndoCoalescing()
+        vm.handleEditorTextEdited("Initial B\nSecond line in B", selectedRange: NSRange(location: 10, length: 0))
+        XCTAssertEqual(try String(contentsOf: fileB, encoding: .utf8), "Initial B\nSecond line in B")
+        XCTAssertEqual(vm.currentUndoStack.count, 1)
+
+        // Switch back to fileA and verify all 25 undo steps are still intact
+        vm.openFile(at: fileA)
+        XCTAssertEqual(vm.currentUndoStack.count, 25)
+
+        // Undo all 25 steps back to "Line 0" and verify disk is auto-saved on each undo
+        for step in (0..<25).reversed() {
+            vm.undo()
+            let expected = (0...step).map { "Line \($0)" }.joined(separator: "\n")
+            XCTAssertEqual(vm.markdownText, expected)
+            XCTAssertEqual(try String(contentsOf: fileA, encoding: .utf8), expected)
+        }
+        XCTAssertFalse(vm.canUndo)
+        XCTAssertTrue(vm.canRedo)
+        XCTAssertEqual(vm.currentRedoStack.count, 25)
+
+        // Redo 10 steps
+        for _ in 1...10 {
+            vm.redo()
+        }
+        let expectedAt10 = (0...10).map { "Line \($0)" }.joined(separator: "\n")
+        XCTAssertEqual(vm.markdownText, expectedAt10)
+        XCTAssertEqual(try String(contentsOf: fileA, encoding: .utf8), expectedAt10)
+
+        // Relaunch EditorWorkspaceViewModel and verify both undo (10) and redo (15) stacks persisted
+        let relaunchedVM = EditorWorkspaceViewModel(userDefaults: testDefaults)
+        XCTAssertEqual(relaunchedVM.currentFileURL?.standardizedFileURL, fileA.standardizedFileURL)
+        XCTAssertEqual(relaunchedVM.currentUndoStack.count, 10)
+        XCTAssertEqual(relaunchedVM.currentRedoStack.count, 15)
+        relaunchedVM.undo()
+        let expectedAt9 = (0...9).map { "Line \($0)" }.joined(separator: "\n")
+        XCTAssertEqual(relaunchedVM.markdownText, expectedAt9)
+        XCTAssertEqual(try String(contentsOf: fileA, encoding: .utf8), expectedAt9)
+    }
+
+    @MainActor
+    func testLiveExternalFileAutoUpdateInPlaceAndAtomicWithVisualNoticeAndUndo() throws {
+        let suiteName = "com.folio.tests.externalupdate.\(UUID().uuidString)"
+        guard let testDefaults = UserDefaults(suiteName: suiteName) else {
+            XCTFail("Failed to create isolated UserDefaults suite")
+            return
+        }
+        defer {
+            testDefaults.removePersistentDomain(forName: suiteName)
+        }
+
+        let tempDir = FileManager.default.temporaryDirectory
+            .appendingPathComponent("FolioExternalUpdateTest-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
+        defer {
+            try? FileManager.default.removeItem(at: tempDir)
+        }
+
+        let fileURL = tempDir.appendingPathComponent("LiveDoc.md")
+        let initialText = "# Live Document\n\nParagraph one.\n\nParagraph two."
+        try initialText.write(to: fileURL, atomically: true, encoding: .utf8)
+
+        let vm = EditorWorkspaceViewModel(userDefaults: testDefaults)
+        vm.openFile(at: fileURL)
+        XCTAssertEqual(vm.markdownText, initialText)
+        XCTAssertNil(vm.externalUpdateNotice)
+
+        // Simulate an external atomic write (like vim/sed/git/Claude editing the file on disk)
+        let externallyUpdatedText = "# Live Document\n\nParagraph one (updated externally!).\n\nParagraph two.\n\n### Added Section"
+        try externallyUpdatedText.write(to: fileURL, atomically: true, encoding: .utf8)
+        vm.checkForExternalFileChanges(for: fileURL)
+
+        XCTAssertEqual(vm.markdownText, externallyUpdatedText)
+        XCTAssertNotNil(vm.externalUpdateNotice, "Visual external update notice should be published")
+        XCTAssertEqual(vm.externalUpdateNotice?.wasThreeWayMerged, false)
+        XCTAssertGreaterThan(vm.externalUpdateNotice?.addedLines ?? 0, 0)
+        XCTAssertFalse(vm.externalUpdateHighlightRanges.isEmpty, "Changed line ranges should be highlighted in the editor")
+
+        // Verify the external update itself is undoable with Cmd+Z!
+        XCTAssertTrue(vm.canUndo)
+        XCTAssertEqual(vm.currentUndoStack.last?.origin, .externalUpdate)
+        vm.undo()
+        XCTAssertEqual(vm.markdownText, initialText)
+        XCTAssertEqual(try String(contentsOf: fileURL, encoding: .utf8), initialText)
+
+        // And redoable with Cmd+Shift+Z!
+        vm.redo()
+        XCTAssertEqual(vm.markdownText, externallyUpdatedText)
+        XCTAssertEqual(try String(contentsOf: fileURL, encoding: .utf8), externallyUpdatedText)
+    }
+
+    @MainActor
+    func testThreeWayAutoMergeAndInteractiveConflictResolution() throws {
+        let suiteName = "com.folio.tests.conflictmerge.\(UUID().uuidString)"
+        guard let testDefaults = UserDefaults(suiteName: suiteName) else {
+            XCTFail("Failed to create isolated UserDefaults suite")
+            return
+        }
+        defer {
+            testDefaults.removePersistentDomain(forName: suiteName)
+        }
+
+        let tempDir = FileManager.default.temporaryDirectory
+            .appendingPathComponent("FolioConflictMergeTest-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
+        defer {
+            try? FileManager.default.removeItem(at: tempDir)
+        }
+
+        let fileURL = tempDir.appendingPathComponent("Collab.md")
+        let baseText = [
+            "# Shared Spec",
+            "",
+            "Section Alpha: original",
+            "",
+            "Section Beta: unchanged middle",
+            "",
+            "Section Gamma: original"
+        ].joined(separator: "\n")
+        try baseText.write(to: fileURL, atomically: true, encoding: .utf8)
+
+        let vm = EditorWorkspaceViewModel(userDefaults: testDefaults)
+        vm.openFile(at: fileURL)
+
+        // 1. Test clean 3-way auto-merge when local and external edit different sections concurrently:
+        // External tool updates Section Gamma on disk BEFORE local edit flushes
+        let externalDisjoint = [
+            "# Shared Spec",
+            "",
+            "Section Alpha: original",
+            "",
+            "Section Beta: unchanged middle",
+            "",
+            "Section Gamma: updated by external agent"
+        ].joined(separator: "\n")
+        try externalDisjoint.write(to: fileURL, atomically: true, encoding: .utf8)
+
+        // User edits Section Alpha locally in Folio — pre-write check detects disk changed and auto-merges!
+        let localDisjoint = [
+            "# Shared Spec",
+            "",
+            "Section Alpha: edited locally in Folio",
+            "",
+            "Section Beta: unchanged middle",
+            "",
+            "Section Gamma: original"
+        ].joined(separator: "\n")
+        vm.handleEditorTextEdited(localDisjoint, selectedRange: NSRange(location: 20, length: 0))
+
+        let expectedMerged = [
+            "# Shared Spec",
+            "",
+            "Section Alpha: edited locally in Folio",
+            "",
+            "Section Beta: unchanged middle",
+            "",
+            "Section Gamma: updated by external agent"
+        ].joined(separator: "\n")
+        XCTAssertNil(vm.activeConflict, "Disjoint concurrent edits should auto-merge cleanly without conflict")
+        XCTAssertEqual(vm.markdownText, expectedMerged)
+        XCTAssertEqual(try String(contentsOf: fileURL, encoding: .utf8), expectedMerged)
+        XCTAssertEqual(vm.externalUpdateNotice?.wasThreeWayMerged, true)
+
+        // 2. Test overlapping conflict detection and resolution:
+        // External process modifies Section Alpha on disk while user ALSO modifies Section Alpha locally
+        let externalConflicting = [
+            "# Shared Spec",
+            "",
+            "Section Alpha: EXTERNAL OVERRIDE",
+            "",
+            "Section Beta: unchanged middle",
+            "",
+            "Section Gamma: updated by external agent"
+        ].joined(separator: "\n")
+        try externalConflicting.write(to: fileURL, atomically: true, encoding: .utf8)
+
+        let localConflicting = [
+            "# Shared Spec",
+            "",
+            "Section Alpha: LOCAL OVERRIDE",
+            "",
+            "Section Beta: unchanged middle",
+            "",
+            "Section Gamma: updated by external agent"
+        ].joined(separator: "\n")
+        vm.handleEditorTextEdited(localConflicting, selectedRange: NSRange(location: 20, length: 0))
+
+        XCTAssertNotNil(vm.activeConflict, "Overlapping concurrent edits must surface an active conflict")
+        XCTAssertEqual(vm.activeConflict?.conflictHunks.count, 1)
+        XCTAssertEqual(vm.activeConflict?.conflictHunks.first?.localLines, ["Section Alpha: LOCAL OVERRIDE"])
+        XCTAssertEqual(vm.activeConflict?.conflictHunks.first?.externalLines, ["Section Alpha: EXTERNAL OVERRIDE"])
+
+        // Resolve conflict using .keepBoth and verify result is auto-saved and undoable
+        vm.resolveConflict(using: .keepBoth)
+        XCTAssertNil(vm.activeConflict)
+        let expectedKeepBoth = [
+            "# Shared Spec",
+            "",
+            "Section Alpha: LOCAL OVERRIDE",
+            "Section Alpha: EXTERNAL OVERRIDE",
+            "",
+            "Section Beta: unchanged middle",
+            "",
+            "Section Gamma: updated by external agent"
+        ].joined(separator: "\n")
+        XCTAssertEqual(vm.markdownText, expectedKeepBoth)
+        XCTAssertEqual(try String(contentsOf: fileURL, encoding: .utf8), expectedKeepBoth)
+
+        // Undo the conflict resolution and verify it restores the pre-resolution local buffer
+        vm.undo()
+        XCTAssertEqual(vm.markdownText, localConflicting)
+    }
+
+    @MainActor
+    func testEdgeCaseEmptyFileTruncationsNewlinesAndIdempotentConcurrentEdits() throws {
+        let suiteName = "com.folio.tests.edgecases.\(UUID().uuidString)"
+        guard let testDefaults = UserDefaults(suiteName: suiteName) else {
+            XCTFail("Failed to create isolated UserDefaults suite")
+            return
+        }
+        defer { testDefaults.removePersistentDomain(forName: suiteName) }
+
+        let tempDir = FileManager.default.temporaryDirectory
+            .appendingPathComponent("FolioEdgeCasesTest-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: tempDir) }
+
+        // 1. Initially empty file ("") modified both externally and locally -> must detect conflict!
+        let emptyFile = tempDir.appendingPathComponent("EmptyStart.md")
+        try "".write(to: emptyFile, atomically: true, encoding: .utf8)
+
+        let vm = EditorWorkspaceViewModel(userDefaults: testDefaults)
+        vm.openFile(at: emptyFile)
+        XCTAssertEqual(vm.markdownText, "")
+
+        try "External first line".write(to: emptyFile, atomically: true, encoding: .utf8)
+        vm.handleEditorTextEdited("Local first line", selectedRange: NSRange(location: 16, length: 0))
+        XCTAssertNotNil(vm.activeConflict, "Concurrent edits starting from an empty file must detect conflict instead of overwriting")
+
+        // Self-healing conflict: if the external file on disk is updated to match local, conflict auto-clears
+        try "Local first line".write(to: emptyFile, atomically: true, encoding: .utf8)
+        vm.checkForExternalFileChanges(for: emptyFile)
+        XCTAssertNil(vm.activeConflict, "Conflict should self-heal when external file matches local buffer")
+        XCTAssertFalse(vm.isDirty)
+
+        // 2. External truncation to completely empty file ("") and undo back to previous text
+        try "".write(to: emptyFile, atomically: true, encoding: .utf8)
+        vm.checkForExternalFileChanges(for: emptyFile)
+        XCTAssertEqual(vm.markdownText, "")
+        XCTAssertNotNil(vm.externalUpdateNotice)
+        vm.undo()
+        XCTAssertEqual(vm.markdownText, "Local first line")
+        XCTAssertEqual(try String(contentsOf: emptyFile, encoding: .utf8), "Local first line")
+
+        // 3. Idempotent concurrent edits (local and external make the exact same edit to the same line)
+        let idempotentBase = "Line 1\nLine 2\nLine 3\n"
+        try idempotentBase.write(to: emptyFile, atomically: true, encoding: .utf8)
+        vm.checkForExternalFileChanges(for: emptyFile)
+        XCTAssertEqual(vm.markdownText, idempotentBase)
+
+        let identicalModification = "Line 1\nLine 2 — modified identically by both!\nLine 3\n"
+        try identicalModification.write(to: emptyFile, atomically: true, encoding: .utf8)
+        vm.handleEditorTextEdited(identicalModification, selectedRange: NSRange(location: 10, length: 0))
+        XCTAssertNil(vm.activeConflict, "Identical concurrent modifications to the same line must merge cleanly without false conflict")
+        XCTAssertEqual(vm.markdownText, identicalModification)
+    }
+
+    @MainActor
+    func testEdgeCaseMidDocumentKeystrokeCoalescingAndUnicodeSurrogateCursorAnchoring() throws {
+        let suiteName = "com.folio.tests.coalesceunicode.\(UUID().uuidString)"
+        guard let testDefaults = UserDefaults(suiteName: suiteName) else {
+            XCTFail("Failed to create isolated UserDefaults suite")
+            return
+        }
+        defer { testDefaults.removePersistentDomain(forName: suiteName) }
+
+        let tempDir = FileManager.default.temporaryDirectory
+            .appendingPathComponent("FolioCoalesceUnicodeTest-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: tempDir) }
+
+        let fileURL = tempDir.appendingPathComponent("MiddleTyping.md")
+        // File ends with a trailing newline while user types in the middle on line 2
+        let initial = "# Header\n\n\nFooter line\n"
+        try initial.write(to: fileURL, atomically: true, encoding: .utf8)
+
+        let vm = EditorWorkspaceViewModel(userDefaults: testDefaults)
+        vm.openFile(at: fileURL)
+
+        // Simulate typing "hello world" character-by-character at offset 10 (the blank middle line)
+        var text = initial
+        var cursor = 10
+        vm.currentSelectedRange = NSRange(location: cursor, length: 0)
+
+        for ch in "hello" {
+            let ns = text as NSString
+            text = ns.replacingCharacters(in: NSRange(location: cursor, length: 0), with: String(ch))
+            cursor += 1
+            vm.handleEditorTextEdited(text, selectedRange: NSRange(location: cursor, length: 0))
+        }
+        XCTAssertEqual(vm.currentUndoStack.count, 1, "Typing 'hello' in the middle of a newline-terminated file should coalesce into 1 undo step")
+
+        // Typing space breaks coalescing
+        text = (text as NSString).replacingCharacters(in: NSRange(location: cursor, length: 0), with: " ")
+        cursor += 1
+        vm.handleEditorTextEdited(text, selectedRange: NSRange(location: cursor, length: 0))
+        XCTAssertEqual(vm.currentUndoStack.count, 2, "Space should start a separate undo entry")
+
+        // Typing "world" coalesces into a single word entry
+        for ch in "world" {
+            text = (text as NSString).replacingCharacters(in: NSRange(location: cursor, length: 0), with: String(ch))
+            cursor += 1
+            vm.handleEditorTextEdited(text, selectedRange: NSRange(location: cursor, length: 0))
+        }
+        XCTAssertEqual(vm.currentUndoStack.count, 3, "Typing 'world' should coalesce into the 3rd undo step")
+
+        //Undo 1: removes "world", leaving "# Header\n\nhello \nFooter line\n"
+        vm.undo()
+        XCTAssertEqual(vm.markdownText, "# Header\n\nhello \nFooter line\n")
+        XCTAssertEqual(vm.currentSelectedRange, NSRange(location: 16, length: 0))
+
+        // Undo 2: removes " ", leaving "# Header\n\nhello\nFooter line\n"
+        vm.undo()
+        XCTAssertEqual(vm.markdownText, "# Header\n\nhello\nFooter line\n")
+        XCTAssertEqual(vm.currentSelectedRange, NSRange(location: 15, length: 0))
+
+        // Undo 3: removes "hello", back to initial
+        vm.undo()
+        XCTAssertEqual(vm.markdownText, initial)
+        XCTAssertEqual(vm.currentSelectedRange, NSRange(location: 10, length: 0))
+
+        // Now test multi-hunk cursor preservation with UTF-16 surrogate pairs (emojis 🚀🧬 & LaTeX)
+        let unicodeDoc = [
+            "Top line: original",
+            "Unchanged separator",
+            "Middle cursor line: 🚀Rocket and 🧬DNA TargetCursorHere end",
+            "Unchanged separator 2",
+            "Bottom line: original"
+        ].joined(separator: "\n")
+        try unicodeDoc.write(to: fileURL, atomically: true, encoding: .utf8)
+        vm.checkForExternalFileChanges(for: fileURL)
+
+        let targetOffsetInOld = (unicodeDoc as NSString).range(of: "TargetCursorHere").location
+        vm.currentSelectedRange = NSRange(location: targetOffsetInOld, length: 16)
+
+        // External update modifies BOTH the top and bottom of the document (inserting multi-unit emojis above)
+        let unicodeUpdated = [
+            "Top line: 🌟🔥✨ expanded header with emojis",
+            "Extra inserted top line 🎉",
+            "Unchanged separator",
+            "Middle cursor line: 🚀Rocket and 🧬DNA TargetCursorHere end",
+            "Unchanged separator 2",
+            "Bottom line: updated footer at bottom of file"
+        ].joined(separator: "\n")
+        try unicodeUpdated.write(to: fileURL, atomically: true, encoding: .utf8)
+        vm.checkForExternalFileChanges(for: fileURL)
+
+        let expectedOffsetInNew = (unicodeUpdated as NSString).range(of: "TargetCursorHere").location
+        XCTAssertEqual(
+            vm.currentSelectedRange,
+            NSRange(location: expectedOffsetInNew, length: 16),
+            "Cursor in middle of document must shift by the exact UTF-16 delta of top edits even when bottom also changes"
+        )
+
+        // Verify surrogate-pair boundary clamping never splits a 2-unit UTF-16 emoji
+        let emojiOnly = "🚀🧬🎉" // 6 UTF-16 code units (indices 0..1, 2..3, 4..5)
+        let splitAttempt = DocumentLineDiff.adjustedSelection(
+            for: NSRange(location: 1, length: 2), // index 1 and 3 are inside trail surrogates
+            inOldText: emojiOnly,
+            toNewText: emojiOnly
+        )
+        XCTAssertEqual(splitAttempt.location % 2, 0, "Adjusted selection location must never split a UTF-16 surrogate pair")
+        XCTAssertEqual((splitAttempt.location + splitAttempt.length) % 2, 0, "Adjusted selection end must never split a UTF-16 surrogate pair")
+    }
+
+    @MainActor
+    func testExtremeMultiHunkConflictGranularResolutionAndRapidExternalStreaming() throws {
+        let suiteName = "com.folio.tests.multihunkstream.\(UUID().uuidString)"
+        guard let testDefaults = UserDefaults(suiteName: suiteName) else {
+            XCTFail("Failed to create isolated UserDefaults suite")
+            return
+        }
+        defer { testDefaults.removePersistentDomain(forName: suiteName) }
+
+        let tempDir = FileManager.default.temporaryDirectory
+            .appendingPathComponent("FolioMultiHunkStreamTest-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: tempDir) }
+
+        let fileURL = tempDir.appendingPathComponent("MultiHunk.md")
+        let baseDoc = [
+            "Hunk 1: base",
+            "Separator A",
+            "Clean Local Section: base",
+            "Separator B",
+            "Hunk 2: base",
+            "Separator C",
+            "Clean External Section: base",
+            "Separator D",
+            "Hunk 3: base"
+        ].joined(separator: "\n")
+        try baseDoc.write(to: fileURL, atomically: true, encoding: .utf8)
+
+        let vm = EditorWorkspaceViewModel(userDefaults: testDefaults)
+        vm.openFile(at: fileURL)
+
+        let externalDoc = [
+            "Hunk 1: external",
+            "Separator A",
+            "Clean Local Section: base",
+            "Separator B",
+            "Hunk 2: external",
+            "Separator C",
+            "Clean External Section: auto-merged from external",
+            "Separator D",
+            "Hunk 3: external"
+        ].joined(separator: "\n")
+        try externalDoc.write(to: fileURL, atomically: true, encoding: .utf8)
+
+        let localDoc = [
+            "Hunk 1: local",
+            "Separator A",
+            "Clean Local Section: auto-merged from local",
+            "Separator B",
+            "Hunk 2: local",
+            "Separator C",
+            "Clean External Section: base",
+            "Separator D",
+            "Hunk 3: local"
+        ].joined(separator: "\n")
+        vm.handleEditorTextEdited(localDoc, selectedRange: NSRange(location: 0, length: 0))
+
+        guard let conflict = vm.activeConflict else {
+            XCTFail("Expected 3-hunk conflict")
+            return
+        }
+        XCTAssertEqual(conflict.conflictHunks.count, 3)
+
+        // Resolve Hunk 0 with .keepLocal, Hunk 1 with .acceptExternal, Hunk 2 with .keepBoth
+        vm.setConflictHunkResolution(.keepLocal, forHunkID: conflict.conflictHunks[0].id)
+        vm.setConflictHunkResolution(.acceptExternal, forHunkID: conflict.conflictHunks[1].id)
+        vm.setConflictHunkResolution(.keepBoth, forHunkID: conflict.conflictHunks[2].id)
+        vm.applyInteractiveConflictResolution()
+        XCTAssertNil(vm.activeConflict)
+
+        let expectedGranularMerge = [
+            "Hunk 1: local",
+            "Separator A",
+            "Clean Local Section: auto-merged from local",
+            "Separator B",
+            "Hunk 2: external",
+            "Separator C",
+            "Clean External Section: auto-merged from external",
+            "Separator D",
+            "Hunk 3: local",
+            "Hunk 3: external"
+        ].joined(separator: "\n")
+        XCTAssertEqual(vm.markdownText, expectedGranularMerge)
+        XCTAssertEqual(try String(contentsOf: fileURL, encoding: .utf8), expectedGranularMerge)
+
+        // Now simulate a rapid burst of 60 external streaming writes (mixing in-place and atomic writes)
+        for i in 1...60 {
+            let streamText = expectedGranularMerge + "\nStreamed token #\(i)"
+            if i % 2 == 0 {
+                try streamText.write(to: fileURL, atomically: true, encoding: .utf8)
+            } else {
+                try Data(streamText.utf8).write(to: fileURL)
+            }
+            vm.checkForExternalFileChanges(for: fileURL)
+            XCTAssertEqual(vm.markdownText, streamText)
+        }
+
+        // Undo all 60 streamed external updates and verify we land right back at expectedGranularMerge
+        for _ in 1...60 {
+            vm.undo()
+        }
+        XCTAssertEqual(vm.markdownText, expectedGranularMerge)
+        XCTAssertEqual(try String(contentsOf: fileURL, encoding: .utf8), expectedGranularMerge)
+    }
+
+    @MainActor
+    func testExtremeScale1000StepInfiniteUndoRedoAnd5000LineThreeWayMergePerformance() throws {
+        let suiteName = "com.folio.tests.extremescale.\(UUID().uuidString)"
+        guard let testDefaults = UserDefaults(suiteName: suiteName) else {
+            XCTFail("Failed to create isolated UserDefaults suite")
+            return
+        }
+        defer { testDefaults.removePersistentDomain(forName: suiteName) }
+
+        let tempDir = FileManager.default.temporaryDirectory
+            .appendingPathComponent("FolioExtremeScaleTest-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: tempDir) }
+
+        // PART 1: 1,000-step infinite undo & redo stress test with live autosave on every step
+        let stressFile = tempDir.appendingPathComponent("Stress1000.md")
+        try "Step 0".write(to: stressFile, atomically: true, encoding: .utf8)
+
+        let vm = EditorWorkspaceViewModel(userDefaults: testDefaults)
+        vm.openFile(at: stressFile)
+
+        let totalSteps = 1_000
+        let tEditStart = CFAbsoluteTimeGetCurrent()
+        for step in 1...totalSteps {
+            vm.breakUndoCoalescing()
+            let updated = "Step \(step) — payload line with markdown **bold** and `code`"
+            vm.handleEditorTextEdited(updated, selectedRange: NSRange(location: (updated as NSString).length, length: 0))
+        }
+        let editElapsed = CFAbsoluteTimeGetCurrent() - tEditStart
+
+        XCTAssertEqual(vm.currentUndoStack.count, totalSteps, "In-memory undo timeline must hold all 1,000 steps without truncation")
+        XCTAssertFalse(vm.isDirty)
+        XCTAssertEqual(
+            try String(contentsOf: stressFile, encoding: .utf8),
+            "Step \(totalSteps) — payload line with markdown **bold** and `code`"
+        )
+
+        let tUndoStart = CFAbsoluteTimeGetCurrent()
+        for _ in 1...totalSteps {
+            vm.undo()
+        }
+        let undoElapsed = CFAbsoluteTimeGetCurrent() - tUndoStart
+
+        XCTAssertEqual(vm.markdownText, "Step 0")
+        XCTAssertEqual(try String(contentsOf: stressFile, encoding: .utf8), "Step 0")
+        XCTAssertFalse(vm.canUndo)
+        XCTAssertEqual(vm.currentRedoStack.count, totalSteps)
+
+        let tRedoStart = CFAbsoluteTimeGetCurrent()
+        for _ in 1...totalSteps {
+            vm.redo()
+        }
+        let redoElapsed = CFAbsoluteTimeGetCurrent() - tRedoStart
+
+        XCTAssertEqual(vm.markdownText, "Step \(totalSteps) — payload line with markdown **bold** and `code`")
+        XCTAssertEqual(
+            try String(contentsOf: stressFile, encoding: .utf8),
+            "Step \(totalSteps) — payload line with markdown **bold** and `code`"
+        )
+        XCTAssertFalse(vm.canRedo)
+        XCTAssertLessThan(editElapsed, 5.0, "1,000 edits + disk autosaves + undo persistence should finish in <5s (took \(editElapsed)s)")
+        XCTAssertLessThan(undoElapsed, 5.0, "1,000 undos + disk autosaves should finish in <5s (took \(undoElapsed)s)")
+        XCTAssertLessThan(redoElapsed, 5.0, "1,000 redos + disk autosaves should finish in <5s (took \(redoElapsed)s)")
+
+        // PART 2: 5,000-line document 3-way auto-merge & line-diff performance benchmark
+        let lineCount = 5_000
+        let baseLines = (0..<lineCount).map { "### Section \($0): Unique baseline content for paragraph \($0)" }
+        var localLines = baseLines
+        localLines[25] = "### Section 25: Modified locally near top of 5,000-line document"
+        localLines[2500] = "### Section 2500: Modified locally in exact middle of 5,000-line document"
+
+        var externalLines = baseLines
+        externalLines[4975] = "### Section 4975: Modified externally near bottom of 5,000-line document"
+        externalLines.append("### Section 5000: Appended externally at end of file")
+
+        let base5000 = baseLines.joined(separator: "\n")
+        let local5000 = localLines.joined(separator: "\n")
+        let external5000 = externalLines.joined(separator: "\n")
+
+        let tMergeStart = CFAbsoluteTimeGetCurrent()
+        let mergeResult = ThreeWayDocumentMerger.merge(
+            base: base5000,
+            local: local5000,
+            external: external5000,
+            fileURL: stressFile
+        )
+        let diffResult = DocumentLineDiff.computeDiff(from: base5000, to: external5000)
+        let adjustedCursor = DocumentLineDiff.adjustedSelection(
+            for: NSRange(location: 60_000, length: 12),
+            inOldText: base5000,
+            toNewText: external5000
+        )
+        let mergeElapsed = CFAbsoluteTimeGetCurrent() - tMergeStart
+
+        guard case .clean(let merged5000, let wasAutoMerged) = mergeResult else {
+            XCTFail("5,000-line disjoint 3-way merge should succeed cleanly")
+            return
+        }
+        XCTAssertTrue(wasAutoMerged)
+        XCTAssertTrue(merged5000.contains("### Section 25: Modified locally near top"))
+        XCTAssertTrue(merged5000.contains("### Section 2500: Modified locally in exact middle"))
+        XCTAssertTrue(merged5000.contains("### Section 4975: Modified externally near bottom"))
+        XCTAssertTrue(merged5000.contains("### Section 5000: Appended externally at end of file"))
+        XCTAssertEqual(diffResult.addedLinesCount, 2)
+        XCTAssertEqual(diffResult.removedLinesCount, 1)
+        XCTAssertEqual(adjustedCursor, NSRange(location: 60_000, length: 12))
+        XCTAssertLessThan(mergeElapsed, 0.15, "5,000-line 3-way auto-merge + line diff + cursor anchoring should complete in <150ms (took \(mergeElapsed * 1000)ms)")
+
+        print(String(
+            format: "[FolioPerf] 1000 edits=%.1fms (%.2fms/op), 1000 undos=%.1fms (%.2fms/op), 1000 redos=%.1fms (%.2fms/op), 5000-line 3-way merge+diff=%.2fms",
+            editElapsed * 1000, editElapsed,
+            undoElapsed * 1000, undoElapsed,
+            redoElapsed * 1000, redoElapsed,
+            mergeElapsed * 1000
+        ))
     }
 }
 

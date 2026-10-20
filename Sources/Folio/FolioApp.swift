@@ -21,6 +21,10 @@ public struct MainWindowView: View {
                 VStack(spacing: 0) {
                     RemoteConnectionBannerView(viewModel: viewModel)
 
+                    DocumentConflictBannerView(viewModel: viewModel)
+
+                    ExternalUpdateBannerView(viewModel: viewModel)
+
                     if viewModel.showFindReplaceBar {
                         FindReplaceBannerView(viewModel: viewModel)
                     }
@@ -50,13 +54,19 @@ public struct MainWindowView: View {
             }
         }
         .preferredColorScheme(viewModel.theme.colorScheme)
-        .navigationTitle(viewModel.documentTitle + (viewModel.isDirty ? " — Edited" : ""))
+        .navigationTitle(viewModel.documentTitle + (viewModel.activeConflict != nil ? " — Conflict" : ""))
         .background(WindowStatePersistenceAccessor(userDefaults: viewModel.userDefaults))
         .sheet(isPresented: $viewModel.showInsertTableSheet) {
             InsertTableModalView(viewModel: viewModel)
         }
         .sheet(isPresented: $viewModel.showAddRemoteModal) {
             AddRemoteMountModalView(viewModel: viewModel)
+        }
+        .sheet(isPresented: $viewModel.showConflictResolverModal) {
+            ConflictResolverModalView(viewModel: viewModel)
+        }
+        .sheet(isPresented: $viewModel.showExternalUpdateDiffModal) {
+            ExternalUpdateDiffModalView(viewModel: viewModel)
         }
         .sheet(isPresented: $updateManager.showUpdateSheet) {
             AppUpdateModalView(updateManager: updateManager)
@@ -240,12 +250,17 @@ public struct FolioApp: App {
             }
 
             CommandGroup(replacing: .saveItem) {
-                Button("Save") {
-                    viewModel.saveDocument()
+                if viewModel.currentFileURL == nil {
+                    Button("Save to File...") {
+                        viewModel.saveDocumentAs()
+                    }
+                    .keyboardShortcut("s", modifiers: [.command])
+                } else {
+                    Button("All Changes Auto-Saved") {}
+                        .disabled(true)
                 }
-                .keyboardShortcut("s", modifiers: [.command])
 
-                Button("Save As...") {
+                Button("Save a Copy As...") {
                     viewModel.saveDocumentAs()
                 }
                 .keyboardShortcut("s", modifiers: [.command, .shift])
@@ -260,6 +275,21 @@ public struct FolioApp: App {
                         viewModel.exportToPDF()
                     }
                 }
+            }
+
+            // MARK: - Infinite Undo / Redo Menu
+            CommandGroup(replacing: .undoRedo) {
+                Button(viewModel.undoActionTitle) {
+                    viewModel.undo()
+                }
+                .keyboardShortcut("z", modifiers: [.command])
+                .disabled(!viewModel.canUndo)
+
+                Button(viewModel.redoActionTitle) {
+                    viewModel.redo()
+                }
+                .keyboardShortcut("z", modifiers: [.command, .shift])
+                .disabled(!viewModel.canRedo)
             }
 
             // MARK: - Edit / Find Menu

@@ -23,7 +23,35 @@ public final class EditorWorkspaceViewModel: ObservableObject {
     @Published public var markdownText: String {
         didSet {
             guard !isRestoringState else { return }
-            persistDocumentSessionState()
+            if !isApplyingInternalStateChange && markdownText != oldValue {
+                let allowCoalesce = isLiveKeystrokeInProgress && canCoalesceLiveTyping
+                recordUndoStep(
+                    from: oldValue,
+                    to: markdownText,
+                    previousSelection: currentSelectedRange,
+                    newSelection: currentSelectedRange,
+                    origin: pendingEditOrigin,
+                    summary: pendingEditSummary,
+                    allowCoalescing: allowCoalesce
+                )
+                pendingEditOrigin = .userTyping
+                pendingEditSummary = nil
+                stats = DocumentStats.compute(for: markdownText, selectedRange: currentSelectedRange)
+                if activeTextView == nil {
+                    let analysis = MarkdownLiveStyler.applyStyles(
+                        to: NSTextStorage(string: markdownText),
+                        theme: theme,
+                        typography: typography,
+                        sourceCodeMode: sourceCodeMode,
+                        focusMode: focusMode,
+                        selectedRange: currentSelectedRange
+                    )
+                    headings = analysis.headings
+                }
+                autoSaveOrStageCurrentDocument()
+            } else {
+                persistDocumentSessionState()
+            }
         }
     }
     @Published public var currentFileURL: URL? {
@@ -31,6 +59,7 @@ public final class EditorWorkspaceViewModel: ObservableObject {
             guard !isRestoringState else { return }
             persistCurrentFileBookmark()
             persistDocumentSessionState()
+            refreshUndoRedoAvailability()
         }
     }
     @Published public var isDirty: Bool = false {
@@ -39,6 +68,27 @@ public final class EditorWorkspaceViewModel: ObservableObject {
             persistDocumentSessionState()
         }
     }
+
+    // MARK: - Autosave, Infinite Undo & External Update / Conflict State
+    @Published public var autoSaveEnabled: Bool = true
+    @Published public private(set) var lastAutoSavedAt: Date?
+    @Published public private(set) var lastSavedDiskContent: String = ""
+    @Published public private(set) var canUndo: Bool = false
+    @Published public private(set) var canRedo: Bool = false
+    @Published public var externalUpdateNotice: ExternalUpdateNotice?
+    @Published public var externalUpdateHighlightRanges: [NSRange] = []
+    @Published public var showExternalUpdateDiffModal: Bool = false
+    @Published public var activeConflict: DocumentConflict?
+    @Published public var showConflictResolverModal: Bool = false
+
+    private var perFileUndoTimelines: [String: DocumentUndoTimeline] = [:]
+    public var currentSelectedRange: NSRange = NSRange(location: 0, length: 0)
+    private var isApplyingInternalStateChange: Bool = false
+    private var pendingEditOrigin: UndoEntryOrigin = .userTyping
+    private var pendingEditSummary: String?
+    private var canCoalesceLiveTyping: Bool = false
+    public var isLiveKeystrokeInProgress: Bool = false
+    private var recentSelfWrittenContents: [String] = []
 
     // MARK: - Editor Modes, Theme & Typography
     @Published public var theme: EditorTheme = .daylight {
@@ -190,9 +240,14 @@ public final class EditorWorkspaceViewModel: ObservableObject {
     public static let fileSortOrderDefaultsKey = "Folio.FileSortOrder.v1"
     public static let collapsedDirectoryPathsDefaultsKey = "Folio.CollapsedDirectoryPaths.v1"
     public static let selectedCursorLocationDefaultsKey = "Folio.SelectedCursorLocation.v1"
+    public static let undoTimelinesDefaultsKey = "Folio.PerFileUndoTimelines.v1"
 
     nonisolated(unsafe) private var fileWatchSource: DispatchSourceFileSystemObject?
     nonisolated(unsafe) private var fileWatchDescriptor: Int32 = -1
+    nonisolated(unsafe) private var parentDirWatchSource: DispatchSourceFileSystemObject?
+    nonisolated(unsafe) private var parentDirWatchDescriptor: Int32 = -1
+    nonisolated(unsafe) private var watchedFileInode: UInt64 = 0
+    nonisolated(unsafe) private var externalHighlightClearTask: Task<Void, Never>?
 
     public init(
         remoteWorkspaceManager: RemoteWorkspaceManager? = nil,
@@ -260,6 +315,13 @@ public final class EditorWorkspaceViewModel: ObservableObject {
             self.collapsedDirectoryPaths = []
         }
 
+        if let savedTimelinesData = resolvedDefaults.data(forKey: Self.undoTimelinesDefaultsKey),
+           let decodedTimelines = try? JSONDecoder().decode([String: DocumentUndoTimeline].self, from: savedTimelinesData) {
+            self.perFileUndoTimelines = decodedTimelines
+        } else {
+            self.perFileUndoTimelines = [:]
+        }
+
         if let savedRecentPaths = resolvedDefaults.stringArray(forKey: Self.recentFilePathsDefaultsKey) {
             let fm = FileManager.default
             self.recentFileURLs = savedRecentPaths.compactMap { path in
@@ -321,6 +383,7 @@ public final class EditorWorkspaceViewModel: ObservableObject {
 
         self.currentFileURL = initialFileURL
         self.markdownText = initialContent
+        self.lastSavedDiskContent = initialFileURL != nil ? ((try? String(contentsOf: initialFileURL!, encoding: .utf8)) ?? initialContent) : initialContent
         self.isDirty = initialIsDirty
         self.stats = DocumentStats.compute(for: initialContent)
 
@@ -338,8 +401,11 @@ public final class EditorWorkspaceViewModel: ObservableObject {
            resolvedDefaults.object(forKey: Self.selectedCursorLocationDefaultsKey) != nil {
             let savedLoc = resolvedDefaults.integer(forKey: Self.selectedCursorLocationDefaultsKey)
             let maxLen = (initialContent as NSString).length
-            if savedLoc > 0 && savedLoc <= maxLen {
-                self.pendingScrollToCharacterLocation = savedLoc
+            if savedLoc >= 0 && savedLoc <= maxLen {
+                self.currentSelectedRange = NSRange(location: savedLoc, length: 0)
+                if savedLoc > 0 {
+                    self.pendingScrollToCharacterLocation = savedLoc
+                }
             }
         }
 
@@ -365,12 +431,8 @@ public final class EditorWorkspaceViewModel: ObservableObject {
             guard let self = self else { return }
             self.reloadWorkspaceTree()
             if let currentURL = self.currentFileURL?.standardizedFileURL,
-               !self.isDirty,
-               updatedURLs.contains(currentURL),
-               let diskContent = try? String(contentsOf: currentURL, encoding: .utf8),
-               diskContent != self.markdownText {
-                self.markdownText = diskContent
-                self.stats = DocumentStats.compute(for: diskContent)
+               updatedURLs.contains(currentURL) {
+                self.checkForExternalFileChanges(sourceDescription: "SSH Remote")
             }
         }
 
@@ -379,6 +441,7 @@ public final class EditorWorkspaceViewModel: ObservableObject {
         if let fileURL = initialFileURL {
             self.watchCurrentFile(fileURL)
         }
+        self.refreshUndoRedoAvailability()
         self.isRestoringState = false
     }
 
@@ -511,11 +574,258 @@ public final class EditorWorkspaceViewModel: ObservableObject {
     }
 
     deinit {
+        externalHighlightClearTask?.cancel()
         stopWatchingCurrentFile()
     }
 
     public func resetTypographyToDefaults() {
         typography = .default
+    }
+
+    // MARK: - Infinite Undo & Redo Engine
+
+    private func undoTimelineKey(for url: URL?) -> String {
+        if let url {
+            return url.standardizedFileURL.path
+        }
+        return "__UNTITLED_SCRATCHPAD__"
+    }
+
+    public var currentUndoStack: [DocumentUndoEntry] {
+        perFileUndoTimelines[undoTimelineKey(for: currentFileURL)]?.undoStack ?? []
+    }
+
+    public var currentRedoStack: [DocumentUndoEntry] {
+        perFileUndoTimelines[undoTimelineKey(for: currentFileURL)]?.redoStack ?? []
+    }
+
+    public var undoActionTitle: String {
+        if let last = currentUndoStack.last {
+            return "Undo \(last.summary)"
+        }
+        return "Undo"
+    }
+
+    public var redoActionTitle: String {
+        if let last = currentRedoStack.last {
+            return "Redo \(last.summary)"
+        }
+        return "Redo"
+    }
+
+    public func undoTimeline(for url: URL?) -> DocumentUndoTimeline {
+        perFileUndoTimelines[undoTimelineKey(for: url)] ?? DocumentUndoTimeline()
+    }
+
+    private func refreshUndoRedoAvailability() {
+        let timeline = perFileUndoTimelines[undoTimelineKey(for: currentFileURL)] ?? DocumentUndoTimeline()
+        if canUndo != timeline.canUndo {
+            canUndo = timeline.canUndo
+        }
+        if canRedo != timeline.canRedo {
+            canRedo = timeline.canRedo
+        }
+    }
+
+    private static let maxPersistedUndoEntriesPerFile = 100
+
+    private func persistUndoTimelines() {
+        guard !isRestoringState else { return }
+        var boundedTimelines: [String: DocumentUndoTimeline] = [:]
+        boundedTimelines.reserveCapacity(perFileUndoTimelines.count)
+        for (key, timeline) in perFileUndoTimelines {
+            let undoSlice = timeline.undoStack.suffix(Self.maxPersistedUndoEntriesPerFile)
+            let redoSlice = timeline.redoStack.suffix(Self.maxPersistedUndoEntriesPerFile)
+            boundedTimelines[key] = DocumentUndoTimeline(
+                undoStack: Array(undoSlice),
+                redoStack: Array(redoSlice)
+            )
+        }
+        if let encoded = try? JSONEncoder().encode(boundedTimelines) {
+            userDefaults.set(encoded, forKey: Self.undoTimelinesDefaultsKey)
+        }
+    }
+
+    public func breakUndoCoalescing() {
+        canCoalesceLiveTyping = false
+    }
+
+    public func withUndoMetadata<T>(
+        origin: UndoEntryOrigin,
+        summary: String? = nil,
+        _ block: () -> T
+    ) -> T {
+        breakUndoCoalescing()
+        let prevOrigin = pendingEditOrigin
+        let prevSummary = pendingEditSummary
+        pendingEditOrigin = origin
+        pendingEditSummary = summary ?? origin.rawValue
+        defer {
+            pendingEditOrigin = prevOrigin
+            pendingEditSummary = prevSummary
+            breakUndoCoalescing()
+        }
+        return block()
+    }
+
+    private func recordUndoStep(
+        from previousText: String,
+        to newText: String,
+        previousSelection: NSRange,
+        newSelection: NSRange,
+        origin: UndoEntryOrigin,
+        summary: String? = nil,
+        allowCoalescing: Bool = false
+    ) {
+        guard previousText != newText else { return }
+        let key = undoTimelineKey(for: currentFileURL)
+        var timeline = perFileUndoTimelines[key] ?? DocumentUndoTimeline()
+        let now = Date()
+
+        let prevNS = previousText as NSString
+        let newNS = newText as NSString
+        let deltaLen = newNS.length - prevNS.length
+        let isSingleCharAlphanumeric: Bool = {
+            guard deltaLen == 1,
+                  previousSelection.length == 0,
+                  newSelection.length == 0 else { return false }
+            // Determine the UTF-16 index of the newly inserted character (either via cursor advance or diff prefix)
+            var insertLoc = newSelection.location - 1
+            if insertLoc < 0 || insertLoc >= newNS.length || newSelection.location != previousSelection.location + 1 {
+                var prefix = 0
+                let limit = prevNS.length
+                while prefix < limit && prevNS.character(at: prefix) == newNS.character(at: prefix) {
+                    prefix += 1
+                }
+                insertLoc = prefix
+            }
+            guard insertLoc >= 0 && insertLoc < newNS.length else { return false }
+            let insertedStr = newNS.substring(with: NSRange(location: insertLoc, length: 1))
+            guard let scalar = insertedStr.unicodeScalars.first, insertedStr.unicodeScalars.count == 1 else {
+                return false
+            }
+            if CharacterSet.whitespacesAndNewlines.contains(scalar) || CharacterSet.punctuationCharacters.contains(scalar) {
+                return false
+            }
+            return true
+        }()
+
+        if allowCoalescing,
+           origin == .userTyping,
+           isSingleCharAlphanumeric,
+           var lastEntry = timeline.undoStack.last,
+           lastEntry.origin == .userTyping,
+           lastEntry.newText == previousText,
+           lastEntry.newSelectedLocation == previousSelection.location,
+           lastEntry.newSelectedLength == 0,
+           now.timeIntervalSince(lastEntry.timestamp) < 0.65 {
+            lastEntry.newText = newText
+            lastEntry.newSelectedLocation = max(0, newSelection.location)
+            lastEntry.newSelectedLength = max(0, newSelection.length)
+            lastEntry.timestamp = now
+            timeline.undoStack[timeline.undoStack.count - 1] = lastEntry
+            timeline.redoStack.removeAll()
+        } else {
+            let entry = DocumentUndoEntry(
+                previousText: previousText,
+                newText: newText,
+                previousSelectedRange: previousSelection,
+                newSelectedRange: newSelection,
+                timestamp: now,
+                origin: origin,
+                summary: summary
+            )
+            timeline.undoStack.append(entry)
+            timeline.redoStack.removeAll()
+            canCoalesceLiveTyping = (origin == .userTyping && isSingleCharAlphanumeric)
+        }
+
+        perFileUndoTimelines[key] = timeline
+        refreshUndoRedoAvailability()
+        persistUndoTimelines()
+    }
+
+    private func updateTopUndoNewSelection(_ selection: NSRange) {
+        let key = undoTimelineKey(for: currentFileURL)
+        guard var timeline = perFileUndoTimelines[key],
+              !timeline.undoStack.isEmpty else { return }
+        var last = timeline.undoStack[timeline.undoStack.count - 1]
+        if last.newText == markdownText {
+            last.newSelectedLocation = max(0, selection.location)
+            last.newSelectedLength = max(0, selection.length)
+            timeline.undoStack[timeline.undoStack.count - 1] = last
+            perFileUndoTimelines[key] = timeline
+            persistUndoTimelines()
+        }
+    }
+
+    public func undo() {
+        let key = undoTimelineKey(for: currentFileURL)
+        guard var timeline = perFileUndoTimelines[key],
+              let entry = timeline.undoStack.popLast() else { return }
+        timeline.redoStack.append(entry)
+        perFileUndoTimelines[key] = timeline
+        canCoalesceLiveTyping = false
+
+        applyHistoricalTextState(
+            entry.previousText,
+            selectedRange: entry.previousSelectedRange
+        )
+        refreshUndoRedoAvailability()
+        persistUndoTimelines()
+    }
+
+    public func redo() {
+        let key = undoTimelineKey(for: currentFileURL)
+        guard var timeline = perFileUndoTimelines[key],
+              let entry = timeline.redoStack.popLast() else { return }
+        timeline.undoStack.append(entry)
+        perFileUndoTimelines[key] = timeline
+        canCoalesceLiveTyping = false
+
+        applyHistoricalTextState(
+            entry.newText,
+            selectedRange: entry.newSelectedRange
+        )
+        refreshUndoRedoAvailability()
+        persistUndoTimelines()
+    }
+
+    private func applyHistoricalTextState(_ targetText: String, selectedRange: NSRange) {
+        let clampedLoc = max(0, min((targetText as NSString).length, selectedRange.location))
+        let clampedLen = max(0, min((targetText as NSString).length - clampedLoc, selectedRange.length))
+        let clampedRange = NSRange(location: clampedLoc, length: clampedLen)
+
+        isApplyingInternalStateChange = true
+        markdownText = targetText
+        currentSelectedRange = clampedRange
+        userDefaults.set(clampedRange.location, forKey: Self.selectedCursorLocationDefaultsKey)
+        stats = DocumentStats.compute(for: targetText, selectedRange: clampedRange)
+
+        if let tv = activeTextView {
+            tv.applyProgrammaticDocumentText(targetText, selectedRange: clampedRange)
+        } else {
+            let analysis = MarkdownLiveStyler.applyStyles(
+                to: NSTextStorage(string: targetText),
+                theme: theme,
+                typography: typography,
+                sourceCodeMode: sourceCodeMode,
+                focusMode: focusMode,
+                selectedRange: clampedRange
+            )
+            headings = analysis.headings
+        }
+
+        if let url = currentFileURL, autoSaveEnabled, activeConflict == nil {
+            performDiskWrite(targetText, to: url)
+            isDirty = false
+        } else if currentFileURL == nil {
+            isDirty = !autoSaveEnabled
+        } else {
+            isDirty = (targetText != lastSavedDiskContent)
+        }
+        isApplyingInternalStateChange = false
+        persistDocumentSessionState()
     }
 
     // MARK: - Directory Expansion State
@@ -554,17 +864,52 @@ public final class EditorWorkspaceViewModel: ObservableObject {
 
     // MARK: - Live Editor Updates
     public func handleEditorTextEdited(_ newText: String, selectedRange: NSRange) {
+        let previousSel = currentSelectedRange
+        currentSelectedRange = selectedRange
         if markdownText != newText {
+            let oldText = markdownText
+            isApplyingInternalStateChange = true
             markdownText = newText
-            isDirty = true
+            isApplyingInternalStateChange = false
+
+            let allowCoalesce = canCoalesceLiveTyping
+            recordUndoStep(
+                from: oldText,
+                to: newText,
+                previousSelection: previousSel,
+                newSelection: selectedRange,
+                origin: pendingEditOrigin,
+                summary: pendingEditSummary,
+                allowCoalescing: allowCoalesce
+            )
+            pendingEditOrigin = .userTyping
+            pendingEditSummary = nil
+            updateTopUndoNewSelection(selectedRange)
+
+            if activeTextView == nil {
+                let analysis = MarkdownLiveStyler.applyStyles(
+                    to: NSTextStorage(string: newText),
+                    theme: theme,
+                    typography: typography,
+                    sourceCodeMode: sourceCodeMode,
+                    focusMode: focusMode,
+                    selectedRange: selectedRange
+                )
+                headings = analysis.headings
+            }
+            autoSaveOrStageCurrentDocument()
         }
         if !isRestoringState {
             userDefaults.set(selectedRange.location, forKey: Self.selectedCursorLocationDefaultsKey)
         }
-        stats = DocumentStats.compute(for: newText, selectedRange: selectedRange)
+        stats = DocumentStats.compute(for: markdownText, selectedRange: selectedRange)
     }
 
     public func updateSelectionStats(selectedRange: NSRange) {
+        if selectedRange != currentSelectedRange && !isLiveKeystrokeInProgress {
+            canCoalesceLiveTyping = false
+        }
+        currentSelectedRange = selectedRange
         if !isRestoringState {
             userDefaults.set(selectedRange.location, forKey: Self.selectedCursorLocationDefaultsKey)
         }
@@ -587,12 +932,13 @@ public final class EditorWorkspaceViewModel: ObservableObject {
             return
         }
 
-        if let tv = activeTextView, tv.shouldChangeText(in: boxRange, replacementString: replacement) {
-            tv.replaceCharacters(in: boxRange, with: replacement)
-            tv.didChangeText()
-        } else {
-            markdownText = nsStr.replacingCharacters(in: boxRange, with: replacement)
-            isDirty = true
+        withUndoMetadata(origin: .formattingAction, summary: "Toggle Task Checkbox") {
+            if let tv = activeTextView, tv.shouldChangeText(in: boxRange, replacementString: replacement) {
+                tv.replaceCharacters(in: boxRange, with: replacement)
+                tv.didChangeText()
+            } else {
+                markdownText = nsStr.replacingCharacters(in: boxRange, with: replacement)
+            }
         }
     }
 
@@ -613,20 +959,22 @@ public final class EditorWorkspaceViewModel: ObservableObject {
 
     // MARK: - Formatting & Markdown Insertion Commands
     public func applyInlineFormatting(prefix: String, suffix: String, placeholder: String) {
-        guard let tv = activeTextView else {
-            markdownText += "\(prefix)\(placeholder)\(suffix)"
-            return
-        }
-        let sel = tv.selectedRange()
-        let nsStr = tv.string as NSString
-        let selectedText = sel.length > 0 ? nsStr.substring(with: sel) : placeholder
-        let replacement = "\(prefix)\(selectedText)\(suffix)"
+        withUndoMetadata(origin: .formattingAction, summary: "Inline Formatting") {
+            guard let tv = activeTextView else {
+                markdownText += "\(prefix)\(placeholder)\(suffix)"
+                return
+            }
+            let sel = tv.selectedRange()
+            let nsStr = tv.string as NSString
+            let selectedText = sel.length > 0 ? nsStr.substring(with: sel) : placeholder
+            let replacement = "\(prefix)\(selectedText)\(suffix)"
 
-        if tv.shouldChangeText(in: sel, replacementString: replacement) {
-            tv.replaceCharacters(in: sel, with: replacement)
-            tv.didChangeText()
-            let innerRange = NSRange(location: sel.location + (prefix as NSString).length, length: (selectedText as NSString).length)
-            tv.setSelectedRange(innerRange)
+            if tv.shouldChangeText(in: sel, replacementString: replacement) {
+                tv.replaceCharacters(in: sel, with: replacement)
+                tv.didChangeText()
+                let innerRange = NSRange(location: sel.location + (prefix as NSString).length, length: (selectedText as NSString).length)
+                tv.setSelectedRange(innerRange)
+            }
         }
     }
 
@@ -637,110 +985,122 @@ public final class EditorWorkspaceViewModel: ObservableObject {
 
     /// Hard-wraps the paragraph at the cursor to `effectiveReflowWidth` columns.
     public func reflowCurrentParagraph() {
-        guard let tv = activeTextView else { return }
-        let text = tv.string
-        let nsStr = text as NSString
-        let sel = tv.selectedRange()
-        let line = MarkdownSourceReflow.lineNumber(at: sel.location, in: nsStr)
-        guard let edit = MarkdownSourceReflow.reflowParagraph(in: text, line: line, width: effectiveReflowWidth),
-              nsStr.substring(with: edit.range) != edit.replacement else { return }
-        let newLocation = edit.range.location + MarkdownSourceReflow.mapLocation(
-            sel.location, in: nsStr, oldRange: edit.range, to: edit.replacement as NSString
-        )
-        tv.breakUndoCoalescing()
-        if tv.shouldChangeText(in: edit.range, replacementString: edit.replacement) {
-            tv.replaceCharacters(in: edit.range, with: edit.replacement)
-            tv.didChangeText()
-            tv.undoManager?.setActionName("Reflow Paragraph")
-            tv.setSelectedRange(NSRange(location: newLocation, length: 0))
+        withUndoMetadata(origin: .formattingAction, summary: "Reflow Paragraph") {
+            guard let tv = activeTextView else { return }
+            let text = tv.string
+            let nsStr = text as NSString
+            let sel = tv.selectedRange()
+            let line = MarkdownSourceReflow.lineNumber(at: sel.location, in: nsStr)
+            guard let edit = MarkdownSourceReflow.reflowParagraph(in: text, line: line, width: effectiveReflowWidth),
+                  nsStr.substring(with: edit.range) != edit.replacement else { return }
+            let newLocation = edit.range.location + MarkdownSourceReflow.mapLocation(
+                sel.location, in: nsStr, oldRange: edit.range, to: edit.replacement as NSString
+            )
+            tv.breakUndoCoalescing()
+            if tv.shouldChangeText(in: edit.range, replacementString: edit.replacement) {
+                tv.replaceCharacters(in: edit.range, with: edit.replacement)
+                tv.didChangeText()
+                tv.setSelectedRange(NSRange(location: newLocation, length: 0))
+            }
         }
     }
 
     /// Hard-wraps every paragraph in the document to `effectiveReflowWidth` columns.
     public func reflowDocument() {
-        guard let tv = activeTextView else { return }
-        let text = tv.string
-        let nsStr = text as NSString
-        let reflowed = MarkdownSourceReflow.reflowDocument(text, width: effectiveReflowWidth)
-        guard reflowed != text else { return }
-        let fullRange = NSRange(location: 0, length: nsStr.length)
-        let newLocation = MarkdownSourceReflow.mapLocation(
-            tv.selectedRange().location, in: nsStr, oldRange: fullRange, to: reflowed as NSString
-        )
-        tv.breakUndoCoalescing()
-        if tv.shouldChangeText(in: fullRange, replacementString: reflowed) {
-            tv.replaceCharacters(in: fullRange, with: reflowed)
-            tv.didChangeText()
-            tv.undoManager?.setActionName("Reflow Document")
-            tv.setSelectedRange(NSRange(location: newLocation, length: 0))
+        withUndoMetadata(origin: .formattingAction, summary: "Reflow Document") {
+            guard let tv = activeTextView else {
+                let reflowed = MarkdownSourceReflow.reflowDocument(markdownText, width: effectiveReflowWidth)
+                if reflowed != markdownText {
+                    markdownText = reflowed
+                }
+                return
+            }
+            let text = tv.string
+            let nsStr = text as NSString
+            let reflowed = MarkdownSourceReflow.reflowDocument(text, width: effectiveReflowWidth)
+            guard reflowed != text else { return }
+            let fullRange = NSRange(location: 0, length: nsStr.length)
+            let newLocation = MarkdownSourceReflow.mapLocation(
+                tv.selectedRange().location, in: nsStr, oldRange: fullRange, to: reflowed as NSString
+            )
+            tv.breakUndoCoalescing()
+            if tv.shouldChangeText(in: fullRange, replacementString: reflowed) {
+                tv.replaceCharacters(in: fullRange, with: reflowed)
+                tv.didChangeText()
+                tv.setSelectedRange(NSRange(location: newLocation, length: 0))
+            }
         }
     }
 
     public func setHeadingLevel(_ level: Int) {
-        guard let tv = activeTextView else { return }
-        let sel = tv.selectedRange()
-        let nsStr = tv.string as NSString
-        let lineRange = nsStr.lineRange(for: NSRange(location: min(sel.location, nsStr.length), length: 0))
-        var contentRange = lineRange
-        while contentRange.length > 0 {
-            let ch = nsStr.character(at: contentRange.location + contentRange.length - 1)
-            if ch == 10 || ch == 13 { contentRange.length -= 1 } else { break }
-        }
-        let lineText = nsStr.substring(with: contentRange)
-        let stripped = lineText.replacingOccurrences(of: #"^#{1,6}\s*"#, with: "", options: .regularExpression)
+        withUndoMetadata(origin: .formattingAction, summary: level == 0 ? "Convert to Paragraph" : "Heading \(level)") {
+            guard let tv = activeTextView else { return }
+            let sel = tv.selectedRange()
+            let nsStr = tv.string as NSString
+            let lineRange = nsStr.lineRange(for: NSRange(location: min(sel.location, nsStr.length), length: 0))
+            var contentRange = lineRange
+            while contentRange.length > 0 {
+                let ch = nsStr.character(at: contentRange.location + contentRange.length - 1)
+                if ch == 10 || ch == 13 { contentRange.length -= 1 } else { break }
+            }
+            let lineText = nsStr.substring(with: contentRange)
+            let stripped = lineText.replacingOccurrences(of: #"^#{1,6}\s*"#, with: "", options: .regularExpression)
 
-        let replacement: String
-        if level == 0 {
-            replacement = stripped
-        } else {
-            let hashes = String(repeating: "#", count: min(6, max(1, level)))
-            replacement = "\(hashes) \(stripped.isEmpty ? "Heading \(level)" : stripped)"
-        }
+            let replacement: String
+            if level == 0 {
+                replacement = stripped
+            } else {
+                let hashes = String(repeating: "#", count: min(6, max(1, level)))
+                replacement = "\(hashes) \(stripped.isEmpty ? "Heading \(level)" : stripped)"
+            }
 
-        if tv.shouldChangeText(in: contentRange, replacementString: replacement) {
-            tv.replaceCharacters(in: contentRange, with: replacement)
-            tv.didChangeText()
-            tv.setSelectedRange(NSRange(location: contentRange.location + (replacement as NSString).length, length: 0))
+            if tv.shouldChangeText(in: contentRange, replacementString: replacement) {
+                tv.replaceCharacters(in: contentRange, with: replacement)
+                tv.didChangeText()
+                tv.setSelectedRange(NSRange(location: contentRange.location + (replacement as NSString).length, length: 0))
+            }
         }
     }
 
     public func insertBlockquote() {
-        prefixCurrentLine(with: "> ")
+        prefixCurrentLine(with: "> ", summary: "Insert Blockquote")
     }
 
     public func insertUnorderedList() {
-        prefixCurrentLine(with: "- ")
+        prefixCurrentLine(with: "- ", summary: "Insert Bullet List")
     }
 
     public func insertOrderedList() {
-        prefixCurrentLine(with: "1. ")
+        prefixCurrentLine(with: "1. ", summary: "Insert Numbered List")
     }
 
     public func insertTaskList() {
-        prefixCurrentLine(with: "- [ ] ")
+        prefixCurrentLine(with: "- [ ] ", summary: "Insert Task List")
     }
 
-    private func prefixCurrentLine(with prefix: String) {
-        guard let tv = activeTextView else { return }
-        let sel = tv.selectedRange()
-        let nsStr = tv.string as NSString
-        let lineRange = nsStr.lineRange(for: NSRange(location: min(sel.location, nsStr.length), length: 0))
-        let insertRange = NSRange(location: lineRange.location, length: 0)
-        if tv.shouldChangeText(in: insertRange, replacementString: prefix) {
-            tv.replaceCharacters(in: insertRange, with: prefix)
-            tv.didChangeText()
-            tv.setSelectedRange(NSRange(location: sel.location + (prefix as NSString).length, length: 0))
+    private func prefixCurrentLine(with prefix: String, summary: String = "Format Line") {
+        withUndoMetadata(origin: .formattingAction, summary: summary) {
+            guard let tv = activeTextView else { return }
+            let sel = tv.selectedRange()
+            let nsStr = tv.string as NSString
+            let lineRange = nsStr.lineRange(for: NSRange(location: min(sel.location, nsStr.length), length: 0))
+            let insertRange = NSRange(location: lineRange.location, length: 0)
+            if tv.shouldChangeText(in: insertRange, replacementString: prefix) {
+                tv.replaceCharacters(in: insertRange, with: prefix)
+                tv.didChangeText()
+                tv.setSelectedRange(NSRange(location: sel.location + (prefix as NSString).length, length: 0))
+            }
         }
     }
 
     public func insertCodeFence(language: String = "swift") {
         let snippet = "\n```\(language)\n\n```\n"
-        insertSnippetAtCursor(snippet, cursorOffsetFromStart: 5 + language.count)
+        insertSnippetAtCursor(snippet, cursorOffsetFromStart: 5 + language.count, summary: "Insert Code Block")
     }
 
     public func insertMathBlock() {
         let snippet = "\n$$\n\\int_{-\\infty}^{\\infty} e^{-x^2} dx = \\sqrt{\\pi}\n$$\n"
-        insertSnippetAtCursor(snippet, cursorOffsetFromStart: 4)
+        insertSnippetAtCursor(snippet, cursorOffsetFromStart: 4, summary: "Insert Math Block")
     }
 
     public func insertMermaidBlock() {
@@ -755,7 +1115,7 @@ public final class EditorWorkspaceViewModel: ObservableObject {
 
     public func insertHorizontalRule() {
         let snippet = "\n---\n"
-        insertSnippetAtCursor(snippet, cursorOffsetFromStart: snippet.count)
+        insertSnippetAtCursor(snippet, cursorOffsetFromStart: snippet.count, summary: "Insert Horizontal Rule")
     }
 
     public func insertTable(rows: Int, columns: Int) {
@@ -772,20 +1132,22 @@ public final class EditorWorkspaceViewModel: ObservableObject {
             tableLines.append("| \(cells) |")
         }
         let snippet = "\n" + tableLines.joined(separator: "\n") + "\n"
-        insertSnippetAtCursor(snippet, cursorOffsetFromStart: 3)
+        insertSnippetAtCursor(snippet, cursorOffsetFromStart: 3, summary: "Insert Table")
     }
 
-    private func insertSnippetAtCursor(_ snippet: String, cursorOffsetFromStart: Int) {
-        guard let tv = activeTextView else {
-            markdownText += snippet
-            return
-        }
-        let sel = tv.selectedRange()
-        if tv.shouldChangeText(in: sel, replacementString: snippet) {
-            tv.replaceCharacters(in: sel, with: snippet)
-            tv.didChangeText()
-            let newCursor = min((tv.string as NSString).length, sel.location + cursorOffsetFromStart)
-            tv.setSelectedRange(NSRange(location: newCursor, length: 0))
+    private func insertSnippetAtCursor(_ snippet: String, cursorOffsetFromStart: Int, summary: String = "Insert Snippet") {
+        withUndoMetadata(origin: .formattingAction, summary: summary) {
+            guard let tv = activeTextView else {
+                markdownText += snippet
+                return
+            }
+            let sel = tv.selectedRange()
+            if tv.shouldChangeText(in: sel, replacementString: snippet) {
+                tv.replaceCharacters(in: sel, with: snippet)
+                tv.didChangeText()
+                let newCursor = min((tv.string as NSString).length, sel.location + cursorOffsetFromStart)
+                tv.setSelectedRange(NSRange(location: newCursor, length: 0))
+            }
         }
     }
 
@@ -811,9 +1173,11 @@ public final class EditorWorkspaceViewModel: ObservableObject {
         let sel = tv.selectedRange()
         let nsStr = tv.string as NSString
         if sel.length > 0 && nsStr.substring(with: sel).caseInsensitiveCompare(findQuery) == .orderedSame {
-            if tv.shouldChangeText(in: sel, replacementString: replaceQuery) {
-                tv.replaceCharacters(in: sel, with: replaceQuery)
-                tv.didChangeText()
+            withUndoMetadata(origin: .findReplace, summary: "Replace") {
+                if tv.shouldChangeText(in: sel, replacementString: replaceQuery) {
+                    tv.replaceCharacters(in: sel, with: replaceQuery)
+                    tv.didChangeText()
+                }
             }
         }
         findNextInDocument()
@@ -823,17 +1187,375 @@ public final class EditorWorkspaceViewModel: ObservableObject {
         guard !findQuery.isEmpty else { return }
         let updated = markdownText.replacingOccurrences(of: findQuery, with: replaceQuery, options: [.caseInsensitive])
         if updated != markdownText {
-            markdownText = updated
-            isDirty = true
+            withUndoMetadata(origin: .findReplace, summary: "Replace All") {
+                markdownText = updated
+                if let tv = activeTextView {
+                    let clamped = DocumentLineDiff.adjustedSelection(
+                        for: tv.selectedRange(),
+                        inOldText: tv.string,
+                        toNewText: updated
+                    )
+                    tv.applyProgrammaticDocumentText(updated, selectedRange: clamped)
+                }
+            }
         }
+    }
+
+    // MARK: - Autosave, External Updates & Conflict Resolution
+
+    private func autoSaveOrStageCurrentDocument() {
+        if let url = currentFileURL {
+            if autoSaveEnabled && activeConflict == nil {
+                // Before overwriting disk, verify whether an external process modified the file since our last save
+                if let currentDiskText = try? String(contentsOf: url, encoding: .utf8),
+                   currentDiskText != lastSavedDiskContent,
+                   !recentSelfWrittenContents.contains(currentDiskText) {
+                    let mergeResult = ThreeWayDocumentMerger.merge(
+                        base: lastSavedDiskContent,
+                        local: markdownText,
+                        external: currentDiskText,
+                        fileURL: url,
+                        sourceDescription: remoteWorkspaceManager.isRemoteURL(url) ? "SSH Remote" : "Disk"
+                    )
+                    switch mergeResult {
+                    case .clean(let mergedText, let wasAutoMerged):
+                        if mergedText != markdownText {
+                            let localBeforeMerge = markdownText
+                            let diff = DocumentLineDiff.computeDiff(from: localBeforeMerge, to: mergedText)
+                            let adjustedSel = DocumentLineDiff.adjustedSelection(
+                                for: currentSelectedRange,
+                                inOldText: localBeforeMerge,
+                                toNewText: mergedText
+                            )
+                            recordUndoStep(
+                                from: localBeforeMerge,
+                                to: mergedText,
+                                previousSelection: currentSelectedRange,
+                                newSelection: adjustedSel,
+                                origin: .externalUpdate,
+                                summary: wasAutoMerged ? "Auto-merged external changes" : "External file update",
+                                allowCoalescing: false
+                            )
+                            isApplyingInternalStateChange = true
+                            markdownText = mergedText
+                            currentSelectedRange = adjustedSel
+                            if let tv = activeTextView {
+                                tv.applyProgrammaticDocumentText(mergedText, selectedRange: adjustedSel)
+                            }
+                            isApplyingInternalStateChange = false
+                            publishExternalUpdateVisualNotice(
+                                fileURL: url,
+                                previousText: localBeforeMerge,
+                                updatedText: mergedText,
+                                diff: diff,
+                                wasAutoMerged: wasAutoMerged,
+                                sourceDescription: remoteWorkspaceManager.isRemoteURL(url) ? "SSH Remote" : "Disk"
+                            )
+                        }
+                        performDiskWrite(mergedText, to: url)
+                        isDirty = false
+                    case .conflict(let conflict):
+                        activeConflict = conflict
+                        isDirty = true
+                    }
+                    persistDocumentSessionState()
+                    return
+                }
+
+                performDiskWrite(markdownText, to: url)
+                isDirty = false
+            } else {
+                isDirty = (markdownText != lastSavedDiskContent)
+            }
+        } else {
+            isDirty = !autoSaveEnabled
+        }
+        persistDocumentSessionState()
+    }
+
+    private func performDiskWrite(_ content: String, to url: URL) {
+        do {
+            recentSelfWrittenContents.append(content)
+            if recentSelfWrittenContents.count > 128 {
+                recentSelfWrittenContents.removeFirst(recentSelfWrittenContents.count - 128)
+            }
+            lastSavedDiskContent = content
+            let utf8Data = Data(content.utf8)
+            if FileManager.default.fileExists(atPath: url.path) {
+                try utf8Data.write(to: url)
+            } else {
+                try utf8Data.write(to: url, options: .atomic)
+            }
+            lastAutoSavedAt = Date()
+            isDirty = false
+
+            if currentFileURL?.standardizedFileURL == url.standardizedFileURL {
+                let newInode = Self.fileInode(for: url)
+                if watchedFileInode == 0 || newInode != watchedFileInode {
+                    watchFileDescriptorOnly(url)
+                }
+            }
+
+            if remoteWorkspaceManager.isRemoteURL(url) {
+                Task { @MainActor in
+                    await remoteWorkspaceManager.saveRemoteFile(at: url, content: content)
+                }
+            }
+        } catch {
+            NSSound.beep()
+        }
+    }
+
+    private func flushPendingAutoSaveBeforeSwitchingFile() {
+        guard let url = currentFileURL,
+              activeConflict == nil,
+              autoSaveEnabled,
+              markdownText != lastSavedDiskContent else { return }
+        performDiskWrite(markdownText, to: url)
+    }
+
+    /// Checks whether the currently open file on disk has been modified by an external process,
+    /// and either auto-updates, 3-way auto-merges, or triggers conflict resolution.
+    public func checkForExternalFileChanges(for targetURL: URL? = nil, sourceDescription: String? = nil) {
+        guard let currentURL = targetURL ?? currentFileURL else { return }
+        guard currentFileURL?.standardizedFileURL == currentURL.standardizedFileURL else { return }
+        guard let diskContent = try? String(contentsOf: currentURL, encoding: .utf8) else { return }
+
+        let currentInode = Self.fileInode(for: currentURL)
+        if currentInode != 0 && currentInode != watchedFileInode {
+            watchFileDescriptorOnly(currentURL)
+        }
+
+        // Ignore self-writes when no conflict is active and disk matches our buffer
+        if activeConflict == nil,
+           diskContent == markdownText,
+           (diskContent == lastSavedDiskContent || recentSelfWrittenContents.contains(diskContent)) {
+            lastSavedDiskContent = diskContent
+            return
+        }
+
+        // Also ignore asynchronous watcher echo from an older self-write that we already superseded
+        if activeConflict == nil,
+           diskContent != markdownText,
+           recentSelfWrittenContents.contains(diskContent),
+           markdownText == lastSavedDiskContent {
+            return
+        }
+
+        let effectiveSource = sourceDescription ?? (remoteWorkspaceManager.isRemoteURL(currentURL) ? "SSH Remote" : "Disk")
+        handleExternalFileUpdate(diskContent: diskContent, for: currentURL, sourceDescription: effectiveSource)
+    }
+
+    public func handleExternalFileUpdate(
+        diskContent: String,
+        for url: URL,
+        sourceDescription: String = "Disk"
+    ) {
+        guard currentFileURL?.standardizedFileURL == url.standardizedFileURL else { return }
+
+        let baseText = lastSavedDiskContent
+        let localText = markdownText
+
+        let mergeResult = ThreeWayDocumentMerger.merge(
+            base: baseText,
+            local: localText,
+            external: diskContent,
+            fileURL: url,
+            sourceDescription: sourceDescription
+        )
+
+        switch mergeResult {
+        case .clean(let mergedText, let wasAutoMerged):
+            activeConflict = nil
+            showConflictResolverModal = false
+
+            if mergedText != localText {
+                let diff = DocumentLineDiff.computeDiff(from: localText, to: mergedText)
+                let adjustedSel = DocumentLineDiff.adjustedSelection(
+                    for: currentSelectedRange,
+                    inOldText: localText,
+                    toNewText: mergedText
+                )
+
+                recordUndoStep(
+                    from: localText,
+                    to: mergedText,
+                    previousSelection: currentSelectedRange,
+                    newSelection: adjustedSel,
+                    origin: .externalUpdate,
+                    summary: wasAutoMerged ? "Auto-merged external changes" : "External file update",
+                    allowCoalescing: false
+                )
+
+                isApplyingInternalStateChange = true
+                markdownText = mergedText
+                currentSelectedRange = adjustedSel
+                stats = DocumentStats.compute(for: mergedText, selectedRange: adjustedSel)
+                if let tv = activeTextView {
+                    tv.applyProgrammaticDocumentText(mergedText, selectedRange: adjustedSel)
+                } else {
+                    let analysis = MarkdownLiveStyler.applyStyles(
+                        to: NSTextStorage(string: mergedText),
+                        theme: theme,
+                        typography: typography,
+                        sourceCodeMode: sourceCodeMode,
+                        focusMode: focusMode,
+                        selectedRange: adjustedSel
+                    )
+                    headings = analysis.headings
+                }
+                isApplyingInternalStateChange = false
+
+                publishExternalUpdateVisualNotice(
+                    fileURL: url,
+                    previousText: localText,
+                    updatedText: mergedText,
+                    diff: diff,
+                    wasAutoMerged: wasAutoMerged,
+                    sourceDescription: sourceDescription
+                )
+            }
+
+            lastSavedDiskContent = mergedText
+            isDirty = false
+            if wasAutoMerged && mergedText != diskContent {
+                performDiskWrite(mergedText, to: url)
+            }
+            persistDocumentSessionState()
+
+        case .conflict(let conflict):
+            activeConflict = conflict
+            isDirty = true
+            persistDocumentSessionState()
+        }
+    }
+
+    private func publishExternalUpdateVisualNotice(
+        fileURL: URL,
+        previousText: String,
+        updatedText: String,
+        diff: DocumentLineDiffResult,
+        wasAutoMerged: Bool,
+        sourceDescription: String
+    ) {
+        externalUpdateNotice = ExternalUpdateNotice(
+            fileURL: fileURL,
+            previousText: previousText,
+            updatedText: updatedText,
+            addedLinesCount: diff.addedLinesCount,
+            removedLinesCount: diff.removedLinesCount,
+            changedLineNumbers: diff.changedLineNumbers,
+            changedCharacterRanges: diff.changedCharacterRanges,
+            diffHunks: diff.hunks,
+            wasAutoMerged: wasAutoMerged,
+            sourceDescription: sourceDescription
+        )
+        externalUpdateHighlightRanges = diff.changedCharacterRanges
+
+        externalHighlightClearTask?.cancel()
+        externalHighlightClearTask = Task { @MainActor [weak self] in
+            try? await Task.sleep(nanoseconds: 8_000_000_000)
+            guard !Task.isCancelled, let self = self else { return }
+            self.externalUpdateHighlightRanges = []
+        }
+    }
+
+    public func dismissExternalUpdateNotice() {
+        externalHighlightClearTask?.cancel()
+        externalUpdateNotice = nil
+        externalUpdateHighlightRanges = []
+        showExternalUpdateDiffModal = false
+    }
+
+    public func resolveConflict(using strategy: ConflictResolutionStrategy) {
+        guard let conflict = activeConflict else { return }
+        let resolved = conflict.resolvedText(using: strategy)
+        applyResolvedConflictText(
+            resolved,
+            for: conflict,
+            summary: "Resolved conflict (\(strategy.rawValue))"
+        )
+    }
+
+    public func setConflictHunkResolution(_ strategy: ConflictResolutionStrategy, forHunkID hunkID: UUID) {
+        activeConflict?.setResolution(strategy, forHunkID: hunkID)
+    }
+
+    public func applyInteractiveConflictResolution() {
+        guard let conflict = activeConflict else { return }
+        let resolved = conflict.resolvedText(using: nil)
+        applyResolvedConflictText(
+            resolved,
+            for: conflict,
+            summary: "Resolved conflict (Custom Merge)"
+        )
+    }
+
+    private func applyResolvedConflictText(
+        _ resolved: String,
+        for conflict: DocumentConflict,
+        summary: String
+    ) {
+        let previousLocal = markdownText
+        let baselineForUndo = (previousLocal != resolved) ? previousLocal : conflict.externalText
+        let adjustedSel = DocumentLineDiff.adjustedSelection(
+            for: currentSelectedRange,
+            inOldText: previousLocal,
+            toNewText: resolved
+        )
+
+        recordUndoStep(
+            from: baselineForUndo,
+            to: resolved,
+            previousSelection: currentSelectedRange,
+            newSelection: adjustedSel,
+            origin: .conflictResolution,
+            summary: summary,
+            allowCoalescing: false
+        )
+
+        activeConflict = nil
+        showConflictResolverModal = false
+
+        isApplyingInternalStateChange = true
+        markdownText = resolved
+        currentSelectedRange = adjustedSel
+        isDirty = false
+        stats = DocumentStats.compute(for: resolved, selectedRange: adjustedSel)
+        if let tv = activeTextView {
+            tv.applyProgrammaticDocumentText(resolved, selectedRange: adjustedSel)
+        } else {
+            let analysis = MarkdownLiveStyler.applyStyles(
+                to: NSTextStorage(string: resolved),
+                theme: theme,
+                typography: typography,
+                sourceCodeMode: sourceCodeMode,
+                focusMode: focusMode,
+                selectedRange: adjustedSel
+            )
+            headings = analysis.headings
+        }
+        isApplyingInternalStateChange = false
+
+        performDiskWrite(resolved, to: conflict.fileURL)
+        let diff = DocumentLineDiff.computeDiff(from: baselineForUndo, to: resolved)
+        externalUpdateHighlightRanges = diff.changedCharacterRanges
+        persistDocumentSessionState()
     }
 
     // MARK: - File & Workspace Operations
     public func newDocument() {
+        flushPendingAutoSaveBeforeSwitchingFile()
         stopWatchingCurrentFile()
+        activeConflict = nil
+        dismissExternalUpdateNotice()
+        isApplyingInternalStateChange = true
         currentFileURL = nil
         markdownText = "# Untitled\n\n"
+        lastSavedDiskContent = "# Untitled\n\n"
         isDirty = false
+        currentSelectedRange = NSRange(location: 0, length: 0)
+        isApplyingInternalStateChange = false
         userDefaults.set(0, forKey: Self.selectedCursorLocationDefaultsKey)
         stats = DocumentStats.compute(for: markdownText)
         if activeTextView == nil {
@@ -847,6 +1569,8 @@ public final class EditorWorkspaceViewModel: ObservableObject {
             )
             headings = analysis.headings
         }
+        refreshUndoRedoAvailability()
+        persistDocumentSessionState()
     }
 
     public func openDocumentPanel() {
@@ -882,12 +1606,24 @@ public final class EditorWorkspaceViewModel: ObservableObject {
         }
     }
 
+    public func openFolder(at url: URL) {
+        loadWorkspaceFolder(url)
+    }
+
     public func openFile(at url: URL) {
+        flushPendingAutoSaveBeforeSwitchingFile()
         do {
             let content = try String(contentsOf: url, encoding: .utf8)
+            activeConflict = nil
+            dismissExternalUpdateNotice()
+            recentSelfWrittenContents.removeAll()
+            isApplyingInternalStateChange = true
             currentFileURL = url
             markdownText = content
+            lastSavedDiskContent = content
             isDirty = false
+            currentSelectedRange = NSRange(location: 0, length: 0)
+            isApplyingInternalStateChange = false
             userDefaults.set(0, forKey: Self.selectedCursorLocationDefaultsKey)
             stats = DocumentStats.compute(for: content)
             if activeTextView == nil {
@@ -903,6 +1639,8 @@ public final class EditorWorkspaceViewModel: ObservableObject {
             }
             addRecentFile(url)
             watchCurrentFile(url)
+            refreshUndoRedoAvailability()
+            persistDocumentSessionState()
         } catch {
             NSSound.beep()
         }
@@ -958,18 +1696,8 @@ public final class EditorWorkspaceViewModel: ObservableObject {
     }
 
     private func writeDocument(to url: URL) {
-        do {
-            try markdownText.write(to: url, atomically: true, encoding: .utf8)
-            isDirty = false
-            if remoteWorkspaceManager.isRemoteURL(url) {
-                let textSnapshot = markdownText
-                Task { @MainActor in
-                    await remoteWorkspaceManager.saveRemoteFile(at: url, content: textSnapshot)
-                }
-            }
-        } catch {
-            NSSound.beep()
-        }
+        performDiskWrite(markdownText, to: url)
+        persistDocumentSessionState()
     }
 
     // MARK: - Remote Mount Operations
@@ -1027,25 +1755,48 @@ public final class EditorWorkspaceViewModel: ObservableObject {
         }
     }
 
-    // MARK: - POSIX DispatchSource File Watcher
+    // MARK: - POSIX DispatchSource File & Parent Directory Watcher
+
+    private nonisolated static func fileInode(for url: URL) -> UInt64 {
+        var st = stat()
+        if stat(url.path, &st) == 0 {
+            return UInt64(st.st_ino)
+        }
+        return 0
+    }
+
     private func watchCurrentFile(_ url: URL) {
         stopWatchingCurrentFile()
+        watchFileDescriptorOnly(url)
+        watchParentDirectoryOnly(url.deletingLastPathComponent())
+    }
+
+    private func watchFileDescriptorOnly(_ url: URL) {
+        fileWatchSource?.cancel()
+        fileWatchSource = nil
+        fileWatchDescriptor = -1
+
         let fd = open(url.path, O_EVTONLY)
         guard fd >= 0 else { return }
         fileWatchDescriptor = fd
+        watchedFileInode = Self.fileInode(for: url)
 
         let source = DispatchSource.makeFileSystemObjectSource(
             fileDescriptor: fd,
-            eventMask: [.write, .rename, .extend],
+            eventMask: [.write, .extend, .attrib, .delete, .rename, .link, .revoke],
             queue: .main
         )
-        source.setEventHandler { [weak self] in
+        source.setEventHandler { [weak self, weak source] in
+            let flags = source?.data ?? []
             MainActor.assumeIsolated {
-                guard let self = self, !self.isDirty, let currentURL = self.currentFileURL else { return }
-                if let diskContent = try? String(contentsOf: currentURL, encoding: .utf8),
-                   diskContent != self.markdownText {
-                    self.markdownText = diskContent
-                    self.stats = DocumentStats.compute(for: diskContent)
+                guard let self = self, self.currentFileURL != nil else { return }
+                self.checkForExternalFileChanges()
+                if flags.contains(.delete) || flags.contains(.rename) || flags.contains(.revoke) || flags.contains(.link) {
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.02) { [weak self] in
+                        guard let self = self, let activeURL = self.currentFileURL else { return }
+                        self.watchFileDescriptorOnly(activeURL)
+                        self.checkForExternalFileChanges()
+                    }
                 }
             }
         }
@@ -1056,10 +1807,41 @@ public final class EditorWorkspaceViewModel: ObservableObject {
         fileWatchSource = source
     }
 
+    private func watchParentDirectoryOnly(_ parentURL: URL) {
+        parentDirWatchSource?.cancel()
+        parentDirWatchSource = nil
+        parentDirWatchDescriptor = -1
+
+        let dirFD = open(parentURL.path, O_EVTONLY)
+        guard dirFD >= 0 else { return }
+        parentDirWatchDescriptor = dirFD
+
+        let source = DispatchSource.makeFileSystemObjectSource(
+            fileDescriptor: dirFD,
+            eventMask: [.write, .rename, .extend, .attrib],
+            queue: .main
+        )
+        source.setEventHandler { [weak self] in
+            MainActor.assumeIsolated {
+                guard let self = self else { return }
+                self.checkForExternalFileChanges()
+            }
+        }
+        source.setCancelHandler {
+            close(dirFD)
+        }
+        source.resume()
+        parentDirWatchSource = source
+    }
+
     nonisolated private func stopWatchingCurrentFile() {
         fileWatchSource?.cancel()
         fileWatchSource = nil
         fileWatchDescriptor = -1
+        parentDirWatchSource?.cancel()
+        parentDirWatchSource = nil
+        parentDirWatchDescriptor = -1
+        watchedFileInode = 0
     }
 
     // MARK: - Workspace Folder Tree & Multi-file Search
