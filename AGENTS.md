@@ -114,3 +114,21 @@ All other targets in the monorepo (`//core/folio_engine/...`, `//:FolioApp`, `//
   ```bash
   cargo test --workspace
   ```
+
+---
+
+## 5. Anti-Slop Module Hygiene, File Size Limits & `tst/` Testing Rules
+
+To prevent monolithic files and duplicated test logic across Zed and Standalone Folio, all contributions must pass `./scripts/audit_slop.sh`:
+
+1. **Strict File Size Ceiling (`<= 250` lines target, `350` lines hard max)**:
+   - Every `.rs` file in `core/**/src/` and `zed/**/src/` must remain under **350 lines** (warnings trigger at **250 lines**).
+   - If a file approaches 300 lines, split it into focused submodules (`mod.rs` + single-responsibility leaf modules) before adding new features.
+2. **Zero Inline Tests in `src/` — All Tests Live in `tst/`**:
+   - **Never** add `#[cfg(test)]` or `#[test]` inside `src/**.rs`.
+   - Every Rust crate (`core/folio_engine`, `zed/folio_zed_mod`, `zed/folio_zed_extension`) keeps its tests strictly under `<crate>/tst/*.rs`, registered via `[[test]]` in `Cargo.toml` and `rust_test` in `BUILD.bazel`.
+3. **Shared Declarative Behavior Specs (`tst/specs/*.json`)**:
+   - Product behaviors shared between Zed and Standalone Folio (active-line syntax reveal vs. inactive-line folding, block decorations, newline list/task continuation, inline delimiter toggling, heading toggling, and paragraph reflow) are defined in cursor-annotated JSON specs under `tst/specs/` and executed against `folio_engine`, `folio_zed_mod`, and `FolioTests`.
+4. **No Linter Tampering**:
+   - Workspace Clippy lints enforce `allow_attributes = "deny"`, `too_many_lines = "warn"`, and `cognitive_complexity = "warn"` (configured in `clippy.toml`). Never silence warnings with `#[allow(...)]`; refactor the function or module instead.
+

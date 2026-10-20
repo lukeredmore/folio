@@ -1,0 +1,127 @@
+{
+  "cursor_edit_cases": [
+    {
+      "id": "newline_checked_task_item",
+      "action": "newline",
+      "input": "- [x] Ship engineˇ",
+      "expected": "- [x] Ship engine\n- [ ] ˇ"
+    },
+    {
+      "id": "newline_empty_task_item_clears_line",
+      "action": "newline",
+      "input": "- [ ] ˇ",
+      "expected": "\nˇ"
+    },
+    {
+      "id": "newline_unordered_bullet_item",
+      "action": "newline",
+      "input": "- First bulletˇ",
+      "expected": "- First bullet\n- ˇ"
+    },
+    {
+      "id": "newline_empty_unordered_bullet_clears_line",
+      "action": "newline",
+      "input": "  *   ˇ",
+      "expected": "\nˇ"
+    },
+    {
+      "id": "newline_ordered_list_increments_number",
+      "action": "newline",
+      "input": "  1. First itemˇ",
+      "expected": "  1. First item\n  2. ˇ"
+    },
+    {
+      "id": "newline_ordered_paren_list_increments_number",
+      "action": "newline",
+      "input": "3) Third stepˇ",
+      "expected": "3) Third step\n4) ˇ"
+    },
+    {
+      "id": "newline_blockquote_continues_prefix",
+      "action": "newline",
+      "input": "> Quoted thoughtˇ",
+      "expected": "> Quoted thought\n> ˇ"
+    },
+    {
+      "id": "newline_plain_paragraph_splits_line",
+      "action": "newline",
+      "input": "Helloˇ world",
+      "expected": "Hello\nˇ world"
+    },
+    {
+      "id": "toggle_bold_wraps_word_under_cursor",
+      "action": "toggle_delimiter",
+      "delimiter": "**",
+      "input": "Hello ˇworld today",
+      "expected": "Hello **ˇworld** today"
+    },
+    {
+      "id": "toggle_bold_unwraps_already_bold_word",
+      "action": "toggle_delimiter",
+      "delimiter": "**",
+      "input": "Hello **ˇworld** today",
+      "expected": "Hello ˇworld today"
+    },
+    {
+      "id": "toggle_inline_code_wraps_word",
+      "action": "toggle_delimiter",
+      "delimiter": "`",
+      "input": "Run ˇcargo test",
+      "expected": "Run `ˇcargo` test"
+    },
+    {
+      "id": "toggle_bold_on_whitespace_inserts_empty_pair",
+      "action": "toggle_delimiter",
+      "delimiter": "**",
+      "input": "Hello ˇ world",
+      "expected": "Hello **ˇ** world"
+    },
+    {
+      "id": "set_heading_promotes_paragraph_to_h2",
+      "action": "set_heading_level",
+      "level": 2,
+      "input": "Intro ˇline",
+      "expected": "## Intro ˇline"
+    },
+    {
+      "id": "set_heading_changes_h1_to_h3",
+      "action": "set_heading_level",
+      "level": 3,
+      "input": "# Main ˇTitle",
+      "expected": "### Main ˇTitle"
+    },
+    {
+      "id": "set_heading_level_zero_strips_hashes",
+      "action": "set_heading_level",
+      "level": 0,
+      "input": "## Section ˇTitle",
+      "expected": "Section ˇTitle"
+    },
+    {
+      "id": "toggle_task_checkbox_checks_open_item",
+      "action": "toggle_task_checkbox",
+      "input": "- [ ] Write ˇspecs",
+      "expected": "- [x] Write ˇspecs"
+    },
+    {
+      "id": "toggle_task_checkbox_unchecks_done_item",
+      "action": "toggle_task_checkbox",
+      "input": "- [x] Write ˇspecs",
+      "expected": "- [ ] Write ˇspecs"
+    }
+  ],
+  "fold_reveal_cases": [
+    {
+      "id": "cursor_on_heading_reveals_hash_and_folds_inactive_bold",
+      "input": "# Active ˇHeading\nSome **folded** text.\n",
+      "expected_revealed_count": 1,
+      "expected_folded_min": 2
+    },
+    {
+      "id": "cursor_on_second_line_folds_heading_and_reveals_bold",
+      "input": "# Inactive Heading\nSome **activeˇ** text.\n",
+      "expected_revealed_count": 2,
+      "expected_folded_min": 1
+    }
+  ]
+}

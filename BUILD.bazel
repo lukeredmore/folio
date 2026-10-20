@@ -25,6 +25,7 @@ swift_test(
     ],
     data = [
         "//third_party/markdown_spec:all_spec_files",
+        "//tst/specs:all_behavior_specs",
     ],
     deps = [
         ":Folio",

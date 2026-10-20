@@ -151,6 +151,48 @@ impl FolioZedModSession {
         compute_newline_continuation(line_up_to_cursor)
     }
 
+    /// Applies smart newline continuation at `cursor_byte` on `buffer_text`.
+    pub fn apply_newline(&self, buffer_text: &str, cursor_byte: usize) -> (String, usize) {
+        if !self.enabled {
+            let clamped = cursor_byte.min(buffer_text.len());
+            let mut out = String::with_capacity(buffer_text.len() + 1);
+            out.push_str(&buffer_text[..clamped]);
+            out.push('\n');
+            out.push_str(&buffer_text[clamped..]);
+            return (out, clamped + 1);
+        }
+        folio_engine::markdown::apply_newline_at_cursor(buffer_text, cursor_byte)
+    }
+
+    /// Toggles a symmetric Markdown delimiter (`**`, `*`, `` ` ``, etc.) at `cursor_byte`.
+    pub fn toggle_symmetric_delimiter(
+        &self,
+        buffer_text: &str,
+        cursor_byte: usize,
+        delimiter: &str,
+    ) -> (String, usize) {
+        folio_engine::markdown::toggle_symmetric_delimiter(buffer_text, cursor_byte, delimiter)
+    }
+
+    /// Sets the ATX heading level (`0..=6`) on the line containing `cursor_byte`.
+    pub fn set_heading_level(
+        &self,
+        buffer_text: &str,
+        cursor_byte: usize,
+        level: u8,
+    ) -> (String, usize) {
+        folio_engine::markdown::set_heading_level_at_cursor(buffer_text, cursor_byte, level)
+    }
+
+    /// Toggles a task checkbox on the line containing `cursor_byte`.
+    pub fn toggle_task_checkbox_at_cursor(
+        &self,
+        buffer_text: &str,
+        cursor_byte: usize,
+    ) -> (String, usize) {
+        folio_engine::markdown::toggle_task_checkbox_at_cursor(buffer_text, cursor_byte)
+    }
+
     /// Toggles a Markdown task checkbox `- [ ]` <-> `- [x]` at the given byte offset in the buffer.
     pub fn toggle_task_checkbox(buffer_text: &str, checkbox_byte_offset: usize) -> Option<String> {
         if checkbox_byte_offset + 3 > buffer_text.len() {

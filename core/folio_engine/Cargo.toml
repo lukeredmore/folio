@@ -12,3 +12,25 @@ crate-type = ["rlib", "staticlib"]
 [dependencies]
 mermaid-rs-renderer = { version = "0.3.1", default-features = false }
 
+[[test]]
+name = "engine_tests"
+path = "tst/engine_tests.rs"
+
+[[test]]
+name = "cmark_gfm_spec_tests"
+path = "tst/cmark_gfm_spec_tests.rs"
+
+[[test]]
+name = "markdown_scan_tests"
+path = "tst/markdown_scan_tests.rs"
+
+[[test]]
+name = "reflow_tests"
+path = "tst/reflow_tests.rs"
+
+[[test]]
+name = "behavior_suite"
+path = "tst/behavior_suite.rs"
+
+[lints]
+workspace = true

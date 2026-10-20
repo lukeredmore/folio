@@ -3,4 +3,13 @@ resolver = "2"
 members = [
     "core/folio_engine",
     "zed/folio_zed_mod",
+    "zed/folio_zed_extension",
 ]
+
+[workspace.lints.clippy]
+allow_attributes = "deny"
+wildcard_imports = "deny"
+too_many_lines = "warn"
+cognitive_complexity = "warn"
+too_many_arguments = "warn"
+type_complexity = "warn"

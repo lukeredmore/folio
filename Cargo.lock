@@ -34,6 +34,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "folio_zed_extension"
+version = "0.1.0"
+dependencies = [
+ "folio_engine",
+]
+
+[[package]]
 name = "folio_zed_mod"
 version = "0.1.0"
 dependencies = [
