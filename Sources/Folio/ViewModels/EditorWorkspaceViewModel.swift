@@ -48,7 +48,7 @@ public final class EditorWorkspaceViewModel: ObservableObject {
                     )
                     headings = analysis.headings
                 }
-                autoSaveOrStageCurrentDocument()
+                scheduleAutoSave()
             } else {
                 persistDocumentSessionState()
             }
@@ -88,7 +88,13 @@ public final class EditorWorkspaceViewModel: ObservableObject {
     var pendingEditSummary: String?
     var canCoalesceLiveTyping: Bool = false
     public var isLiveKeystrokeInProgress: Bool = false
-    var recentSelfWrittenContents: [String] = []
+    var recentSelfWrites = SelfWriteHistory()
+    /// Seconds without edits before autosave writes the file. 0 saves on every edit.
+    public var autoSaveDelay: TimeInterval = 1.0
+    var pendingAutoSaveWorkItem: DispatchWorkItem?
+    var pendingRemoteUploads: [URL: String] = [:]
+    var remoteUploadsInFlight: Set<URL> = []
+    nonisolated(unsafe) var terminationObserver: NSObjectProtocol?
 
     // MARK: - Editor Modes, Theme & Typography
     var isSyncingThemeTypography: Bool = false
@@ -280,9 +286,11 @@ public final class EditorWorkspaceViewModel: ObservableObject {
         self.remoteWorkspaceManager = manager
         self.markdownText = Self.defaultWelcomeDocument
         restoreStateOnInit(resolvedDefaults: resolvedDefaults, manager: manager)
+        observeTerminationForPendingAutoSave()
     }
 
     deinit {
+        if let terminationObserver { NotificationCenter.default.removeObserver(terminationObserver) }
         externalHighlightClearTask?.cancel()
         stopWatchingCurrentFile()
     }

@@ -29,6 +29,8 @@ final class AutosaveAndUndoHistoryTests: XCTestCase {
         try "Initial B".write(to: fileB, atomically: true, encoding: .utf8)
 
         let vm = EditorWorkspaceViewModel(userDefaults: testDefaults)
+
+        vm.autoSaveDelay = 0
         vm.openFolder(at: tempDir)
         vm.openFile(at: fileA)
         XCTAssertEqual(vm.markdownText, "Line 0")
@@ -81,6 +83,7 @@ final class AutosaveAndUndoHistoryTests: XCTestCase {
 
         // Relaunch EditorWorkspaceViewModel and verify both undo (10) and redo (15) stacks persisted
         let relaunchedVM = EditorWorkspaceViewModel(userDefaults: testDefaults)
+        relaunchedVM.autoSaveDelay = 0
         XCTAssertEqual(relaunchedVM.currentFileURL?.standardizedFileURL, fileA.standardizedFileURL)
         XCTAssertEqual(relaunchedVM.currentUndoStack.count, 10)
         XCTAssertEqual(relaunchedVM.currentRedoStack.count, 15)
@@ -110,6 +113,8 @@ final class AutosaveAndUndoHistoryTests: XCTestCase {
         try initial.write(to: fileURL, atomically: true, encoding: .utf8)
 
         let vm = EditorWorkspaceViewModel(userDefaults: testDefaults)
+
+        vm.autoSaveDelay = 0
         vm.openFile(at: fileURL)
 
         // Simulate typing "hello world" character-by-character at offset 10 (the blank middle line)

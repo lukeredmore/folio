@@ -74,7 +74,7 @@ extension EditorWorkspaceViewModel {
                 )
                 headings = analysis.headings
             }
-            autoSaveOrStageCurrentDocument()
+            scheduleAutoSave()
         }
         if !isRestoringState {
             userDefaults.set(selectedRange.location, forKey: Self.selectedCursorLocationDefaultsKey)
