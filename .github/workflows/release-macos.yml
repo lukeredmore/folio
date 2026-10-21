@@ -17,14 +17,12 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  build-and-release:
-    name: Build & Package Folio Apps
+  test:
+    name: Run Workspace Tests & Hygiene Checks
     runs-on: macos-26
     steps:
-      - name: Checkout repository (full history for commit count build number)
+      - name: Checkout repository
         uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
 
       - name: Select Xcode 26+
         run: |
@@ -49,6 +47,41 @@ jobs:
         run: |
           ./scripts/audit_slop.sh
           bazel test //...
+
+  build-folio-dmg:
+    name: Build & Package Folio.dmg
+    runs-on: macos-26
+    outputs:
+      version: ${{ steps.meta.outputs.version }}
+      build_number: ${{ steps.meta.outputs.build_number }}
+      commit_sha: ${{ steps.meta.outputs.commit_sha }}
+      engine_version: ${{ steps.meta.outputs.engine_version }}
+      dmg_sha256: ${{ steps.meta.outputs.dmg_sha256 }}
+      commit_msg: ${{ steps.meta.outputs.commit_msg }}
+    steps:
+      - name: Checkout repository (full history for commit count build number)
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Select Xcode 26+
+        run: |
+          XCODE26="$(ls -d /Applications/Xcode_26*.app 2>/dev/null | sort -V | tail -n 1 || true)"
+          if [[ -n "$XCODE26" ]]; then
+            sudo xcode-select -s "$XCODE26/Contents/Developer"
+          fi
+          xcodebuild -version
+          swiftc --version
+
+      - name: Cache Bazel repository & action cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cache/bazel
+            /private/var/tmp/_bazel_runner
+          key: bazel-macos26-${{ runner.os }}-${{ hashFiles('MODULE.bazel', 'MODULE.bazel.lock') }}
+          restore-keys: |
+            bazel-macos26-${{ runner.os }}-
 
       - name: Import Apple signing certificate (if configured in Secrets)
         id: codesign
@@ -93,18 +126,16 @@ jobs:
           fi
           echo "identity=$IDENTITY" >> "$GITHUB_OUTPUT"
 
-      - name: Build Folio.app, Folio Zed.app, and package DMGs
+      - name: Build Folio.app and package Folio.dmg
         env:
           FOLIO_REPOSITORY: ${{ github.repository }}
-          FOLIO_ZED_PROFILE: release-fast
           APPLE_CODESIGN_IDENTITY: ${{ steps.codesign.outputs.identity }}
           APPLE_ID: ${{ secrets.APPLE_ID }}
           APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
         run: |
-          chmod +x ./build_app.sh ./scripts/package_dmg.sh ./build_zed_app.sh ./scripts/package_zed_dmg.sh
+          chmod +x ./build_app.sh ./scripts/package_dmg.sh
           ./scripts/package_dmg.sh
-          ./scripts/package_zed_dmg.sh
 
       - name: Clean up temporary signing keychain
         if: always()
@@ -112,16 +143,14 @@ jobs:
           rm -f "$RUNNER_TEMP/certificate.p12"
           security delete-keychain "$RUNNER_TEMP/folio-signing.keychain-db" 2>/dev/null || true
 
-      - name: Upload Folio.dmg and Folio-Zed.dmg as workflow artifacts (for PR testing)
+      - name: Upload Folio.dmg artifact
         uses: actions/upload-artifact@v4
         with:
-          name: Folio-macos-dmgs
-          path: |
-            Folio.dmg
-            Folio-Zed.dmg
+          name: Folio.dmg
+          path: Folio.dmg
           retention-days: 14
 
-      - name: Read build metadata from Folio.app and Folio-Zed.dmg
+      - name: Read build metadata from Folio.app and Folio.dmg
         id: meta
         run: |
           PLIST="Folio.app/Contents/Info.plist"
@@ -130,10 +159,149 @@ jobs:
           SHA=$(/usr/libexec/PlistBuddy -c "Print :FolioCommitSHA" "$PLIST")
           ENGINE_VER=$(/usr/libexec/PlistBuddy -c "Print :FolioEngineVersion" "$PLIST")
           SHA256=$(shasum -a 256 Folio.dmg | awk '{print $1}')
-          ZED_SHA256=$(shasum -a 256 Folio-Zed.dmg | awk '{print $1}')
-          PUBLISHED_AT=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
           COMMIT_MSG=$(git log -1 --pretty=%s)
 
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "build_number=$BUILD_NUM" >> "$GITHUB_OUTPUT"
+          echo "commit_sha=$SHA" >> "$GITHUB_OUTPUT"
+          echo "engine_version=$ENGINE_VER" >> "$GITHUB_OUTPUT"
+          echo "dmg_sha256=$SHA256" >> "$GITHUB_OUTPUT"
+          echo "commit_msg=$COMMIT_MSG" >> "$GITHUB_OUTPUT"
+
+  build-folio-zed-dmg:
+    name: Build & Package Folio-Zed.dmg
+    runs-on: macos-26
+    outputs:
+      zed_dmg_sha256: ${{ steps.meta.outputs.zed_dmg_sha256 }}
+    steps:
+      - name: Checkout repository (full history for commit count build number)
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Select Xcode 26+
+        run: |
+          XCODE26="$(ls -d /Applications/Xcode_26*.app 2>/dev/null | sort -V | tail -n 1 || true)"
+          if [[ -n "$XCODE26" ]]; then
+            sudo xcode-select -s "$XCODE26/Contents/Developer"
+          fi
+          xcodebuild -version
+          swiftc --version
+
+      - name: Cache Cargo & Zed build artifacts
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            third_party/zed/upstream/target
+          key: cargo-zed-macos26-${{ runner.os }}-${{ hashFiles('Cargo.lock', 'third_party/zed/patches/0002-real-zed-editor-folio-wysiwyg.patch') }}
+          restore-keys: |
+            cargo-zed-macos26-${{ runner.os }}-
+
+      - name: Import Apple signing certificate (if configured in Secrets)
+        id: codesign
+        env:
+          APPLE_CERTIFICATE_P12_BASE64: ${{ secrets.APPLE_CERTIFICATE_P12_BASE64 }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_CODESIGN_IDENTITY_OVERRIDE: ${{ secrets.APPLE_CODESIGN_IDENTITY }}
+        run: |
+          if [[ -z "$APPLE_CERTIFICATE_P12_BASE64" || -z "$APPLE_CERTIFICATE_PASSWORD" ]]; then
+            echo "No APPLE_CERTIFICATE_P12_BASE64 secret configured; using ad-hoc signing (-)."
+            echo "identity=-" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          KEYCHAIN_PATH="$RUNNER_TEMP/folio-signing.keychain-db"
+          KEYCHAIN_PASS="$(uuidgen)"
+          CERT_PATH="$RUNNER_TEMP/certificate.p12"
+
+          echo "$APPLE_CERTIFICATE_P12_BASE64" | base64 --decode > "$CERT_PATH"
+
+          security create-keychain -p "$KEYCHAIN_PASS" "$KEYCHAIN_PATH"
+          security set-keychain-settings -lut 21600 "$KEYCHAIN_PATH"
+          security unlock-keychain -p "$KEYCHAIN_PASS" "$KEYCHAIN_PATH"
+          curl -fsSL https://www.apple.com/certificateauthority/AppleWWDRCAG3.cer -o "$RUNNER_TEMP/AppleWWDRCAG3.cer" && \
+            security import "$RUNNER_TEMP/AppleWWDRCAG3.cer" -k "$KEYCHAIN_PATH" -T /usr/bin/codesign || true
+          security import "$CERT_PATH" -P "$APPLE_CERTIFICATE_PASSWORD" -A -t cert -f pkcs12 -k "$KEYCHAIN_PATH"
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$KEYCHAIN_PASS" "$KEYCHAIN_PATH"
+          security list-keychains -d user -s "$KEYCHAIN_PATH" $(security list-keychains -d user | tr -d '"')
+          rm -f "$CERT_PATH" "$RUNNER_TEMP/AppleWWDRCAG3.cer"
+
+          if [[ -n "$APPLE_CODESIGN_IDENTITY_OVERRIDE" ]]; then
+            IDENTITY="$APPLE_CODESIGN_IDENTITY_OVERRIDE"
+          else
+            IDENTITY=$(security find-identity -v -p codesigning "$KEYCHAIN_PATH" | awk 'NR==1 {print $2}')
+          fi
+
+          if [[ -z "$IDENTITY" ]]; then
+            echo "Warning: No valid codesigning identity found in imported p12; falling back to ad-hoc signing (-)."
+            IDENTITY="-"
+          else
+            echo "Using Apple signing identity: $IDENTITY"
+          fi
+          echo "identity=$IDENTITY" >> "$GITHUB_OUTPUT"
+
+      - name: Build Folio Zed.app and package Folio-Zed.dmg
+        env:
+          FOLIO_REPOSITORY: ${{ github.repository }}
+          FOLIO_ZED_PROFILE: release-fast
+          APPLE_CODESIGN_IDENTITY: ${{ steps.codesign.outputs.identity }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          chmod +x ./build_zed_app.sh ./scripts/package_zed_dmg.sh
+          ./scripts/package_zed_dmg.sh
+
+      - name: Clean up temporary signing keychain
+        if: always()
+        run: |
+          rm -f "$RUNNER_TEMP/certificate.p12"
+          security delete-keychain "$RUNNER_TEMP/folio-signing.keychain-db" 2>/dev/null || true
+
+      - name: Upload Folio-Zed.dmg artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Folio-Zed.dmg
+          path: Folio-Zed.dmg
+          retention-days: 14
+
+      - name: Compute Folio-Zed.dmg SHA-256
+        id: meta
+        run: |
+          ZED_SHA256=$(shasum -a 256 Folio-Zed.dmg | awk '{print $1}')
+          echo "zed_dmg_sha256=$ZED_SHA256" >> "$GITHUB_OUTPUT"
+
+  release:
+    name: Update Rolling GitHub Release
+    needs:
+      - test
+      - build-folio-dmg
+      - build-folio-zed-dmg
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Download Folio.dmg and Folio-Zed.dmg artifacts
+        uses: actions/download-artifact@v4
+        with:
+          merge-multiple: true
+
+      - name: Update rolling 'latest' GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ needs.build-folio-dmg.outputs.version }}
+          BUILD_NUM: ${{ needs.build-folio-dmg.outputs.build_number }}
+          SHA: ${{ needs.build-folio-dmg.outputs.commit_sha }}
+          ENGINE_VER: ${{ needs.build-folio-dmg.outputs.engine_version }}
+          DMG_SHA256: ${{ needs.build-folio-dmg.outputs.dmg_sha256 }}
+          ZED_SHA256: ${{ needs.build-folio-zed-dmg.outputs.zed_dmg_sha256 }}
+          COMMIT_MSG: ${{ needs.build-folio-dmg.outputs.commit_msg }}
+        run: |
+          PUBLISHED_AT=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
           METADATA_JSON=$(python3 -c 'import json, sys; print(json.dumps({
               "version": sys.argv[1],
               "build_number": int(sys.argv[2]),
@@ -145,34 +313,21 @@ jobs:
               "zed_dmg_url": f"https://github.com/{sys.argv[6]}/releases/latest/download/Folio-Zed.dmg",
               "zed_dmg_sha256": sys.argv[8],
               "notes": sys.argv[9],
-          }))' "$VERSION" "$BUILD_NUM" "$SHA" "$ENGINE_VER" "$PUBLISHED_AT" "${{ github.repository }}" "$SHA256" "$ZED_SHA256" "$COMMIT_MSG")
+          }))' "$VERSION" "$BUILD_NUM" "$SHA" "$ENGINE_VER" "$PUBLISHED_AT" "${{ github.repository }}" "$DMG_SHA256" "$ZED_SHA256" "$COMMIT_MSG")
 
-          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
-          echo "build_number=$BUILD_NUM" >> "$GITHUB_OUTPUT"
-          echo "commit_sha=$SHA" >> "$GITHUB_OUTPUT"
-          echo "engine_version=$ENGINE_VER" >> "$GITHUB_OUTPUT"
-          echo "dmg_sha256=$SHA256" >> "$GITHUB_OUTPUT"
-          echo "zed_dmg_sha256=$ZED_SHA256" >> "$GITHUB_OUTPUT"
-          echo "metadata_json=$METADATA_JSON" >> "$GITHUB_OUTPUT"
-
-      - name: Update rolling 'latest' GitHub Release (main branch only)
-        if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
           TAG="latest"
-          TITLE="Folio v${{ steps.meta.outputs.version }} (Build #${{ steps.meta.outputs.build_number }} — ${{ steps.meta.outputs.commit_sha }})"
+          TITLE="Folio v${VERSION} (Build #${BUILD_NUM} — ${SHA})"
           NOTES=$(cat <<EOF
           Automated rolling macOS build from \`main\` (${{ github.sha }}).
 
-          - **App Version:** \`v${{ steps.meta.outputs.version }}\` (Build \`#${{ steps.meta.outputs.build_number }}\`)
-          - **Core Engine (\`folio_engine\`):** \`v${{ steps.meta.outputs.engine_version }}\`
-          - **Folio.dmg SHA-256:** \`${{ steps.meta.outputs.dmg_sha256 }}\`
-          - **Folio-Zed.dmg SHA-256:** \`${{ steps.meta.outputs.zed_dmg_sha256 }}\`
+          - **App Version:** \`v${VERSION}\` (Build \`#${BUILD_NUM}\`)
+          - **Core Engine (\`folio_engine\`):** \`v${ENGINE_VER}\`
+          - **Folio.dmg SHA-256:** \`${DMG_SHA256}\`
+          - **Folio-Zed.dmg SHA-256:** \`${ZED_SHA256}\`
 
           Existing installations of **Folio.app** and **Folio Zed.app** will automatically detect and install this build via **Check for Updates…** (or on launch).
 
-          <!-- folio-release: ${{ steps.meta.outputs.metadata_json }} -->
+          <!-- folio-release: ${METADATA_JSON} -->
           EOF
           )
 
