@@ -162,6 +162,38 @@ public final class EditorWorkspaceViewModel: ObservableObject {
             userDefaults.set(sourceLineWidth, forKey: Self.sourceLineWidthDefaultsKey)
         }
     }
+    /// Custom `curl` command prefix used to fetch remote media URLs (e.g. `curl -b "session=..."`).
+    @Published public var mediaCurlCommandPrefix: String = FolioMediaImageCache.defaultCurlCommandPrefix {
+        didSet {
+            FolioMediaImageCache.shared.curlCommandPrefix = mediaCurlCommandPrefix
+            guard !isRestoringState else { return }
+            userDefaults.set(mediaCurlCommandPrefix, forKey: Self.mediaCurlCommandPrefixDefaultsKey)
+        }
+    }
+    /// When enabled, passes Remote Host Access SSH credentials (`--key` and `-u`) to `curl`.
+    @Published public var useSSHAuthForMedia: Bool = false {
+        didSet {
+            syncMediaSSHAuthConfig()
+            guard !isRestoringState else { return }
+            userDefaults.set(useSSHAuthForMedia, forKey: Self.mediaUseSSHAuthDefaultsKey)
+        }
+    }
+    /// Optional SSH identity key path (`--key`) for remote media; defaults to the connected Remote Mount's key or `~/.ssh`.
+    @Published public var mediaSSHIdentityFile: String = "" {
+        didSet {
+            syncMediaSSHAuthConfig()
+            guard !isRestoringState else { return }
+            userDefaults.set(mediaSSHIdentityFile, forKey: Self.mediaSSHIdentityFileDefaultsKey)
+        }
+    }
+    /// Optional SSH username (`-u <user>:`) for remote media; defaults to the connected Remote Mount's user.
+    @Published public var mediaSSHUser: String = "" {
+        didSet {
+            syncMediaSSHAuthConfig()
+            guard !isRestoringState else { return }
+            userDefaults.set(mediaSSHUser, forKey: Self.mediaSSHUserDefaultsKey)
+        }
+    }
 
     // MARK: - Sidebar & Panels
     @Published public var showSidebar: Bool = true {
@@ -244,34 +276,9 @@ public final class EditorWorkspaceViewModel: ObservableObject {
 
     public weak var activeTextView: HybridMarkdownTextView?
 
-    public static let typographyDefaultsKey = "Folio.EditorTypographySettings.v2"
-    public static let customThemesDefaultsKey = "Folio.CustomEditorThemes.v1"
-    public static let activeThemeDataDefaultsKey = "Folio.ActiveEditorThemeData.v1"
-    public static let workspaceFolderPathDefaultsKey = "Folio.WorkspaceFolderPath.v1"
-    public static let workspaceFolderBookmarkDefaultsKey = "Folio.WorkspaceFolderBookmark.v1"
-    public static let currentFilePathDefaultsKey = "Folio.CurrentFilePath.v1"
-    public static let currentFileBookmarkDefaultsKey = "Folio.CurrentFileBookmark.v1"
-    public static let unsavedBufferTextDefaultsKey = "Folio.UnsavedBufferText.v1"
-    public static let unsavedBufferIsDirtyDefaultsKey = "Folio.UnsavedBufferIsDirty.v1"
-    public static let hasSavedDocumentSessionDefaultsKey = "Folio.HasSavedDocumentSession.v1"
-    public static let recentFilePathsDefaultsKey = "Folio.RecentFilePaths.v1"
-    public static let themeDefaultsKey = "Folio.EditorTheme.v1"
-    public static let sourceCodeModeDefaultsKey = "Folio.SourceCodeMode.v1"
-    public static let focusModeDefaultsKey = "Folio.FocusMode.v1"
-    public static let typewriterModeDefaultsKey = "Folio.TypewriterMode.v1"
-    public static let spellCheckEnabledDefaultsKey = "Folio.SpellCheckEnabled.v1"
-    public static let sourceLineWidthDefaultsKey = "Folio.SourceLineWidth.v1"
-    public static let showSidebarDefaultsKey = "Folio.ShowSidebar.v1"
-    public static let activeSidebarTabDefaultsKey = "Folio.ActiveSidebarTab.v1"
-    public static let fileDisplayStyleDefaultsKey = "Folio.FileDisplayStyle.v1"
-    public static let fileSortOrderDefaultsKey = "Folio.FileSortOrder.v1"
-    public static let collapsedDirectoryPathsDefaultsKey = "Folio.CollapsedDirectoryPaths.v1"
-    public static let selectedCursorLocationDefaultsKey = "Folio.SelectedCursorLocation.v1"
-    public static let undoTimelinesDefaultsKey = "Folio.PerFileUndoTimelines.v1"
-
     nonisolated(unsafe) var fileWatchSource: DispatchSourceFileSystemObject?
-    nonisolated(unsafe) var fileWatchDescriptor: Int32 = -1
     nonisolated(unsafe) var parentDirWatchSource: DispatchSourceFileSystemObject?
+    nonisolated(unsafe) var fileWatchDescriptor: Int32 = -1
     nonisolated(unsafe) var parentDirWatchDescriptor: Int32 = -1
     nonisolated(unsafe) var watchedFileInode: UInt64 = 0
     nonisolated(unsafe) var externalHighlightClearTask: Task<Void, Never>?
@@ -293,9 +300,5 @@ public final class EditorWorkspaceViewModel: ObservableObject {
         if let terminationObserver { NotificationCenter.default.removeObserver(terminationObserver) }
         externalHighlightClearTask?.cancel()
         stopWatchingCurrentFile()
-    }
-
-    public func resetTypographyToDefaults() {
-        typography = .default
     }
 }

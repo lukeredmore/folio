@@ -6,11 +6,20 @@ import Foundation
 public final class FolioMediaImageCache: @unchecked Sendable {
     public static let shared = FolioMediaImageCache()
     public static let imageDidLoadNotification = Notification.Name("FolioMediaImageDidLoadNotification")
+    public static let defaultCurlCommandPrefix = "curl"
 
-    private let lock = NSLock()
-    private var imageCache: [String: NSImage] = [:]
-    private var svgStringCache: [String: String] = [:]
-    private var inFlightRemoteURLs: Set<String> = []
+    let lock = NSLock()
+    var imageCache: [String: NSImage] = [:]
+    var svgStringCache: [String: String] = [:]
+    var inFlightRemoteURLs: Set<String> = []
+    var failedRemoteURLs: Set<String> = []
+    var _curlCommandPrefix: String = FolioMediaImageCache.defaultCurlCommandPrefix
+    var _sshAuthConfig: FolioMediaSSHAuthConfig = .disabled
+    let remoteFetchQueue = DispatchQueue(
+        label: "com.folio.media.remote-fetch",
+        qos: .userInitiated,
+        attributes: .concurrent
+    )
 
     public init() {}
 
@@ -100,6 +109,19 @@ public final class FolioMediaImageCache: @unchecked Sendable {
         let trimmed = rawSource.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return nil }
 
+        // 1. Remote HTTP/HTTPS URL (canonical cache key independent of baseDirectoryURL / isDark)
+        if let remoteURL = Self.resolveRemoteURL(from: trimmed) {
+            let remoteKey = Self.remoteCacheKey(for: remoteURL)
+            lock.lock()
+            if let cached = imageCache[remoteKey] {
+                lock.unlock()
+                return cached
+            }
+            lock.unlock()
+            triggerRemoteFetchIfNeeded(url: remoteURL, cacheKey: remoteKey)
+            return nil
+        }
+
         let cacheKey = "\(baseDirectoryURL?.path ?? "")|\(isDark ? "1" : "0")|\(trimmed)"
         lock.lock()
         if let cached = imageCache[cacheKey] {
@@ -108,7 +130,7 @@ public final class FolioMediaImageCache: @unchecked Sendable {
         }
         lock.unlock()
 
-        // 1. Inline <svg ...> string
+        // 2. Inline <svg ...> string
         if trimmed.lowercased().hasPrefix("<svg") {
             let (img, _) = svgImage(for: trimmed)
             if let img = img {
@@ -117,7 +139,7 @@ public final class FolioMediaImageCache: @unchecked Sendable {
             return img
         }
 
-        // 2. data: URI (e.g. data:image/svg+xml;utf8,<svg...> or data:image/png;base64,...)
+        // 3. data: URI (e.g. data:image/svg+xml;utf8,<svg...> or data:image/png;base64,...)
         if trimmed.lowercased().hasPrefix("data:") {
             if let commaIdx = trimmed.firstIndex(of: ",") {
                 let header = String(trimmed[..<commaIdx]).lowercased()
@@ -144,14 +166,6 @@ public final class FolioMediaImageCache: @unchecked Sendable {
                         return img
                     }
                 }
-            }
-            return nil
-        }
-
-        // 3. Remote HTTP/HTTPS URL (check cache or fetch asynchronously)
-        if trimmed.lowercased().hasPrefix("http://") || trimmed.lowercased().hasPrefix("https://") {
-            if let url = URL(string: trimmed) {
-                triggerRemoteFetchIfNeeded(url: url, cacheKey: cacheKey)
             }
             return nil
         }
@@ -217,44 +231,9 @@ public final class FolioMediaImageCache: @unchecked Sendable {
             || lower.hasPrefix("data:video/")
     }
 
-    private func storeImage(_ image: NSImage, forKey key: String) {
+    func storeImage(_ image: NSImage, forKey key: String) {
         lock.lock()
         imageCache[key] = image
         lock.unlock()
-    }
-
-    private func triggerRemoteFetchIfNeeded(url: URL, cacheKey: String) {
-        lock.lock()
-        if inFlightRemoteURLs.contains(cacheKey) || imageCache[cacheKey] != nil {
-            lock.unlock()
-            return
-        }
-        inFlightRemoteURLs.insert(cacheKey)
-        lock.unlock()
-
-        let task = URLSession.shared.dataTask(with: url) { [weak self] data, response, _ in
-            guard let self = self else { return }
-            defer {
-                self.lock.lock()
-                self.inFlightRemoteURLs.remove(cacheKey)
-                self.lock.unlock()
-            }
-            guard let data = data, !data.isEmpty else { return }
-            let mime = (response as? HTTPURLResponse)?.mimeType?.lowercased() ?? ""
-            var loadedImage: NSImage?
-            if mime.contains("svg") || url.pathExtension.lowercased() == "svg",
-               let svgStr = String(data: data, encoding: .utf8) {
-                loadedImage = self.svgImage(for: svgStr).image
-            } else {
-                loadedImage = NSImage(data: data)
-            }
-            if let img = loadedImage {
-                self.storeImage(img, forKey: cacheKey)
-                DispatchQueue.main.async {
-                    NotificationCenter.default.post(name: Self.imageDidLoadNotification, object: url)
-                }
-            }
-        }
-        task.resume()
     }
 }

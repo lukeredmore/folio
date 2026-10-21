@@ -78,7 +78,7 @@ fn scan_html_img_tag(
     open_lt: usize,
     open_gt: usize,
 ) -> Option<usize> {
-    let src = extract_html_attr(attrs, "src")?;
+    let src = extract_html_attr(attrs, "src")?.replace("&amp;", "&");
     let alt = extract_html_attr(attrs, "alt").unwrap_or_default();
     let title = extract_html_attr(attrs, "title");
     let width = extract_html_attr(attrs, "width")

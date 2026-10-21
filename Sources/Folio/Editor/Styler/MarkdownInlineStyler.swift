@@ -73,7 +73,7 @@ extension MarkdownLiveStyler {
             let val = attrsNS.substring(with: valRange)
             switch name {
             case "src":
-                src = val
+                src = val.replacingOccurrences(of: "&amp;", with: "&")
             case "alt", "title", "poster":
                 if alt.isEmpty || name == "alt" { alt = val }
             case "width":

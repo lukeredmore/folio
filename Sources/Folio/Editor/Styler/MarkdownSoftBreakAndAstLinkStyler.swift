@@ -139,7 +139,16 @@ extension MarkdownLiveStyler {
                     )
                     if isImg && prettyMode && !rec.isActive && !link.url.isEmpty {
                         let altStr = nsString.substring(with: labelRange)
-                        reserveMediaCardHeight(in: storage, lineRange: rec.lineRange, targetHeight: 176.0)
+                        let display = FolioMediaImageCache.shared.displaySize(
+                            for: link.url,
+                            explicitWidth: nil,
+                            explicitHeight: nil,
+                            maxColumnWidth: theme.typography.maxColumnWidth,
+                            baseDirectoryURL: baseDirectoryURL,
+                            isDark: theme.isDark
+                        )
+                        let targetH = display.isLoaded ? max(26.0, display.size.height + 10.0) : 52.0
+                        reserveMediaCardHeight(in: storage, lineRange: rec.lineRange, targetHeight: targetH)
                         collapseWhitespaceRange(in: storage, range: docRange)
                         decorations.append(LineDecoration(
                             lineRange: rec.lineRange,
