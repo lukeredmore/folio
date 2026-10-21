@@ -45,9 +45,10 @@ jobs:
           restore-keys: |
             bazel-macos26-${{ runner.os }}-
 
-      - name: Run core engine & macOS app tests
+      - name: Run all workspace tests and hygiene checks
         run: |
-          bazel test //core/folio_engine:folio_engine_test //:FolioTests
+          ./scripts/audit_slop.sh
+          bazel test //...
 
       - name: Import Apple signing certificate (if configured in Secrets)
         id: codesign
