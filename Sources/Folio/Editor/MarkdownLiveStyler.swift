@@ -55,7 +55,8 @@ public final class MarkdownLiveStyler {
         selectedRange: NSRange,
         containerWidth: CGFloat = 0,
         prettyMode: Bool = true,
-        baseDirectoryURL: URL? = nil
+        baseDirectoryURL: URL? = nil,
+        textAlignment: NSTextAlignment = .natural
     ) -> MarkdownDocumentAnalysis {
         let typography = typography ?? theme.typography
         let string = storage.string
@@ -260,6 +261,7 @@ public final class MarkdownLiveStyler {
             baseDirectoryURL: baseDirectoryURL, decorations: &decorations
         )
 
+        applyProseAlignment(textAlignment, to: storage, lineRecords: lineRecords, proseLineKinds: proseLineKinds)
         storage.endEditing()
         return MarkdownDocumentAnalysis(headings: headings, decorations: decorations)
     }

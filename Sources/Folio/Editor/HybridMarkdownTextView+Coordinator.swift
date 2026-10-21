@@ -15,6 +15,7 @@ extension HybridMarkdownEditorRepresentable {
         var lastTypography: EditorTypographySettings?
         var lastSourceMode: Bool?
         var lastPrettyMode: Bool?
+        var lastTextAlignment: EditorTextAlignment?
         var lastFileURL: URL?
         var lastFocusMode: Bool?
         var lastActiveLineRange: NSRange?
@@ -212,7 +213,8 @@ extension HybridMarkdownEditorRepresentable {
                 selectedRange: sel,
                 containerWidth: contentWidth,
                 prettyMode: viewModel.prettyModeEnabled,
-                baseDirectoryURL: baseDir
+                baseDirectoryURL: baseDir,
+                textAlignment: viewModel.textAlignment.nsAlignment
             )
 
             // Clear any spellchecker squiggles on code/math/table decorations
@@ -237,6 +239,7 @@ extension HybridMarkdownEditorRepresentable {
             lastTypography = viewModel.typography
             lastSourceMode = viewModel.sourceCodeMode
             lastPrettyMode = viewModel.prettyModeEnabled
+            lastTextAlignment = viewModel.textAlignment
             lastFileURL = viewModel.currentFileURL
             lastFocusMode = viewModel.focusMode
             lastContentWidth = contentWidth

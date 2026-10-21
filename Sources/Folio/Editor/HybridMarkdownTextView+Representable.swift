@@ -113,6 +113,7 @@ public struct HybridMarkdownEditorRepresentable: NSViewRepresentable {
                   context.coordinator.lastTypography != viewModel.typography ||
                   context.coordinator.lastSourceMode != viewModel.sourceCodeMode ||
                   context.coordinator.lastPrettyMode != viewModel.prettyModeEnabled ||
+                  context.coordinator.lastTextAlignment != viewModel.textAlignment ||
                   context.coordinator.lastFileURL != viewModel.currentFileURL ||
                   context.coordinator.lastFocusMode != viewModel.focusMode {
             context.coordinator.restyle(textView: textView)

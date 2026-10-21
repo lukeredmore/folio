@@ -88,6 +88,11 @@ struct FolioAppCommands: Commands {
 
             Divider()
 
+            Button("Print…") {
+                viewModel.printDocument()
+            }
+            .keyboardShortcut("p", modifiers: [.command, .option])
+
             Menu("Export") {
                 Button("HTML...") {
                     viewModel.exportToHTML()

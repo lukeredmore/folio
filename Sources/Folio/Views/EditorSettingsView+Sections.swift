@@ -240,14 +240,6 @@ extension EditorSettingsView {
                     step: 0.5
                 )
 
-                settingSliderRow(
-                    title: "Max Column Width",
-                    valueText: "\(Int(viewModel.typography.maxColumnWidth)) px",
-                    value: $viewModel.typography.maxColumnWidth,
-                    range: 560.0...1280.0,
-                    step: 20.0
-                )
-
                 Divider().opacity(0.5)
 
                 Toggle("Show H1 / H2 Heading Underlines", isOn: $viewModel.typography.showHeadingUnderlines)
