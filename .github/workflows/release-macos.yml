@@ -18,21 +18,19 @@ concurrency:
 
 jobs:
   build-and-release:
-    name: Build & Package Folio.dmg
-    runs-on: macos-15
+    name: Build & Package Folio Apps
+    runs-on: macos-26
     steps:
       - name: Checkout repository (full history for commit count build number)
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
-      - name: Select Xcode 16+ (Swift 6)
+      - name: Select Xcode 26+
         run: |
-          if ! swiftc --version | grep -q "Swift version 6\."; then
-            XCODE16="$(ls -d /Applications/Xcode_16*.app 2>/dev/null | sort -V | tail -n 1 || true)"
-            if [[ -n "$XCODE16" ]]; then
-              sudo xcode-select -s "$XCODE16/Contents/Developer"
-            fi
+          XCODE26="$(ls -d /Applications/Xcode_26*.app 2>/dev/null | sort -V | tail -n 1 || true)"
+          if [[ -n "$XCODE26" ]]; then
+            sudo xcode-select -s "$XCODE26/Contents/Developer"
           fi
           xcodebuild -version
           swiftc --version
@@ -43,9 +41,9 @@ jobs:
           path: |
             ~/.cache/bazel
             /private/var/tmp/_bazel_runner
-          key: bazel-macos15-swift6-${{ runner.os }}-${{ hashFiles('MODULE.bazel', 'MODULE.bazel.lock') }}
+          key: bazel-macos26-${{ runner.os }}-${{ hashFiles('MODULE.bazel', 'MODULE.bazel.lock') }}
           restore-keys: |
-            bazel-macos15-swift6-${{ runner.os }}-
+            bazel-macos26-${{ runner.os }}-
 
       - name: Run core engine & macOS app tests
         run: |
