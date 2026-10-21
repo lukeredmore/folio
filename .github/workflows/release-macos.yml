@@ -24,7 +24,7 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Select Xcode 26+
+      - name: Select Xcode 26+ & configure Bazel cache
         run: |
           XCODE26="$(ls -d /Applications/Xcode_26*.app 2>/dev/null | sort -V | tail -n 1 || true)"
           if [[ -n "$XCODE26" ]]; then
@@ -32,16 +32,33 @@ jobs:
           fi
           xcodebuild -version
           swiftc --version
+          cat >> ~/.bazelrc <<EOF
+          build --repository_cache=~/.cache/bazel-repo
+          build --disk_cache=~/.cache/bazel-disk
+          EOF
 
-      - name: Cache Bazel repository & action cache
+      - name: Cache Bazel repository & disk cache (test)
         uses: actions/cache@v4
         with:
           path: |
-            ~/.cache/bazel
-            /private/var/tmp/_bazel_runner
-          key: bazel-macos26-${{ runner.os }}-${{ hashFiles('MODULE.bazel', 'MODULE.bazel.lock') }}
+            ~/.cache/bazel-repo
+            ~/.cache/bazel-disk
+          key: bazel-test-macos26-${{ runner.os }}-${{ hashFiles('MODULE.bazel', 'MODULE.bazel.lock', 'Cargo.lock') }}-${{ hashFiles('core/**/*.rs', 'zed/**/*.rs', 'Sources/**/*.swift', 'Tests/**/*.swift') }}
           restore-keys: |
-            bazel-macos26-${{ runner.os }}-
+            bazel-test-macos26-${{ runner.os }}-${{ hashFiles('MODULE.bazel', 'MODULE.bazel.lock', 'Cargo.lock') }}-
+            bazel-test-macos26-${{ runner.os }}-
+
+      - name: Cache Cargo workspace build artifacts (test)
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: cargo-test-macos26-${{ runner.os }}-${{ hashFiles('Cargo.lock') }}-${{ hashFiles('core/**/*.rs', 'zed/**/*.rs') }}
+          restore-keys: |
+            cargo-test-macos26-${{ runner.os }}-${{ hashFiles('Cargo.lock') }}-
+            cargo-test-macos26-${{ runner.os }}-
 
       - name: Run all workspace tests and hygiene checks
         run: |
@@ -57,6 +74,7 @@ jobs:
       commit_sha: ${{ steps.meta.outputs.commit_sha }}
       engine_version: ${{ steps.meta.outputs.engine_version }}
       dmg_sha256: ${{ steps.meta.outputs.dmg_sha256 }}
+      folio_graph_hash: ${{ steps.graph.outputs.hash }}
       commit_msg: ${{ steps.meta.outputs.commit_msg }}
     steps:
       - name: Checkout repository (full history for commit count build number)
@@ -64,7 +82,8 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Select Xcode 26+
+      - name: Select Xcode 26+ & compute Folio.dmg Bazel graph hash
+        id: graph
         run: |
           XCODE26="$(ls -d /Applications/Xcode_26*.app 2>/dev/null | sort -V | tail -n 1 || true)"
           if [[ -n "$XCODE26" ]]; then
@@ -72,19 +91,63 @@ jobs:
           fi
           xcodebuild -version
           swiftc --version
+          cat >> ~/.bazelrc <<EOF
+          build --repository_cache=~/.cache/bazel-repo
+          build --disk_cache=~/.cache/bazel-disk
+          EOF
+          chmod +x ./scripts/bazel_target_hash.sh
+          GRAPH_HASH="$(./scripts/bazel_target_hash.sh //:package_folio_dmg)"
+          echo "Computed //:package_folio_dmg Bazel graph hash: $GRAPH_HASH"
+          echo "hash=$GRAPH_HASH" >> "$GITHUB_OUTPUT"
 
-      - name: Cache Bazel repository & action cache
+      - name: Restore cached Folio.dmg if Bazel graph is unchanged
+        id: dmg_cache
         uses: actions/cache@v4
         with:
           path: |
-            ~/.cache/bazel
-            /private/var/tmp/_bazel_runner
-          key: bazel-macos26-${{ runner.os }}-${{ hashFiles('MODULE.bazel', 'MODULE.bazel.lock') }}
+            Folio.dmg
+            .folio_dmg_graph_hash
+          key: folio-dmg-artifact-macos26-${{ steps.graph.outputs.hash }}
+
+      - name: Reuse Folio.dmg from latest GitHub Release if Bazel graph is unchanged
+        id: reuse_release
+        if: steps.dmg_cache.outputs.cache-hit != 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EXPECTED_HASH: ${{ steps.graph.outputs.hash }}
+        run: |
+          BODY="$(gh api "repos/${{ github.repository }}/releases/latest" --jq '.body // ""' 2>/dev/null || true)"
+          RELEASE_HASH="$(python3 -c '
+          import json, re, sys
+          m = re.search(r"<!--\s*folio-release:\s*(\{.*?\})\s*-->", sys.stdin.read(), re.S)
+          if m:
+              print(json.loads(m.group(1)).get("folio_graph_hash", ""))
+          ' <<< "$BODY" 2>/dev/null || true)"
+          if [[ -n "$RELEASE_HASH" && "$RELEASE_HASH" == "$EXPECTED_HASH" ]]; then
+            echo "Latest release Folio.dmg matches Bazel graph hash ($EXPECTED_HASH); downloading existing Folio.dmg..."
+            if gh release download latest --repo "${{ github.repository }}" --pattern "Folio.dmg" --clobber; then
+              printf '%s\n' "$EXPECTED_HASH" > .folio_dmg_graph_hash
+              echo "reused=true" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+          fi
+          echo "reused=false" >> "$GITHUB_OUTPUT"
+
+      - name: Cache Bazel repository & disk cache (opt)
+        if: steps.dmg_cache.outputs.cache-hit != 'true' && steps.reuse_release.outputs.reused != 'true'
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cache/bazel-repo
+            ~/.cache/bazel-disk
+          key: bazel-opt-macos26-${{ runner.os }}-${{ hashFiles('MODULE.bazel', 'MODULE.bazel.lock', 'Cargo.lock') }}-${{ steps.graph.outputs.hash }}
           restore-keys: |
-            bazel-macos26-${{ runner.os }}-
+            bazel-opt-macos26-${{ runner.os }}-${{ hashFiles('MODULE.bazel', 'MODULE.bazel.lock', 'Cargo.lock') }}-
+            bazel-opt-macos26-${{ runner.os }}-
 
       - name: Import Apple signing certificate (if configured in Secrets)
         id: codesign
+        if: steps.dmg_cache.outputs.cache-hit != 'true' && steps.reuse_release.outputs.reused != 'true'
         env:
           APPLE_CERTIFICATE_P12_BASE64: ${{ secrets.APPLE_CERTIFICATE_P12_BASE64 }}
           APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
@@ -129,7 +192,8 @@ jobs:
       - name: Build Folio.app and package Folio.dmg
         env:
           FOLIO_REPOSITORY: ${{ github.repository }}
-          APPLE_CODESIGN_IDENTITY: ${{ steps.codesign.outputs.identity }}
+          FOLIO_APP_GRAPH_HASH: ${{ steps.graph.outputs.hash }}
+          APPLE_CODESIGN_IDENTITY: ${{ steps.codesign.outputs.identity || '-' }}
           APPLE_ID: ${{ secrets.APPLE_ID }}
           APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
@@ -150,14 +214,17 @@ jobs:
           path: Folio.dmg
           retention-days: 14
 
-      - name: Read build metadata from Folio.app and Folio.dmg
+      - name: Read build metadata from Folio.dmg
         id: meta
         run: |
           PLIST="Folio.app/Contents/Info.plist"
+          if [[ ! -f "$PLIST" ]]; then
+            PLIST="macos/FolioApp/Info.plist"
+          fi
           VERSION=$(/usr/libexec/PlistBuddy -c "Print :CFBundleShortVersionString" "$PLIST")
-          BUILD_NUM=$(/usr/libexec/PlistBuddy -c "Print :CFBundleVersion" "$PLIST")
-          SHA=$(/usr/libexec/PlistBuddy -c "Print :FolioCommitSHA" "$PLIST")
-          ENGINE_VER=$(/usr/libexec/PlistBuddy -c "Print :FolioEngineVersion" "$PLIST")
+          BUILD_NUM=$(git rev-list --count HEAD 2>/dev/null || echo 1)
+          SHA=$(git rev-parse --short HEAD 2>/dev/null || echo dev)
+          ENGINE_VER=$(awk -F'"' '/^version[[:space:]]*=/ { print $2; exit }' core/folio_engine/Cargo.toml 2>/dev/null || echo "0.1.0")
           SHA256=$(shasum -a 256 Folio.dmg | awk '{print $1}')
           COMMIT_MSG=$(git log -1 --pretty=%s)
 
@@ -173,13 +240,15 @@ jobs:
     runs-on: macos-26
     outputs:
       zed_dmg_sha256: ${{ steps.meta.outputs.zed_dmg_sha256 }}
+      zed_graph_hash: ${{ steps.graph.outputs.hash }}
     steps:
       - name: Checkout repository (full history for commit count build number)
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
-      - name: Select Xcode 26+
+      - name: Select Xcode 26+ & compute Folio-Zed.dmg Bazel graph hash
+        id: graph
         run: |
           XCODE26="$(ls -d /Applications/Xcode_26*.app 2>/dev/null | sort -V | tail -n 1 || true)"
           if [[ -n "$XCODE26" ]]; then
@@ -187,20 +256,60 @@ jobs:
           fi
           xcodebuild -version
           swiftc --version
+          chmod +x ./scripts/bazel_target_hash.sh
+          GRAPH_HASH="$(./scripts/bazel_target_hash.sh //:package_zed_dmg)"
+          echo "Computed //:package_zed_dmg Bazel graph hash: $GRAPH_HASH"
+          echo "hash=$GRAPH_HASH" >> "$GITHUB_OUTPUT"
+
+      - name: Restore cached Folio-Zed.dmg if Bazel graph is unchanged
+        id: dmg_cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            Folio-Zed.dmg
+            .folio_zed_dmg_graph_hash
+          key: folio-zed-dmg-artifact-macos26-${{ steps.graph.outputs.hash }}
+
+      - name: Reuse Folio-Zed.dmg from latest GitHub Release if Bazel graph is unchanged
+        id: reuse_release
+        if: steps.dmg_cache.outputs.cache-hit != 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EXPECTED_HASH: ${{ steps.graph.outputs.hash }}
+        run: |
+          BODY="$(gh api "repos/${{ github.repository }}/releases/latest" --jq '.body // ""' 2>/dev/null || true)"
+          RELEASE_HASH="$(python3 -c '
+          import json, re, sys
+          m = re.search(r"<!--\s*folio-release:\s*(\{.*?\})\s*-->", sys.stdin.read(), re.S)
+          if m:
+              print(json.loads(m.group(1)).get("zed_graph_hash", ""))
+          ' <<< "$BODY" 2>/dev/null || true)"
+          if [[ -n "$RELEASE_HASH" && "$RELEASE_HASH" == "$EXPECTED_HASH" ]]; then
+            echo "Latest release Folio-Zed.dmg matches Bazel graph hash ($EXPECTED_HASH); downloading existing Folio-Zed.dmg..."
+            if gh release download latest --repo "${{ github.repository }}" --pattern "Folio-Zed.dmg" --clobber; then
+              printf '%s\n' "$EXPECTED_HASH" > .folio_zed_dmg_graph_hash
+              echo "reused=true" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+          fi
+          echo "reused=false" >> "$GITHUB_OUTPUT"
 
       - name: Cache Cargo & Zed build artifacts
+        if: steps.dmg_cache.outputs.cache-hit != 'true' && steps.reuse_release.outputs.reused != 'true'
         uses: actions/cache@v4
         with:
           path: |
             ~/.cargo/registry
             ~/.cargo/git
             third_party/zed/upstream/target
-          key: cargo-zed-macos26-${{ runner.os }}-${{ hashFiles('Cargo.lock', 'third_party/zed/patches/0002-real-zed-editor-folio-wysiwyg.patch') }}
+          key: cargo-zed-macos26-${{ runner.os }}-${{ hashFiles('Cargo.lock', 'third_party/zed/patches/0002-real-zed-editor-folio-wysiwyg.patch') }}-${{ steps.graph.outputs.hash }}
           restore-keys: |
+            cargo-zed-macos26-${{ runner.os }}-${{ hashFiles('Cargo.lock', 'third_party/zed/patches/0002-real-zed-editor-folio-wysiwyg.patch') }}
             cargo-zed-macos26-${{ runner.os }}-
 
       - name: Import Apple signing certificate (if configured in Secrets)
         id: codesign
+        if: steps.dmg_cache.outputs.cache-hit != 'true' && steps.reuse_release.outputs.reused != 'true'
         env:
           APPLE_CERTIFICATE_P12_BASE64: ${{ secrets.APPLE_CERTIFICATE_P12_BASE64 }}
           APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
@@ -246,7 +355,8 @@ jobs:
         env:
           FOLIO_REPOSITORY: ${{ github.repository }}
           FOLIO_ZED_PROFILE: release-fast
-          APPLE_CODESIGN_IDENTITY: ${{ steps.codesign.outputs.identity }}
+          FOLIO_ZED_GRAPH_HASH: ${{ steps.graph.outputs.hash }}
+          APPLE_CODESIGN_IDENTITY: ${{ steps.codesign.outputs.identity || '-' }}
           APPLE_ID: ${{ secrets.APPLE_ID }}
           APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
@@ -298,7 +408,9 @@ jobs:
           SHA: ${{ needs.build-folio-dmg.outputs.commit_sha }}
           ENGINE_VER: ${{ needs.build-folio-dmg.outputs.engine_version }}
           DMG_SHA256: ${{ needs.build-folio-dmg.outputs.dmg_sha256 }}
+          FOLIO_GRAPH_HASH: ${{ needs.build-folio-dmg.outputs.folio_graph_hash }}
           ZED_SHA256: ${{ needs.build-folio-zed-dmg.outputs.zed_dmg_sha256 }}
+          ZED_GRAPH_HASH: ${{ needs.build-folio-zed-dmg.outputs.zed_graph_hash }}
           COMMIT_MSG: ${{ needs.build-folio-dmg.outputs.commit_msg }}
         run: |
           PUBLISHED_AT=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
@@ -310,10 +422,12 @@ jobs:
               "published_at": sys.argv[5],
               "dmg_url": f"https://github.com/{sys.argv[6]}/releases/latest/download/Folio.dmg",
               "dmg_sha256": sys.argv[7],
+              "folio_graph_hash": sys.argv[8],
               "zed_dmg_url": f"https://github.com/{sys.argv[6]}/releases/latest/download/Folio-Zed.dmg",
-              "zed_dmg_sha256": sys.argv[8],
-              "notes": sys.argv[9],
-          }))' "$VERSION" "$BUILD_NUM" "$SHA" "$ENGINE_VER" "$PUBLISHED_AT" "${{ github.repository }}" "$DMG_SHA256" "$ZED_SHA256" "$COMMIT_MSG")
+              "zed_dmg_sha256": sys.argv[9],
+              "zed_graph_hash": sys.argv[10],
+              "notes": sys.argv[11],
+          }))' "$VERSION" "$BUILD_NUM" "$SHA" "$ENGINE_VER" "$PUBLISHED_AT" "${{ github.repository }}" "$DMG_SHA256" "$FOLIO_GRAPH_HASH" "$ZED_SHA256" "$ZED_GRAPH_HASH" "$COMMIT_MSG")
 
           TAG="latest"
           TITLE="Folio v${VERSION} (Build #${BUILD_NUM} — ${SHA})"

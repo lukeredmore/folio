@@ -47,3 +47,26 @@ alias(
     actual = "//zed/folio_zed_extension:extension_bundle",
 )
 
+sh_binary(
+    name = "package_folio_dmg",
+    srcs = ["scripts/package_dmg.sh"],
+    data = [
+        "build_app.sh",
+        ":FolioApp",
+        "//core/folio_engine:Cargo.toml",
+    ],
+)
+
+sh_binary(
+    name = "package_zed_dmg",
+    srcs = ["scripts/package_zed_dmg.sh"],
+    data = [
+        "Cargo.lock",
+        "Cargo.toml",
+        "build_zed_app.sh",
+        ":zed_with_folio_mod",
+        "//core/folio_engine:Cargo.toml",
+        "//macos/FolioApp:AppIcon.icns",
+    ],
+)
+
