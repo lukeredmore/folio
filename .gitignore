@@ -4,6 +4,8 @@
 .worktrees/
 Folio.app/
 Folio.dmg
+Folio Zed.app/
+Folio-Zed.dmg
 *.xcodeproj
 *.xcworkspace
 xcuserdata/

@@ -174,7 +174,7 @@
         "usagesDigest": "BDaTFzfcuPOXW26blZ67eVKcumdu9vguyHQlKFK35aQ=",
         "recordedFileInputs": {
           "@@//zed/folio_zed_mod/Cargo.toml": "64e7d2d93b4eb84fa24094bce5b4b4f23c732a6cdf008e1c7b73a0bdd6e5a3b3",
-          "@@//Cargo.toml": "554139d86595ce917d7347336b59e943177a714962170deef20f257fa222dd32",
+          "@@//Cargo.toml": "3e615e88b10ffdde3943303bc2f13b5ba98469e5b819b69910ff220f3d24be7b",
           "@@//zed/folio_zed_extension/Cargo.toml": "e726c0b0f38c0ca55982075b30a116015e2cbaddd399bcfe96e83064e29adb30",
           "@@//Cargo.lock": "9e6b692725d9b2e0329ffd4b7aec8d68f00bd0e56004eb85305fade21c6ec4ff",
           "@@//core/folio_engine/Cargo.toml": "753048bb2ef560390f6ae5ecc79206345f696c9d8e2afbe51727b6d9fcfe3157",

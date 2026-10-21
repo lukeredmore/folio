@@ -94,16 +94,18 @@ jobs:
           fi
           echo "identity=$IDENTITY" >> "$GITHUB_OUTPUT"
 
-      - name: Build Folio.app and package Folio.dmg
+      - name: Build Folio.app, Folio Zed.app, and package DMGs
         env:
           FOLIO_REPOSITORY: ${{ github.repository }}
+          FOLIO_ZED_PROFILE: release-fast
           APPLE_CODESIGN_IDENTITY: ${{ steps.codesign.outputs.identity }}
           APPLE_ID: ${{ secrets.APPLE_ID }}
           APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
         run: |
-          chmod +x ./build_app.sh ./scripts/package_dmg.sh
+          chmod +x ./build_app.sh ./scripts/package_dmg.sh ./build_zed_app.sh ./scripts/package_zed_dmg.sh
           ./scripts/package_dmg.sh
+          ./scripts/package_zed_dmg.sh
 
       - name: Clean up temporary signing keychain
         if: always()
@@ -111,14 +113,16 @@ jobs:
           rm -f "$RUNNER_TEMP/certificate.p12"
           security delete-keychain "$RUNNER_TEMP/folio-signing.keychain-db" 2>/dev/null || true
 
-      - name: Upload Folio.dmg as workflow artifact (for PR testing)
+      - name: Upload Folio.dmg and Folio-Zed.dmg as workflow artifacts (for PR testing)
         uses: actions/upload-artifact@v4
         with:
-          name: Folio-macos-dmg
-          path: Folio.dmg
+          name: Folio-macos-dmgs
+          path: |
+            Folio.dmg
+            Folio-Zed.dmg
           retention-days: 14
 
-      - name: Read build metadata from Folio.app
+      - name: Read build metadata from Folio.app and Folio-Zed.dmg
         id: meta
         run: |
           PLIST="Folio.app/Contents/Info.plist"
@@ -127,6 +131,7 @@ jobs:
           SHA=$(/usr/libexec/PlistBuddy -c "Print :FolioCommitSHA" "$PLIST")
           ENGINE_VER=$(/usr/libexec/PlistBuddy -c "Print :FolioEngineVersion" "$PLIST")
           SHA256=$(shasum -a 256 Folio.dmg | awk '{print $1}')
+          ZED_SHA256=$(shasum -a 256 Folio-Zed.dmg | awk '{print $1}')
           PUBLISHED_AT=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
           COMMIT_MSG=$(git log -1 --pretty=%s)
 
@@ -138,14 +143,17 @@ jobs:
               "published_at": sys.argv[5],
               "dmg_url": f"https://github.com/{sys.argv[6]}/releases/latest/download/Folio.dmg",
               "dmg_sha256": sys.argv[7],
-              "notes": sys.argv[8],
-          }))' "$VERSION" "$BUILD_NUM" "$SHA" "$ENGINE_VER" "$PUBLISHED_AT" "${{ github.repository }}" "$SHA256" "$COMMIT_MSG")
+              "zed_dmg_url": f"https://github.com/{sys.argv[6]}/releases/latest/download/Folio-Zed.dmg",
+              "zed_dmg_sha256": sys.argv[8],
+              "notes": sys.argv[9],
+          }))' "$VERSION" "$BUILD_NUM" "$SHA" "$ENGINE_VER" "$PUBLISHED_AT" "${{ github.repository }}" "$SHA256" "$ZED_SHA256" "$COMMIT_MSG")
 
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
           echo "build_number=$BUILD_NUM" >> "$GITHUB_OUTPUT"
           echo "commit_sha=$SHA" >> "$GITHUB_OUTPUT"
           echo "engine_version=$ENGINE_VER" >> "$GITHUB_OUTPUT"
           echo "dmg_sha256=$SHA256" >> "$GITHUB_OUTPUT"
+          echo "zed_dmg_sha256=$ZED_SHA256" >> "$GITHUB_OUTPUT"
           echo "metadata_json=$METADATA_JSON" >> "$GITHUB_OUTPUT"
 
       - name: Update rolling 'latest' GitHub Release (main branch only)
@@ -160,9 +168,10 @@ jobs:
 
           - **App Version:** \`v${{ steps.meta.outputs.version }}\` (Build \`#${{ steps.meta.outputs.build_number }}\`)
           - **Core Engine (\`folio_engine\`):** \`v${{ steps.meta.outputs.engine_version }}\`
-          - **DMG SHA-256:** \`${{ steps.meta.outputs.dmg_sha256 }}\`
+          - **Folio.dmg SHA-256:** \`${{ steps.meta.outputs.dmg_sha256 }}\`
+          - **Folio-Zed.dmg SHA-256:** \`${{ steps.meta.outputs.zed_dmg_sha256 }}\`
 
-          Existing installations of **Folio.app** will automatically detect and install this build via **Folio → Check for Updates…** (or on launch).
+          Existing installations of **Folio.app** and **Folio Zed.app** will automatically detect and install this build via **Check for Updates…** (or on launch).
 
           <!-- folio-release: ${{ steps.meta.outputs.metadata_json }} -->
           EOF
@@ -174,6 +183,7 @@ jobs:
 
           gh release create "$TAG" \
             Folio.dmg \
+            Folio-Zed.dmg \
             --target "${{ github.sha }}" \
             --title "$TITLE" \
             --notes "$NOTES" \

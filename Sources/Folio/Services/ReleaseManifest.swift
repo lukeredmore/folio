@@ -8,6 +8,8 @@ public struct ReleaseManifest: Codable, Equatable, Sendable {
     public let publishedAt: String
     public let dmgURL: String
     public let dmgSHA256: String
+    public let zedDmgURL: String?
+    public let zedDmgSHA256: String?
     public let notes: String?
 
     enum CodingKeys: String, CodingKey {
@@ -18,6 +20,8 @@ public struct ReleaseManifest: Codable, Equatable, Sendable {
         case publishedAt = "published_at"
         case dmgURL = "dmg_url"
         case dmgSHA256 = "dmg_sha256"
+        case zedDmgURL = "zed_dmg_url"
+        case zedDmgSHA256 = "zed_dmg_sha256"
         case notes
     }
 
@@ -29,6 +33,8 @@ public struct ReleaseManifest: Codable, Equatable, Sendable {
         publishedAt: String,
         dmgURL: String,
         dmgSHA256: String,
+        zedDmgURL: String? = nil,
+        zedDmgSHA256: String? = nil,
         notes: String? = nil
     ) {
         self.version = version
@@ -38,6 +44,8 @@ public struct ReleaseManifest: Codable, Equatable, Sendable {
         self.publishedAt = publishedAt
         self.dmgURL = dmgURL
         self.dmgSHA256 = dmgSHA256
+        self.zedDmgURL = zedDmgURL
+        self.zedDmgSHA256 = zedDmgSHA256
         self.notes = notes
     }
 
@@ -72,13 +80,20 @@ public struct ReleaseManifest: Codable, Equatable, Sendable {
         }
 
         // 2. Fallback: extract from GitHub Release title, body, and Folio.dmg asset
-        let dmgAsset = release.assets.first(where: { $0.name.hasSuffix(".dmg") })
+        let dmgAsset = release.assets.first(where: { $0.name == "Folio.dmg" })
+            ?? release.assets.first(where: { $0.name.hasSuffix(".dmg") && !$0.name.lowercased().contains("zed") })
         let dmgURL = dmgAsset?.browser_download_url
             ?? "https://github.com/\(defaultRepository)/releases/latest/download/Folio.dmg"
 
         var sha256 = ""
         if let digest = dmgAsset?.digest, digest.lowercased().hasPrefix("sha256:") {
             sha256 = String(digest.dropFirst("sha256:".count))
+        }
+
+        let zedAsset = release.assets.first(where: { $0.name == "Folio-Zed.dmg" })
+        var zedSHA256: String?
+        if let digest = zedAsset?.digest, digest.lowercased().hasPrefix("sha256:") {
+            zedSHA256 = String(digest.dropFirst("sha256:".count))
         }
 
         let title = release.name ?? release.tag_name
@@ -105,6 +120,8 @@ public struct ReleaseManifest: Codable, Equatable, Sendable {
             publishedAt: release.published_at ?? "",
             dmgURL: dmgURL,
             dmgSHA256: sha256,
+            zedDmgURL: zedAsset?.browser_download_url,
+            zedDmgSHA256: zedSHA256,
             notes: body.isEmpty ? nil : body
         )
     }

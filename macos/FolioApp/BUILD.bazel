@@ -21,7 +21,7 @@ macos_application(
     bundle_id = "app.folio.macos",
     bundle_name = "Folio",
     infoplists = ["Info.plist"],
-    minimum_os_version = "14.0",
+    minimum_os_version = "26.0",
     resources = [
         "AppIcon.icns",
         "AppIcon-Dev.icns",
