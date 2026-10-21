@@ -4,6 +4,8 @@ load("@rules_rust//rust:defs.bzl", "rust_library", "rust_static_library", "rust_
 
 package(default_visibility = ["//visibility:public"])
 
+exports_files(["Cargo.toml"])
+
 ENGINE_SRCS = [
     "src/ffi/editing_ffi.rs",
     "src/ffi/markdown_ffi.rs",

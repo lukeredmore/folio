@@ -1,12 +1,23 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+SCRIPT_DIR="${BUILD_WORKSPACE_DIRECTORY:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}"
 cd "$SCRIPT_DIR"
+
+DMG_PATH="$SCRIPT_DIR/Folio.dmg"
+HASH_FILE="$SCRIPT_DIR/.folio_dmg_graph_hash"
+GRAPH_HASH="${FOLIO_APP_GRAPH_HASH:-$("$SCRIPT_DIR/scripts/bazel_target_hash.sh" //:package_folio_dmg 2>/dev/null || true)}"
+
+if [[ "${FOLIO_FORCE_REBUILD:-0}" != "1" && -n "$GRAPH_HASH" && -f "$DMG_PATH" && -f "$HASH_FILE" ]]; then
+  if [[ "$(cat "$HASH_FILE")" == "$GRAPH_HASH" ]]; then
+    DMG_SHA256="$(shasum -a 256 "$DMG_PATH" | awk '{print $1}')"
+    echo "Folio.dmg is up to date for Bazel graph hash ${GRAPH_HASH:0:12} (SHA-256: $DMG_SHA256); skipping rebuild."
+    exit 0
+  fi
+fi
 
 ./build_app.sh
 
-DMG_PATH="$SCRIPT_DIR/Folio.dmg"
 rm -f "$DMG_PATH"
 
 STAGING_DIR="$(mktemp -d)"
@@ -36,6 +47,10 @@ if [[ -n "${APPLE_ID:-}" && -n "${APPLE_APP_SPECIFIC_PASSWORD:-}" && -n "${APPLE
     --team-id "$APPLE_TEAM_ID" \
     --wait
   xcrun stapler staple "$DMG_PATH"
+fi
+
+if [[ -n "$GRAPH_HASH" ]]; then
+  printf '%s\n' "$GRAPH_HASH" > "$HASH_FILE"
 fi
 
 DMG_SHA256="$(shasum -a 256 "$DMG_PATH" | awk '{print $1}')"
