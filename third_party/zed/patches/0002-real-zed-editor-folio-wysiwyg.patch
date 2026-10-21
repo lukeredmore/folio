@@ -1,14 +1,32 @@
 diff --git a/Cargo.lock b/Cargo.lock
-index fc1be19..428c4f0 100644
+index fc1be19..8a8a87d 100644
 --- a/Cargo.lock
 +++ b/Cargo.lock
-@@ -6507,6 +6507,17 @@ version = "0.2.0"
+@@ -6135,6 +6135,7 @@ dependencies = [
+  "ctor",
+  "dap",
+  "extension",
++ "folio_zed_extension",
+  "fs",
+  "futures 0.3.34",
+  "gpui",
+@@ -6507,6 +6508,27 @@ version = "0.2.0"
  source = "registry+https://github.com/rust-lang/crates.io-index"
  checksum = "77ce24cb58228fbb8aa041425bb1050850ac19177686ea6e0f41a70416f56fdb"
  
 +[[package]]
 +name = "folio_engine"
 +version = "0.1.0"
++dependencies = [
++ "mermaid-rs-renderer",
++]
++
++[[package]]
++name = "folio_zed_extension"
++version = "0.1.0"
++dependencies = [
++ "folio_engine",
++]
 +
 +[[package]]
 +name = "folio_zed_mod"
@@ -20,7 +38,7 @@ index fc1be19..428c4f0 100644
  [[package]]
  name = "font-types"
  version = "0.10.0"
-@@ -10619,6 +10630,7 @@ dependencies = [
+@@ -10619,6 +10641,7 @@ dependencies = [
   "base64 0.22.1",
   "collections",
   "env_logger 0.11.8",
@@ -28,7 +46,7 @@ index fc1be19..428c4f0 100644
   "fs",
   "gpui",
   "gpui_platform",
-@@ -10651,6 +10663,7 @@ dependencies = [
+@@ -10651,6 +10674,7 @@ dependencies = [
   "buffer_diff",
   "db",
   "editor",
@@ -36,19 +54,454 @@ index fc1be19..428c4f0 100644
   "fs",
   "gpui",
   "language",
+@@ -10822,6 +10846,23 @@ dependencies = [
+  "syn 1.0.109",
+ ]
+ 
++[[package]]
++name = "mermaid-rs-renderer"
++version = "0.3.1"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "6cb5b469222ce6b9896edf0a969cf68464f5a028ef394fd6643f00bd943df117"
++dependencies = [
++ "anyhow",
++ "fontdb",
++ "json5",
++ "once_cell",
++ "regex",
++ "serde",
++ "serde_json",
++ "thiserror 2.0.17",
++ "ttf-parser",
++]
++
+ [[package]]
+ name = "mermaid_render"
+ version = "0.1.0"
+@@ -18953,7 +18994,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
+ checksum = "2fb391ac70462b3097a755618fbf9c8f95ecc1eb379a414f7b46f202ed10db1f"
+ dependencies = [
+  "cc",
+- "windows-targets 0.48.5",
++ "windows-targets 0.52.6",
+ ]
+ 
+ [[package]]
+@@ -20768,7 +20809,7 @@ dependencies = [
+  "objc2-foundation 0.3.2",
+  "objc2-metal 0.3.2",
+  "objc2-quartz-core 0.3.2",
+- "ordered-float 4.6.0",
++ "ordered-float 5.5.0",
+  "profiling",
+  "range-alloc",
+  "raw-window-handle",
 diff --git a/Cargo.toml b/Cargo.toml
-index 770f7d0..ca99153 100644
+index 770f7d0..6a0992f 100644
 --- a/Cargo.toml
 +++ b/Cargo.toml
-@@ -431,6 +431,8 @@ open_path_prompt = { path = "crates/open_path_prompt" }
+@@ -431,6 +431,9 @@ open_path_prompt = { path = "crates/open_path_prompt" }
  open_router = { path = "crates/open_router", features = ["schemars"] }
  openai_subscribed = { path = "crates/openai_subscribed" }
  opencode = { path = "crates/opencode" }
 +folio_engine = { path = "../../../core/folio_engine" }
++folio_zed_extension = { path = "../../../zed/folio_zed_extension" }
 +folio_zed_mod = { path = "../../../zed/folio_zed_mod" }
  outline = { path = "crates/outline" }
  outline_panel = { path = "crates/outline_panel" }
  path = { path = "crates/path" }
+diff --git a/crates/auto_update/src/auto_update.rs b/crates/auto_update/src/auto_update.rs
+index 38324d5..1667776 100644
+--- a/crates/auto_update/src/auto_update.rs
++++ b/crates/auto_update/src/auto_update.rs
+@@ -189,12 +189,160 @@ pub struct AutoUpdater {
+     dismissed_status: Option<AutoUpdateStatus>,
+ }
+ 
+-#[derive(Deserialize, Serialize, Clone, Debug)]
++#[derive(Deserialize, Serialize, Clone, Debug, PartialEq, Eq)]
+ pub struct ReleaseAsset {
+     pub version: String,
+     pub url: String,
+ }
+ 
++#[derive(Deserialize, Debug)]
++struct FolioEmbeddedManifest {
++    version: String,
++    #[serde(default)]
++    build_number: Option<u64>,
++    #[serde(default)]
++    commit_sha: Option<String>,
++    #[serde(default)]
++    zed_dmg_url: Option<String>,
++}
++
++#[derive(Deserialize, Debug)]
++struct FolioGitHubReleaseAsset {
++    name: String,
++    browser_download_url: String,
++}
++
++#[derive(Deserialize, Debug)]
++struct FolioGitHubRelease {
++    tag_name: String,
++    #[serde(default)]
++    name: Option<String>,
++    #[serde(default)]
++    body: Option<String>,
++    #[serde(default)]
++    assets: Vec<FolioGitHubReleaseAsset>,
++}
++
++#[cfg_attr(test, allow(dead_code))]
++fn folio_repository() -> String {
++    env::var("FOLIO_REPOSITORY")
++        .ok()
++        .or_else(|| release_channel::bundled_info_plist_value("FolioRepository"))
++        .filter(|repo| !repo.trim().is_empty())
++        .unwrap_or_else(|| "lukeredmore/folio".to_string())
++}
++
++fn sanitize_semver_identifier(raw: &str) -> String {
++    raw.chars()
++        .filter(|ch| ch.is_ascii_alphanumeric() || *ch == '-')
++        .collect()
++}
++
++fn format_folio_semver(
++    base_version: &str,
++    build_number: Option<u64>,
++    commit_sha: Option<&str>,
++) -> String {
++    let clean_base = base_version.trim().trim_start_matches('v');
++    let parsed_base = Version::parse(clean_base)
++        .map(|v| format!("{}.{}.{}", v.major, v.minor, v.patch))
++        .unwrap_or_else(|_| "1.0.0".to_string());
++
++    let mut metadata_parts = vec!["stable".to_string()];
++    if let Some(build_number) = build_number {
++        metadata_parts.push(build_number.to_string());
++    }
++    if let Some(sha) = commit_sha {
++        let clean_sha = sanitize_semver_identifier(sha.trim());
++        if !clean_sha.is_empty() {
++            metadata_parts.push(clean_sha);
++        }
++    }
++
++    if metadata_parts.len() > 1 {
++        format!("{parsed_base}+{}", metadata_parts.join("."))
++    } else {
++        parsed_base
++    }
++}
++
++fn parse_folio_github_release(body: &[u8], default_repository: &str) -> Result<ReleaseAsset> {
++    if let Ok(direct_asset) = serde_json::from_slice::<ReleaseAsset>(body) {
++        return Ok(direct_asset);
++    }
++
++    let release: FolioGitHubRelease = serde_json::from_slice(body).with_context(|| {
++        format!(
++            "error deserializing Folio GitHub release {:?}",
++            String::from_utf8_lossy(body)
++        )
++    })?;
++
++    let fallback_url =
++        format!("https://github.com/{default_repository}/releases/latest/download/Folio-Zed.dmg");
++    let asset_url = release
++        .assets
++        .iter()
++        .find(|asset| asset.name == "Folio-Zed.dmg")
++        .or_else(|| {
++            release
++                .assets
++                .iter()
++                .find(|asset| asset.name.ends_with(".dmg") && asset.name.contains("Zed"))
++        })
++        .map(|asset| asset.browser_download_url.clone())
++        .unwrap_or(fallback_url);
++
++    let release_body = release.body.as_deref().unwrap_or("");
++    if let Some(marker_start) = release_body.find("<!-- folio-release:") {
++        let after_marker = &release_body[marker_start + "<!-- folio-release:".len()..];
++        if let Some(marker_end) = after_marker.find("-->") {
++            let json_slice = after_marker[..marker_end].trim();
++            if let Ok(manifest) = serde_json::from_str::<FolioEmbeddedManifest>(json_slice) {
++                let version = format_folio_semver(
++                    &manifest.version,
++                    manifest.build_number,
++                    manifest.commit_sha.as_deref(),
++                );
++                let url = manifest
++                    .zed_dmg_url
++                    .filter(|u| !u.trim().is_empty())
++                    .unwrap_or(asset_url);
++                return Ok(ReleaseAsset { version, url });
++            }
++        }
++    }
++
++    let title = release.name.as_deref().unwrap_or(&release.tag_name);
++    let version = title
++        .split_whitespace()
++        .find_map(|token| {
++            let candidate = token.trim_matches(|c: char| !c.is_ascii_alphanumeric() && c != '.');
++            let candidate = candidate.strip_prefix('v').unwrap_or(candidate);
++            Version::parse(candidate).ok().map(|v| v.to_string())
++        })
++        .unwrap_or_else(|| "1.0.0".to_string());
++
++    Ok(ReleaseAsset {
++        version,
++        url: asset_url,
++    })
++}
++
++fn parse_folio_build_metadata(build: &semver::BuildMetadata) -> Option<(u64, Option<&str>)> {
++    if build.is_empty() {
++        return None;
++    }
++    let mut parts = build.as_str().split('.');
++    while let Some(part) = parts.next() {
++        if let Ok(build_number) = part.parse::<u64>() {
++            let sha = parts.next().filter(|s| !s.is_empty());
++            return Some((build_number, sha));
++        }
++    }
++    None
++}
++
+ struct MacOsUnmounter<'a> {
+     mount_path: PathBuf,
+     background_executor: &'a BackgroundExecutor,
+@@ -704,6 +852,27 @@ impl AutoUpdater {
+         };
+         let http_client = client.http_client();
+ 
++        #[cfg(not(test))]
++        if asset == "zed" && os == "macos" {
++            let repo = folio_repository();
++            let url = env::var("FOLIO_ZED_RELEASE_API_URL").unwrap_or_else(|_| {
++                format!("https://api.github.com/repos/{repo}/releases/latest")
++            });
++            let mut response = http_client
++                .get(url.as_str(), Default::default(), true)
++                .await?;
++            let mut body = Vec::new();
++            response.body_mut().read_to_end(&mut body).await?;
++
++            anyhow::ensure!(
++                response.status().is_success(),
++                "failed to fetch Folio Zed release: {:?}",
++                String::from_utf8_lossy(&body),
++            );
++
++            return parse_folio_github_release(body.as_slice(), &repo);
++        }
++
+         let path = format!("/releases/{}/{}/asset", release_channel.dev_name(), version,);
+         let url = http_client.build_zed_cloud_url_with_query(
+             &path,
+@@ -961,6 +1130,48 @@ impl AutoUpdater {
+         mut installed_version: Version,
+         fetched_version: Version,
+     ) -> Option<Version> {
++        if !fetched_version.build.is_empty() {
++            let installed_core = (
++                installed_version.major,
++                installed_version.minor,
++                installed_version.patch,
++            );
++            let fetched_core = (
++                fetched_version.major,
++                fetched_version.minor,
++                fetched_version.patch,
++            );
++            if fetched_core > installed_core {
++                return Some(fetched_version);
++            }
++            if fetched_core < installed_core {
++                return None;
++            }
++            if let (
++                Some((installed_build, installed_sha)),
++                Some((fetched_build, fetched_sha)),
++            ) = (
++                parse_folio_build_metadata(&installed_version.build),
++                parse_folio_build_metadata(&fetched_version.build),
++            ) {
++                if fetched_build > installed_build {
++                    return Some(fetched_version);
++                }
++                if fetched_build < installed_build {
++                    return None;
++                }
++                if let (Some(installed_sha), Some(fetched_sha)) = (installed_sha, fetched_sha)
++                    && installed_sha != "dev"
++                    && !installed_sha.starts_with(fetched_sha)
++                    && !fetched_sha.starts_with(installed_sha)
++                {
++                    return Some(fetched_version);
++                }
++                return None;
++            }
++            return (fetched_version.build != installed_version.build).then_some(fetched_version);
++        }
++
+         // For non-nightly releases, ignore build and pre-release fields as they're not provided by our endpoints right now.
+         installed_version.pre = semver::Prerelease::EMPTY;
+         installed_version.build = semver::BuildMetadata::EMPTY;
+@@ -1204,10 +1415,6 @@ async fn install_release_macos(
+         .file_name()
+         .with_context(|| format!("invalid running app path {running_app_path:?}"))?;
+ 
+-    let mount_path = temp_dir.path().join("Zed");
+-    let mut mounted_app_path: OsString = mount_path.join(running_app_filename).into();
+-
+-    mounted_app_path.push("/");
+     let mut cmd = new_command("hdiutil");
+     cmd.args(["attach", "-nobrowse"])
+         .arg(&downloaded_dmg)
+@@ -1224,11 +1431,31 @@ async fn install_release_macos(
+         String::from_utf8_lossy(&output.stderr)
+     );
+ 
++    let mount_path = [
++        temp_dir.path().join("Folio Zed"),
++        temp_dir.path().join("Zed"),
++    ]
++    .into_iter()
++    .find(|candidate| candidate.exists())
++    .unwrap_or_else(|| temp_dir.path().join("Folio Zed"));
++
+     let unmounter = MacOsUnmounter {
+         mount_path: mount_path.clone(),
+         background_executor,
+     };
+ 
++    let app_bundle_source = [
++        mount_path.join(running_app_filename),
++        mount_path.join("Folio Zed.app"),
++        mount_path.join("Zed.app"),
++    ]
++    .into_iter()
++    .find(|candidate| candidate.exists())
++    .unwrap_or_else(|| mount_path.join(running_app_filename));
++
++    let mut mounted_app_path: OsString = app_bundle_source.into();
++    mounted_app_path.push("/");
++
+     let mut cmd = new_command("rsync");
+     cmd.args(["-av", "--delete", "--exclude", "Icon?"])
+         .arg(&mounted_app_path)
+@@ -1884,4 +2111,59 @@ mod tests {
+             Some(fetched_version.parse().unwrap())
+         );
+     }
++
++    #[test]
++    fn test_parse_folio_github_release_from_embedded_manifest() {
++        let payload = br#"{
++            "tag_name": "latest",
++            "name": "Folio v1.0.0 (Build #42 - abc1234)",
++            "body": "Automated build\n<!-- folio-release: {\"version\": \"1.0.0\", \"build_number\": 42, \"commit_sha\": \"abc1234\", \"zed_dmg_url\": \"https://github.com/lukeredmore/folio/releases/latest/download/Folio-Zed.dmg\"} -->",
++            "assets": [
++                {
++                    "name": "Folio.dmg",
++                    "browser_download_url": "https://github.com/lukeredmore/folio/releases/latest/download/Folio.dmg"
++                },
++                {
++                    "name": "Folio-Zed.dmg",
++                    "browser_download_url": "https://github.com/lukeredmore/folio/releases/latest/download/Folio-Zed.dmg"
++                }
++            ]
++        }"#;
++
++        let asset = parse_folio_github_release(payload, "lukeredmore/folio").unwrap();
++        assert_eq!(
++            asset,
++            ReleaseAsset {
++                version: "1.0.0+stable.42.abc1234".to_string(),
++                url: "https://github.com/lukeredmore/folio/releases/latest/download/Folio-Zed.dmg"
++                    .to_string(),
++            }
++        );
++    }
++
++    #[test]
++    fn test_folio_rolling_release_updates_when_build_number_increases() {
++        let installed: Version = "1.0.0+stable.41.abc1234".parse().unwrap();
++        let fetched = "1.0.0+stable.42.def5678".to_string();
++
++        let newer = AutoUpdater::check_if_fetched_version_is_newer(
++            ReleaseChannel::Stable,
++            Ok(Some("abc1234".to_string())),
++            installed.clone(),
++            fetched.clone(),
++            AutoUpdateStatus::Idle,
++        )
++        .unwrap();
++        assert_eq!(newer, Some(fetched.parse().unwrap()));
++
++        let same = AutoUpdater::check_if_fetched_version_is_newer(
++            ReleaseChannel::Stable,
++            Ok(Some("abc1234".to_string())),
++            installed,
++            "1.0.0+stable.41.abc1234".to_string(),
++            AutoUpdateStatus::Idle,
++        )
++        .unwrap();
++        assert_eq!(same, None);
++    }
+ }
+diff --git a/crates/extension_host/Cargo.toml b/crates/extension_host/Cargo.toml
+index d4209c0..410612b 100644
+--- a/crates/extension_host/Cargo.toml
++++ b/crates/extension_host/Cargo.toml
+@@ -25,6 +25,7 @@ cloud_api_types.workspace = true
+ collections.workspace = true
+ dap.workspace = true
+ extension.workspace = true
++folio_zed_extension.workspace = true
+ fs.workspace = true
+ futures.workspace = true
+ gpui.workspace = true
+diff --git a/crates/extension_host/src/extension_host.rs b/crates/extension_host/src/extension_host.rs
+index 7d22d21..4c4054f 100644
+--- a/crates/extension_host/src/extension_host.rs
++++ b/crates/extension_host/src/extension_host.rs
+@@ -416,6 +416,14 @@ impl ExtensionStore {
+         // The extensions store maintains an index file, which contains a complete
+         // list of the installed extensions and the resources that they provide.
+         // This index is loaded synchronously on startup.
++        let builtin_extension_updated = if extensions_dir == *paths::extensions_dir() {
++            folio_zed_extension::ensure_builtin_extension_installed(&this.installed_dir)
++                .log_err()
++                .unwrap_or(false)
++        } else {
++            false
++        };
++
+         let (index_content, index_metadata, extensions_metadata) =
+             cx.foreground_executor().block_on(async {
+                 futures::join!(
+@@ -443,6 +451,14 @@ impl ExtensionStore {
+                 extension_index_needs_rebuild = false;
+             }
+         }
++        if extensions_dir == *paths::extensions_dir()
++            && (builtin_extension_updated
++                || !extension_index
++                    .extensions
++                    .contains_key(folio_zed_extension::EXTENSION_ID))
++        {
++            extension_index_needs_rebuild = true;
++        }
+ 
+         // Immediately load all of the extensions in the initial manifest. If the
+         // index needs to be rebuild, then enqueue
 diff --git a/crates/gpui_apple/Cargo.toml b/crates/gpui_apple/Cargo.toml
 index 23142d5..7e02319 100644
 --- a/crates/gpui_apple/Cargo.toml
@@ -62,6 +515,27 @@ index 23142d5..7e02319 100644
  bench-support = ["gpui/bench-support"]
  test-support = ["gpui/test-support"]
  runtime_shaders = []
+diff --git a/crates/gpui_macos/src/platform.rs b/crates/gpui_macos/src/platform.rs
+index f053856..f80d0f7 100644
+--- a/crates/gpui_macos/src/platform.rs
++++ b/crates/gpui_macos/src/platform.rs
+@@ -1308,6 +1308,16 @@ extern "C" fn did_finish_launching(this: &mut Object, _: Sel, _: id) {
+         let policy = get_mac_platform(this).0.lock().activation_policy;
+         app.setActivationPolicy_(native_activation_policy(policy));
+ 
++        if let Ok(icon_path) = std::env::var("FOLIO_DEV_ICON_PATH") {
++            let ns_path = ns_string(&icon_path);
++            let image: id = msg_send![class!(NSImage), alloc];
++            let image: id = msg_send![image, initWithContentsOfFile: ns_path];
++            if image != nil {
++                let _: () = msg_send![app, setApplicationIconImage: image];
++                let _: () = msg_send![image, release];
++            }
++        }
++
+         let notification_center: *mut Object =
+             msg_send![class!(NSNotificationCenter), defaultCenter];
+         let name = ns_string("NSTextInputContextKeyboardSelectionDidChangeNotification");
 diff --git a/crates/grammars/src/markdown/config.toml b/crates/grammars/src/markdown/config.toml
 index b366032..35863cd 100644
 --- a/crates/grammars/src/markdown/config.toml
@@ -4427,3 +4901,175 @@ index 3b0e9f6..22b8c53 100644
              .w_full()
              .flex_1()
              .min_h_0()
+diff --git a/crates/release_channel/src/lib.rs b/crates/release_channel/src/lib.rs
+index c79ca14..77ca828 100644
+--- a/crates/release_channel/src/lib.rs
++++ b/crates/release_channel/src/lib.rs
+@@ -9,13 +9,48 @@ use semver::Version;
+ 
+ const ZED_DOCS_URL: &str = "https://zed.dev/docs";
+ 
++/// Reads a string value from the enclosing macOS `.app/Contents/Info.plist`, if the
++/// current executable is running from a macOS application bundle.
++pub fn bundled_info_plist_value(key: &str) -> Option<String> {
++    #[cfg(target_os = "macos")]
++    {
++        let exe = env::current_exe().ok()?;
++        let macos_dir = exe.parent()?;
++        if macos_dir.file_name()?.to_str()? != "MacOS" {
++            return None;
++        }
++        let contents_dir = macos_dir.parent()?;
++        if contents_dir.file_name()?.to_str()? != "Contents" {
++            return None;
++        }
++        let plist_path = contents_dir.join("Info.plist");
++        let contents = std::fs::read_to_string(plist_path).ok()?;
++        let key_tag = format!("<key>{key}</key>");
++        let after_key = contents.split(&key_tag).nth(1)?;
++        let after_string_open = after_key.split("<string>").nth(1)?;
++        let value = after_string_open.split("</string>").next()?.trim();
++        if value.is_empty() {
++            None
++        } else {
++            Some(value.to_string())
++        }
++    }
++    #[cfg(not(target_os = "macos"))]
++    {
++        let _ = key;
++        None
++    }
++}
++
+ /// stable | dev | nightly | preview
+ pub static RELEASE_CHANNEL_NAME: LazyLock<String> = LazyLock::new(|| {
+-    if cfg!(debug_assertions) {
+-        env::var("ZED_RELEASE_CHANNEL").unwrap_or_else(|_| compile_time_release_channel_name())
+-    } else {
+-        compile_time_release_channel_name()
++    if let Ok(channel) = env::var("ZED_RELEASE_CHANNEL") {
++        return channel;
++    }
++    if let Some(channel) = bundled_info_plist_value("ZedReleaseChannel") {
++        return channel;
+     }
++    compile_time_release_channel_name()
+ });
+ 
+ /// When a crate in zed is used as a dependency that uses the `crane` nix
+diff --git a/crates/zed/src/main.rs b/crates/zed/src/main.rs
+index c3bde91..5215c29 100644
+--- a/crates/zed/src/main.rs
++++ b/crates/zed/src/main.rs
+@@ -302,10 +302,16 @@ fn main() {
+     #[cfg(unix)]
+     util::increase_open_file_limit().log_err();
+ 
+-    let version = option_env!("ZED_BUILD_ID");
+-    let app_commit_sha =
+-        option_env!("ZED_COMMIT_SHA").map(|commit_sha| AppCommitSha::new(commit_sha.to_string()));
+-    let app_version = AppVersion::load(env!("CARGO_PKG_VERSION"), version, app_commit_sha.clone());
++    let version = option_env!("ZED_BUILD_ID")
++        .map(ToOwned::to_owned)
++        .or_else(|| release_channel::bundled_info_plist_value("CFBundleVersion"));
++    let app_commit_sha = option_env!("ZED_COMMIT_SHA")
++        .map(ToOwned::to_owned)
++        .or_else(|| release_channel::bundled_info_plist_value("FolioCommitSHA"))
++        .map(AppCommitSha::new);
++    let pkg_version = release_channel::bundled_info_plist_value("CFBundleShortVersionString")
++        .unwrap_or_else(|| env!("CARGO_PKG_VERSION").to_string());
++    let app_version = AppVersion::load(&pkg_version, version.as_deref(), app_commit_sha.clone());
+ 
+     if args.system_specs {
+         let system_specs = system_specs::SystemSpecs::new_stateless(
+@@ -339,6 +345,28 @@ fn main() {
+     #[cfg(windows)]
+     check_for_conpty_dll();
+ 
++    #[cfg(target_os = "macos")]
++    if *release_channel::RELEASE_CHANNEL == ReleaseChannel::Dev
++        && std::env::var_os("FOLIO_DEV_ICON_PATH").is_none()
++    {
++        let folio_dev_icon = Path::new(env!("CARGO_MANIFEST_DIR"))
++            .join("../../../macos/FolioApp/AppIcon-Dev.icns");
++        let fallback_dev_icon = Path::new(env!("CARGO_MANIFEST_DIR"))
++            .join("resources/app-icon-dev@2x.png");
++        let chosen_icon = if folio_dev_icon.exists() {
++            Some(folio_dev_icon)
++        } else if fallback_dev_icon.exists() {
++            Some(fallback_dev_icon)
++        } else {
++            None
++        };
++        if let Some(icon_path) = chosen_icon {
++            unsafe {
++                std::env::set_var("FOLIO_DEV_ICON_PATH", icon_path);
++            }
++        }
++    }
++
+     let app = build_application()
+         .with_assets(Assets)
+         .with_restart_arguments(restart_arguments);
+@@ -1553,6 +1581,29 @@ pub(crate) async fn restore_or_create_workspace(
+             })
+             .await?;
+         }
++    } else if let Some(default_workspace) = std::env::var_os("FOLIO_DEFAULT_WORKSPACE")
++        .map(PathBuf::from)
++        .filter(|path| path.exists())
++    {
++        let paths_with_position = derive_paths_with_position(
++            app_state.fs.as_ref(),
++            vec![default_workspace.to_string_lossy().into_owned()],
++        )
++        .await;
++        let (_window, results) = open_paths_with_positions(
++            &paths_with_position,
++            &[],
++            false,
++            app_state,
++            workspace::OpenOptions::default(),
++            cx,
++        )
++        .await?;
++        for result in results.into_iter().flatten() {
++            if let Err(err) = result {
++                log::error!("Error opening default workspace path: {err:#}");
++            }
++        }
+     } else if matches!(kvp.read_kvp(FIRST_OPEN), Ok(None)) {
+         cx.update(|cx| show_onboarding_view(app_state, cx)).await?;
+     } else {
+@@ -1630,7 +1681,7 @@ pub(crate) async fn restorable_workspace_locations(
+                 })
+         }
+         workspace::RestoreOnStartupBehavior::LastSession => {
+-            if let Some(last_session_id) = last_session_id {
++            let locations = if let Some(last_session_id) = last_session_id {
+                 let ordered = last_session_window_stack.is_some();
+ 
+                 let mut locations = workspace::last_session_workspace_locations(
+@@ -1651,6 +1702,21 @@ pub(crate) async fn restorable_workspace_locations(
+                 locations
+             } else {
+                 None
++            };
++
++            if locations.is_some() {
++                locations
++            } else {
++                workspace::last_opened_workspace_location(&db, app_state.fs.as_ref())
++                    .await
++                    .map(|(workspace_id, location, paths)| {
++                        vec![SessionWorkspace {
++                            workspace_id,
++                            location,
++                            paths,
++                            window_id: None,
++                        }]
++                    })
+             }
+         }
+         _ => None,

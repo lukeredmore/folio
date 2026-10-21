@@ -53,6 +53,9 @@ echo "[Folio] Ensuring Zed IDE with Folio Markdown WYSIWYG mod and CLI are up to
 ZED_BIN="${ZED_UPSTREAM_DIR}/target/debug/zed"
 ZED_CLI_BIN="${ZED_UPSTREAM_DIR}/target/debug/cli"
 FOLIO_CLI_WRAPPER="${ZED_UPSTREAM_DIR}/target/debug/folio"
+DEV_ICON_PATH="${REPO_ROOT}/macos/FolioApp/AppIcon-Dev.icns"
+DEFAULT_WORKSPACE="${MAIN_REPO_ROOT:-${REPO_ROOT}}"
+CALLER_CWD="${BUILD_WORKING_DIRECTORY:-$(pwd)}"
 
 cat > "${FOLIO_CLI_WRAPPER}" <<EOF
 #!/usr/bin/env bash
@@ -60,6 +63,8 @@ set -euo pipefail
 
 ZED_CLI_BIN="${ZED_CLI_BIN}"
 ZED_BIN="${ZED_BIN}"
+export FOLIO_DEV_ICON_PATH="${DEV_ICON_PATH}"
+export FOLIO_DEFAULT_WORKSPACE="${DEFAULT_WORKSPACE}"
 
 # If the caller already passed --zed, forward arguments directly.
 for arg in "\$@"; do
@@ -89,10 +94,66 @@ mkdir -p "${HOME}/.local/bin"
 install_folio_cli_link "${HOME}/.local/bin" || true
 install_folio_cli_link "/usr/local/bin" || true
 
-DEFAULT_WORKSPACE="${MAIN_REPO_ROOT:-${REPO_ROOT}}"
+resolve_caller_path() {
+    local raw_path="$1"
+    if [[ "${raw_path}" == ~* ]]; then
+        raw_path="${HOME}${raw_path#\~}"
+    fi
+    if [[ "${raw_path}" != /* && "${raw_path}" != *://* && -e "${CALLER_CWD}/${raw_path}" ]]; then
+        (cd "${CALLER_CWD}" && python3 -c 'import os, sys; print(os.path.abspath(sys.argv[1]))' "${raw_path}")
+    else
+        printf '%s\n' "${raw_path}"
+    fi
+}
+
+ZED_ARGS=()
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --open|--folder)
+            if [[ $# -lt 2 ]]; then
+                echo "Error: $1 requires a folder or file path argument." >&2
+                exit 1
+            fi
+            ZED_ARGS+=("$(resolve_caller_path "$2")")
+            shift 2
+            ;;
+        --open=*|--folder=*)
+            ZED_ARGS+=("$(resolve_caller_path "${1#*=}")")
+            shift
+            ;;
+        --repo)
+            ZED_ARGS+=("${DEFAULT_WORKSPACE}")
+            shift
+            ;;
+        -h|--help)
+            cat <<USAGE
+Usage: bazel run //:zed_with_folio_mod [-- [OPTIONS] [PATHS...]]
+
+Options:
+  (no arguments)         Restore the previous Zed workspace/editor state (or open Folio repo on first run)
+  <path>                 Open a specific folder or file in Folio Zed Dev
+  --open <path>          Open a specific folder or file in Folio Zed Dev
+  --repo                 Open the Folio repository root (${DEFAULT_WORKSPACE})
+USAGE
+            exec "${ZED_BIN}" --help
+            ;;
+        -*)
+            ZED_ARGS+=("$1")
+            shift
+            ;;
+        *)
+            ZED_ARGS+=("$(resolve_caller_path "$1")")
+            shift
+            ;;
+    esac
+done
+
+export FOLIO_DEV_ICON_PATH="${DEV_ICON_PATH}"
+export FOLIO_DEFAULT_WORKSPACE="${DEFAULT_WORKSPACE}"
+
 echo "[Folio] Launching Zed IDE with Folio Markdown WYSIWYG mod..."
-if [[ $# -eq 0 ]]; then
-    exec "${ZED_BIN}" "${DEFAULT_WORKSPACE}"
+if [[ ${#ZED_ARGS[@]} -eq 0 ]]; then
+    exec "${ZED_BIN}"
 else
-    exec "${ZED_BIN}" "$@"
+    exec "${ZED_BIN}" "${ZED_ARGS[@]}"
 fi

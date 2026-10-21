@@ -123,6 +123,21 @@ fn test_folio_zed_extension_is_built_in_to_modded_zed_build() {
     assert_eq!(symbols[0].text, "Title");
     assert_eq!(symbols[1].text, "Section");
     assert_eq!(symbols[2].text, "Subsection");
+
+    let temp_ext_dir = std::env::temp_dir().join(format!(
+        "folio_zed_patched_ext_test_{}",
+        std::process::id()
+    ));
+    let _ = std::fs::remove_dir_all(&temp_ext_dir);
+    assert!(
+        folio_zed_extension::ensure_builtin_extension_installed(&temp_ext_dir).unwrap(),
+        "First built-in extension install should materialize files"
+    );
+    assert!(
+        !folio_zed_extension::ensure_builtin_extension_installed(&temp_ext_dir).unwrap(),
+        "Second built-in extension install should be idempotent"
+    );
+    let _ = std::fs::remove_dir_all(&temp_ext_dir);
 }
 
 #[test]
