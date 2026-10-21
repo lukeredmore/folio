@@ -33,6 +33,8 @@ extension EditorSettingsView {
                     .font(.system(size: 12))
             }
 
+            remoteMediaAndAuthSection
+
             settingsCard(title: "SOFTWARE UPDATES & BUILD") {
                 HStack {
                     VStack(alignment: .leading, spacing: 2) {

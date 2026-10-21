@@ -54,6 +54,18 @@ extension EditorWorkspaceViewModel {
             self.sourceLineWidth = MarkdownSourceReflow.defaultWidth
         }
 
+        if let savedCurlPrefix = resolvedDefaults.string(forKey: Self.mediaCurlCommandPrefixDefaultsKey) {
+            let trimmed = savedCurlPrefix.trimmingCharacters(in: .whitespacesAndNewlines)
+            self.mediaCurlCommandPrefix = trimmed.isEmpty ? FolioMediaImageCache.defaultCurlCommandPrefix : savedCurlPrefix
+        } else {
+            self.mediaCurlCommandPrefix = FolioMediaImageCache.defaultCurlCommandPrefix
+        }
+        self.useSSHAuthForMedia = resolvedDefaults.bool(forKey: Self.mediaUseSSHAuthDefaultsKey)
+        self.mediaSSHIdentityFile = resolvedDefaults.string(forKey: Self.mediaSSHIdentityFileDefaultsKey) ?? ""
+        self.mediaSSHUser = resolvedDefaults.string(forKey: Self.mediaSSHUserDefaultsKey) ?? ""
+        FolioMediaImageCache.shared.curlCommandPrefix = self.mediaCurlCommandPrefix
+        self.syncMediaSSHAuthConfig()
+
         if resolvedDefaults.object(forKey: Self.showSidebarDefaultsKey) != nil {
             self.showSidebar = resolvedDefaults.bool(forKey: Self.showSidebarDefaultsKey)
         } else {
@@ -196,6 +208,9 @@ extension EditorWorkspaceViewModel {
         manager.objectWillChange
             .sink { [weak self] _ in
                 self?.objectWillChange.send()
+                Task { @MainActor [weak self] in
+                    self?.syncMediaSSHAuthConfig()
+                }
             }
             .store(in: &cancellables)
 
@@ -235,113 +250,6 @@ extension EditorWorkspaceViewModel {
             }
         } else {
             return URL(fileURLWithPath: cwdPath, isDirectory: true)
-        }
-    }
-
-    static func resolvePersistedURL(
-        from defaults: UserDefaults,
-        pathKey: String,
-        bookmarkKey: String,
-        requireDirectory: Bool
-    ) -> URL? {
-        let fm = FileManager.default
-        if let savedPath = defaults.string(forKey: pathKey), !savedPath.isEmpty {
-            var isDir: ObjCBool = false
-            if fm.fileExists(atPath: savedPath, isDirectory: &isDir),
-               isDir.boolValue == requireDirectory {
-                if let bookmarkData = defaults.data(forKey: bookmarkKey) {
-                    var isStale = false
-                    if let bookmarkedURL = try? URL(
-                        resolvingBookmarkData: bookmarkData,
-                        options: [.withoutUI],
-                        relativeTo: nil,
-                        bookmarkDataIsStale: &isStale
-                    ) {
-                        _ = bookmarkedURL.startAccessingSecurityScopedResource()
-                    }
-                }
-                return URL(fileURLWithPath: savedPath, isDirectory: requireDirectory)
-            }
-        }
-
-        if let bookmarkData = defaults.data(forKey: bookmarkKey) {
-            var isStale = false
-            if let bookmarkedURL = try? URL(
-                resolvingBookmarkData: bookmarkData,
-                options: [.withoutUI],
-                relativeTo: nil,
-                bookmarkDataIsStale: &isStale
-            ) {
-                var isDir: ObjCBool = false
-                if fm.fileExists(atPath: bookmarkedURL.path, isDirectory: &isDir),
-                   isDir.boolValue == requireDirectory {
-                    _ = bookmarkedURL.startAccessingSecurityScopedResource()
-                    if isStale,
-                       let freshData = try? bookmarkedURL.bookmarkData(
-                           options: [],
-                           includingResourceValuesForKeys: nil,
-                           relativeTo: nil
-                       ) {
-                        defaults.set(freshData, forKey: bookmarkKey)
-                    }
-                    defaults.set(bookmarkedURL.path, forKey: pathKey)
-                    return bookmarkedURL
-                }
-            }
-        }
-
-        return nil
-    }
-
-    func persistWorkspaceFolder(_ folderURL: URL?) {
-        guard !isRestoringState else { return }
-        if let folderURL {
-            userDefaults.set(folderURL.path, forKey: Self.workspaceFolderPathDefaultsKey)
-            if let bookmark = try? folderURL.bookmarkData(
-                options: [],
-                includingResourceValuesForKeys: nil,
-                relativeTo: nil
-            ) {
-                userDefaults.set(bookmark, forKey: Self.workspaceFolderBookmarkDefaultsKey)
-            }
-        } else {
-            userDefaults.removeObject(forKey: Self.workspaceFolderPathDefaultsKey)
-            userDefaults.removeObject(forKey: Self.workspaceFolderBookmarkDefaultsKey)
-        }
-    }
-
-    func persistCurrentFileBookmark() {
-        guard !isRestoringState else { return }
-        if let fileURL = currentFileURL {
-            userDefaults.set(fileURL.path, forKey: Self.currentFilePathDefaultsKey)
-            if let bookmark = try? fileURL.bookmarkData(
-                options: [],
-                includingResourceValuesForKeys: nil,
-                relativeTo: nil
-            ) {
-                userDefaults.set(bookmark, forKey: Self.currentFileBookmarkDefaultsKey)
-            }
-        } else {
-            userDefaults.removeObject(forKey: Self.currentFilePathDefaultsKey)
-            userDefaults.removeObject(forKey: Self.currentFileBookmarkDefaultsKey)
-        }
-    }
-
-    func persistDocumentSessionState() {
-        guard !isRestoringState else { return }
-        userDefaults.set(true, forKey: Self.hasSavedDocumentSessionDefaultsKey)
-        userDefaults.set(isDirty, forKey: Self.unsavedBufferIsDirtyDefaultsKey)
-        if let fileURL = currentFileURL {
-            userDefaults.set(fileURL.path, forKey: Self.currentFilePathDefaultsKey)
-            if isDirty {
-                userDefaults.set(markdownText, forKey: Self.unsavedBufferTextDefaultsKey)
-            } else {
-                userDefaults.removeObject(forKey: Self.unsavedBufferTextDefaultsKey)
-            }
-        } else {
-            userDefaults.removeObject(forKey: Self.currentFilePathDefaultsKey)
-            userDefaults.removeObject(forKey: Self.currentFileBookmarkDefaultsKey)
-            userDefaults.set(markdownText, forKey: Self.unsavedBufferTextDefaultsKey)
         }
     }
 }

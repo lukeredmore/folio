@@ -54,7 +54,7 @@ public struct EditorSettingsView: View {
             }
         }
         .padding(16)
-        .frame(width: 460, height: 585)
+        .frame(width: 460, height: 635)
     }
 
     // MARK: - Header & Theme Bar
