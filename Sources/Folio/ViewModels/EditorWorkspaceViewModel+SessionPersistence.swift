@@ -48,6 +48,7 @@ extension EditorWorkspaceViewModel {
         self.focusMode = resolvedDefaults.bool(forKey: Self.focusModeDefaultsKey)
         self.typewriterMode = resolvedDefaults.bool(forKey: Self.typewriterModeDefaultsKey)
         self.spellCheckEnabled = resolvedDefaults.bool(forKey: Self.spellCheckEnabledDefaultsKey)
+        restorePageLayoutSettings(from: resolvedDefaults)
         if resolvedDefaults.object(forKey: Self.sourceLineWidthDefaultsKey) != nil {
             self.sourceLineWidth = max(0, resolvedDefaults.integer(forKey: Self.sourceLineWidthDefaultsKey))
         } else {

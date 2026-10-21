@@ -6,6 +6,7 @@ public struct EditorSettingsView: View {
         case fonts = "Fonts"
         case colors = "Colors"
         case spacing = "Spacing"
+        case page = "Page"
         case editor = "Editor"
 
         public var id: String { rawValue }
@@ -15,6 +16,7 @@ public struct EditorSettingsView: View {
             case .fonts: return "textformat"
             case .colors: return "paintpalette"
             case .spacing: return "arrow.up.and.down.text.horizontal"
+            case .page: return "doc.text"
             case .editor: return "gearshape"
             }
         }
@@ -45,6 +47,8 @@ public struct EditorSettingsView: View {
                         colorsSection
                     case .spacing:
                         characterAndSpacingSection
+                    case .page:
+                        pageAndPrintSection
                     case .editor:
                         editorAndUpdatesSection
                     }

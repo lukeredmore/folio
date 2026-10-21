@@ -162,6 +162,20 @@ public final class EditorWorkspaceViewModel: ObservableObject {
             userDefaults.set(sourceLineWidth, forKey: Self.sourceLineWidthDefaultsKey)
         }
     }
+    /// Editor-wide alignment for prose.
+    @Published public var textAlignment: EditorTextAlignment = .left {
+        didSet {
+            guard !isRestoringState else { return }
+            userDefaults.set(textAlignment.rawValue, forKey: Self.textAlignmentDefaultsKey)
+        }
+    }
+    /// Paper size used by Print.
+    @Published public var printPaperSize: PrintPaperSize = .letter {
+        didSet {
+            guard !isRestoringState else { return }
+            userDefaults.set(printPaperSize.rawValue, forKey: Self.printPaperSizeDefaultsKey)
+        }
+    }
     /// Custom `curl` command prefix used to fetch remote media URLs (e.g. `curl -b "session=..."`).
     @Published public var mediaCurlCommandPrefix: String = FolioMediaImageCache.defaultCurlCommandPrefix {
         didSet {

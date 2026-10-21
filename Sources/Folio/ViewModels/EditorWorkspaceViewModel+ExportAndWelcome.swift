@@ -20,14 +20,7 @@ extension EditorWorkspaceViewModel {
     }
 
     public func exportToPDF() {
-        guard let tv = activeTextView else { return }
-        let printInfo = NSPrintInfo.shared
-        printInfo.topMargin = 36
-        printInfo.bottomMargin = 36
-        printInfo.leftMargin = 36
-        printInfo.rightMargin = 36
-        let op = NSPrintOperation(view: tv, printInfo: printInfo)
-        op.RunModal()
+        printDocument()
     }
 
     public func generateStandaloneHTML() -> String {
@@ -113,9 +106,3 @@ extension EditorWorkspaceViewModel {
     """
 }
 
-@MainActor
-private extension NSPrintOperation {
-    func RunModal() {
-        run()
-    }
-}
