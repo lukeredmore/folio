@@ -109,6 +109,12 @@ extension HybridMarkdownTextView {
     public override func mouseDown(with event: NSEvent) {
         let point = convert(event.locationInWindow, from: nil)
 
+        // 0. Expand button on a rendered Mermaid diagram opens the zoom sheet
+        if let diagram = expandableDiagram(at: point) {
+            workspaceViewModel?.expandedDiagram = diagram
+            return
+        }
+
         // 1. Hit-test code fence language selector badge on the right
         if !isSourceCodeMode, let layoutManager = self.layoutManager {
             let origin = self.textContainerOrigin

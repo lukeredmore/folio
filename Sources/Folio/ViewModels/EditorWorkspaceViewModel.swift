@@ -169,6 +169,8 @@ public final class EditorWorkspaceViewModel: ObservableObject {
             userDefaults.set(textAlignment.rawValue, forKey: Self.textAlignmentDefaultsKey)
         }
     }
+    /// Mermaid diagram shown in the pan-and-zoom sheet.
+    @Published public var expandedDiagram: ExpandedDiagram?
     /// Paper size used by Print.
     @Published public var printPaperSize: PrintPaperSize = .letter {
         didSet {

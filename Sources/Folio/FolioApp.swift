@@ -68,6 +68,9 @@ public struct MainWindowView: View {
         .sheet(isPresented: $viewModel.showExternalUpdateDiffModal) {
             ExternalUpdateDiffModalView(viewModel: viewModel)
         }
+        .sheet(item: $viewModel.expandedDiagram) { diagram in
+            DiagramZoomSheet(diagram: diagram)
+        }
         .sheet(isPresented: $updateManager.showUpdateSheet) {
             AppUpdateModalView(updateManager: updateManager)
         }

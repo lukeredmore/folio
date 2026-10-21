@@ -49,6 +49,7 @@ extension HybridMarkdownTextView {
                 .font: NSFont.monospacedSystemFont(ofSize: 9.5, weight: .semibold),
                 .foregroundColor: currentTheme.secondaryTextNSColor.withAlphaComponent(dimFactor * 0.85)
             ]
+            drawDiagramExpandButton(in: cardRect, dimFactor: dimFactor)
             let badgeStr = "MERMAID" as NSString
             let badgeSize = badgeStr.size(withAttributes: badgeAttrs)
             badgeStr.draw(
