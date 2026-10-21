@@ -19,7 +19,6 @@ extension HybridMarkdownEditorRepresentable {
         var lastFocusMode: Bool?
         var lastActiveLineRange: NSRange?
         var lastContentWidth: CGFloat = 0
-        var maxTableWidth: CGFloat = 0
 
         /// Strong owner of the layout manager delegate (the layout manager holds it weakly).
         let softLineBreakLayoutDelegate = SoftLineBreakLayoutDelegate()
@@ -71,18 +70,19 @@ extension HybridMarkdownEditorRepresentable {
                 textView.proseColumnWidth = proseWidth
             }
 
-            let effectiveInnerWidth = max(proseWidth, ceil(maxTableWidth + 16.0))
-            let targetDocWidth = max(viewportWidth, ceil(effectiveInnerWidth + horizontalPad * 2.0))
-            textView.minSize = NSSize(width: targetDocWidth, height: 400)
-            if abs(textView.frame.size.width - targetDocWidth) > 0.5 {
-                textView.frame.size.width = targetDocWidth
+            // The canvas is exactly the viewport; tables wider than the column are laid out by
+            // WideBlockTextContainer instead of widening the canvas.
+            textView.minSize = NSSize(width: viewportWidth, height: 400)
+            if abs(textView.frame.size.width - viewportWidth) > 0.5 {
+                textView.frame.size.width = viewportWidth
             }
             if let tc = textView.textContainer {
-                let targetContainerSize = NSSize(width: effectiveInnerWidth, height: CGFloat.greatestFiniteMagnitude)
+                let targetContainerSize = NSSize(width: proseWidth, height: CGFloat.greatestFiniteMagnitude)
                 if abs(tc.containerSize.width - targetContainerSize.width) > 0.5 {
                     tc.containerSize = targetContainerSize
                 }
             }
+            textView.refreshWideTableLayout()
         }
 
         public func textView(
@@ -227,12 +227,6 @@ extension HybridMarkdownEditorRepresentable {
                 }
             }
 
-            maxTableWidth = analysis.decorations.reduce(CGFloat(0)) { acc, dec in
-                if case let .tableRow(_, _, _, _, _, _, tableW, _) = dec.kind {
-                    return max(acc, tableW)
-                }
-                return acc
-            }
             if let scrollView = textView.enclosingScrollView {
                 updateInsets(for: scrollView, textView: textView, theme: viewModel.theme)
             }

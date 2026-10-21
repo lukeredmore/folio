@@ -16,8 +16,21 @@ public final class HybridMarkdownTextView: NSTextView {
     }
 
     public var lineDecorations: [LineDecoration] = [] {
-        didSet { needsDisplay = true }
+        didSet {
+            refreshWideTableLayout()
+            needsDisplay = true
+        }
     }
+
+    /// The column always starts at the inset. NSTextView would otherwise move the container right
+    /// so that wide table fragments starting left of the column fit in the view.
+    public override var textContainerOrigin: NSPoint {
+        NSPoint(x: textContainerInset.width, y: textContainerInset.height)
+    }
+
+    /// Horizontal scroll offset of each table wider than the canvas, by the table's first character.
+    var tableScrollOffsets: [Int: CGFloat] = [:]
+    var overflowingTables: [OverflowingTable] = []
 
     public var externalUpdateHighlightRanges: [NSRange] = [] {
         didSet { needsDisplay = true }

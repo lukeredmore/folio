@@ -15,17 +15,18 @@ public struct HybridMarkdownEditorRepresentable: NSViewRepresentable {
     public func makeNSView(context: Context) -> NSScrollView {
         let scrollView = NSScrollView()
         scrollView.hasVerticalScroller = true
-        scrollView.hasHorizontalScroller = true
+        // The column is always centered and never scrolls sideways; wide tables scroll on their own.
+        scrollView.hasHorizontalScroller = false
         scrollView.autohidesScrollers = true
         scrollView.drawsBackground = true
         scrollView.backgroundColor = viewModel.theme.editorBackgroundNSColor
 
         let textStorage = NSTextStorage()
-        let layoutManager = NSLayoutManager()
+        let layoutManager = WideBlockLayoutManager()
         layoutManager.delegate = context.coordinator.softLineBreakLayoutDelegate
         textStorage.addLayoutManager(layoutManager)
 
-        let textContainer = NSTextContainer(containerSize: NSSize(width: 800, height: CGFloat.greatestFiniteMagnitude))
+        let textContainer = WideBlockTextContainer(containerSize: NSSize(width: 800, height: CGFloat.greatestFiniteMagnitude))
         textContainer.widthTracksTextView = false
         textContainer.lineFragmentPadding = 0.0
         layoutManager.addTextContainer(textContainer)
@@ -34,7 +35,7 @@ public struct HybridMarkdownEditorRepresentable: NSViewRepresentable {
         textView.minSize = NSSize(width: 0, height: 400)
         textView.maxSize = NSSize(width: CGFloat.greatestFiniteMagnitude, height: CGFloat.greatestFiniteMagnitude)
         textView.isVerticallyResizable = true
-        textView.isHorizontallyResizable = true
+        textView.isHorizontallyResizable = false
         textView.autoresizingMask = [.width]
         textView.allowsUndo = false
         textView.isRichText = false

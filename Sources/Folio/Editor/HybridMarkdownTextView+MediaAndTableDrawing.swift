@@ -267,7 +267,10 @@ extension HybridMarkdownTextView {
         case let .tableRow(isHeader, isSeparator, isFirstRow, isLastRow, bodyRowIndex, tableOffsetX, tableWidth, columnDividers):
             // Allow wide tables to exceed `contentWidth` without clamping!
             let effectiveWidth = max(tableWidth, 240.0)
-            let startX = origin.x + (tableOffsetX > 0 ? tableOffsetX : max(0.0, floor((contentWidth - effectiveWidth) * 0.5)))
+            // Wide tables get their own line fragment (WideBlockTextContainer); draw from its edge.
+            let rowFragment = layoutManager.lineFragmentRect(forGlyphAt: glyphRange.location, effectiveRange: nil)
+            let startX = origin.x + rowFragment.minX
+                + (tableOffsetX > 0 ? tableOffsetX : max(0.0, floor((min(contentWidth, rowFragment.width) - effectiveWidth) * 0.5)))
             let usedFrag = layoutManager.lineFragmentUsedRect(forGlyphAt: glyphRange.location, effectiveRange: nil)
             let rowY = origin.y + usedFrag.minY
             let rowH = max(isSeparator ? 2.0 : 32.0, usedFrag.height)
