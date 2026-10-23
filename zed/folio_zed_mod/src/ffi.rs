@@ -57,7 +57,7 @@ unsafe fn cstr_or_empty<'a>(ptr: *const c_char) -> &'a str {
     }
 }
 
-fn into_c_str(value: String) -> *mut c_char {
+pub(crate) fn into_c_str(value: String) -> *mut c_char {
     CString::new(value).unwrap_or_default().into_raw()
 }
 

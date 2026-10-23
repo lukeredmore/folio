@@ -644,11 +644,12 @@ index a88816a..987f7ab 100644
                      ),
 diff --git a/crates/markdown/src/folio_dylib.rs b/crates/markdown/src/folio_dylib.rs
 new file mode 100644
-index 0000000..5dd84f8
+index 0000000..baa35df
 --- /dev/null
 +++ b/crates/markdown/src/folio_dylib.rs
-@@ -0,0 +1,348 @@
+@@ -0,0 +1,508 @@
 +use std::ffi::{CStr, CString, c_void};
++use std::ops::Range;
 +use std::os::raw::{c_char, c_int};
 +use std::path::PathBuf;
 +use std::sync::OnceLock;
@@ -686,9 +687,31 @@ index 0000000..5dd84f8
 +}
 +
 +#[repr(C)]
-+struct FolioZedNewlineResult {
++struct FolioKeystrokeDecisionC {
 +    kind: u32,
-+    prefix: *mut c_char,
++    range_start: usize,
++    range_end: usize,
++    has_post_selection: bool,
++    post_sel_start: usize,
++    post_sel_end: usize,
++    replacement: *mut c_char,
++}
++
++#[repr(C)]
++struct FolioCodeSpanDelimitersC {
++    valid: bool,
++    open_start: usize,
++    open_end: usize,
++    close_start: usize,
++    close_end: usize,
++}
++
++#[repr(C)]
++struct FolioSourceEditC {
++    valid: bool,
++    range_start: usize,
++    range_end: usize,
++    replacement: *mut c_char,
 +}
 +
 +#[derive(Debug, Clone, PartialEq)]
@@ -734,10 +757,18 @@ index 0000000..5dd84f8
 +}
 +
 +#[derive(Debug, Clone, PartialEq, Eq)]
-+pub enum NewlineAction {
-+    Default,
-+    ClearEmptyListLine,
-+    InsertPrefix(String),
++pub enum KeystrokeDecision {
++    Unhandled,
++    HandledNoOp,
++    TogglePrettyMode,
++    ClipboardCut(Range<usize>),
++    ClipboardPaste(Range<usize>),
++    SelectRange(Range<usize>),
++    SourceEdit {
++        edit_range: Range<usize>,
++        replacement: String,
++        post_selection: Option<Range<usize>>,
++    },
 +}
 +
 +struct FolioDylibApi {
@@ -746,10 +777,29 @@ index 0000000..5dd84f8
 +    free_svg_result: unsafe extern "C" fn(*mut FolioZedSvgResult),
 +    build_math_canvas: unsafe extern "C" fn(*const c_char, f32, bool) -> *mut FolioZedMathCanvas,
 +    free_math_canvas: unsafe extern "C" fn(*mut FolioZedMathCanvas),
-+    on_editor_newline: unsafe extern "C" fn(*const c_char) -> FolioZedNewlineResult,
-+    free_newline_result: unsafe extern "C" fn(FolioZedNewlineResult),
-+    set_code_fence_language:
-+        unsafe extern "C" fn(*const c_char, usize, *const c_char) -> *mut c_char,
++    evaluate_keystroke: unsafe extern "C" fn(
++        *const u8,
++        usize,
++        usize,
++        usize,
++        usize,
++        usize,
++        *const u8,
++        usize,
++        bool,
++        bool,
++        bool,
++        bool,
++        bool,
++    ) -> FolioKeystrokeDecisionC,
++    free_keystroke_decision: unsafe extern "C" fn(FolioKeystrokeDecisionC),
++    surrounding_code_span_delimiters:
++        unsafe extern "C" fn(*const u8, usize, usize, usize) -> FolioCodeSpanDelimitersC,
++    cycle_code_block_language:
++        unsafe extern "C" fn(*const u8, usize, usize, usize, *const u8, usize) -> FolioSourceEditC,
++    free_source_edit: unsafe extern "C" fn(FolioSourceEditC),
++    extract_html_attr: unsafe extern "C" fn(*const u8, usize, *const u8, usize) -> *mut c_char,
++    percent_decode: unsafe extern "C" fn(*const u8, usize) -> *mut c_char,
 +    free_string: unsafe extern "C" fn(*mut c_char),
 +}
 +
@@ -794,6 +844,32 @@ index 0000000..5dd84f8
 +    }
 +}
 +
++unsafe fn load_api_from_handle(handle: *mut c_void) -> Option<FolioDylibApi> {
++    unsafe {
++        Some(FolioDylibApi {
++            normalize_svg: load_sym(handle, b"folio_zed_mod_normalize_svg\0")?,
++            render_mermaid_svg: load_sym(handle, b"folio_zed_mod_render_mermaid_svg\0")?,
++            free_svg_result: load_sym(handle, b"folio_zed_mod_free_svg_result\0")?,
++            build_math_canvas: load_sym(handle, b"folio_zed_mod_build_math_canvas\0")?,
++            free_math_canvas: load_sym(handle, b"folio_zed_mod_free_math_canvas\0")?,
++            evaluate_keystroke: load_sym(handle, b"folio_zed_mod_evaluate_keystroke\0")?,
++            free_keystroke_decision: load_sym(handle, b"folio_zed_mod_free_keystroke_decision\0")?,
++            surrounding_code_span_delimiters: load_sym(
++                handle,
++                b"folio_zed_mod_surrounding_code_span_delimiters\0",
++            )?,
++            cycle_code_block_language: load_sym(
++                handle,
++                b"folio_zed_mod_cycle_code_block_language\0",
++            )?,
++            free_source_edit: load_sym(handle, b"folio_zed_mod_free_source_edit\0")?,
++            extract_html_attr: load_sym(handle, b"folio_zed_mod_extract_html_attr\0")?,
++            percent_decode: load_sym(handle, b"folio_zed_mod_percent_decode\0")?,
++            free_string: load_sym(handle, b"folio_zed_mod_free_string\0")?,
++        })
++    }
++}
++
 +fn api() -> Option<&'static FolioDylibApi> {
 +    static API: OnceLock<Option<FolioDylibApi>> = OnceLock::new();
 +    API.get_or_init(|| {
@@ -809,20 +885,9 @@ index 0000000..5dd84f8
 +                if handle.is_null() {
 +                    continue;
 +                }
-+                return Some(FolioDylibApi {
-+                    normalize_svg: load_sym(handle, b"folio_zed_mod_normalize_svg\0")?,
-+                    render_mermaid_svg: load_sym(handle, b"folio_zed_mod_render_mermaid_svg\0")?,
-+                    free_svg_result: load_sym(handle, b"folio_zed_mod_free_svg_result\0")?,
-+                    build_math_canvas: load_sym(handle, b"folio_zed_mod_build_math_canvas\0")?,
-+                    free_math_canvas: load_sym(handle, b"folio_zed_mod_free_math_canvas\0")?,
-+                    on_editor_newline: load_sym(handle, b"folio_zed_mod_on_editor_newline\0")?,
-+                    free_newline_result: load_sym(handle, b"folio_zed_mod_free_newline_result\0")?,
-+                    set_code_fence_language: load_sym(
-+                        handle,
-+                        b"folio_zed_mod_set_code_fence_language\0",
-+                    )?,
-+                    free_string: load_sym(handle, b"folio_zed_mod_free_string\0")?,
-+                });
++                if let Some(loaded) = load_api_from_handle(handle) {
++                    return Some(loaded);
++                }
 +            }
 +        }
 +        None
@@ -953,47 +1018,142 @@ index 0000000..5dd84f8
 +    }
 +}
 +
-+pub fn on_editor_newline(line_up_to_cursor: &str) -> NewlineAction {
++pub fn evaluate_keystroke(
++    source: &str,
++    selection: Range<usize>,
++    head: usize,
++    tail: usize,
++    key: &str,
++    platform: bool,
++    control: bool,
++    alt: bool,
++    shift: bool,
++    function: bool,
++) -> KeystrokeDecision {
 +    let Some(dylib) = api() else {
-+        return NewlineAction::Default;
-+    };
-+    let Ok(c_line) = CString::new(line_up_to_cursor) else {
-+        return NewlineAction::Default;
++        return KeystrokeDecision::Unhandled;
 +    };
 +    unsafe {
-+        let res = (dylib.on_editor_newline)(c_line.as_ptr());
-+        let action = match res.kind {
-+            1 => NewlineAction::ClearEmptyListLine,
-+            2 if !res.prefix.is_null() => NewlineAction::InsertPrefix(
-+                CStr::from_ptr(res.prefix).to_string_lossy().into_owned(),
-+            ),
-+            _ => NewlineAction::Default,
++        let res = (dylib.evaluate_keystroke)(
++            source.as_ptr(),
++            source.len(),
++            selection.start,
++            selection.end,
++            head,
++            tail,
++            key.as_ptr(),
++            key.len(),
++            platform,
++            control,
++            alt,
++            shift,
++            function,
++        );
++        let r = res.range_start..res.range_end;
++        let decision = match res.kind {
++            1 => KeystrokeDecision::HandledNoOp,
++            2 => KeystrokeDecision::TogglePrettyMode,
++            3 => KeystrokeDecision::ClipboardCut(r),
++            4 => KeystrokeDecision::ClipboardPaste(r),
++            5 => KeystrokeDecision::SelectRange(r),
++            6 => {
++                let replacement = if res.replacement.is_null() {
++                    String::new()
++                } else {
++                    CStr::from_ptr(res.replacement)
++                        .to_string_lossy()
++                        .into_owned()
++                };
++                let post_selection = res
++                    .has_post_selection
++                    .then_some(res.post_sel_start..res.post_sel_end);
++                KeystrokeDecision::SourceEdit {
++                    edit_range: r,
++                    replacement,
++                    post_selection,
++                }
++            }
++            _ => KeystrokeDecision::Unhandled,
 +        };
-+        (dylib.free_newline_result)(res);
-+        action
++        (dylib.free_keystroke_decision)(res);
++        decision
 +    }
 +}
 +
-+pub fn set_code_fence_language(
++pub fn surrounding_code_span_delimiters(
 +    source: &str,
-+    fence_start_byte_offset: usize,
-+    new_language: &str,
-+) -> Option<String> {
++    content_range: &Range<usize>,
++) -> Option<(Range<usize>, Range<usize>)> {
 +    let dylib = api()?;
-+    let c_src = CString::new(source).ok()?;
-+    let c_lang = CString::new(new_language).ok()?;
 +    unsafe {
-+        let ptr = (dylib.set_code_fence_language)(
-+            c_src.as_ptr(),
-+            fence_start_byte_offset,
-+            c_lang.as_ptr(),
++        let res = (dylib.surrounding_code_span_delimiters)(
++            source.as_ptr(),
++            source.len(),
++            content_range.start,
++            content_range.end,
 +        );
++        res.valid
++            .then_some((res.open_start..res.open_end, res.close_start..res.close_end))
++    }
++}
++
++pub fn cycle_code_block_language(
++    source: &str,
++    block_range: Range<usize>,
++    current_lang: &str,
++) -> Option<(Range<usize>, String)> {
++    let dylib = api()?;
++    unsafe {
++        let res = (dylib.cycle_code_block_language)(
++            source.as_ptr(),
++            source.len(),
++            block_range.start,
++            block_range.end,
++            current_lang.as_ptr(),
++            current_lang.len(),
++        );
++        if !res.valid {
++            return None;
++        }
++        let replacement = if res.replacement.is_null() {
++            String::new()
++        } else {
++            CStr::from_ptr(res.replacement)
++                .to_string_lossy()
++                .into_owned()
++        };
++        let range = res.range_start..res.range_end;
++        (dylib.free_source_edit)(res);
++        Some((range, replacement))
++    }
++}
++
++pub fn extract_html_attr(tag: &str, attr_name: &str) -> Option<String> {
++    let dylib = api()?;
++    unsafe {
++        let ptr =
++            (dylib.extract_html_attr)(tag.as_ptr(), tag.len(), attr_name.as_ptr(), attr_name.len());
 +        if ptr.is_null() {
 +            return None;
 +        }
 +        let out = CStr::from_ptr(ptr).to_string_lossy().into_owned();
 +        (dylib.free_string)(ptr);
 +        Some(out)
++    }
++}
++
++pub fn percent_decode_str(input: &str) -> String {
++    let Some(dylib) = api() else {
++        return input.to_string();
++    };
++    unsafe {
++        let ptr = (dylib.percent_decode)(input.as_ptr(), input.len());
++        if ptr.is_null() {
++            return input.to_string();
++        }
++        let out = CStr::from_ptr(ptr).to_string_lossy().into_owned();
++        (dylib.free_string)(ptr);
++        out
 +    }
 +}
 diff --git a/crates/markdown/src/html/html_rendering.rs b/crates/markdown/src/html/html_rendering.rs
@@ -1021,7 +1181,7 @@ index e1c2ba0..05c22c1 100644
              return;
          };
 diff --git a/crates/markdown/src/markdown.rs b/crates/markdown/src/markdown.rs
-index 10bd60d..7a49252 100644
+index 10bd60d..b32bce9 100644
 --- a/crates/markdown/src/markdown.rs
 +++ b/crates/markdown/src/markdown.rs
 @@ -1,3 +1,4 @@
@@ -2412,10 +2572,6 @@ index 10bd60d..7a49252 100644
                      }
 -                    if html.starts_with("<code>") {
 -                        builder.push_text_style(self.style.inline_code.clone());
--                        continue;
--                    }
--                    if html.trim_end().starts_with("</code>") {
--                        builder.pop_text_style();
 +                    let trimmed = html.trim();
 +                    let lower = trimmed.to_ascii_lowercase();
 +                    if lower == "<br>" || lower == "<br/>" || lower == "<br />" {
@@ -2426,7 +2582,9 @@ index 10bd60d..7a49252 100644
 +                        }
                          continue;
                      }
--                    builder.push_text(&parsed_markdown.source[range.clone()], range.clone());
+-                    if html.trim_end().starts_with("</code>") {
+-                        builder.pop_text_style();
+-                        continue;
 +                    if lower.starts_with("<img") && lower.ends_with('>') {
 +                        if html_on_active_line {
 +                            builder.push_control_chars(html, range.clone(), muted_color);
@@ -2485,7 +2643,8 @@ index 10bd60d..7a49252 100644
 +                        builder.push_control_chars(html, range.clone(), muted_color);
 +                    } else {
 +                        builder.push_text(html, range.clone());
-+                    }
+                     }
+-                    builder.push_text(&parsed_markdown.source[range.clone()], range.clone());
                  }
                  MarkdownEvent::Rule => {
                      builder.push_div(
@@ -2646,38 +2805,41 @@ index 10bd60d..7a49252 100644
          #[cfg(test)]
          if let Some(on_render) = self.on_render.as_ref() {
              on_render(rendered_markdown.text.clone());
-@@ -3401,57 +4498,1397 @@ impl Element for MarkdownElement {
-         hitbox
+@@ -3382,76 +4479,654 @@ impl Element for MarkdownElement {
+         (layout_id, rendered_markdown)
      }
  
--    fn paint(
+-    fn prepaint(
 -        &mut self,
 -        _id: Option<&GlobalElementId>,
 -        _inspector_id: Option<&gpui::InspectorElementId>,
--        _bounds: Bounds<Pixels>,
+-        bounds: Bounds<Pixels>,
 -        rendered_markdown: &mut Self::RequestLayoutState,
--        hitbox: &mut Self::PrepaintState,
 -        window: &mut Window,
 -        cx: &mut App,
--    ) {
--        let mut context = KeyContext::default();
--        context.add("Markdown");
--        window.set_key_context(context);
--
--        let markdown_focus_handle = self.markdown.read(cx).focus_handle.clone();
--        let input_focus_handle = if markdown_focus_handle.is_focused(window) {
--            Some(markdown_focus_handle)
--        } else {
--            self.input_focus_handle
--                .clone()
--                .filter(|focus_handle| focus_handle.is_focused(window))
--        };
--        if let Some(input_focus_handle) = input_focus_handle {
--            window.handle_input(
--                &input_focus_handle,
--                MarkdownInputHandler::new(self.markdown.clone(), rendered_markdown.text.clone()),
--                cx,
--            );
+-    ) -> Self::PrepaintState {
+-        let focus_handle = self.markdown.read(cx).focus_handle.clone();
+-        window.set_focus_handle(&focus_handle, cx);
+-        window.set_view_id(self.markdown.entity_id());
++    fn prepaint(
++        &mut self,
++        _id: Option<&GlobalElementId>,
++        _inspector_id: Option<&gpui::InspectorElementId>,
++        bounds: Bounds<Pixels>,
++        rendered_markdown: &mut Self::RequestLayoutState,
++        window: &mut Window,
++        cx: &mut App,
++    ) -> Self::PrepaintState {
++        let focus_handle = self.markdown.read(cx).focus_handle.clone();
++        window.set_focus_handle(&focus_handle, cx);
++        window.set_view_id(self.markdown.entity_id());
++
++        let hitbox = window.insert_hitbox(bounds, HitboxBehavior::Normal);
++        rendered_markdown.element.prepaint(window, cx);
++        self.autoscroll(&rendered_markdown.text, window, cx);
++        hitbox
++    }
++
 +    fn paint(
 +        &mut self,
 +        _id: Option<&GlobalElementId>,
@@ -2923,15 +3085,6 @@ index 10bd60d..7a49252 100644
 +    idx
 +}
 +
-+fn snap_char_boundary_right(source: &str, offset: usize) -> usize {
-+    let len = source.len();
-+    let mut idx = offset.min(len);
-+    while idx < len && !source.is_char_boundary(idx) {
-+        idx += 1;
-+    }
-+    idx
-+}
-+
 +fn render_gpui_math_canvas_element(
 +    descriptor: folio_dylib::GpuiMathCanvasDescriptor,
 +    base_text_style: TextStyle,
@@ -3078,50 +3231,12 @@ index 10bd60d..7a49252 100644
 +        .tooltip(Tooltip::text("Click to cycle code block language"))
 +        .child(Label::new(label).size(LabelSize::XSmall).color(Color::Muted))
 +        .on_click(move |_event, window, cx| {
-+            const LANGUAGES: &[&str] = &[
-+                "rust",
-+                "python",
-+                "typescript",
-+                "javascript",
-+                "bash",
-+                "json",
-+                "markdown",
-+                "go",
-+                "sql",
-+                "c",
-+                "cpp",
-+                "html",
-+                "css",
-+                "yaml",
-+                "toml",
-+                "plain",
-+            ];
-+            let current = {
-+                let s = current_lang.trim();
-+                if s.is_empty() { "plain" } else { s }
-+            };
-+            let next_idx = LANGUAGES
-+                .iter()
-+                .position(|&lang| lang.eq_ignore_ascii_case(current))
-+                .map(|idx| (idx + 1) % LANGUAGES.len())
-+                .unwrap_or(0);
-+            let next_lang = LANGUAGES[next_idx];
-+            let target_lang = if next_lang == "plain" { "" } else { next_lang };
-+
-+            if let Some(block_slice) = source.get(block_range.start..block_range.end) {
-+                let rel_end = block_slice.find('\n').unwrap_or(block_slice.len());
-+                let fence_line_range = block_range.start..(block_range.start + rel_end);
-+                if let Some(fence_line) = source.get(fence_line_range.clone())
-+                    && let Some(updated_line) =
-+                        folio_dylib::set_code_fence_language(
-+                            fence_line,
-+                            0,
-+                            target_lang,
-+                        )
-+                {
-+                    let trimmed_line = updated_line.trim_end_matches('\n');
-+                    on_source_edit(fence_line_range, trimmed_line, window, cx);
-+                }
++            if let Some((fence_line_range, updated_line)) = folio_dylib::cycle_code_block_language(
++                &source,
++                block_range.clone(),
++                &current_lang,
++            ) {
++                on_source_edit(fence_line_range, &updated_line, window, cx);
 +            }
 +        })
 +        .into_any_element()
@@ -3142,280 +3257,13 @@ index 10bd60d..7a49252 100644
 +    source: &str,
 +    content_range: &Range<usize>,
 +) -> Option<(Range<usize>, Range<usize>)> {
-+    let bytes = source.as_bytes();
-+    if content_range.start > bytes.len() || content_range.end > bytes.len() {
-+        return None;
-+    }
-+    let mut open_start = content_range.start;
-+    if open_start > 0
-+        && content_range.end < bytes.len()
-+        && bytes[open_start - 1] == b' '
-+        && bytes[content_range.end] == b' '
-+        && open_start >= 2
-+        && bytes[open_start - 2] == b'`'
-+    {
-+        open_start -= 1;
-+    }
-+    while open_start > 0 && bytes[open_start - 1] == b'`' {
-+        open_start -= 1;
-+    }
-+    if open_start == content_range.start {
-+        return None;
-+    }
-+    let mut close_end = content_range.end;
-+    if close_end < bytes.len()
-+        && bytes[close_end] == b' '
-+        && close_end + 1 < bytes.len()
-+        && bytes[close_end + 1] == b'`'
-+    {
-+        close_end += 1;
-+    }
-+    let ticks_start = close_end;
-+    while close_end < bytes.len() && bytes[close_end] == b'`' {
-+        close_end += 1;
-+    }
-+    if close_end == ticks_start {
-+        return None;
-+    }
-+    Some((open_start..content_range.start, content_range.end..close_end))
++    folio_dylib::surrounding_code_span_delimiters(source, content_range)
 +}
-+
-+fn toggle_inline_delimiter(
-+    source: &str,
-+    sel_start: usize,
-+    sel_end: usize,
-+    delim: &str,
-+) -> (Range<usize>, String, Range<usize>) {
-+    let dlen = delim.len();
-+    let was_collapsed = sel_start == sel_end;
-+    let sel_start = snap_char_boundary_left(source, sel_start);
-+    let sel_end = if was_collapsed {
-+        sel_start
-+    } else {
-+        snap_char_boundary_right(source, sel_end).max(sel_start)
-+    };
-+    let (target_start, target_end) = if sel_start < sel_end {
-+        (sel_start, sel_end)
-+    } else if let Some((ws, we)) = word_range_at(source, sel_start) {
-+        (ws, we)
-+    } else {
-+        (sel_start, sel_end)
-+    };
-+
-+    let can_strip_surrounding = if target_start >= dlen
-+        && target_end + dlen <= source.len()
-+        && source.get((target_start - dlen)..target_start) == Some(delim)
-+        && source.get(target_end..(target_end + dlen)) == Some(delim)
-+    {
-+        if dlen == 1 {
-+            let ch = delim.as_bytes()[0];
-+            let before_count = source.as_bytes()[..target_start]
-+                .iter()
-+                .rev()
-+                .take_while(|&&b| b == ch)
-+                .count();
-+            let after_count = source.as_bytes()[target_end..]
-+                .iter()
-+                .take_while(|&&b| b == ch)
-+                .count();
-+            // If surrounded by exactly `**` (bold), pressing Cmd+I (`*`) should wrap to `***`
-+            // rather than corrupting `**bold**` into `*bold*`.
-+            !(before_count == 2 && after_count == 2)
-+        } else {
-+            true
-+        }
-+    } else {
-+        false
-+    };
-+
-+    if can_strip_surrounding {
-+        let inner = source
-+            .get(target_start..target_end)
-+            .unwrap_or("")
-+            .to_string();
-+        let new_start = target_start - dlen;
-+        let new_end = new_start + inner.len();
-+        return (
-+            (target_start - dlen)..(target_end + dlen),
-+            inner,
-+            if sel_start < sel_end {
-+                new_start..new_end
-+            } else {
-+                let offset = sel_start.saturating_sub(dlen);
-+                offset..offset
-+            },
-+        );
-+    }
-+
-+    let selected = source.get(target_start..target_end).unwrap_or("");
-+    if selected.starts_with(delim)
-+        && selected.ends_with(delim)
-+        && selected.len() >= dlen * 2
-+        && (dlen != 1
-+            || !selected.starts_with(&format!("{delim}{delim}"))
-+            || selected.starts_with(&format!("{delim}{delim}{delim}")))
-+    {
-+        let inner = selected[dlen..selected.len() - dlen].to_string();
-+        let new_end = target_start + inner.len();
-+        return (
-+            target_start..target_end,
-+            inner,
-+            if sel_start < sel_end {
-+                target_start..new_end
-+            } else {
-+                let offset = sel_start.saturating_sub(dlen).clamp(target_start, new_end);
-+                offset..offset
-+            },
-+        );
-+    }
-+
-+    let replacement = format!("{delim}{selected}{delim}");
-+    let new_sel = if sel_start < sel_end {
-+        (target_start + dlen)..(target_end + dlen)
-+    } else if target_start < target_end {
-+        let offset = sel_start + dlen;
-+        offset..offset
-+    } else {
-+        (target_start + dlen)..(target_start + dlen)
-+    };
-+    (target_start..target_end, replacement, new_sel)
-+}
-+
-+fn toggle_heading_level(
-+    source: &str,
-+    cursor: usize,
-+    level: usize,
-+) -> (Range<usize>, String, Range<usize>) {
-+    let len = source.len();
-+    let cursor = snap_char_boundary_left(source, cursor);
-+    let line_start = source[..cursor].rfind('\n').map(|idx| idx + 1).unwrap_or(0);
-+    let line_end = source[cursor..]
-+        .find('\n')
-+        .map(|rel| cursor + rel)
-+        .unwrap_or(len);
-+    let line = &source[line_start..line_end];
-+    let existing_hashes = line.bytes().take_while(|&b| b == b'#').count();
-+    let existing_ws = if existing_hashes > 0 {
-+        line[existing_hashes..]
-+            .bytes()
-+            .take_while(|&b| b == b' ' || b == b'\t')
-+            .count()
-+    } else {
-+        0
-+    };
-+    let old_prefix_len = if existing_hashes > 0 && existing_ws > 0 {
-+        existing_hashes + existing_ws
-+    } else {
-+        0
-+    };
-+    let new_prefix = if existing_hashes == level && old_prefix_len > 0 {
-+        String::new()
-+    } else {
-+        format!("{} ", "#".repeat(level))
-+    };
-+    let new_prefix_len = new_prefix.len();
-+    let new_cursor = if cursor <= line_start + old_prefix_len {
-+        line_start + new_prefix_len
-+    } else {
-+        (cursor + new_prefix_len).saturating_sub(old_prefix_len)
-+    };
-+    (
-+        line_start..(line_start + old_prefix_len),
-+        new_prefix,
-+        new_cursor..new_cursor,
-+    )
-+}
-+
-+fn word_range_at(source: &str, offset: usize) -> Option<(usize, usize)> {
-+    if source.is_empty() || offset > source.len() {
-+        return None;
-+    }
-+    let offset = snap_char_boundary_left(source, offset);
-+    let is_word_char = |c: char| c.is_alphanumeric() || c == '_';
-+    let before = source[..offset].chars().next_back();
-+    let after = source[offset..].chars().next();
-+    if !before.is_some_and(is_word_char) && !after.is_some_and(is_word_char) {
-+        return None;
-+    }
-+    let mut start = offset;
-+    for (idx, ch) in source[..offset].char_indices().rev() {
-+        if is_word_char(ch) {
-+            start = idx;
-+        } else {
-+            break;
-+        }
-+    }
-+    let mut end = offset;
-+    for (rel_idx, ch) in source[offset..].char_indices() {
-+        if is_word_char(ch) {
-+            end = offset + rel_idx + ch.len_utf8();
-+        } else {
-+            break;
-+        }
-+    }
-+    (start < end).then_some((start, end))
-+}
-+
-+fn prev_word_boundary(source: &str, cursor: usize) -> usize {
-+    let cursor = snap_char_boundary_left(source, cursor);
-+    if cursor == 0 {
-+        return 0;
-+    }
-+    let is_word = |c: char| c.is_alphanumeric() || c == '_';
-+    let mut idx = cursor;
-+    for (pos, ch) in source[..cursor].char_indices().rev() {
-+        if ch == '\n' {
-+            return if idx == cursor { pos } else { idx };
-+        }
-+        if !ch.is_whitespace() {
-+            idx = pos + ch.len_utf8();
-+            break;
-+        }
-+        idx = pos;
-+    }
-+    let prev_ch = source[..idx].chars().next_back();
-+    let target_is_word = prev_ch.is_some_and(is_word);
-+    for (pos, ch) in source[..idx].char_indices().rev() {
-+        if ch.is_whitespace() || is_word(ch) != target_is_word {
-+            return pos + ch.len_utf8();
-+        }
-+    }
-+    0
-+}
-+
-+fn next_word_boundary(source: &str, cursor: usize) -> usize {
-+    let len = source.len();
-+    let cursor = snap_char_boundary_left(source, cursor);
-+    if cursor >= len {
-+        return len;
-+    }
-+    let is_word = |c: char| c.is_alphanumeric() || c == '_';
-+    let mut idx = cursor;
-+    for (rel, ch) in source[cursor..].char_indices() {
-+        let pos = cursor + rel;
-+        if ch == '\n' {
-+            return if idx == cursor { pos + 1 } else { pos };
-+        }
-+        if !ch.is_whitespace() {
-+            idx = pos;
-+            break;
-+        }
-+        idx = pos + ch.len_utf8();
-+    }
-+    if idx >= len {
-+        return len;
-+    }
-+    let first_ch = source[idx..].chars().next();
-+    let target_is_word = first_ch.is_some_and(is_word);
-+    for (rel, ch) in source[idx..].char_indices() {
-+        let pos = idx + rel;
-+        if ch.is_whitespace() || is_word(ch) != target_is_word {
-+            return pos;
-+        }
-+    }
-+    len
-+}
-+
+ 
+-        let hitbox = window.insert_hitbox(bounds, HitboxBehavior::Normal);
+-        rendered_markdown.element.prepaint(window, cx);
+-        self.autoscroll(&rendered_markdown.text, window, cx);
+-        hitbox
 +pub(crate) fn decode_data_url_image(dest_url: &str) -> Option<Arc<Image>> {
 +    let rest = dest_url.strip_prefix("data:")?;
 +    if let Some((mime, b64)) = rest.split_once(";base64,") {
@@ -3428,7 +3276,7 @@ index 10bd60d..7a49252 100644
 +    if let Some((mime_part, raw_payload)) = rest.split_once(',') {
 +        let mime = mime_part.split(';').next().unwrap_or(mime_part).trim();
 +        if mime.eq_ignore_ascii_case("image/svg+xml") {
-+            let decoded = percent_decode_str(raw_payload);
++            let decoded = folio_dylib::percent_decode_str(raw_payload);
 +            let normalized = folio_dylib::normalize_svg_markup(&decoded)
 +                .map(|(svg, _, _)| svg)
 +                .unwrap_or(decoded);
@@ -3437,37 +3285,36 @@ index 10bd60d..7a49252 100644
 +                normalized.into_bytes(),
 +            )));
 +        }
-+    }
+     }
 +    None
 +}
-+
-+fn percent_decode_str(input: &str) -> String {
-+    let bytes = input.as_bytes();
-+    let mut out = Vec::with_capacity(bytes.len());
-+    let mut i = 0;
-+    while i < bytes.len() {
-+        if bytes[i] == b'%' && i + 2 < bytes.len() {
-+            if let (Some(hi), Some(lo)) = (
-+                (bytes[i + 1] as char).to_digit(16),
-+                (bytes[i + 2] as char).to_digit(16),
-+            ) {
-+                out.push(((hi << 4) | lo) as u8);
-+                i += 3;
-+                continue;
-+            }
-+        }
-+        out.push(bytes[i]);
-+        i += 1;
-+    }
-+    String::from_utf8(out).unwrap_or_else(|_| input.to_string())
-+}
-+
+ 
+-    fn paint(
+-        &mut self,
+-        _id: Option<&GlobalElementId>,
+-        _inspector_id: Option<&gpui::InspectorElementId>,
+-        _bounds: Bounds<Pixels>,
+-        rendered_markdown: &mut Self::RequestLayoutState,
+-        hitbox: &mut Self::PrepaintState,
+-        window: &mut Window,
+-        cx: &mut App,
+-    ) {
+-        let mut context = KeyContext::default();
+-        context.add("Markdown");
+-        window.set_key_context(context);
 +enum InlineHtmlTagAction {
 +    Open(TextStyleRefinement),
 +    Close,
 +    StructuralHide,
 +}
-+
+ 
+-        let markdown_focus_handle = self.markdown.read(cx).focus_handle.clone();
+-        let input_focus_handle = if markdown_focus_handle.is_focused(window) {
+-            Some(markdown_focus_handle)
+-        } else {
+-            self.input_focus_handle
+-                .clone()
+-                .filter(|focus_handle| focus_handle.is_focused(window))
 +fn classify_inline_html_tag(
 +    lower: &str,
 +    markdown_style: &MarkdownStyle,
@@ -3481,7 +3328,13 @@ index 10bd60d..7a49252 100644
 +            | "strike" | "mark" | "sup" | "sub" | "summary" => Some(InlineHtmlTagAction::Close),
 +            "span" | "details" => Some(InlineHtmlTagAction::StructuralHide),
 +            _ => None,
-+        };
+         };
+-        if let Some(input_focus_handle) = input_focus_handle {
+-            window.handle_input(
+-                &input_focus_handle,
+-                MarkdownInputHandler::new(self.markdown.clone(), rendered_markdown.text.clone()),
+-                cx,
+-            );
 +    }
 +    if tag_inner.ends_with('/') {
 +        return None;
@@ -3500,7 +3353,7 @@ index 10bd60d..7a49252 100644
 +                wavy: false,
 +            });
 +            Some(InlineHtmlTagAction::Open(style))
-+        }
+         }
 +        "u" | "ins" => Some(InlineHtmlTagAction::Open(TextStyleRefinement {
 +            underline: Some(gpui::UnderlineStyle {
 +                thickness: px(1.),
@@ -3536,26 +3389,15 @@ index 10bd60d..7a49252 100644
 +        _ => None,
 +    }
 +}
-+
-+fn extract_html_attr(tag: &str, attr_name: &str) -> Option<String> {
-+    let lower = tag.to_ascii_lowercase();
-+    let needle = format!("{attr_name}=");
-+    let start_idx = lower.find(&needle)?;
-+    let after = &tag[start_idx + needle.len()..].trim_start();
-+    if let Some(quoted) = after.strip_prefix('"') {
-+        let end = quoted.find('"')?;
-+        Some(quoted[..end].to_string())
-+    } else if let Some(quoted) = after.strip_prefix('\'') {
-+        let end = quoted.find('\'')?;
-+        Some(quoted[..end].to_string())
-+    } else {
-+        let end = after
-+            .find(|c: char| c.is_whitespace() || c == '>' || c == '/')
-+            .unwrap_or(after.len());
-+        (end > 0).then(|| after[..end].to_string())
-+    }
-+}
-+
+ 
+-        window.on_action(std::any::TypeId::of::<crate::Copy>(), {
+-            let entity = self.markdown.clone();
+-            let text = rendered_markdown.text.clone();
+-            move |_, phase, window, cx| {
+-                let text = text.clone();
+-                if phase == DispatchPhase::Bubble {
+-                    entity.update(cx, move |this, cx| this.copy(&text, window, cx))
+-                }
 +fn parse_html_dimension_attr(val: &str) -> Option<DefiniteLength> {
 +    let trimmed = val.trim();
 +    if let Some(pct) = trimmed.strip_suffix('%') {
@@ -3570,10 +3412,12 @@ index 10bd60d..7a49252 100644
 +fn parse_inline_html_img_tag(
 +    tag: &str,
 +) -> Option<(String, String, Option<DefiniteLength>, Option<DefiniteLength>)> {
-+    let src = extract_html_attr(tag, "src")?;
-+    let alt = extract_html_attr(tag, "alt").unwrap_or_default();
-+    let width = extract_html_attr(tag, "width").and_then(|w| parse_html_dimension_attr(&w));
-+    let height = extract_html_attr(tag, "height").and_then(|h| parse_html_dimension_attr(&h));
++    let src = folio_dylib::extract_html_attr(tag, "src")?;
++    let alt = folio_dylib::extract_html_attr(tag, "alt").unwrap_or_default();
++    let width =
++        folio_dylib::extract_html_attr(tag, "width").and_then(|w| parse_html_dimension_attr(&w));
++    let height =
++        folio_dylib::extract_html_attr(tag, "height").and_then(|h| parse_html_dimension_attr(&h));
 +    Some((src, alt, width, height))
 +}
 +
@@ -3596,308 +3440,39 @@ index 10bd60d..7a49252 100644
 +            md.selection.tail(),
 +        )
 +    };
-+    let len = source.len();
-+    let sel_start = snap_char_boundary_left(&source, selection.start);
-+    let sel_end = if selection.start == selection.end {
-+        sel_start
-+    } else {
-+        snap_char_boundary_right(&source, selection.end).max(sel_start)
-+    };
-+    let cursor = snap_char_boundary_left(&source, head);
-+    let tail = snap_char_boundary_left(&source, tail);
-+
-+    folio_debug_log(&format!(
-+        "keystroke key={key:?} platform={} ctrl={} alt={} shift={} sel={sel_start}..{sel_end} cursor={cursor} len={len}",
-+        modifiers.platform, modifiers.control, modifiers.alt, modifiers.shift
-+    ));
-+
-+    // Formatting & selection shortcuts with platform modifier (Cmd on macOS, Ctrl elsewhere)
-+    if modifiers.platform || modifiers.control {
-+        match key {
-+            "\\" if !modifiers.alt && modifiers.shift => {
-+                window.prevent_default();
-+                cx.stop_propagation();
-+                markdown.update(cx, |md, cx| {
-+                    md.toggle_pretty_mode(cx);
-+                });
-+                return true;
-+            }
-+            "b" if !modifiers.alt && !modifiers.shift => {
-+                window.prevent_default();
-+                cx.stop_propagation();
-+                let (edit_range, replacement, post_selection) =
-+                    toggle_inline_delimiter(&source, sel_start, sel_end, "**");
-+                on_source_edit(edit_range, &replacement, window, cx);
-+                markdown.update(cx, |md, cx| {
-+                    md.set_selection_range(post_selection, cx);
-+                });
-+                return true;
-+            }
-+            "i" if !modifiers.alt && !modifiers.shift => {
-+                window.prevent_default();
-+                cx.stop_propagation();
-+                let (edit_range, replacement, post_selection) =
-+                    toggle_inline_delimiter(&source, sel_start, sel_end, "*");
-+                on_source_edit(edit_range, &replacement, window, cx);
-+                markdown.update(cx, |md, cx| {
-+                    md.set_selection_range(post_selection, cx);
-+                });
-+                return true;
-+            }
-+            "e" | "`" if !modifiers.alt && !modifiers.shift => {
-+                window.prevent_default();
-+                cx.stop_propagation();
-+                let (edit_range, replacement, post_selection) =
-+                    toggle_inline_delimiter(&source, sel_start, sel_end, "`");
-+                on_source_edit(edit_range, &replacement, window, cx);
-+                markdown.update(cx, |md, cx| {
-+                    md.set_selection_range(post_selection, cx);
-+                });
-+                return true;
-+            }
-+            "x" if !modifiers.alt && modifiers.shift => {
-+                window.prevent_default();
-+                cx.stop_propagation();
-+                let (edit_range, replacement, post_selection) =
-+                    toggle_inline_delimiter(&source, sel_start, sel_end, "~~");
-+                on_source_edit(edit_range, &replacement, window, cx);
-+                markdown.update(cx, |md, cx| {
-+                    md.set_selection_range(post_selection, cx);
-+                });
-+                return true;
-+            }
-+            "d" if !modifiers.alt && !modifiers.shift => {
-+                window.prevent_default();
-+                cx.stop_propagation();
-+                let (edit_range, replacement, post_selection) =
-+                    toggle_inline_delimiter(&source, sel_start, sel_end, "~~");
-+                on_source_edit(edit_range, &replacement, window, cx);
-+                markdown.update(cx, |md, cx| {
-+                    md.set_selection_range(post_selection, cx);
-+                });
-+                return true;
-+            }
-+            "m" if !modifiers.alt => {
-+                window.prevent_default();
-+                cx.stop_propagation();
-+                let delim = if modifiers.shift { "$$" } else { "$" };
-+                let (edit_range, replacement, post_selection) =
-+                    toggle_inline_delimiter(&source, sel_start, sel_end, delim);
-+                on_source_edit(edit_range, &replacement, window, cx);
-+                markdown.update(cx, |md, cx| {
-+                    md.set_selection_range(post_selection, cx);
-+                });
-+                return true;
-+            }
-+            "k" if !modifiers.alt && !modifiers.shift => {
-+                window.prevent_default();
-+                cx.stop_propagation();
-+                let (target_start, target_end) = if sel_start < sel_end {
-+                    (sel_start, sel_end)
-+                } else if let Some((ws, we)) = word_range_at(&source, sel_start) {
-+                    (ws, we)
-+                } else {
-+                    (sel_start, sel_end)
-+                };
-+                let selected = &source[target_start..target_end];
-+                let replacement = format!("[{selected}]()");
-+                let url_cursor = target_start + 1 + selected.len() + 2;
-+                on_source_edit(target_start..target_end, &replacement, window, cx);
-+                markdown.update(cx, |md, cx| {
-+                    md.set_selection_range(url_cursor..url_cursor, cx);
-+                });
-+                return true;
-+            }
-+            "1" | "2" | "3" | "4" | "5" | "6" if !modifiers.alt && !modifiers.shift => {
-+                window.prevent_default();
-+                cx.stop_propagation();
-+                let level = (key.as_bytes()[0] - b'0') as usize;
-+                let (edit_range, replacement, post_selection) =
-+                    toggle_heading_level(&source, cursor, level);
-+                on_source_edit(edit_range, &replacement, window, cx);
-+                markdown.update(cx, |md, cx| {
-+                    md.set_selection_range(post_selection, cx);
-+                });
-+                return true;
-+            }
-+            "a" if !modifiers.alt && !modifiers.shift => {
-+                window.prevent_default();
-+                cx.stop_propagation();
-+                markdown.update(cx, |md, cx| {
-+                    md.set_selection_range(0..len, cx);
-+                });
-+                return true;
-+            }
-+            "x" if !modifiers.alt && !modifiers.shift => {
-+                window.prevent_default();
-+                cx.stop_propagation();
-+                if sel_start < sel_end {
-+                    cx.write_to_clipboard(ClipboardItem::new_string(
-+                        source[sel_start..sel_end].to_string(),
-+                    ));
-+                    on_source_edit(sel_start..sel_end, "", window, cx);
-+                }
-+                return true;
-+            }
-+            "v" if !modifiers.alt && !modifiers.shift => {
-+                window.prevent_default();
-+                cx.stop_propagation();
-+                if let Some(text) = cx.read_from_clipboard().and_then(|item| item.text()) {
-+                    on_source_edit(sel_start..sel_end, &text, window, cx);
-+                }
-+                return true;
-+            }
-+            "left" if !modifiers.alt => {
-+                window.prevent_default();
-+                cx.stop_propagation();
-+                let line_start = source[..cursor].rfind('\n').map(|idx| idx + 1).unwrap_or(0);
-+                markdown.update(cx, |md, cx| {
-+                    if modifiers.shift {
-+                        md.set_selection_range(tail..line_start, cx);
-+                    } else {
-+                        md.set_selection_range(line_start..line_start, cx);
-+                    }
-+                });
-+                return true;
-+            }
-+            "right" if !modifiers.alt => {
-+                window.prevent_default();
-+                cx.stop_propagation();
-+                let line_end = source[cursor..]
-+                    .find('\n')
-+                    .map(|rel| cursor + rel)
-+                    .unwrap_or(len);
-+                markdown.update(cx, |md, cx| {
-+                    if modifiers.shift {
-+                        md.set_selection_range(tail..line_end, cx);
-+                    } else {
-+                        md.set_selection_range(line_end..line_end, cx);
-+                    }
-+                });
-+                return true;
-+            }
-+            "backspace" if !modifiers.alt => {
-+                window.prevent_default();
-+                cx.stop_propagation();
-+                if sel_start < sel_end {
-+                    on_source_edit(sel_start..sel_end, "", window, cx);
-+                } else {
-+                    let line_start = source[..cursor].rfind('\n').map(|idx| idx + 1).unwrap_or(0);
-+                    if line_start < cursor {
-+                        on_source_edit(line_start..cursor, "", window, cx);
-+                    }
-+                }
-+                return true;
-+            }
-+            _ => return false,
-+        }
-+    }
-+
-+    if modifiers.alt && !modifiers.function {
-+        match key {
-+            "left" => {
-+                window.prevent_default();
-+                cx.stop_propagation();
-+                let next_pos = prev_word_boundary(&source, cursor);
-+                markdown.update(cx, |md, cx| {
-+                    if modifiers.shift {
-+                        md.set_selection_range(tail..next_pos, cx);
-+                    } else {
-+                        md.set_selection_range(next_pos..next_pos, cx);
-+                    }
-+                });
-+                return true;
-+            }
-+            "right" => {
-+                window.prevent_default();
-+                cx.stop_propagation();
-+                let next_pos = next_word_boundary(&source, cursor);
-+                markdown.update(cx, |md, cx| {
-+                    if modifiers.shift {
-+                        md.set_selection_range(tail..next_pos, cx);
-+                    } else {
-+                        md.set_selection_range(next_pos..next_pos, cx);
-+                    }
-+                });
-+                return true;
-+            }
-+            "backspace" => {
-+                window.prevent_default();
-+                cx.stop_propagation();
-+                if sel_start < sel_end {
-+                    on_source_edit(sel_start..sel_end, "", window, cx);
-+                } else if cursor > 0 {
-+                    let prev = prev_word_boundary(&source, cursor);
-+                    on_source_edit(prev..cursor, "", window, cx);
-+                }
-+                return true;
-+            }
-+            _ => return false,
-         }
-+    }
- 
--        window.on_action(std::any::TypeId::of::<crate::Copy>(), {
--            let entity = self.markdown.clone();
--            let text = rendered_markdown.text.clone();
--            move |_, phase, window, cx| {
--                let text = text.clone();
--                if phase == DispatchPhase::Bubble {
--                    entity.update(cx, move |this, cx| this.copy(&text, window, cx))
-+    if modifiers.function {
-+        return false;
-+    }
-+
-+    match key {
-+        "backspace" => {
++    let decision = folio_dylib::evaluate_keystroke(
++        &source,
++        selection,
++        head,
++        tail,
++        key,
++        modifiers.platform,
++        modifiers.control,
++        modifiers.alt,
++        modifiers.shift,
++        modifiers.function,
++    );
++    match decision {
++        folio_dylib::KeystrokeDecision::Unhandled => false,
++        folio_dylib::KeystrokeDecision::HandledNoOp => {
 +            window.prevent_default();
 +            cx.stop_propagation();
-+            if sel_start < sel_end {
-+                on_source_edit(sel_start..sel_end, "", window, cx);
-+            } else if cursor > 0 {
-+                let prev = source[..cursor]
-+                    .char_indices()
-+                    .next_back()
-+                    .map(|(idx, _)| idx)
-+                    .unwrap_or(0);
-+                on_source_edit(prev..cursor, "", window, cx);
-+            }
 +            true
 +        }
-+        "delete" => {
++        folio_dylib::KeystrokeDecision::TogglePrettyMode => {
 +            window.prevent_default();
 +            cx.stop_propagation();
-+            if sel_start < sel_end {
-+                on_source_edit(sel_start..sel_end, "", window, cx);
-+            } else if cursor < len {
-+                let next = source[cursor..]
-+                    .chars()
-+                    .next()
-+                    .map(|ch| cursor + ch.len_utf8())
-+                    .unwrap_or(len);
-+                on_source_edit(cursor..next, "", window, cx);
-+            }
++            markdown.update(cx, |md, cx| {
++                md.toggle_pretty_mode(cx);
++            });
 +            true
 +        }
-+        "enter" => {
++        folio_dylib::KeystrokeDecision::ClipboardCut(sel) => {
 +            window.prevent_default();
 +            cx.stop_propagation();
-+            let line_start = source[..sel_start].rfind('\n').map(|idx| idx + 1).unwrap_or(0);
-+            let line_up_to_cursor = &source[line_start..sel_start];
-+            match folio_dylib::on_editor_newline(line_up_to_cursor) {
-+                folio_dylib::NewlineAction::InsertPrefix(prefix) => {
-+                    let insert = format!("\n{prefix}");
-+                    on_source_edit(sel_start..sel_end, &insert, window, cx);
-+                }
-+                folio_dylib::NewlineAction::ClearEmptyListLine => {
-+                    let line_end = source[sel_end..]
-+                        .find('\n')
-+                        .map(|rel| sel_end + rel)
-+                        .unwrap_or(len);
-+                    on_source_edit(line_start..line_end, "", window, cx);
-+                }
-+                folio_dylib::NewlineAction::Default => {
-+                    on_source_edit(sel_start..sel_end, "\n", window, cx);
-                 }
++            if let Some(slice) = source.get(sel.clone()) {
++                cx.write_to_clipboard(ClipboardItem::new_string(slice.to_string()));
++                on_source_edit(sel, "", window, cx);
              }
 -        });
 -        window.on_action(std::any::TypeId::of::<crate::CopyAsMarkdown>(), {
@@ -3905,42 +3480,14 @@ index 10bd60d..7a49252 100644
 -            move |_, phase, window, cx| {
 -                if phase == DispatchPhase::Bubble {
 -                    entity.update(cx, move |this, cx| this.copy_as_markdown(window, cx))
+-                }
 +            true
 +        }
-+        "tab" => {
++        folio_dylib::KeystrokeDecision::ClipboardPaste(sel) => {
 +            window.prevent_default();
 +            cx.stop_propagation();
-+            let line_start = source[..sel_start].rfind('\n').map(|idx| idx + 1).unwrap_or(0);
-+            let line_end = source[sel_end..]
-+                .find('\n')
-+                .map(|rel| sel_end + rel)
-+                .unwrap_or(len);
-+            let line_slice = &source[line_start..line_end];
-+            if modifiers.shift {
-+                if line_slice.starts_with("  ") {
-+                    on_source_edit(line_start..(line_start + 2), "", window, cx);
-+                } else if line_slice.starts_with('\t') {
-+                    on_source_edit(line_start..(line_start + 1), "", window, cx);
-+                }
-+            } else {
-+                let trimmed = line_slice.trim_start();
-+                let is_list_line = trimmed.starts_with("- ")
-+                    || trimmed.starts_with("* ")
-+                    || trimmed.starts_with("+ ")
-+                    || trimmed.starts_with("> ")
-+                    || trimmed
-+                        .chars()
-+                        .take_while(|c| c.is_ascii_digit())
-+                        .count()
-+                        > 0
-+                        && trimmed
-+                            .trim_start_matches(|c: char| c.is_ascii_digit())
-+                            .starts_with(". ");
-+                if is_list_line {
-+                    on_source_edit(line_start..line_start, "  ", window, cx);
-+                } else {
-+                    on_source_edit(sel_start..sel_end, "  ", window, cx);
-                 }
++            if let Some(text) = cx.read_from_clipboard().and_then(|item| item.text()) {
++                on_source_edit(sel, &text, window, cx);
              }
 -        });
 -
@@ -3948,148 +3495,33 @@ index 10bd60d..7a49252 100644
 -        rendered_markdown.element.paint(window, cx);
 +            true
 +        }
-+        "left" => {
++        folio_dylib::KeystrokeDecision::SelectRange(range) => {
 +            window.prevent_default();
 +            cx.stop_propagation();
-+            let next_pos = if !modifiers.shift && sel_start < sel_end {
-+                sel_start
-+            } else if cursor > 0 {
-+                source[..cursor]
-+                    .char_indices()
-+                    .next_back()
-+                    .map(|(idx, _)| idx)
-+                    .unwrap_or(0)
-+            } else {
-+                0
-+            };
 +            markdown.update(cx, |md, cx| {
-+                if modifiers.shift {
-+                    md.set_selection_range(tail..next_pos, cx);
-+                } else {
-+                    md.set_selection_range(next_pos..next_pos, cx);
-+                }
++                md.set_selection_range(range, cx);
 +            });
 +            true
 +        }
-+        "right" => {
++        folio_dylib::KeystrokeDecision::SourceEdit {
++            edit_range,
++            replacement,
++            post_selection,
++        } => {
 +            window.prevent_default();
 +            cx.stop_propagation();
-+            let next_pos = if !modifiers.shift && sel_start < sel_end {
-+                sel_end
-+            } else if cursor < len {
-+                source[cursor..]
-+                    .chars()
-+                    .next()
-+                    .map(|ch| cursor + ch.len_utf8())
-+                    .unwrap_or(len)
-+            } else {
-+                len
-+            };
-+            markdown.update(cx, |md, cx| {
-+                if modifiers.shift {
-+                    md.set_selection_range(tail..next_pos, cx);
-+                } else {
-+                    md.set_selection_range(next_pos..next_pos, cx);
-+                }
-+            });
++            on_source_edit(edit_range, &replacement, window, cx);
++            if let Some(post_sel) = post_selection {
++                markdown.update(cx, |md, cx| {
++                    md.set_selection_range(post_sel, cx);
++                });
++            }
 +            true
 +        }
-+        "up" => {
-+            window.prevent_default();
-+            cx.stop_propagation();
-+            let line_start = source[..cursor].rfind('\n').map(|idx| idx + 1).unwrap_or(0);
-+            let col = cursor - line_start;
-+            let next_pos = if line_start == 0 {
-+                0
-+            } else {
-+                let prev_line_end = line_start - 1;
-+                let prev_line_start = source[..prev_line_end]
-+                    .rfind('\n')
-+                    .map(|idx| idx + 1)
-+                    .unwrap_or(0);
-+                let prev_len = prev_line_end - prev_line_start;
-+                let mut target = prev_line_start + col.min(prev_len);
-+                while target > prev_line_start && !source.is_char_boundary(target) {
-+                    target -= 1;
-+                }
-+                target
-+            };
-+            markdown.update(cx, |md, cx| {
-+                if modifiers.shift {
-+                    md.set_selection_range(tail..next_pos, cx);
-+                } else {
-+                    md.set_selection_range(next_pos..next_pos, cx);
-+                }
-+            });
-+            true
-+        }
-+        "down" => {
-+            window.prevent_default();
-+            cx.stop_propagation();
-+            let line_start = source[..cursor].rfind('\n').map(|idx| idx + 1).unwrap_or(0);
-+            let col = cursor - line_start;
-+            let line_end = source[cursor..]
-+                .find('\n')
-+                .map(|rel| cursor + rel)
-+                .unwrap_or(len);
-+            let next_pos = if line_end >= len {
-+                len
-+            } else {
-+                let next_line_start = line_end + 1;
-+                let next_line_end = source[next_line_start..]
-+                    .find('\n')
-+                    .map(|rel| next_line_start + rel)
-+                    .unwrap_or(len);
-+                let next_len = next_line_end - next_line_start;
-+                let mut target = next_line_start + col.min(next_len);
-+                while target > next_line_start && !source.is_char_boundary(target) {
-+                    target -= 1;
-+                }
-+                target
-+            };
-+            markdown.update(cx, |md, cx| {
-+                if modifiers.shift {
-+                    md.set_selection_range(tail..next_pos, cx);
-+                } else {
-+                    md.set_selection_range(next_pos..next_pos, cx);
-+                }
-+            });
-+            true
-+        }
-+        "home" => {
-+            window.prevent_default();
-+            cx.stop_propagation();
-+            let line_start = source[..cursor].rfind('\n').map(|idx| idx + 1).unwrap_or(0);
-+            markdown.update(cx, |md, cx| {
-+                if modifiers.shift {
-+                    md.set_selection_range(tail..line_start, cx);
-+                } else {
-+                    md.set_selection_range(line_start..line_start, cx);
-+                }
-+            });
-+            true
-+        }
-+        "end" => {
-+            window.prevent_default();
-+            cx.stop_propagation();
-+            let line_end = source[cursor..]
-+                .find('\n')
-+                .map(|rel| cursor + rel)
-+                .unwrap_or(len);
-+            markdown.update(cx, |md, cx| {
-+                if modifiers.shift {
-+                    md.set_selection_range(tail..line_end, cx);
-+                } else {
-+                    md.set_selection_range(line_end..line_end, cx);
-+                }
-+            });
-+            true
-+        }
-+        _ => false,
      }
  }
  
-@@ -3924,6 +6361,22 @@ impl MarkdownElementBuilder {
+@@ -3924,6 +5599,22 @@ impl MarkdownElementBuilder {
          }
      }
  
@@ -4112,7 +3544,7 @@ index 10bd60d..7a49252 100644
      fn push_text_style(&mut self, style: TextStyleRefinement) {
          self.text_style_stack.push(style);
      }
-@@ -4156,12 +6609,29 @@ impl MarkdownElementBuilder {
+@@ -4156,12 +5847,29 @@ impl MarkdownElementBuilder {
          source_range: Range<usize>,
          highlights: Option<&ResolvedHighlights>,
      ) {
@@ -4144,7 +3576,7 @@ index 10bd60d..7a49252 100644
  
          // Compute the base text style once
          let text_style = self.text_style();
-@@ -4176,22 +6646,26 @@ impl MarkdownElementBuilder {
+@@ -4176,22 +5884,26 @@ impl MarkdownElementBuilder {
              };
              let mut offset = 0;
              for (run_range, highlight_id) in runs.iter() {
@@ -4182,7 +3614,7 @@ index 10bd60d..7a49252 100644
              }
  
              if offset < text.len() {
-@@ -4209,8 +6683,19 @@ impl MarkdownElementBuilder {
+@@ -4209,8 +5921,19 @@ impl MarkdownElementBuilder {
              self.pending_line
                  .text
                  .truncate(self.pending_line.text.len() - 1);
@@ -4204,7 +3636,7 @@ index 10bd60d..7a49252 100644
          }
      }
  
-@@ -4300,17 +6785,30 @@ impl MarkdownElementBuilder {
+@@ -4300,17 +6023,30 @@ impl MarkdownElementBuilder {
  
      fn flush_text(&mut self) {
          let text_align = self.text_style().text_align;
@@ -4238,7 +3670,7 @@ index 10bd60d..7a49252 100644
              })
              .unwrap_or_default();
          let text = StyledText::new(line.text).with_runs(line.runs);
-@@ -4349,6 +6847,7 @@ impl MarkdownElementBuilder {
+@@ -4349,6 +6085,7 @@ impl MarkdownElementBuilder {
                  image_links: self.rendered_image_links.into(),
                  footnote_refs: self.rendered_footnote_refs.into(),
              },
@@ -4246,7 +3678,7 @@ index 10bd60d..7a49252 100644
          }
      }
  }
-@@ -4630,14 +7129,27 @@ impl RenderedLine {
+@@ -4630,14 +6367,27 @@ impl RenderedLine {
              return self.layout.len();
          }
  
@@ -4278,7 +3710,7 @@ index 10bd60d..7a49252 100644
      }
  
      fn source_index_for_rendered_index(&self, rendered_index: usize) -> usize {
-@@ -4645,14 +7157,21 @@ impl RenderedLine {
+@@ -4645,14 +6395,21 @@ impl RenderedLine {
              return self.source_end;
          }
  
@@ -4304,7 +3736,7 @@ index 10bd60d..7a49252 100644
      }
  
      /// Returns the source index for use as an exclusive range end at a word/selection boundary.
-@@ -4669,9 +7188,17 @@ impl RenderedLine {
+@@ -4669,9 +6426,17 @@ impl RenderedLine {
              .binary_search_by_key(&rendered_index, |probe| probe.rendered_index)
          {
              Ok(ix) => ix,
@@ -4324,7 +3756,7 @@ index 10bd60d..7a49252 100644
              }
          };
  
-@@ -4679,7 +7206,9 @@ impl RenderedLine {
+@@ -4679,7 +6444,9 @@ impl RenderedLine {
          if ix > 0 {
              let prev_mapping = &self.source_mappings[ix - 1];
              let mapping = &self.source_mappings[ix];
@@ -4335,7 +3767,7 @@ index 10bd60d..7a49252 100644
              let prev_source_end = prev_mapping.source_index + prev_segment_len;
              if prev_source_end < mapping.source_index {
                  return prev_source_end;
-@@ -4803,6 +7332,7 @@ fn source_index_for_rendered(mappings: &[SourceMapping], rendered_index: usize)
+@@ -4803,6 +6570,7 @@ fn source_index_for_rendered(mappings: &[SourceMapping], rendered_index: usize)
  pub struct RenderedMarkdown {
      element: AnyElement,
      text: RenderedText,
@@ -4343,7 +3775,7 @@ index 10bd60d..7a49252 100644
  }
  
  #[derive(Clone)]
-@@ -4948,8 +7478,20 @@ impl RenderedText {
+@@ -4948,8 +6716,20 @@ impl RenderedText {
              }
  
              // Track fallback for Y-coordinate based matching
@@ -4366,7 +3798,7 @@ index 10bd60d..7a49252 100644
              }
  
              // Handle gap between lines
-@@ -4991,7 +7533,10 @@ impl RenderedText {
+@@ -4991,7 +6771,10 @@ impl RenderedText {
              if source_index > line.source_end {
                  continue;
              }
@@ -4378,7 +3810,7 @@ index 10bd60d..7a49252 100644
              let source_index = source_index.max(line_source_start);
              let line_height = line.layout.line_height();
              let rendered_index_within_line = line.rendered_index_for_source_index(source_index);
-@@ -5006,11 +7551,18 @@ impl RenderedText {
+@@ -5006,11 +6789,18 @@ impl RenderedText {
              if source_index > line.source_end {
                  continue;
              }
@@ -4400,7 +3832,7 @@ index 10bd60d..7a49252 100644
  
              let scope = line.language.as_ref().map(|l| l.default_scope());
              let classifier = CharClassifier::new(scope);
-@@ -5053,7 +7605,10 @@ impl RenderedText {
+@@ -5053,7 +6843,10 @@ impl RenderedText {
              if source_index > line.source_end {
                  continue;
              }
@@ -4412,7 +3844,7 @@ index 10bd60d..7a49252 100644
              return line_source_start..line.source_end;
          }
  
-@@ -5067,7 +7622,10 @@ impl RenderedText {
+@@ -5067,7 +6860,10 @@ impl RenderedText {
              if range.start > line.source_end {
                  continue;
              }
@@ -4424,7 +3856,7 @@ index 10bd60d..7a49252 100644
              if range.end < line_source_start {
                  break;
              }
-@@ -5086,6 +7644,8 @@ impl RenderedText {
+@@ -5086,6 +6882,8 @@ impl RenderedText {
              }
              .min(text.len());
  
@@ -4433,7 +3865,7 @@ index 10bd60d..7a49252 100644
              accumulator.push_str(&text[start..end]);
              accumulator.push('\n');
          }
-@@ -5119,13 +7679,19 @@ impl RenderedText {
+@@ -5119,13 +6917,19 @@ impl RenderedText {
  struct MarkdownInputHandler {
      markdown: Entity<Markdown>,
      rendered_text: RenderedText,
@@ -4454,7 +3886,7 @@ index 10bd60d..7a49252 100644
          }
      }
  }
-@@ -5169,21 +7735,32 @@ impl InputHandler for MarkdownInputHandler {
+@@ -5169,21 +6973,32 @@ impl InputHandler for MarkdownInputHandler {
  
      fn replace_text_in_range(
          &mut self,
@@ -4496,7 +3928,7 @@ index 10bd60d..7a49252 100644
      }
  
      fn unmark_text(&mut self, _: &mut Window, _: &mut App) {}
-@@ -5225,7 +7802,7 @@ impl InputHandler for MarkdownInputHandler {
+@@ -5225,7 +7040,7 @@ impl InputHandler for MarkdownInputHandler {
      }
  
      fn accepts_text_input(&mut self, _: &mut Window, _: &mut App) -> bool {
@@ -4505,7 +3937,7 @@ index 10bd60d..7a49252 100644
      }
  }
  
-@@ -5456,7 +8033,7 @@ mod tests {
+@@ -5456,7 +7271,7 @@ mod tests {
          assert!(vertical_clipped_position.y > px(80.));
          assert!(vertical_clipped_position.y < px(200.));
  
@@ -4514,7 +3946,7 @@ index 10bd60d..7a49252 100644
          assert_eq!(
              cx.update(|window, cx| handler.character_index_for_point(
                  horizontal_clipped_position,
-@@ -5497,7 +8074,7 @@ mod tests {
+@@ -5497,7 +7312,7 @@ mod tests {
              .expect("revealed character position")
              + point(px(0.1), first_line.layout.line_height() / 2.);
          assert!(revealed_position.x > px(0.) && revealed_position.x < px(300.));
@@ -4523,7 +3955,7 @@ index 10bd60d..7a49252 100644
          assert_eq!(
              cx.update(|window, cx| handler.character_index_for_point(
                  revealed_position,
-@@ -9376,4 +11953,260 @@ mod tests {
+@@ -9376,4 +11191,235 @@ mod tests {
          (321, "- a\n  > b\n  ```\n  c\n  ```\n- d\n", &["c\n"]),
          (324, "1. ```\n   foo\n   ```\n\n   bar\n", &["foo\n"]),
      ];
@@ -4550,60 +3982,35 @@ index 10bd60d..7a49252 100644
 +
 +    #[test]
 +    fn test_toggle_inline_delimiter_and_heading_shortcuts() {
-+        // Wrap selection with **
-+        let (range, repl, sel) = toggle_inline_delimiter("hello world", 0, 5, "**");
-+        assert_eq!(range, 0..5);
-+        assert_eq!(repl, "**hello**");
-+        assert_eq!(sel, 2..7);
-+
-+        // Unwrap when selection is inside existing **hello**
-+        let (range, repl, sel) = toggle_inline_delimiter("**hello** world", 2, 7, "**");
-+        assert_eq!(range, 0..9);
-+        assert_eq!(repl, "hello");
-+        assert_eq!(sel, 0..5);
-+
-+        // Toggle word under collapsed cursor with *
-+        let (range, repl, sel) = toggle_inline_delimiter("hello world", 2, 2, "*");
-+        assert_eq!(range, 0..5);
-+        assert_eq!(repl, "*hello*");
-+        assert_eq!(sel, 3..3);
-+
-+        // Unwrap word under collapsed cursor inside *hello*
-+        let (range, repl, sel) = toggle_inline_delimiter("*hello* world", 3, 3, "*");
-+        assert_eq!(range, 0..7);
-+        assert_eq!(repl, "hello");
-+        assert_eq!(sel, 2..2);
-+
-+        // Heading level toggle
-+        let (range, repl, sel) = toggle_heading_level("Title\nBody", 2, 2);
-+        assert_eq!(range, 0..0);
-+        assert_eq!(repl, "## ");
-+        assert_eq!(sel, 5..5);
-+
-+        // Toggling same heading level removes prefix
-+        let (range, repl, sel) = toggle_heading_level("## Title\nBody", 5, 2);
-+        assert_eq!(range, 0..3);
-+        assert_eq!(repl, "");
-+        assert_eq!(sel, 2..2);
-+
-+        // Surrounding code span delimiters
 +        let src = "Use `cargo test` now";
 +        let (open, close) = surrounding_code_span_delimiters(src, &(5..15)).unwrap();
 +        assert_eq!(&src[open], "`");
 +        assert_eq!(&src[close], "`");
 +
-+        // Bold + italic toggle: Cmd+I (*) on **bold** wraps to ***bold*** instead of corrupting
-+        let (range, repl, sel) = toggle_inline_delimiter("**bold**", 2, 6, "*");
-+        assert_eq!(range, 2..6);
-+        assert_eq!(repl, "*bold*");
-+        assert_eq!(sel, 3..7);
-+
-+        // Multi-byte UTF-8 char boundary safety
-+        let utf8_src = "Héllo 世界";
-+        let (range, repl, _) = toggle_inline_delimiter(utf8_src, 2, 2, "**");
-+        assert!(utf8_src.is_char_boundary(range.start));
-+        assert!(utf8_src.is_char_boundary(range.end));
-+        assert_eq!(repl, "**Héllo**");
++        let decision = folio_dylib::evaluate_keystroke(
++            "hello world",
++            0..5,
++            5,
++            0,
++            "b",
++            true,
++            false,
++            false,
++            false,
++            false,
++        );
++        match decision {
++            folio_dylib::KeystrokeDecision::SourceEdit {
++                edit_range,
++                replacement,
++                post_selection,
++            } => {
++                assert_eq!(edit_range, 0..5);
++                assert_eq!(replacement, "**hello**");
++                assert_eq!(post_selection, Some(2..7));
++            }
++            other => panic!("expected SourceEdit decision, got {:?}", other),
++        }
 +    }
 +
 +    #[gpui::test]

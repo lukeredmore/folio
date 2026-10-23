@@ -21,6 +21,10 @@ name = "ffi_tests"
 path = "tst/ffi_tests.rs"
 
 [[test]]
+name = "controller_tests"
+path = "tst/controller_tests.rs"
+
+[[test]]
 name = "behavior_suite"
 path = "tst/behavior_suite.rs"
 
