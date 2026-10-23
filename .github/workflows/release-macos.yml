@@ -5,8 +5,6 @@ on:
     branches:
       - main
   pull_request:
-    branches:
-      - main
   workflow_dispatch:
 
 permissions:
@@ -252,6 +250,7 @@ jobs:
           restore-keys: |
             bazel-zed-macos26-${{ runner.os }}-${{ hashFiles('third_party/zed/patches/0002-real-zed-editor-folio-wysiwyg.patch', 'third_party/zed/build_moddable_zed.sh') }}-
             bazel-zed-macos26-${{ runner.os }}-
+            bazel-opt-macos26-${{ runner.os }}-
 
       - name: Select Xcode 26+ & compute Folio-Zed.dmg Bazel graph hash
         id: graph
