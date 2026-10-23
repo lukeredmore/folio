@@ -5,9 +5,14 @@ package(default_visibility = ["//visibility:public"])
 MOD_SRCS = [
     "src/editor_session.rs",
     "src/ffi.rs",
+    "src/ffi_controller.rs",
     "src/inlay_folding.rs",
+    "src/keystroke_controller.rs",
+    "src/keystroke_helpers.rs",
     "src/lib.rs",
+    "src/markdown_formatting.rs",
     "src/math_canvas.rs",
+    "src/text_navigation.rs",
     "src/theme_sync.rs",
 ]
 
@@ -44,6 +49,16 @@ rust_test(
 rust_test(
     name = "folio_zed_mod_ffi_test",
     srcs = ["tst/ffi_tests.rs"],
+    edition = "2021",
+    deps = [
+        ":folio_zed_mod",
+        "//core/folio_engine",
+    ],
+)
+
+rust_test(
+    name = "folio_zed_mod_controller_test",
+    srcs = ["tst/controller_tests.rs"],
     edition = "2021",
     deps = [
         ":folio_zed_mod",
