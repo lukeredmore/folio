@@ -79,7 +79,10 @@ extension EditorWorkspaceViewModel {
         if !isRestoringState {
             userDefaults.set(selectedRange.location, forKey: Self.selectedCursorLocationDefaultsKey)
         }
-        stats = DocumentStats.compute(for: markdownText, selectedRange: selectedRange)
+        let updatedStats = DocumentStats.compute(for: markdownText, selectedRange: selectedRange)
+        if stats != updatedStats {
+            stats = updatedStats
+        }
     }
 
     public func updateSelectionStats(selectedRange: NSRange) {
@@ -90,7 +93,13 @@ extension EditorWorkspaceViewModel {
         if !isRestoringState {
             userDefaults.set(selectedRange.location, forKey: Self.selectedCursorLocationDefaultsKey)
         }
-        stats = DocumentStats.compute(for: markdownText, selectedRange: selectedRange)
+        if selectedRange.length == 0 && stats.selectedCharacters == 0 {
+            return
+        }
+        let updatedStats = DocumentStats.compute(for: markdownText, selectedRange: selectedRange)
+        if stats != updatedStats {
+            stats = updatedStats
+        }
     }
 
     // MARK: - Task Checkbox Toggling

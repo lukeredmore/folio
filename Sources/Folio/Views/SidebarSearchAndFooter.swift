@@ -1,219 +1,267 @@
 import AppKit
 import SwiftUI
 
-struct WorkspaceSearchTabView: View {
-    @ObservedObject var viewModel: EditorWorkspaceViewModel
-    @FocusState private var isSearchFieldFocused: Bool
+extension SidebarView {
 
-    var body: some View {
-        VStack(spacing: 0) {
-            VStack(spacing: 6) {
-                HStack(spacing: 6) {
-                    Button {
-                        withAnimation(.easeInOut(duration: 0.12)) {
-                            viewModel.showWorkspaceReplace.toggle()
-                        }
-                    } label: {
-                        Image(systemName: viewModel.showWorkspaceReplace ? "chevron.down" : "chevron.right")
-                            .font(.system(size: 10, weight: .semibold))
-                            .foregroundColor(viewModel.theme.secondaryTextColor)
-                            .frame(width: 12, height: 12)
-                    }
-                    .buttonStyle(.plain)
-                    .help("Toggle Replace in Files (Cmd+Shift+R)")
-
-                    Image(systemName: "magnifyingglass")
-                        .font(.system(size: 11))
-                        .foregroundColor(viewModel.theme.secondaryTextColor)
-
-                    TextField("Find in files (Cmd+Shift+F)...", text: $viewModel.workspaceSearchQuery)
-                        .textFieldStyle(.plain)
-                        .font(.system(size: 12))
-                        .foregroundColor(viewModel.theme.textColor)
-                        .focused($isSearchFieldFocused)
-                        .onSubmit {
-                            viewModel.performWorkspaceSearch()
-                        }
-                        .onChange(of: viewModel.workspaceSearchQuery) { _, _ in
-                            viewModel.performWorkspaceSearch()
-                        }
-                }
-                .padding(.horizontal, 8)
-                .padding(.vertical, 5)
-                .background(
-                    RoundedRectangle(cornerRadius: 5)
-                        .fill(viewModel.theme.editorBackgroundColor)
-                )
-
-                if viewModel.showWorkspaceReplace {
-                    HStack(spacing: 6) {
-                        Image(systemName: "arrow.left.arrow.right")
-                            .font(.system(size: 10.5))
-                            .foregroundColor(viewModel.theme.secondaryTextColor)
-                            .padding(.leading, 14)
-
-                        TextField("Replace in files (Cmd+Shift+R)...", text: $viewModel.workspaceReplaceQuery)
-                            .textFieldStyle(.plain)
-                            .font(.system(size: 12))
-                            .foregroundColor(viewModel.theme.textColor)
-                            .onSubmit {
-                                viewModel.replaceAllInWorkspace()
-                            }
-
-                        Button("All") {
-                            viewModel.replaceAllInWorkspace()
-                        }
-                        .controlSize(.mini)
-                        .disabled(viewModel.workspaceSearchQuery.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-                        .help("Replace all occurrences across workspace files")
-                    }
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 5)
-                    .background(
-                        RoundedRectangle(cornerRadius: 5)
-                            .fill(viewModel.theme.editorBackgroundColor)
-                    )
-                }
-
-                // Search option toggles (Case Sensitive, Whole Word, Regex)
-                HStack(spacing: 6) {
-                    searchTogglePill(label: "Aa", help: "Case Sensitive", isOn: $viewModel.searchCaseSensitive)
-                    searchTogglePill(label: "ab", help: "Whole Word", isOn: $viewModel.searchWholeWord)
-                    searchTogglePill(label: ".*", help: "Regular Expression", isOn: $viewModel.searchUseRegex)
-                    Spacer()
-                    Text("\(viewModel.workspaceSearchMatches.count) hits")
-                        .font(.system(size: 10.5))
-                        .foregroundColor(viewModel.theme.secondaryTextColor)
+    // MARK: - Top Navigation Bar
+    var sidebarHeaderBar: some View {
+        VStack(spacing: 6) {
+            Picker("Sidebar Mode", selection: $viewModel.activeSidebarTab) {
+                ForEach(SidebarTab.allCases) { tab in
+                    Label(tab.rawValue, systemImage: tab.systemImage)
+                        .tag(tab)
                 }
             }
-            .padding(8)
+            .pickerStyle(.segmented)
+            .labelsHidden()
+            .controlSize(.small)
+            .help("Switch between Files (Ctrl+Cmd+2/3), Outline (Ctrl+Cmd+1), and Search (Cmd+Shift+F)")
 
-            Divider()
-                .overlay(viewModel.theme.borderColor)
+            if viewModel.activeSidebarTab == .search {
+                searchOptionsRow
 
-            if viewModel.workspaceSearchMatches.isEmpty {
-                VStack(spacing: 6) {
-                    Text(viewModel.workspaceSearchQuery.isEmpty ? "Type to search across files" : "No matches found")
-                        .font(.system(size: 12))
-                        .foregroundColor(viewModel.theme.secondaryTextColor)
+                if viewModel.showWorkspaceReplace {
+                    workspaceReplaceRow
                 }
+            }
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 6)
+    }
+
+    private var searchOptionsRow: some View {
+        HStack(spacing: 4) {
+            Toggle(isOn: $viewModel.showWorkspaceReplace) {
+                Image(systemName: "arrow.left.arrow.right")
+            }
+            .toggleStyle(.button)
+            .controlSize(.small)
+            .font(.system(size: 10.5, weight: .medium))
+            .help("Toggle Replace in Files (Cmd+Shift+R)")
+
+            Toggle("Aa", isOn: $viewModel.searchCaseSensitive)
+                .toggleStyle(.button)
+                .controlSize(.small)
+                .font(.system(size: 11, weight: .medium, design: .monospaced))
+                .help("Case Sensitive")
+                .onChange(of: viewModel.searchCaseSensitive) { _, _ in
+                    viewModel.performWorkspaceSearch()
+                }
+
+            Toggle("ab", isOn: $viewModel.searchWholeWord)
+                .toggleStyle(.button)
+                .controlSize(.small)
+                .font(.system(size: 11, weight: .medium, design: .monospaced))
+                .help("Whole Word")
+                .onChange(of: viewModel.searchWholeWord) { _, _ in
+                    viewModel.performWorkspaceSearch()
+                }
+
+            Toggle(".*", isOn: $viewModel.searchUseRegex)
+                .toggleStyle(.button)
+                .controlSize(.small)
+                .font(.system(size: 11, weight: .medium, design: .monospaced))
+                .help("Regular Expression")
+                .onChange(of: viewModel.searchUseRegex) { _, _ in
+                    viewModel.performWorkspaceSearch()
+                }
+
+            Spacer()
+
+            if !viewModel.workspaceSearchQuery.isEmpty {
+                Text("\(viewModel.workspaceSearchMatches.count) \(viewModel.workspaceSearchMatches.count == 1 ? "match" : "matches")")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                    .monospacedDigit()
+            }
+        }
+    }
+
+    private var workspaceReplaceRow: some View {
+        HStack(spacing: 6) {
+            TextField("Replace in files (Cmd+Shift+R)…", text: $viewModel.workspaceReplaceQuery)
+                .textFieldStyle(.roundedBorder)
+                .controlSize(.small)
+                .font(.system(size: 11.5))
+                .onSubmit {
+                    viewModel.replaceAllInWorkspace()
+                }
+
+            Button("All") {
+                viewModel.replaceAllInWorkspace()
+            }
+            .controlSize(.small)
+            .disabled(viewModel.workspaceSearchQuery.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+            .help("Replace all occurrences across workspace files")
+        }
+    }
+
+    // MARK: - Outline Tab Content
+    private var filteredHeadings: [OutlineHeading] {
+        let query = viewModel.outlineFilterText.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !query.isEmpty else { return viewModel.headings }
+        return viewModel.headings.filter {
+            $0.title.localizedCaseInsensitiveContains(query)
+        }
+    }
+
+    @ViewBuilder
+    var outlineTabContent: some View {
+        let headings = filteredHeadings
+        if headings.isEmpty {
+            if !viewModel.outlineFilterText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                ContentUnavailableView.search(text: viewModel.outlineFilterText)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else {
+                ContentUnavailableView(
+                    "Outline is Empty",
+                    systemImage: "list.bullet.indent",
+                    description: Text("Add Markdown headings (# H1, ## H2) to navigate sections.")
+                )
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            }
+        } else {
+            List(selection: selectedHeadingIDBinding) {
+                Section("Document Outline") {
+                    ForEach(headings) { heading in
+                        HStack(spacing: 6) {
+                            Text("H\(heading.level)")
+                                .font(.caption2.weight(.semibold))
+                                .foregroundStyle(.tertiary)
+                                .frame(width: 18, alignment: .leading)
+
+                            Text(heading.title)
+                                .fontWeight(heading.level == 1 ? .semibold : .regular)
+                                .lineLimit(1)
+                        }
+                        .padding(.leading, CGFloat(max(0, heading.level - 1)) * 10.0)
+                        .tag(Optional(heading.id))
+                        .help("Jump to line \(heading.lineNumber)")
+                    }
+                }
+            }
+            .listStyle(.sidebar)
+        }
+    }
+
+    // MARK: - Search Tab Content
+    private struct FileSearchGroup: Identifiable {
+        let fileURL: URL
+        let fileName: String
+        let matches: [WorkspaceSearchMatch]
+        var id: URL { fileURL }
+    }
+
+    private var groupedSearchMatches: [FileSearchGroup] {
+        var groups: [FileSearchGroup] = []
+        var indexByURL: [URL: Int] = [:]
+        for match in viewModel.workspaceSearchMatches {
+            if let idx = indexByURL[match.fileURL] {
+                let existing = groups[idx]
+                groups[idx] = FileSearchGroup(
+                    fileURL: existing.fileURL,
+                    fileName: existing.fileName,
+                    matches: existing.matches + [match]
+                )
+            } else {
+                indexByURL[match.fileURL] = groups.count
+                groups.append(
+                    FileSearchGroup(
+                        fileURL: match.fileURL,
+                        fileName: match.fileName,
+                        matches: [match]
+                    )
+                )
+            }
+        }
+        return groups
+    }
+
+    @ViewBuilder
+    var searchTabContent: some View {
+        if viewModel.workspaceSearchMatches.isEmpty {
+            if viewModel.workspaceSearchQuery.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                ContentUnavailableView(
+                    "Search Workspace",
+                    systemImage: "magnifyingglass",
+                    description: Text("Use the search field to find text across all Markdown files.")
+                )
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
-                ScrollView {
-                    LazyVStack(alignment: .leading, spacing: 3) {
-                        ForEach(viewModel.workspaceSearchMatches) { match in
-                            HStack(spacing: 4) {
-                                Button {
-                                    viewModel.jumpToSearchMatch(match)
-                                } label: {
-                                    VStack(alignment: .leading, spacing: 2) {
-                                        HStack {
-                                            Image(systemName: "doc.text")
-                                                .font(.system(size: 10))
-                                                .foregroundColor(viewModel.theme.linkColor)
-                                            Text(match.fileName)
-                                                .font(.system(size: 11.5, weight: .semibold))
-                                                .foregroundColor(viewModel.theme.textColor)
-                                                .lineLimit(1)
-                                            Spacer()
-                                            Text(":\(match.lineNumber)")
-                                                .font(.system(size: 10, design: .monospaced))
-                                                .foregroundColor(viewModel.theme.secondaryTextColor)
-                                        }
-                                        Text(match.lineSnippet)
-                                            .font(.system(size: 11, design: .monospaced))
-                                            .foregroundColor(viewModel.theme.secondaryTextColor)
-                                            .lineLimit(2)
-                                    }
-                                    .contentShape(Rectangle())
-                                }
-                                .buttonStyle(.plain)
+                ContentUnavailableView.search(text: viewModel.workspaceSearchQuery)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+            }
+        } else {
+            List(selection: selectedSearchMatchBinding) {
+                ForEach(groupedSearchMatches) { group in
+                    Section {
+                        ForEach(group.matches) { match in
+                            HStack(alignment: .firstTextBaseline, spacing: 6) {
+                                Text("\(match.lineNumber)")
+                                    .font(.caption2.monospaced())
+                                    .foregroundStyle(.secondary)
+                                    .frame(minWidth: 24, alignment: .trailing)
+
+                                Text(match.lineSnippet)
+                                    .font(.callout.monospaced())
+                                    .lineLimit(2)
 
                                 if viewModel.showWorkspaceReplace {
+                                    Spacer(minLength: 4)
                                     Button {
                                         viewModel.replaceWorkspaceMatch(match)
                                     } label: {
                                         Image(systemName: "arrow.turn.down.right")
-                                            .font(.system(size: 10, weight: .semibold))
-                                            .foregroundColor(viewModel.theme.linkColor)
-                                            .padding(4)
+                                            .font(.caption2.weight(.semibold))
                                     }
-                                    .buttonStyle(.plain)
+                                    .buttonStyle(.borderless)
                                     .help("Replace this match")
                                 }
                             }
-                            .padding(.horizontal, 8)
-                            .padding(.vertical, 5)
-                            .background(
-                                RoundedRectangle(cornerRadius: 5)
-                                    .fill(viewModel.theme.editorBackgroundColor.opacity(0.5))
-                            )
+                            .tag(Optional(match.id))
+                        }
+                    } header: {
+                        HStack {
+                            Label(group.fileName, systemImage: "doc.text")
+                                .lineLimit(1)
+                            Spacer()
+                            Text("\(group.matches.count)")
+                                .font(.caption2)
+                                .foregroundStyle(.secondary)
+                                .monospacedDigit()
                         }
                     }
-                    .padding(6)
                 }
             }
-        }
-        .onAppear {
-            isSearchFieldFocused = true
-        }
-        .onChange(of: viewModel.workspaceSearchFocusRequestID) { _, _ in
-            isSearchFieldFocused = true
+            .listStyle(.sidebar)
         }
     }
 
-    private func searchTogglePill(label: String, help: String, isOn: Binding<Bool>) -> some View {
-        Button {
-            isOn.wrappedValue.toggle()
-            viewModel.performWorkspaceSearch()
-        } label: {
-            Text(label)
-                .font(.system(size: 10.5, weight: .semibold, design: .monospaced))
-                .foregroundColor(isOn.wrappedValue ? .white : viewModel.theme.secondaryTextColor)
-                .padding(.horizontal, 6)
-                .padding(.vertical, 2)
-                .background(
-                    RoundedRectangle(cornerRadius: 4)
-                        .fill(isOn.wrappedValue ? viewModel.theme.linkColor : Color.clear)
-                )
-        }
-        .buttonStyle(.plain)
-        .help(help)
-    }
-}
-
-extension SidebarView {
-    // MARK: - Search Tab
-    var searchTabContent: some View {
-        WorkspaceSearchTabView(viewModel: viewModel)
-    }
-
-    // MARK: - Sidebar Footer
-    var sidebarFooter: some View {
-        HStack(spacing: 10) {
+    // MARK: - Bottom Action Bar
+    var sidebarFooterBar: some View {
+        HStack(spacing: 8) {
             Button {
                 viewModel.createNewFileInWorkspace()
             } label: {
                 Image(systemName: "plus")
-                    .font(.system(size: 12))
-                    .foregroundColor(viewModel.theme.secondaryTextColor)
             }
-            .buttonStyle(.plain)
-            .help("New File in Workspace")
+            .buttonStyle(.borderless)
+            .help("New Markdown File in Workspace")
 
             Button {
                 viewModel.showAddRemoteModal = true
             } label: {
                 Image(systemName: "network")
-                    .font(.system(size: 11.5))
-                    .foregroundColor(
+                    .foregroundStyle(
                         !remoteManager.unhealthyMounts.isEmpty
                             ? Color.orange
-                            : (!remoteManager.mounts.isEmpty ? viewModel.theme.linkColor : viewModel.theme.secondaryTextColor)
+                            : (!remoteManager.mounts.isEmpty ? viewModel.theme.linkColor : Color.secondary)
                     )
             }
-            .buttonStyle(.plain)
+            .buttonStyle(.borderless)
             .help("Connect Remote Folder or File via SSH (Cmd+Option+Shift+R)")
+
+            Spacer(minLength: 4)
 
             Menu {
                 if let folder = viewModel.workspaceFolderURL {
@@ -223,23 +271,29 @@ extension SidebarView {
                     Text("Remotes: \(remoteManager.mounts.count) connected")
                 }
                 Divider()
-                Button("Open Local Folder...") {
+                Button {
                     viewModel.openFolderPanel()
+                } label: {
+                    Label("Open Local Folder…", systemImage: "folder.badge.plus")
                 }
-                Button("Connect Remote Folder or File (SSH)...") {
+                Button {
                     viewModel.showAddRemoteModal = true
+                } label: {
+                    Label("Connect Remote (SSH)…", systemImage: "network")
                 }
                 if !remoteManager.mounts.isEmpty {
-                    Button("Sync All Remotes Now") {
+                    Button {
                         Task {
                             await remoteManager.syncAllMounts(isBackground: false)
                         }
+                    } label: {
+                        Label("Sync All Remotes Now", systemImage: "arrow.triangle.2.circlepath")
                     }
                 }
                 Divider()
                 Picker("View Mode", selection: $viewModel.fileDisplayStyle) {
-                    Text("File Tree View").tag(FileDisplayStyle.tree)
-                    Text("File List View").tag(FileDisplayStyle.list)
+                    Label("File Tree View", systemImage: "list.bullet.indent").tag(FileDisplayStyle.tree)
+                    Label("Article List View", systemImage: "list.bullet").tag(FileDisplayStyle.list)
                 }
                 Picker("Sort By", selection: $viewModel.fileSortOrder) {
                     ForEach(FileSortOrder.allCases) { order in
@@ -250,51 +304,23 @@ extension SidebarView {
                     viewModel.sortFileNodes()
                 }
             } label: {
-                HStack(spacing: 4) {
-                    Image(systemName: "folder")
-                        .font(.system(size: 11))
-                    Text(workspaceFooterLabel)
-                        .font(.system(size: 11.5))
-                        .lineLimit(1)
-                }
-                .foregroundColor(viewModel.theme.secondaryTextColor)
+                Image(systemName: "ellipsis.circle")
             }
             .menuStyle(.borderlessButton)
-
-            Spacer()
+            .fixedSize()
+            .help("Workspace & Sort Options")
 
             Button {
                 viewModel.fileDisplayStyle = (viewModel.fileDisplayStyle == .tree) ? .list : .tree
             } label: {
                 Image(systemName: viewModel.fileDisplayStyle == .tree ? "list.bullet.indent" : "list.bullet")
-                    .font(.system(size: 11.5))
-                    .foregroundColor(viewModel.theme.secondaryTextColor)
             }
-            .buttonStyle(.plain)
-            .help("Switch between File Tree and File List view")
+            .buttonStyle(.borderless)
+            .help("Switch between File Tree and Article List view")
         }
+        .controlSize(.small)
+        .foregroundStyle(.secondary)
         .padding(.horizontal, 12)
-        .frame(height: 30)
-        .background(viewModel.theme.sidebarBackgroundColor)
-        .overlay(alignment: .top) {
-            Rectangle()
-                .fill(viewModel.theme.borderColor)
-                .frame(height: 1)
-        }
-    }
-
-    var workspaceFooterLabel: String {
-        if let folder = viewModel.workspaceFolderURL {
-            if remoteManager.mounts.isEmpty {
-                return folder.lastPathComponent
-            }
-            return "\(folder.lastPathComponent) + \(remoteManager.mounts.count) remote"
-        }
-        if let firstMount = remoteManager.mounts.first {
-            return remoteManager.mounts.count == 1
-                ? firstMount.label
-                : "\(remoteManager.mounts.count) Remotes"
-        }
-        return "Workspace"
+        .padding(.vertical, 6)
     }
 }
