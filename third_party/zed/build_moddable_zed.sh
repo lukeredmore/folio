@@ -81,17 +81,25 @@ if [[ "${FOLIO_FORCE_REBUILD_MODDABLE_ZED:-0}" != "1" && "${FOLIO_BUILD_MODDABLE
   DL_DIR="$(mktemp -d)"
   DL_ZST="${DL_DIR}/moddable_zed_bundle.tar.zst"
   DOWNLOADED=0
-  if command -v gh >/dev/null 2>&1; then
-    if gh release download "$RELEASE_TAG" --repo "$GITHUB_REPO" --pattern "moddable_zed_bundle.tar.zst" --dir "$DL_DIR" --clobber 2>/dev/null; then
-      DOWNLOADED=1
+  FALLBACK_KEY_DEBUG="$(compute_key "$REAL_PATCH" "debug")"
+  FALLBACK_KEY_RELFAST="$(compute_key "$REAL_PATCH" "release-fast")"
+  for CANDIDATE_TAG in "$RELEASE_TAG" "moddable-zed-${FALLBACK_KEY_RELFAST}" "moddable-zed-${FALLBACK_KEY_DEBUG}"; do
+    if command -v gh >/dev/null 2>&1; then
+      if gh release download "$CANDIDATE_TAG" --repo "$GITHUB_REPO" --pattern "moddable_zed_bundle.tar.zst" --dir "$DL_DIR" --clobber 2>/dev/null; then
+        DOWNLOADED=1
+        RELEASE_TAG="$CANDIDATE_TAG"
+        break
+      fi
     fi
-  fi
-  if [[ "$DOWNLOADED" -eq 0 ]] && command -v curl >/dev/null 2>&1; then
-    RELEASE_URL="https://github.com/${GITHUB_REPO}/releases/download/${RELEASE_TAG}/moddable_zed_bundle.tar.zst"
-    if curl -fsSL "$RELEASE_URL" -o "$DL_ZST" 2>/dev/null; then
-      DOWNLOADED=1
+    if command -v curl >/dev/null 2>&1; then
+      RELEASE_URL="https://github.com/${GITHUB_REPO}/releases/download/${CANDIDATE_TAG}/moddable_zed_bundle.tar.zst"
+      if curl -fsSL "$RELEASE_URL" -o "$DL_ZST" 2>/dev/null; then
+        DOWNLOADED=1
+        RELEASE_TAG="$CANDIDATE_TAG"
+        break
+      fi
     fi
-  fi
+  done
   if [[ "$DOWNLOADED" -eq 1 && -s "$DL_ZST" ]]; then
     echo "[Moddable Zed] Downloaded prebuilt bundle ($RELEASE_TAG) from GitHub Releases"
     mkdir -p "$CACHE_DIR" "$(dirname "$OUT_TAR")"
