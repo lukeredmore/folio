@@ -22,6 +22,7 @@ genrule(
     cmd = "PROFILE=debug; if [ \"$(COMPILATION_MODE)\" = \"opt\" ]; then PROFILE=release-fast; fi; $(location build_moddable_zed.sh) $@ $(location patches/0002-real-zed-editor-folio-wysiwyg.patch) $$PROFILE",
     tags = [
         "manual",
+        "no-cache",
         "no-sandbox",
     ],
 )

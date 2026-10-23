@@ -36,7 +36,7 @@ if [[ "${1:-}" == "--publish-release" ]]; then
   CACHE_DIR="${CACHE_ROOT}/${MODDABLE_ZED_KEY}"
   CACHED_TAR="${CACHE_DIR}/moddable_zed_bundle.tar"
   if [[ ! -s "$CACHED_TAR" ]]; then
-    "$0" "$CACHED_TAR" "$REAL_PATCH" "$PROFILE"
+    FOLIO_BUILD_MODDABLE_ZED_FROM_SOURCE=1 "$0" "$CACHED_TAR" "$REAL_PATCH" "$PROFILE"
   fi
   TMP_ZST="$(mktemp -d)/moddable_zed_bundle.tar.zst"
   zstd -3 -q -f "$CACHED_TAR" -o "$TMP_ZST"
@@ -81,9 +81,13 @@ if [[ "${FOLIO_FORCE_REBUILD_MODDABLE_ZED:-0}" != "1" && "${FOLIO_BUILD_MODDABLE
   DL_DIR="$(mktemp -d)"
   DL_ZST="${DL_DIR}/moddable_zed_bundle.tar.zst"
   DOWNLOADED=0
-  FALLBACK_KEY_DEBUG="$(compute_key "$REAL_PATCH" "debug")"
-  FALLBACK_KEY_RELFAST="$(compute_key "$REAL_PATCH" "release-fast")"
-  for CANDIDATE_TAG in "$RELEASE_TAG" "moddable-zed-${FALLBACK_KEY_RELFAST}" "moddable-zed-${FALLBACK_KEY_DEBUG}"; do
+  if [[ "$PROFILE" == "debug" ]]; then
+    FALLBACK_KEY_RELFAST="$(compute_key "$REAL_PATCH" "release-fast")"
+    CANDIDATE_TAGS=("$RELEASE_TAG" "moddable-zed-${FALLBACK_KEY_RELFAST}")
+  else
+    CANDIDATE_TAGS=("$RELEASE_TAG")
+  fi
+  for CANDIDATE_TAG in "${CANDIDATE_TAGS[@]}"; do
     if command -v gh >/dev/null 2>&1; then
       if gh release download "$CANDIDATE_TAG" --repo "$GITHUB_REPO" --pattern "moddable_zed_bundle.tar.zst" --dir "$DL_DIR" --clobber 2>/dev/null; then
         DOWNLOADED=1
@@ -102,11 +106,14 @@ if [[ "${FOLIO_FORCE_REBUILD_MODDABLE_ZED:-0}" != "1" && "${FOLIO_BUILD_MODDABLE
   done
   if [[ "$DOWNLOADED" -eq 1 && -s "$DL_ZST" ]]; then
     echo "[Moddable Zed] Downloaded prebuilt bundle ($RELEASE_TAG) from GitHub Releases"
-    mkdir -p "$CACHE_DIR" "$(dirname "$OUT_TAR")"
-    zstd -d -q -f "$DL_ZST" -o "$CACHED_TAR"
+    DOWNLOADED_KEY="${RELEASE_TAG#moddable-zed-}"
+    DOWNLOADED_CACHE_DIR="${CACHE_ROOT}/${DOWNLOADED_KEY}"
+    DOWNLOADED_CACHED_TAR="${DOWNLOADED_CACHE_DIR}/moddable_zed_bundle.tar"
+    mkdir -p "$DOWNLOADED_CACHE_DIR" "$(dirname "$OUT_TAR")"
+    zstd -d -q -f "$DL_ZST" -o "$DOWNLOADED_CACHED_TAR"
     rm -rf "$DL_DIR"
-    if [[ "$OUT_TAR" != "$CACHED_TAR" ]]; then
-      cp "$CACHED_TAR" "$OUT_TAR"
+    if [[ "$OUT_TAR" != "$DOWNLOADED_CACHED_TAR" ]]; then
+      cp "$DOWNLOADED_CACHED_TAR" "$OUT_TAR"
     fi
     exit 0
   fi
@@ -155,9 +162,19 @@ TARGET_BASE="${CARGO_TARGET_DIR:-$ZED_DIR/target}"
 
 if [[ "$PROFILE" == "debug" ]]; then
   TARGET_SUBDIR="debug"
+  # Force compile-time embedding of fs_embed! assets (settings, assets, grammars, agent)
+  # even in dev builds so the packaged app never depends on a source checkout at runtime.
+  CARGO_EMBED_ARGS=(
+    --config 'profile.dev.package.rust-embed.debug-assertions=false'
+    --config 'profile.dev.package.assets.debug-assertions=false'
+    --config 'profile.dev.package.settings.debug-assertions=false'
+    --config 'profile.dev.package.grammars.debug-assertions=false'
+    --config 'profile.dev.package.agent.debug-assertions=false'
+  )
   # Use slim Cargo profile flags (~12 GB instead of 103 GB) on fresh builds or when FOLIO_SLIM_ZED_CARGO=1
   if [[ "${FOLIO_SLIM_ZED_CARGO:-auto}" == "1" || ( "${FOLIO_SLIM_ZED_CARGO:-auto}" == "auto" && ! -d "$TARGET_BASE/debug/deps" ) ]]; then
     CARGO_PROFILE_ARGS=(
+      "${CARGO_EMBED_ARGS[@]}"
       --config 'profile.dev.debug=0'
       --config 'profile.dev.strip="debuginfo"'
       --config 'profile.dev.incremental=false'
@@ -165,7 +182,7 @@ if [[ "$PROFILE" == "debug" ]]; then
       --config 'profile.dev.package.zed.debug=1'
     )
   else
-    CARGO_PROFILE_ARGS=()
+    CARGO_PROFILE_ARGS=("${CARGO_EMBED_ARGS[@]}")
   fi
 elif [[ "$PROFILE" == "release" ]]; then
   CARGO_PROFILE_ARGS=(--release)

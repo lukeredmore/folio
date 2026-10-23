@@ -1,3 +1,19 @@
+diff --git a/Cargo.toml b/Cargo.toml
+index 770f7d0..f1e882a 100644
+--- a/Cargo.toml
++++ b/Cargo.toml
+@@ -1091,6 +1091,10 @@ serde_json = { opt-level = 3 }
+ # Build single-source-file crates with cg=1 as it helps make `cargo build` of a whole workspace a bit faster
+ activity_indicator = { codegen-units = 1 }
+-assets = { codegen-units = 1 }
++rust-embed = { debug-assertions = false }
++assets = { codegen-units = 1, debug-assertions = false }
++settings = { debug-assertions = false }
++grammars = { debug-assertions = false }
++agent = { debug-assertions = false }
+ breadcrumbs = { codegen-units = 1 }
+ collections = { codegen-units = 1 }
+ command_palette = { codegen-units = 1 }
 diff --git a/crates/auto_update/src/auto_update.rs b/crates/auto_update/src/auto_update.rs
 index 38324d5..1667776 100644
 --- a/crates/auto_update/src/auto_update.rs
