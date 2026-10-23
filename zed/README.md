@@ -9,7 +9,7 @@ This directory contains the **Folio WYSIWYG Markdown & $\text{LaTeX}$ Editor Mod
 ## One-Click Download & Rolling Auto-Updates
 
 - **Direct Download (Always Latest `main` Build):** [**Download `Folio-Zed.dmg`**](https://github.com/lukeredmore/folio/releases/latest/download/Folio-Zed.dmg)
-- **Drop-In Replacement for Zed:** `Folio Zed.app` uses the same settings, keymaps, extensions, and history as vanilla `Zed.app`. It has its own single-instance port, so it opens even when vanilla Zed is running. CI checks this on every `Folio-Zed.dmg` with `third_party/zed/tests/single_instance_smoke_test.py <app-or-dmg>`. Its icon is the Folio logo on a black Zed-style background.
+- **Drop-In Replacement for Zed:** `Folio Zed.app` uses the same settings, keymaps, extensions, and history as vanilla `Zed.app`. It has its own single-instance port, so it opens even when vanilla Zed is running. CI checks this on every `Folio-Zed.dmg` with `third_party/zed/tests/folio_zed_smoke_test.py <app-or-dmg>`, which also checks the version the updater sees. Its icon is the Folio logo on a black Zed-style background.
 - **Built-In Extension Pre-Installed:** Both release (`Folio Zed.app`) and development builds bundle `folio-markdown-outline` (`zed/folio_zed_extension`) directly inside the binary and automatically install/update it into Zed's extensions directory on launch—no manual extension installation or network download required.
 - **Rolling GitHub Release Auto-Updater:**
   - Installed copies of `Folio Zed.app` check `https://api.github.com/repos/lukeredmore/folio/releases/latest` on startup (and every hour, or manually via **Zed → Check for Updates**).

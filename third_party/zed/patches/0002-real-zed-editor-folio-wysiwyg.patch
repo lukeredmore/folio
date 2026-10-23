@@ -4780,10 +4780,10 @@ index 25cce39..bd77088 100644
  
          let src_path = delegate
 diff --git a/crates/zed/src/main.rs b/crates/zed/src/main.rs
-index c3bde91..067d905 100644
+index c3bde91..9827508 100644
 --- a/crates/zed/src/main.rs
 +++ b/crates/zed/src/main.rs
-@@ -302,10 +302,16 @@ fn main() {
+@@ -302,10 +302,15 @@ fn main() {
      #[cfg(unix)]
      util::increase_open_file_limit().log_err();
  
@@ -4791,12 +4791,11 @@ index c3bde91..067d905 100644
 -    let app_commit_sha =
 -        option_env!("ZED_COMMIT_SHA").map(|commit_sha| AppCommitSha::new(commit_sha.to_string()));
 -    let app_version = AppVersion::load(env!("CARGO_PKG_VERSION"), version, app_commit_sha.clone());
-+    let version = option_env!("ZED_BUILD_ID")
-+        .map(ToOwned::to_owned)
-+        .or_else(|| release_channel::bundled_info_plist_value("CFBundleVersion"));
-+    let app_commit_sha = option_env!("ZED_COMMIT_SHA")
-+        .map(ToOwned::to_owned)
-+        .or_else(|| release_channel::bundled_info_plist_value("FolioCommitSHA"))
++    // Folio's Info.plist wins: ZED_COMMIT_SHA is upstream Zed's commit, not the Folio release.
++    let version = release_channel::bundled_info_plist_value("CFBundleVersion")
++        .or_else(|| option_env!("ZED_BUILD_ID").map(ToOwned::to_owned));
++    let app_commit_sha = release_channel::bundled_info_plist_value("FolioCommitSHA")
++        .or_else(|| option_env!("ZED_COMMIT_SHA").map(ToOwned::to_owned))
 +        .map(AppCommitSha::new);
 +    let pkg_version = release_channel::bundled_info_plist_value("CFBundleShortVersionString")
 +        .unwrap_or_else(|| env!("CARGO_PKG_VERSION").to_string());
@@ -4804,7 +4803,7 @@ index c3bde91..067d905 100644
  
      if args.system_specs {
          let system_specs = system_specs::SystemSpecs::new_stateless(
-@@ -339,6 +345,28 @@ fn main() {
+@@ -339,6 +344,28 @@ fn main() {
      #[cfg(windows)]
      check_for_conpty_dll();
  
@@ -4833,7 +4832,7 @@ index c3bde91..067d905 100644
      let app = build_application()
          .with_assets(Assets)
          .with_restart_arguments(restart_arguments);
-@@ -490,6 +518,10 @@ fn main() {
+@@ -490,6 +517,10 @@ fn main() {
          zed_actions::init();
  
          release_channel::init(app_version, cx);
@@ -4844,7 +4843,7 @@ index c3bde91..067d905 100644
          gpui_tokio::init(cx);
          if let Some(app_commit_sha) = app_commit_sha {
              AppCommitSha::set_global(app_commit_sha, cx);
-@@ -1553,6 +1585,29 @@ pub(crate) async fn restore_or_create_workspace(
+@@ -1553,6 +1584,29 @@ pub(crate) async fn restore_or_create_workspace(
              })
              .await?;
          }
@@ -4874,7 +4873,7 @@ index c3bde91..067d905 100644
      } else if matches!(kvp.read_kvp(FIRST_OPEN), Ok(None)) {
          cx.update(|cx| show_onboarding_view(app_state, cx)).await?;
      } else {
-@@ -1630,7 +1685,7 @@ pub(crate) async fn restorable_workspace_locations(
+@@ -1630,7 +1684,7 @@ pub(crate) async fn restorable_workspace_locations(
                  })
          }
          workspace::RestoreOnStartupBehavior::LastSession => {
@@ -4883,7 +4882,7 @@ index c3bde91..067d905 100644
                  let ordered = last_session_window_stack.is_some();
  
                  let mut locations = workspace::last_session_workspace_locations(
-@@ -1651,6 +1706,21 @@ pub(crate) async fn restorable_workspace_locations(
+@@ -1651,6 +1705,21 @@ pub(crate) async fn restorable_workspace_locations(
                  locations
              } else {
                  None
