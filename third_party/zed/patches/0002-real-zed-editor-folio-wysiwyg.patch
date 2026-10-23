@@ -1,115 +1,3 @@
-diff --git a/Cargo.lock b/Cargo.lock
-index fc1be19..8a8a87d 100644
---- a/Cargo.lock
-+++ b/Cargo.lock
-@@ -6135,6 +6135,7 @@ dependencies = [
-  "ctor",
-  "dap",
-  "extension",
-+ "folio_zed_extension",
-  "fs",
-  "futures 0.3.34",
-  "gpui",
-@@ -6507,6 +6508,27 @@ version = "0.2.0"
- source = "registry+https://github.com/rust-lang/crates.io-index"
- checksum = "77ce24cb58228fbb8aa041425bb1050850ac19177686ea6e0f41a70416f56fdb"
- 
-+[[package]]
-+name = "folio_engine"
-+version = "0.1.0"
-+dependencies = [
-+ "mermaid-rs-renderer",
-+]
-+
-+[[package]]
-+name = "folio_zed_extension"
-+version = "0.1.0"
-+dependencies = [
-+ "folio_engine",
-+]
-+
-+[[package]]
-+name = "folio_zed_mod"
-+version = "0.1.0"
-+dependencies = [
-+ "folio_engine",
-+]
-+
- [[package]]
- name = "font-types"
- version = "0.10.0"
-@@ -10619,6 +10641,7 @@ dependencies = [
-  "base64 0.22.1",
-  "collections",
-  "env_logger 0.11.8",
-+ "folio_zed_mod",
-  "fs",
-  "gpui",
-  "gpui_platform",
-@@ -10651,6 +10674,7 @@ dependencies = [
-  "buffer_diff",
-  "db",
-  "editor",
-+ "folio_zed_mod",
-  "fs",
-  "gpui",
-  "language",
-@@ -10822,6 +10846,23 @@ dependencies = [
-  "syn 1.0.109",
- ]
- 
-+[[package]]
-+name = "mermaid-rs-renderer"
-+version = "0.3.1"
-+source = "registry+https://github.com/rust-lang/crates.io-index"
-+checksum = "6cb5b469222ce6b9896edf0a969cf68464f5a028ef394fd6643f00bd943df117"
-+dependencies = [
-+ "anyhow",
-+ "fontdb",
-+ "json5",
-+ "once_cell",
-+ "regex",
-+ "serde",
-+ "serde_json",
-+ "thiserror 2.0.17",
-+ "ttf-parser",
-+]
-+
- [[package]]
- name = "mermaid_render"
- version = "0.1.0"
-@@ -18953,7 +18994,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
- checksum = "2fb391ac70462b3097a755618fbf9c8f95ecc1eb379a414f7b46f202ed10db1f"
- dependencies = [
-  "cc",
-- "windows-targets 0.48.5",
-+ "windows-targets 0.52.6",
- ]
- 
- [[package]]
-@@ -20768,7 +20809,7 @@ dependencies = [
-  "objc2-foundation 0.3.2",
-  "objc2-metal 0.3.2",
-  "objc2-quartz-core 0.3.2",
-- "ordered-float 4.6.0",
-+ "ordered-float 5.5.0",
-  "profiling",
-  "range-alloc",
-  "raw-window-handle",
-diff --git a/Cargo.toml b/Cargo.toml
-index 770f7d0..6a0992f 100644
---- a/Cargo.toml
-+++ b/Cargo.toml
-@@ -431,6 +431,9 @@ open_path_prompt = { path = "crates/open_path_prompt" }
- open_router = { path = "crates/open_router", features = ["schemars"] }
- openai_subscribed = { path = "crates/openai_subscribed" }
- opencode = { path = "crates/opencode" }
-+folio_engine = { path = "../../../core/folio_engine" }
-+folio_zed_extension = { path = "../../../zed/folio_zed_extension" }
-+folio_zed_mod = { path = "../../../zed/folio_zed_mod" }
- outline = { path = "crates/outline" }
- outline_panel = { path = "crates/outline_panel" }
- path = { path = "crates/path" }
 diff --git a/crates/auto_update/src/auto_update.rs b/crates/auto_update/src/auto_update.rs
 index 38324d5..1667776 100644
 --- a/crates/auto_update/src/auto_update.rs
@@ -456,28 +344,86 @@ index 38324d5..1667776 100644
 +        assert_eq!(same, None);
 +    }
  }
-diff --git a/crates/extension_host/Cargo.toml b/crates/extension_host/Cargo.toml
-index d4209c0..410612b 100644
---- a/crates/extension_host/Cargo.toml
-+++ b/crates/extension_host/Cargo.toml
-@@ -25,6 +25,7 @@ cloud_api_types.workspace = true
- collections.workspace = true
- dap.workspace = true
- extension.workspace = true
-+folio_zed_extension.workspace = true
- fs.workspace = true
- futures.workspace = true
- gpui.workspace = true
 diff --git a/crates/extension_host/src/extension_host.rs b/crates/extension_host/src/extension_host.rs
-index 7d22d21..4c4054f 100644
+index 7d22d21..bea0c1f 100644
 --- a/crates/extension_host/src/extension_host.rs
 +++ b/crates/extension_host/src/extension_host.rs
-@@ -416,6 +416,14 @@ impl ExtensionStore {
+@@ -356,6 +356,69 @@ pub fn init(
+     .detach();
+ }
+ 
++const FOLIO_BUILTIN_EXTENSION_ID: &str = "folio-markdown-outline";
++
++fn resolve_folio_builtin_extension_source_dir() -> Option<PathBuf> {
++    if let Some(dir) = std::env::var_os("FOLIO_BUILTIN_EXTENSION_DIR") {
++        let path = PathBuf::from(dir);
++        if path.join("extension.toml").is_file() {
++            return Some(path);
++        }
++    }
++    if let Ok(exe) = std::env::current_exe()
++        && let Some(macos_dir) = exe.parent()
++        && let Some(contents_dir) = macos_dir.parent()
++    {
++        let bundled = contents_dir
++            .join("Resources")
++            .join("builtin_extensions")
++            .join(FOLIO_BUILTIN_EXTENSION_ID);
++        if bundled.join("extension.toml").is_file() {
++            return Some(bundled);
++        }
++    }
++    let dev_fallback = Path::new(env!("CARGO_MANIFEST_DIR"))
++        .join("../../../../../zed/folio_zed_extension");
++    if dev_fallback.join("extension.toml").is_file() {
++        return Some(dev_fallback);
++    }
++    None
++}
++
++fn ensure_folio_builtin_extension_installed(
++    installed_extensions_dir: &Path,
++) -> std::io::Result<bool> {
++    let Some(src_root) = resolve_folio_builtin_extension_source_dir() else {
++        return Ok(false);
++    };
++    let ext_root = installed_extensions_dir.join(FOLIO_BUILTIN_EXTENSION_ID);
++    let lang_dir = ext_root.join("languages").join("markdown");
++    std::fs::create_dir_all(&lang_dir)?;
++
++    let relative_files = [
++        "extension.toml",
++        "languages/markdown/config.toml",
++        "languages/markdown/outline.scm",
++    ];
++
++    let mut updated = false;
++    for rel in relative_files {
++        let src_path = src_root.join(rel);
++        let Ok(expected_contents) = std::fs::read_to_string(&src_path) else {
++            continue;
++        };
++        let dst_path = ext_root.join(rel);
++        let matches_existing = std::fs::read_to_string(&dst_path)
++            .map(|existing| existing == expected_contents)
++            .unwrap_or(false);
++        if !matches_existing {
++            std::fs::write(&dst_path, expected_contents.as_bytes())?;
++            updated = true;
++        }
++    }
++    Ok(updated)
++}
++
+ impl ExtensionStore {
+     pub fn try_global(cx: &App) -> Option<Entity<Self>> {
+         cx.try_global::<GlobalExtensionStore>()
+@@ -416,6 +479,14 @@ impl ExtensionStore {
          // The extensions store maintains an index file, which contains a complete
          // list of the installed extensions and the resources that they provide.
          // This index is loaded synchronously on startup.
 +        let builtin_extension_updated = if extensions_dir == *paths::extensions_dir() {
-+            folio_zed_extension::ensure_builtin_extension_installed(&this.installed_dir)
++            ensure_folio_builtin_extension_installed(&this.installed_dir)
 +                .log_err()
 +                .unwrap_or(false)
 +        } else {
@@ -487,7 +433,7 @@ index 7d22d21..4c4054f 100644
          let (index_content, index_metadata, extensions_metadata) =
              cx.foreground_executor().block_on(async {
                  futures::join!(
-@@ -443,6 +451,14 @@ impl ExtensionStore {
+@@ -443,6 +514,14 @@ impl ExtensionStore {
                  extension_index_needs_rebuild = false;
              }
          }
@@ -495,7 +441,7 @@ index 7d22d21..4c4054f 100644
 +            && (builtin_extension_updated
 +                || !extension_index
 +                    .extensions
-+                    .contains_key(folio_zed_extension::EXTENSION_ID))
++                    .contains_key(FOLIO_BUILTIN_EXTENSION_ID))
 +        {
 +            extension_index_needs_rebuild = true;
 +        }
@@ -696,18 +642,360 @@ index a88816a..987f7ab 100644
                          path.to_string_lossy(),
                          ReleaseChannel::global(cx).display_name()
                      ),
-diff --git a/crates/markdown/Cargo.toml b/crates/markdown/Cargo.toml
-index e6f258c..ced9eb6 100644
---- a/crates/markdown/Cargo.toml
-+++ b/crates/markdown/Cargo.toml
-@@ -22,6 +22,7 @@ test-support = [
- anyhow.workspace = true
- base64.workspace = true
- collections.workspace = true
-+folio_zed_mod.workspace = true
- gpui.workspace = true
- html5ever.workspace = true
- language.workspace = true
+diff --git a/crates/markdown/src/folio_dylib.rs b/crates/markdown/src/folio_dylib.rs
+new file mode 100644
+index 0000000..5dd84f8
+--- /dev/null
++++ b/crates/markdown/src/folio_dylib.rs
+@@ -0,0 +1,348 @@
++use std::ffi::{CStr, CString, c_void};
++use std::os::raw::{c_char, c_int};
++use std::path::PathBuf;
++use std::sync::OnceLock;
++
++#[repr(C)]
++struct FolioZedSvgResult {
++    svg: *mut c_char,
++    width: f32,
++    height: f32,
++}
++
++#[repr(C)]
++struct FolioZedMathPrim {
++    kind: u32,
++    x: f32,
++    y: f32,
++    width: f32,
++    height: f32,
++    extra_f32_1: f32,
++    extra_f32_2: f32,
++    italic: bool,
++    bold: bool,
++    serif: bool,
++    text: *mut c_char,
++}
++
++#[repr(C)]
++struct FolioZedMathCanvas {
++    width: f32,
++    ascent: f32,
++    descent: f32,
++    primitives: *mut FolioZedMathPrim,
++    primitive_count: usize,
++    plain_text_fallback: *mut c_char,
++}
++
++#[repr(C)]
++struct FolioZedNewlineResult {
++    kind: u32,
++    prefix: *mut c_char,
++}
++
++#[derive(Debug, Clone, PartialEq)]
++pub enum GpuiMathPrimitive {
++    ShapedGlyphRun {
++        text: String,
++        origin_x: f32,
++        baseline_y: f32,
++        font_size: f32,
++        italic: bool,
++        bold: bool,
++        serif: bool,
++    },
++    RuleQuad {
++        x: f32,
++        y: f32,
++        width: f32,
++        height: f32,
++    },
++    RadicalStroke {
++        x: f32,
++        top_y: f32,
++        bottom_y: f32,
++        hook_width: f32,
++        radicand_width: f32,
++        line_width: f32,
++    },
++}
++
++#[derive(Debug, Clone, PartialEq)]
++pub struct GpuiMathCanvasDescriptor {
++    pub width: f32,
++    pub ascent: f32,
++    pub descent: f32,
++    pub primitives: Vec<GpuiMathPrimitive>,
++    pub plain_text_accessibility: String,
++}
++
++impl GpuiMathCanvasDescriptor {
++    pub fn total_height(&self) -> f32 {
++        (self.ascent + self.descent).max(1.0)
++    }
++}
++
++#[derive(Debug, Clone, PartialEq, Eq)]
++pub enum NewlineAction {
++    Default,
++    ClearEmptyListLine,
++    InsertPrefix(String),
++}
++
++struct FolioDylibApi {
++    normalize_svg: unsafe extern "C" fn(*const c_char) -> *mut FolioZedSvgResult,
++    render_mermaid_svg: unsafe extern "C" fn(*const c_char, bool) -> *mut FolioZedSvgResult,
++    free_svg_result: unsafe extern "C" fn(*mut FolioZedSvgResult),
++    build_math_canvas: unsafe extern "C" fn(*const c_char, f32, bool) -> *mut FolioZedMathCanvas,
++    free_math_canvas: unsafe extern "C" fn(*mut FolioZedMathCanvas),
++    on_editor_newline: unsafe extern "C" fn(*const c_char) -> FolioZedNewlineResult,
++    free_newline_result: unsafe extern "C" fn(FolioZedNewlineResult),
++    set_code_fence_language:
++        unsafe extern "C" fn(*const c_char, usize, *const c_char) -> *mut c_char,
++    free_string: unsafe extern "C" fn(*mut c_char),
++}
++
++unsafe impl Send for FolioDylibApi {}
++unsafe impl Sync for FolioDylibApi {}
++
++unsafe extern "C" {
++    fn dlopen(filename: *const c_char, flags: c_int) -> *mut c_void;
++    fn dlsym(handle: *mut c_void, symbol: *const c_char) -> *mut c_void;
++}
++
++const RTLD_LAZY: c_int = 0x1;
++const RTLD_LOCAL: c_int = 0x4;
++
++fn candidate_dylib_paths() -> Vec<PathBuf> {
++    let mut paths = Vec::new();
++    if let Ok(env_path) = std::env::var("FOLIO_ZED_MOD_DYLIB_PATH")
++        && !env_path.is_empty()
++    {
++        paths.push(PathBuf::from(env_path));
++    }
++    if let Ok(exe_path) = std::env::current_exe()
++        && let Some(macos_dir) = exe_path.parent()
++    {
++        paths.push(macos_dir.join("../Frameworks/libfolio_zed_mod.dylib"));
++        paths.push(macos_dir.join("libfolio_zed_mod.dylib"));
++    }
++    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
++    let repo_root = manifest_dir.join("../../../../..");
++    paths.push(repo_root.join("bazel-bin/zed/folio_zed_mod/libfolio_zed_mod.dylib"));
++    paths.push(repo_root.join("target/release/libfolio_zed_mod.dylib"));
++    paths.push(repo_root.join("target/debug/libfolio_zed_mod.dylib"));
++    paths
++}
++
++unsafe fn load_sym<T: Copy>(handle: *mut c_void, name: &[u8]) -> Option<T> {
++    let sym = unsafe { dlsym(handle, name.as_ptr().cast::<c_char>()) };
++    if sym.is_null() {
++        None
++    } else {
++        Some(unsafe { std::mem::transmute_copy(&sym) })
++    }
++}
++
++fn api() -> Option<&'static FolioDylibApi> {
++    static API: OnceLock<Option<FolioDylibApi>> = OnceLock::new();
++    API.get_or_init(|| {
++        for path in candidate_dylib_paths() {
++            if !path.exists() {
++                continue;
++            }
++            let Ok(c_path) = CString::new(path.to_string_lossy().as_bytes()) else {
++                continue;
++            };
++            unsafe {
++                let handle = dlopen(c_path.as_ptr(), RTLD_LAZY | RTLD_LOCAL);
++                if handle.is_null() {
++                    continue;
++                }
++                return Some(FolioDylibApi {
++                    normalize_svg: load_sym(handle, b"folio_zed_mod_normalize_svg\0")?,
++                    render_mermaid_svg: load_sym(handle, b"folio_zed_mod_render_mermaid_svg\0")?,
++                    free_svg_result: load_sym(handle, b"folio_zed_mod_free_svg_result\0")?,
++                    build_math_canvas: load_sym(handle, b"folio_zed_mod_build_math_canvas\0")?,
++                    free_math_canvas: load_sym(handle, b"folio_zed_mod_free_math_canvas\0")?,
++                    on_editor_newline: load_sym(handle, b"folio_zed_mod_on_editor_newline\0")?,
++                    free_newline_result: load_sym(handle, b"folio_zed_mod_free_newline_result\0")?,
++                    set_code_fence_language: load_sym(
++                        handle,
++                        b"folio_zed_mod_set_code_fence_language\0",
++                    )?,
++                    free_string: load_sym(handle, b"folio_zed_mod_free_string\0")?,
++                });
++            }
++        }
++        None
++    })
++    .as_ref()
++}
++
++pub fn normalize_svg_markup(raw_svg: &str) -> Option<(String, f32, f32)> {
++    let dylib = api()?;
++    let c_raw = CString::new(raw_svg).ok()?;
++    unsafe {
++        let res = (dylib.normalize_svg)(c_raw.as_ptr());
++        if res.is_null() {
++            return None;
++        }
++        let svg = if (*res).svg.is_null() {
++            String::new()
++        } else {
++            CStr::from_ptr((*res).svg).to_string_lossy().into_owned()
++        };
++        let out = (svg, (*res).width, (*res).height);
++        (dylib.free_svg_result)(res);
++        Some(out)
++    }
++}
++
++pub fn render_mermaid_to_svg(source: &str, is_dark: bool) -> Option<String> {
++    let dylib = api()?;
++    let c_src = CString::new(source).ok()?;
++    unsafe {
++        let res = (dylib.render_mermaid_svg)(c_src.as_ptr(), is_dark);
++        if res.is_null() {
++            return None;
++        }
++        let svg = if (*res).svg.is_null() {
++            String::new()
++        } else {
++            CStr::from_ptr((*res).svg).to_string_lossy().into_owned()
++        };
++        (dylib.free_svg_result)(res);
++        (!svg.is_empty()).then_some(svg)
++    }
++}
++
++pub fn build_gpui_math_canvas(
++    latex: &str,
++    font_size_px: f32,
++    display_mode: bool,
++) -> GpuiMathCanvasDescriptor {
++    let Some(dylib) = api() else {
++        return GpuiMathCanvasDescriptor {
++            width: font_size_px,
++            ascent: font_size_px * 0.8,
++            descent: font_size_px * 0.2,
++            primitives: Vec::new(),
++            plain_text_accessibility: latex.to_string(),
++        };
++    };
++    let c_latex = CString::new(latex).unwrap_or_default();
++    unsafe {
++        let ptr = (dylib.build_math_canvas)(c_latex.as_ptr(), font_size_px, display_mode);
++        if ptr.is_null() {
++            return GpuiMathCanvasDescriptor {
++                width: font_size_px,
++                ascent: font_size_px * 0.8,
++                descent: font_size_px * 0.2,
++                primitives: Vec::new(),
++                plain_text_accessibility: latex.to_string(),
++            };
++        }
++        let slice = if (*ptr).primitives.is_null() || (*ptr).primitive_count == 0 {
++            &[]
++        } else {
++            std::slice::from_raw_parts((*ptr).primitives, (*ptr).primitive_count)
++        };
++        let mut primitives = Vec::with_capacity(slice.len());
++        for prim in slice {
++            match prim.kind {
++                0 => {
++                    let text = if prim.text.is_null() {
++                        String::new()
++                    } else {
++                        CStr::from_ptr(prim.text).to_string_lossy().into_owned()
++                    };
++                    primitives.push(GpuiMathPrimitive::ShapedGlyphRun {
++                        text,
++                        origin_x: prim.x,
++                        baseline_y: prim.y,
++                        font_size: prim.height,
++                        italic: prim.italic,
++                        bold: prim.bold,
++                        serif: prim.serif,
++                    });
++                }
++                1 => primitives.push(GpuiMathPrimitive::RuleQuad {
++                    x: prim.x,
++                    y: prim.y,
++                    width: prim.width,
++                    height: prim.height,
++                }),
++                2 => primitives.push(GpuiMathPrimitive::RadicalStroke {
++                    x: prim.x,
++                    top_y: prim.y,
++                    bottom_y: prim.height,
++                    hook_width: prim.width,
++                    radicand_width: prim.extra_f32_1,
++                    line_width: prim.extra_f32_2,
++                }),
++                _ => {}
++            }
++        }
++        let plain_text_accessibility = if (*ptr).plain_text_fallback.is_null() {
++            String::new()
++        } else {
++            CStr::from_ptr((*ptr).plain_text_fallback)
++                .to_string_lossy()
++                .into_owned()
++        };
++        let desc = GpuiMathCanvasDescriptor {
++            width: (*ptr).width,
++            ascent: (*ptr).ascent,
++            descent: (*ptr).descent,
++            primitives,
++            plain_text_accessibility,
++        };
++        (dylib.free_math_canvas)(ptr);
++        desc
++    }
++}
++
++pub fn on_editor_newline(line_up_to_cursor: &str) -> NewlineAction {
++    let Some(dylib) = api() else {
++        return NewlineAction::Default;
++    };
++    let Ok(c_line) = CString::new(line_up_to_cursor) else {
++        return NewlineAction::Default;
++    };
++    unsafe {
++        let res = (dylib.on_editor_newline)(c_line.as_ptr());
++        let action = match res.kind {
++            1 => NewlineAction::ClearEmptyListLine,
++            2 if !res.prefix.is_null() => NewlineAction::InsertPrefix(
++                CStr::from_ptr(res.prefix).to_string_lossy().into_owned(),
++            ),
++            _ => NewlineAction::Default,
++        };
++        (dylib.free_newline_result)(res);
++        action
++    }
++}
++
++pub fn set_code_fence_language(
++    source: &str,
++    fence_start_byte_offset: usize,
++    new_language: &str,
++) -> Option<String> {
++    let dylib = api()?;
++    let c_src = CString::new(source).ok()?;
++    let c_lang = CString::new(new_language).ok()?;
++    unsafe {
++        let ptr = (dylib.set_code_fence_language)(
++            c_src.as_ptr(),
++            fence_start_byte_offset,
++            c_lang.as_ptr(),
++        );
++        if ptr.is_null() {
++            return None;
++        }
++        let out = CStr::from_ptr(ptr).to_string_lossy().into_owned();
++        (dylib.free_string)(ptr);
++        Some(out)
++    }
++}
 diff --git a/crates/markdown/src/html/html_rendering.rs b/crates/markdown/src/html/html_rendering.rs
 index e1c2ba0..05c22c1 100644
 --- a/crates/markdown/src/html/html_rendering.rs
@@ -733,9 +1021,22 @@ index e1c2ba0..05c22c1 100644
              return;
          };
 diff --git a/crates/markdown/src/markdown.rs b/crates/markdown/src/markdown.rs
-index 10bd60d..14e3e63 100644
+index 10bd60d..7a49252 100644
 --- a/crates/markdown/src/markdown.rs
 +++ b/crates/markdown/src/markdown.rs
+@@ -1,3 +1,4 @@
++pub mod folio_dylib;
+ pub mod html;
+ mod mermaid;
+ pub mod parser;
+@@ -10,7 +11,6 @@ use gpui::HitboxBehavior;
+ use gpui::UnderlineStyle;
+ use language::LanguageName;
+ 
+-use log::Level;
+ use mermaid::{
+     MermaidState, ParsedMarkdownMermaidDiagram, extract_mermaid_diagrams, render_mermaid_diagram,
+ };
 @@ -69,6 +69,7 @@ pub type CodeSpanLinkCallback = Arc<dyn Fn(&str, &App) -> Option<SharedString> +
  type UrlHoverCallback = Rc<dyn Fn(Option<SharedString>, &mut Window, &mut App)>;
  type SourceClickCallback = Box<dyn Fn(usize, usize, &mut Window, &mut App) -> bool>;
@@ -1373,7 +1674,7 @@ index 10bd60d..14e3e63 100644
 +                                && let Some(raw_svg) =
 +                                    parsed_markdown.source.get(metadata.content_range.clone())
 +                                && let Some((normalized_svg, _, _)) =
-+                                    folio_zed_mod::folio_engine::normalize_svg_markup(raw_svg)
++                                    folio_dylib::normalize_svg_markup(raw_svg)
 +                            {
 +                                let svg_image = Arc::new(Image::from_bytes(
 +                                    ImageFormat::Svg,
@@ -1460,7 +1761,7 @@ index 10bd60d..14e3e63 100644
 +                                    if trimmed.starts_with("<svg")
 +                                        && trimmed.ends_with("</svg>")
 +                                        && let Some((normalized_svg, _, _)) =
-+                                            folio_zed_mod::folio_engine::normalize_svg_markup(trimmed)
++                                            folio_dylib::normalize_svg_markup(trimmed)
 +                                    {
 +                                        let svg_image = Arc::new(Image::from_bytes(
 +                                            ImageFormat::Svg,
@@ -2215,7 +2516,7 @@ index 10bd60d..14e3e63 100644
 +                        .font_size
 +                        .to_pixels(window.rem_size())
 +                        .into();
-+                    let math_canvas = folio_zed_mod::build_gpui_math_canvas(
++                    let math_canvas = folio_dylib::build_gpui_math_canvas(
 +                        latex,
 +                        font_size_px,
 +                        display_mode,
@@ -2345,7 +2646,7 @@ index 10bd60d..14e3e63 100644
          #[cfg(test)]
          if let Some(on_render) = self.on_render.as_ref() {
              on_render(rendered_markdown.text.clone());
-@@ -3401,57 +4498,1398 @@ impl Element for MarkdownElement {
+@@ -3401,57 +4498,1397 @@ impl Element for MarkdownElement {
          hitbox
      }
  
@@ -2632,7 +2933,7 @@ index 10bd60d..14e3e63 100644
 +}
 +
 +fn render_gpui_math_canvas_element(
-+    descriptor: folio_zed_mod::GpuiMathCanvasDescriptor,
++    descriptor: folio_dylib::GpuiMathCanvasDescriptor,
 +    base_text_style: TextStyle,
 +) -> AnyElement {
 +    let width = px(descriptor.width.max(4.0));
@@ -2647,7 +2948,7 @@ index 10bd60d..14e3e63 100644
 +            let origin = bounds.origin;
 +            for prim in &primitives {
 +                match prim {
-+                    folio_zed_mod::GpuiMathPrimitive::ShapedGlyphRun {
++                    folio_dylib::GpuiMathPrimitive::ShapedGlyphRun {
 +                        text,
 +                        origin_x,
 +                        baseline_y,
@@ -2685,7 +2986,7 @@ index 10bd60d..14e3e63 100644
 +                        let pos = point(origin.x + px(*origin_x), origin.y + px(top_y));
 +                        let _ = shaped.paint(pos, fsize * 1.2, gpui::TextAlign::Left, None, window, cx);
 +                    }
-+                    folio_zed_mod::GpuiMathPrimitive::RuleQuad {
++                    folio_dylib::GpuiMathPrimitive::RuleQuad {
 +                        x,
 +                        y,
 +                        width,
@@ -2703,7 +3004,7 @@ index 10bd60d..14e3e63 100644
 +                            BorderStyle::default(),
 +                        ));
 +                    }
-+                    folio_zed_mod::GpuiMathPrimitive::RadicalStroke {
++                    folio_dylib::GpuiMathPrimitive::RadicalStroke {
 +                        x,
 +                        top_y,
 +                        bottom_y,
@@ -2812,7 +3113,7 @@ index 10bd60d..14e3e63 100644
 +                let fence_line_range = block_range.start..(block_range.start + rel_end);
 +                if let Some(fence_line) = source.get(fence_line_range.clone())
 +                    && let Some(updated_line) =
-+                        folio_zed_mod::FolioZedModSession::set_code_fence_language(
++                        folio_dylib::set_code_fence_language(
 +                            fence_line,
 +                            0,
 +                            target_lang,
@@ -3128,7 +3429,7 @@ index 10bd60d..14e3e63 100644
 +        let mime = mime_part.split(';').next().unwrap_or(mime_part).trim();
 +        if mime.eq_ignore_ascii_case("image/svg+xml") {
 +            let decoded = percent_decode_str(raw_payload);
-+            let normalized = folio_zed_mod::folio_engine::normalize_svg_markup(&decoded)
++            let normalized = folio_dylib::normalize_svg_markup(&decoded)
 +                .map(|(svg, _, _)| svg)
 +                .unwrap_or(decoded);
 +            return Some(Arc::new(Image::from_bytes(
@@ -3582,20 +3883,19 @@ index 10bd60d..14e3e63 100644
 +            cx.stop_propagation();
 +            let line_start = source[..sel_start].rfind('\n').map(|idx| idx + 1).unwrap_or(0);
 +            let line_up_to_cursor = &source[line_start..sel_start];
-+            let session = folio_zed_mod::FolioZedModSession::new(true);
-+            match session.on_editor_newline(line_up_to_cursor) {
-+                folio_zed_mod::NewlineAction::InsertPrefix(prefix) => {
++            match folio_dylib::on_editor_newline(line_up_to_cursor) {
++                folio_dylib::NewlineAction::InsertPrefix(prefix) => {
 +                    let insert = format!("\n{prefix}");
 +                    on_source_edit(sel_start..sel_end, &insert, window, cx);
 +                }
-+                folio_zed_mod::NewlineAction::ClearEmptyListLine => {
++                folio_dylib::NewlineAction::ClearEmptyListLine => {
 +                    let line_end = source[sel_end..]
 +                        .find('\n')
 +                        .map(|rel| sel_end + rel)
 +                        .unwrap_or(len);
 +                    on_source_edit(line_start..line_end, "", window, cx);
 +                }
-+                folio_zed_mod::NewlineAction::Default => {
++                folio_dylib::NewlineAction::Default => {
 +                    on_source_edit(sel_start..sel_end, "\n", window, cx);
                  }
              }
@@ -3789,7 +4089,7 @@ index 10bd60d..14e3e63 100644
      }
  }
  
-@@ -3924,6 +6362,22 @@ impl MarkdownElementBuilder {
+@@ -3924,6 +6361,22 @@ impl MarkdownElementBuilder {
          }
      }
  
@@ -3812,7 +4112,7 @@ index 10bd60d..14e3e63 100644
      fn push_text_style(&mut self, style: TextStyleRefinement) {
          self.text_style_stack.push(style);
      }
-@@ -4156,12 +6610,29 @@ impl MarkdownElementBuilder {
+@@ -4156,12 +6609,29 @@ impl MarkdownElementBuilder {
          source_range: Range<usize>,
          highlights: Option<&ResolvedHighlights>,
      ) {
@@ -3844,7 +4144,7 @@ index 10bd60d..14e3e63 100644
  
          // Compute the base text style once
          let text_style = self.text_style();
-@@ -4176,22 +6647,26 @@ impl MarkdownElementBuilder {
+@@ -4176,22 +6646,26 @@ impl MarkdownElementBuilder {
              };
              let mut offset = 0;
              for (run_range, highlight_id) in runs.iter() {
@@ -3882,7 +4182,7 @@ index 10bd60d..14e3e63 100644
              }
  
              if offset < text.len() {
-@@ -4209,8 +6684,19 @@ impl MarkdownElementBuilder {
+@@ -4209,8 +6683,19 @@ impl MarkdownElementBuilder {
              self.pending_line
                  .text
                  .truncate(self.pending_line.text.len() - 1);
@@ -3904,7 +4204,7 @@ index 10bd60d..14e3e63 100644
          }
      }
  
-@@ -4300,17 +6786,30 @@ impl MarkdownElementBuilder {
+@@ -4300,17 +6785,30 @@ impl MarkdownElementBuilder {
  
      fn flush_text(&mut self) {
          let text_align = self.text_style().text_align;
@@ -3938,7 +4238,7 @@ index 10bd60d..14e3e63 100644
              })
              .unwrap_or_default();
          let text = StyledText::new(line.text).with_runs(line.runs);
-@@ -4349,6 +6848,7 @@ impl MarkdownElementBuilder {
+@@ -4349,6 +6847,7 @@ impl MarkdownElementBuilder {
                  image_links: self.rendered_image_links.into(),
                  footnote_refs: self.rendered_footnote_refs.into(),
              },
@@ -3946,7 +4246,7 @@ index 10bd60d..14e3e63 100644
          }
      }
  }
-@@ -4630,14 +7130,27 @@ impl RenderedLine {
+@@ -4630,14 +7129,27 @@ impl RenderedLine {
              return self.layout.len();
          }
  
@@ -3978,7 +4278,7 @@ index 10bd60d..14e3e63 100644
      }
  
      fn source_index_for_rendered_index(&self, rendered_index: usize) -> usize {
-@@ -4645,14 +7158,21 @@ impl RenderedLine {
+@@ -4645,14 +7157,21 @@ impl RenderedLine {
              return self.source_end;
          }
  
@@ -4004,7 +4304,7 @@ index 10bd60d..14e3e63 100644
      }
  
      /// Returns the source index for use as an exclusive range end at a word/selection boundary.
-@@ -4669,9 +7189,17 @@ impl RenderedLine {
+@@ -4669,9 +7188,17 @@ impl RenderedLine {
              .binary_search_by_key(&rendered_index, |probe| probe.rendered_index)
          {
              Ok(ix) => ix,
@@ -4024,7 +4324,7 @@ index 10bd60d..14e3e63 100644
              }
          };
  
-@@ -4679,7 +7207,9 @@ impl RenderedLine {
+@@ -4679,7 +7206,9 @@ impl RenderedLine {
          if ix > 0 {
              let prev_mapping = &self.source_mappings[ix - 1];
              let mapping = &self.source_mappings[ix];
@@ -4035,7 +4335,7 @@ index 10bd60d..14e3e63 100644
              let prev_source_end = prev_mapping.source_index + prev_segment_len;
              if prev_source_end < mapping.source_index {
                  return prev_source_end;
-@@ -4803,6 +7333,7 @@ fn source_index_for_rendered(mappings: &[SourceMapping], rendered_index: usize)
+@@ -4803,6 +7332,7 @@ fn source_index_for_rendered(mappings: &[SourceMapping], rendered_index: usize)
  pub struct RenderedMarkdown {
      element: AnyElement,
      text: RenderedText,
@@ -4043,7 +4343,7 @@ index 10bd60d..14e3e63 100644
  }
  
  #[derive(Clone)]
-@@ -4948,8 +7479,20 @@ impl RenderedText {
+@@ -4948,8 +7478,20 @@ impl RenderedText {
              }
  
              // Track fallback for Y-coordinate based matching
@@ -4066,7 +4366,7 @@ index 10bd60d..14e3e63 100644
              }
  
              // Handle gap between lines
-@@ -4991,7 +7534,10 @@ impl RenderedText {
+@@ -4991,7 +7533,10 @@ impl RenderedText {
              if source_index > line.source_end {
                  continue;
              }
@@ -4078,7 +4378,7 @@ index 10bd60d..14e3e63 100644
              let source_index = source_index.max(line_source_start);
              let line_height = line.layout.line_height();
              let rendered_index_within_line = line.rendered_index_for_source_index(source_index);
-@@ -5006,11 +7552,18 @@ impl RenderedText {
+@@ -5006,11 +7551,18 @@ impl RenderedText {
              if source_index > line.source_end {
                  continue;
              }
@@ -4100,7 +4400,7 @@ index 10bd60d..14e3e63 100644
  
              let scope = line.language.as_ref().map(|l| l.default_scope());
              let classifier = CharClassifier::new(scope);
-@@ -5053,7 +7606,10 @@ impl RenderedText {
+@@ -5053,7 +7605,10 @@ impl RenderedText {
              if source_index > line.source_end {
                  continue;
              }
@@ -4112,7 +4412,7 @@ index 10bd60d..14e3e63 100644
              return line_source_start..line.source_end;
          }
  
-@@ -5067,7 +7623,10 @@ impl RenderedText {
+@@ -5067,7 +7622,10 @@ impl RenderedText {
              if range.start > line.source_end {
                  continue;
              }
@@ -4124,7 +4424,7 @@ index 10bd60d..14e3e63 100644
              if range.end < line_source_start {
                  break;
              }
-@@ -5086,6 +7645,8 @@ impl RenderedText {
+@@ -5086,6 +7644,8 @@ impl RenderedText {
              }
              .min(text.len());
  
@@ -4133,7 +4433,7 @@ index 10bd60d..14e3e63 100644
              accumulator.push_str(&text[start..end]);
              accumulator.push('\n');
          }
-@@ -5119,13 +7680,19 @@ impl RenderedText {
+@@ -5119,13 +7679,19 @@ impl RenderedText {
  struct MarkdownInputHandler {
      markdown: Entity<Markdown>,
      rendered_text: RenderedText,
@@ -4154,7 +4454,7 @@ index 10bd60d..14e3e63 100644
          }
      }
  }
-@@ -5169,21 +7736,32 @@ impl InputHandler for MarkdownInputHandler {
+@@ -5169,21 +7735,32 @@ impl InputHandler for MarkdownInputHandler {
  
      fn replace_text_in_range(
          &mut self,
@@ -4196,7 +4496,7 @@ index 10bd60d..14e3e63 100644
      }
  
      fn unmark_text(&mut self, _: &mut Window, _: &mut App) {}
-@@ -5225,7 +7803,7 @@ impl InputHandler for MarkdownInputHandler {
+@@ -5225,7 +7802,7 @@ impl InputHandler for MarkdownInputHandler {
      }
  
      fn accepts_text_input(&mut self, _: &mut Window, _: &mut App) -> bool {
@@ -4205,7 +4505,7 @@ index 10bd60d..14e3e63 100644
      }
  }
  
-@@ -5456,7 +8034,7 @@ mod tests {
+@@ -5456,7 +8033,7 @@ mod tests {
          assert!(vertical_clipped_position.y > px(80.));
          assert!(vertical_clipped_position.y < px(200.));
  
@@ -4214,7 +4514,7 @@ index 10bd60d..14e3e63 100644
          assert_eq!(
              cx.update(|window, cx| handler.character_index_for_point(
                  horizontal_clipped_position,
-@@ -5497,7 +8075,7 @@ mod tests {
+@@ -5497,7 +8074,7 @@ mod tests {
              .expect("revealed character position")
              + point(px(0.1), first_line.layout.line_height() / 2.);
          assert!(revealed_position.x > px(0.) && revealed_position.x < px(300.));
@@ -4223,7 +4523,7 @@ index 10bd60d..14e3e63 100644
          assert_eq!(
              cx.update(|window, cx| handler.character_index_for_point(
                  revealed_position,
-@@ -9376,4 +11954,260 @@ mod tests {
+@@ -9376,4 +11953,260 @@ mod tests {
          (321, "- a\n  > b\n  ```\n  c\n  ```\n- d\n", &["c\n"]),
          (324, "1. ```\n   foo\n   ```\n\n   bar\n", &["foo\n"]),
      ];
@@ -4485,10 +4785,10 @@ index 10bd60d..14e3e63 100644
  }
 +
 diff --git a/crates/markdown/src/mermaid.rs b/crates/markdown/src/mermaid.rs
-index 63aae2a..364cd4d 100644
+index 63aae2a..2c395f7 100644
 --- a/crates/markdown/src/mermaid.rs
 +++ b/crates/markdown/src/mermaid.rs
-@@ -218,8 +218,22 @@ impl CachedMermaidDiagram {
+@@ -218,8 +218,21 @@ impl CachedMermaidDiagram {
              async move |this, cx| {
                  let value = cx
                      .background_spawn(async move {
@@ -4500,21 +4800,20 @@ index 63aae2a..364cd4d 100644
 +                        ) {
 +                            Ok(svg) => svg,
 +                            Err(primary_err) => {
-+                                let fallback = folio_zed_mod::folio_engine::render_mermaid_to_svg(
++                                let Some(svg) = crate::folio_dylib::render_mermaid_to_svg(
 +                                    &contents.contents,
 +                                    false,
-+                                );
-+                                if fallback.svg.is_empty() {
++                                ) else {
 +                                    return Err(anyhow::anyhow!("{primary_err}"));
-+                                }
-+                                fallback.svg
++                                };
++                                svg
 +                            }
 +                        };
                          let tree = svg_renderer
                              .parse_svg(svg_string.as_bytes())
                              .map_err(|error| anyhow::anyhow!("{error}"))?;
 diff --git a/crates/markdown/src/parser.rs b/crates/markdown/src/parser.rs
-index 8ac2ea9..3ee6e9e 100644
+index 8ac2ea9..33d86be 100644
 --- a/crates/markdown/src/parser.rs
 +++ b/crates/markdown/src/parser.rs
 @@ -20,7 +20,8 @@ pub const PARSE_OPTIONS: Options = Options::ENABLE_TABLES
@@ -4552,7 +4851,19 @@ index 8ac2ea9..3ee6e9e 100644
      /// Start of a root-level block (a top-level structural element like a paragraph, heading, list, etc.).
      RootStart,
      /// End of a root-level block. Contains the root block index.
-@@ -2084,4 +2094,20 @@ mod tests {
+@@ -1045,9 +1055,8 @@ mod tests {
+     use super::*;
+ 
+     const CONDITIONAL_OPTIONS: Options = Options::ENABLE_YAML_STYLE_METADATA_BLOCKS;
+-    const UNWANTED_OPTIONS: Options = Options::ENABLE_MATH
+-        .union(Options::ENABLE_DEFINITION_LIST)
+-        .union(Options::ENABLE_WIKILINKS);
++    const UNWANTED_OPTIONS: Options =
++        Options::ENABLE_DEFINITION_LIST.union(Options::ENABLE_WIKILINKS);
+ 
+     #[test]
+     fn all_options_considered() {
+@@ -2084,4 +2093,20 @@ mod tests {
              );
          }
      }
@@ -4573,18 +4884,6 @@ index 8ac2ea9..3ee6e9e 100644
 +        assert!(has_display_math, "Expected DisplayMath event for $$\\frac{{a}}{{b}}$$");
 +    }
  }
-diff --git a/crates/markdown_preview/Cargo.toml b/crates/markdown_preview/Cargo.toml
-index 1df6d72..07a8679 100644
---- a/crates/markdown_preview/Cargo.toml
-+++ b/crates/markdown_preview/Cargo.toml
-@@ -19,6 +19,7 @@ test-support = []
- anyhow.workspace = true
- db.workspace = true
- editor.workspace = true
-+folio_zed_mod.workspace = true
- gpui.workspace = true
- language.workspace = true
- log.workspace = true
 diff --git a/crates/markdown_preview/src/markdown_preview_view.rs b/crates/markdown_preview/src/markdown_preview_view.rs
 index 3b0e9f6..22b8c53 100644
 --- a/crates/markdown_preview/src/markdown_preview_view.rs
