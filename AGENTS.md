@@ -17,31 +17,28 @@ Do **not** modify files in `${MAIN_REPO_ROOT}` (`main`) or copy uncommitted chan
 
 ---
 
-## 2. Why `third_party/zed/upstream` Requires Special Handling in Worktrees
+## 2. How Moddable Zed & `libfolio_zed_mod.dylib` Work (Zero 100+ GB Local Checkout Required)
 
-Folio builds a custom-patched version of the Zed IDE (`//:zed_with_folio_mod`). Understanding how Zed is structured in this repo avoids accidentally dirtying `main` or triggering a 68 GB rebuild:
+Folio decouples the **Moddable Zed** host binary (`//third_party/zed:moddable_zed_bundle`) from Folio's own crates (`core/folio_engine`, `zed/folio_zed_mod`, `zed/folio_zed_extension`):
 
-1. **`third_party/zed/upstream/` is Git-ignored**:
-   - The full upstream Zed repository (`zed-industries/zed` at commit `56934ec0560bce8929025497411de7f5322fb6ca`) lives at `${MAIN_REPO_ROOT}/third_party/zed/upstream`.
-   - Because it is listed in `.gitignore`, creating a new Folio worktree does **not** automatically populate `<worktree>/third_party/zed/upstream`.
-2. **The Cargo `target/` directory is ~68 GB**:
-   - `${MAIN_REPO_ROOT}/third_party/zed/upstream/target` holds ~68 GB of incremental Rust build artifacts.
-   - Cloning and compiling Zed from scratch without sharing this cache takes 30+ minutes and 68 GB of disk space.
-3. **Relative path dependencies in `upstream/Cargo.toml`**:
-   - The patched `third_party/zed/upstream/Cargo.toml` references Folio's workspace crates using relative paths:
-     ```toml
-     folio_engine = { path = "../../../core/folio_engine" }
-     folio_zed_mod = { path = "../../../zed/folio_zed_mod" }
-     ```
-   - If you run `cargo build` inside `${MAIN_REPO_ROOT}/third_party/zed/upstream`, those `../../../` paths resolve to `${MAIN_REPO_ROOT}` (`main`), **ignoring your worktree's `core/folio_engine` and `zed/folio_zed_mod` changes** and tempting agents to edit `main` directly.
+1. **Dynamic Loading via `libfolio_zed_mod.dylib` (`//zed/folio_zed_mod:folio_zed_mod_dylib`)**:
+   - Upstream Zed (`third_party/zed/upstream`) has **zero** Cargo dependencies on Folio's crates.
+   - Instead, Moddable Zed dynamically loads `libfolio_zed_mod.dylib` at runtime via `dlopen`/`dlsym` (`crates/markdown/src/folio_dylib.rs`) and loads `zed/folio_zed_extension` from `Contents/Resources/builtin_extensions/` (or `FOLIO_BUILTIN_EXTENSION_DIR`).
+   - Editing `core/folio_engine/**`, `zed/folio_zed_mod/**`, or `zed/folio_zed_extension/**` **never** requires compiling upstream Zed or having `third_party/zed/upstream` checked out locally.
+2. **Content-Addressed Moddable Zed Bundle Cache (`~/.cache/folio/moddable-zed/<key>/`)**:
+   - `third_party/zed/build_moddable_zed.sh` computes a deterministic key from `PINNED_ZED_COMMIT`, the SHA-256 of `third_party/zed/patches/0002-real-zed-editor-folio-wysiwyg.patch`, and the build profile.
+   - It resolves `moddable_zed_bundle.tar` in order:
+     1. Local cache `~/.cache/folio/moddable-zed/<key>/moddable_zed_bundle.tar` (instant, 0 GB `upstream/` needed).
+     2. Prebuilt GitHub Release `moddable-zed-<key>` on `lukeredmore/folio` (~170 MB `.tar.zst` download in ~2s, 0 GB `upstream/` needed).
+     3. Local source build in `third_party/zed/upstream` using slim Cargo profile overrides (`~12 GB` instead of `103 GB`).
 
 ---
 
-## 3. How to Build & Test Zed Inside Your Own Worktree (Isolated Source + Shared Cache)
+## 3. When You Actually Need `third_party/zed/upstream` (Only When Editing `0002-*.patch`)
 
-When working on Zed (`third_party/zed/**`, `zed/folio_zed_mod/**`, `zed/folio_zed_extension/**`, or `core/folio_engine/**`) inside a Folio worktree, set up a lightweight Git worktree for `upstream` inside your Folio worktree and share the `CARGO_TARGET_DIR` cache.
+If you are only editing `core/folio_engine/**`, `zed/folio_zed_mod/**`, `zed/folio_zed_extension/**`, `Sources/**`, or `Tests/**`, **skip this section** — run `cargo test --workspace`, `bazel test //...`, or `bazel run //:zed_with_folio_mod` directly without creating `third_party/zed/upstream`.
 
-*(Note: Running `bazel run //:zed_with_folio_mod` or `./third_party/zed/run_zed_with_folio_mod.sh` inside a worktree will perform Steps 1 & 2 automatically.)*
+If you need to modify the host hooks in `third_party/zed/patches/0002-real-zed-editor-folio-wysiwyg.patch`:
 
 ### Step 1: Create an isolated `third_party/zed/upstream` worktree inside your worktree
 

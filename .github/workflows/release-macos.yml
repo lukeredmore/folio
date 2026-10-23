@@ -317,6 +317,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: |
+            ~/.cache/folio/moddable-zed
             ~/.cargo/registry
             ~/.cargo/git
             third_party/zed/upstream/target
@@ -370,6 +371,7 @@ jobs:
 
       - name: Build Folio Zed.app and package Folio-Zed.dmg
         env:
+          GH_TOKEN: ${{ github.token }}
           FOLIO_REPOSITORY: ${{ github.repository }}
           FOLIO_ZED_PROFILE: release-fast
           FOLIO_ZED_GRAPH_HASH: ${{ steps.graph.outputs.hash }}
@@ -378,8 +380,14 @@ jobs:
           APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
         run: |
-          chmod +x ./build_zed_app.sh ./scripts/package_zed_dmg.sh
+          chmod +x ./build_zed_app.sh ./scripts/package_zed_dmg.sh ./third_party/zed/build_moddable_zed.sh
           ./scripts/package_zed_dmg.sh
+          if [[ "${{ github.event_name }}" != "pull_request" && "${{ github.ref }}" == "refs/heads/main" ]]; then
+            KEY="$(./third_party/zed/build_moddable_zed.sh --print-key third_party/zed/patches/0002-real-zed-editor-folio-wysiwyg.patch "$FOLIO_ZED_PROFILE")"
+            if ! gh release view "moddable-zed-${KEY}" --repo "${{ github.repository }}" >/dev/null 2>&1; then
+              ./third_party/zed/build_moddable_zed.sh --publish-release third_party/zed/patches/0002-real-zed-editor-folio-wysiwyg.patch "$FOLIO_ZED_PROFILE" || true
+            fi
+          fi
 
       - name: Clean up temporary signing keychain
         if: always()
