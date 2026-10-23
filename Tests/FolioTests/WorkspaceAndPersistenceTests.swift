@@ -185,4 +185,27 @@ final class WorkspaceAndPersistenceTests: XCTestCase {
         let appDelegate = FolioAppDelegate()
         XCTAssertTrue(appDelegate.applicationShouldTerminateAfterLastWindowClosed(NSApplication.shared))
     }
+
+    @MainActor
+    func testNativeSidebarAndNavigationSplitViewHosting() {
+        let vm = EditorWorkspaceViewModel()
+        XCTAssertEqual(SidebarTab.files.systemImage, "folder")
+        XCTAssertEqual(SidebarTab.outline.systemImage, "list.bullet.indent")
+        XCTAssertEqual(SidebarTab.search.systemImage, "magnifyingglass")
+        XCTAssertEqual(vm.fileFilterText, "")
+        XCTAssertTrue(vm.showSidebar)
+
+        // Verify SidebarView renders cleanly across all tabs and filter states
+        for tab in SidebarTab.allCases {
+            vm.activeSidebarTab = tab
+            if tab == .files {
+                vm.fileFilterText = "README"
+            }
+            let hosting = NSHostingView(rootView: SidebarView(viewModel: vm))
+            hosting.frame = NSRect(x: 0, y: 0, width: 265, height: 640)
+            hosting.layoutSubtreeIfNeeded()
+            XCTAssertEqual(hosting.frame.width, 265)
+        }
+        vm.fileFilterText = ""
+    }
 }

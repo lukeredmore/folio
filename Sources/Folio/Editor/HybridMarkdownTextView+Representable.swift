@@ -63,6 +63,7 @@ public struct HybridMarkdownEditorRepresentable: NSViewRepresentable {
         // Set initial text and apply styling
         context.coordinator.isProgrammaticUpdate = true
         textView.string = viewModel.markdownText
+        context.coordinator.lastKnownTextHash = viewModel.markdownText.hashValue
         context.coordinator.isProgrammaticUpdate = false
         textView.typographySettings = viewModel.typography
         context.coordinator.updateInsets(for: scrollView, textView: textView, theme: viewModel.theme)
@@ -92,21 +93,29 @@ public struct HybridMarkdownEditorRepresentable: NSViewRepresentable {
         textView.editorCoordinator = context.coordinator
         viewModel.activeTextView = textView
 
-        scrollView.backgroundColor = viewModel.theme.editorBackgroundNSColor
-        textView.backgroundColor = viewModel.theme.editorBackgroundNSColor
-        textView.insertionPointColor = viewModel.theme.linkNSColor
-        textView.currentTheme = viewModel.theme
-        textView.typographySettings = viewModel.typography
+        if context.coordinator.lastTheme != viewModel.theme {
+            scrollView.backgroundColor = viewModel.theme.editorBackgroundNSColor
+            textView.backgroundColor = viewModel.theme.editorBackgroundNSColor
+            textView.insertionPointColor = viewModel.theme.linkNSColor
+            textView.currentTheme = viewModel.theme
+        }
+        if context.coordinator.lastTypography != viewModel.typography {
+            textView.typographySettings = viewModel.typography
+        }
         textView.isTypewriterMode = viewModel.typewriterMode
         textView.isSourceCodeMode = viewModel.sourceCodeMode
-        textView.isContinuousSpellCheckingEnabled = viewModel.spellCheckEnabled
+        if textView.isContinuousSpellCheckingEnabled != viewModel.spellCheckEnabled {
+            textView.isContinuousSpellCheckingEnabled = viewModel.spellCheckEnabled
+        }
         if textView.externalUpdateHighlightRanges != viewModel.externalUpdateHighlightRanges {
             textView.externalUpdateHighlightRanges = viewModel.externalUpdateHighlightRanges
         }
 
         context.coordinator.updateInsets(for: scrollView, textView: textView, theme: viewModel.theme)
 
-        if !context.coordinator.isUpdatingFromTextView && textView.string != viewModel.markdownText {
+        if !context.coordinator.isUpdatingFromTextView &&
+            context.coordinator.lastKnownTextHash != viewModel.markdownText.hashValue &&
+            textView.string != viewModel.markdownText {
             let savedSelection = textView.selectedRange()
             textView.applyProgrammaticDocumentText(viewModel.markdownText, selectedRange: savedSelection)
         } else if context.coordinator.lastTheme != viewModel.theme ||

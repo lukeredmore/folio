@@ -9,18 +9,28 @@ public final class HybridMarkdownTextView: NSTextView {
     weak var editorCoordinator: HybridMarkdownEditorRepresentable.Coordinator?
 
     public var currentTheme: EditorTheme = .daylight {
-        didSet { needsDisplay = true }
+        didSet {
+            if currentTheme != oldValue {
+                needsDisplay = true
+            }
+        }
     }
 
     public var typographySettings: EditorTypographySettings = .default {
-        didSet { needsDisplay = true }
+        didSet {
+            if typographySettings != oldValue {
+                needsDisplay = true
+            }
+        }
     }
 
     public var lineDecorations: [LineDecoration] = [] {
         didSet {
-            refreshWideTableLayout()
-            syncInlineVideoOverlayWithDecorations()
-            needsDisplay = true
+            if lineDecorations != oldValue {
+                refreshWideTableLayout()
+                syncInlineVideoOverlayWithDecorations()
+                needsDisplay = true
+            }
         }
     }
 
@@ -35,11 +45,19 @@ public final class HybridMarkdownTextView: NSTextView {
     var overflowingTables: [OverflowingTable] = []
 
     public var externalUpdateHighlightRanges: [NSRange] = [] {
-        didSet { needsDisplay = true }
+        didSet {
+            if externalUpdateHighlightRanges != oldValue {
+                needsDisplay = true
+            }
+        }
     }
 
     public var proseColumnWidth: CGFloat = 0 {
-        didSet { needsDisplay = true }
+        didSet {
+            if abs(proseColumnWidth - oldValue) > 0.5 {
+                needsDisplay = true
+            }
+        }
     }
 
     public var isTypewriterMode: Bool = false
@@ -60,6 +78,7 @@ public final class HybridMarkdownTextView: NSTextView {
         if self.string != newText {
             self.string = newText
         }
+        coord?.lastKnownTextHash = newText.hashValue
         let nsLen = (self.string as NSString).length
         let safeLoc = max(0, min(selectedRange.location, nsLen))
         let safeLen = max(0, min(selectedRange.length, nsLen - safeLoc))
