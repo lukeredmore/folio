@@ -4,84 +4,55 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$SCRIPT_DIR"
 
-ZED_DIR="$SCRIPT_DIR/third_party/zed/upstream"
-PATCH_0002="$SCRIPT_DIR/third_party/zed/patches/0002-real-zed-editor-folio-wysiwyg.patch"
-PINNED_ZED_COMMIT="56934ec0560bce8929025497411de7f5322fb6ca"
-
-MAIN_REPO_ROOT="$(cd "$(git -C "$SCRIPT_DIR" rev-parse --git-common-dir)/.." && pwd)"
-MAIN_ZED_DIR="$MAIN_REPO_ROOT/third_party/zed/upstream"
-
-if [[ ! -e "$ZED_DIR/.git" ]]; then
-  mkdir -p "$(dirname "$ZED_DIR")"
-  if [[ -d "$MAIN_ZED_DIR/.git" && "$MAIN_ZED_DIR" != "$ZED_DIR" ]]; then
-    echo "Creating isolated Zed upstream worktree from $MAIN_ZED_DIR at $PINNED_ZED_COMMIT..."
-    git -C "$MAIN_ZED_DIR" worktree prune
-    git -C "$MAIN_ZED_DIR" worktree add --detach "$ZED_DIR" "$PINNED_ZED_COMMIT"
-  else
-    echo "Cloning upstream Zed repository into $ZED_DIR at $PINNED_ZED_COMMIT..."
-    git init "$ZED_DIR"
-    git -C "$ZED_DIR" remote add origin https://github.com/zed-industries/zed.git
-    git -C "$ZED_DIR" fetch --depth 1 origin "$PINNED_ZED_COMMIT"
-    git -C "$ZED_DIR" checkout --detach FETCH_HEAD
-  fi
-fi
-
-if [[ -d "$MAIN_ZED_DIR/target" && ! -e "$ZED_DIR/target" ]]; then
-  ln -s "$MAIN_ZED_DIR/target" "$ZED_DIR/target"
-fi
-
-if ! grep -q "folio_zed_mod" "$ZED_DIR/crates/markdown/src/markdown.rs" 2>/dev/null; then
-  echo "Applying Folio patch to upstream Zed..."
-  git -C "$ZED_DIR" apply "$PATCH_0002"
-fi
-
 PROFILE="${FOLIO_ZED_PROFILE:-debug}"
-if [[ "$PROFILE" == "debug" ]]; then
-  CARGO_PROFILE_ARGS=()
-  TARGET_SUBDIR="debug"
-elif [[ "$PROFILE" == "release" ]]; then
-  CARGO_PROFILE_ARGS=(--release)
-  TARGET_SUBDIR="release"
-else
-  CARGO_PROFILE_ARGS=(--profile "$PROFILE")
-  TARGET_SUBDIR="$PROFILE"
+BAZEL_MODE_ARGS=()
+if [[ "$PROFILE" == "release" || "$PROFILE" == "release-fast" ]]; then
+  BAZEL_MODE_ARGS=(-c opt)
 fi
 
-TARGET_BASE="${CARGO_TARGET_DIR:-$ZED_DIR/target}"
-ZED_BIN="$TARGET_BASE/$TARGET_SUBDIR/zed"
-CLI_BIN="$TARGET_BASE/$TARGET_SUBDIR/cli"
+chmod +x "$SCRIPT_DIR/third_party/zed/build_moddable_zed.sh"
 
-if [[ "${FOLIO_ZED_SKIP_CARGO_BUILD:-0}" != "1" || ! -x "$ZED_BIN" ]]; then
-  if [[ "${CI:-}" == "true" || "${FOLIO_SYNC_CARGO_MTIMES:-0}" == "1" ]]; then
-    python3 "$SCRIPT_DIR/scripts/sync_cargo_mtimes.py" restore "$SCRIPT_DIR" "$TARGET_BASE"
-  fi
-  echo "Building Folio Zed binaries (profile: $PROFILE)..."
-  (
-    cd "$ZED_DIR"
-    cargo build "${CARGO_PROFILE_ARGS[@]}" --package zed --package cli --bin zed --bin cli
-  )
-  if [[ "${CI:-}" == "true" || "${FOLIO_SYNC_CARGO_MTIMES:-0}" == "1" ]]; then
-    python3 "$SCRIPT_DIR/scripts/sync_cargo_mtimes.py" record "$SCRIPT_DIR" "$TARGET_BASE"
-  fi
-fi
+echo "Building Moddable Zed bundle + Folio Zed Mod dylib in parallel via Bazel (profile: $PROFILE)..."
+bazel build "${BAZEL_MODE_ARGS[@]}" \
+  //third_party/zed:moddable_zed_bundle \
+  //zed/folio_zed_mod:folio_zed_mod_dylib \
+  //zed/folio_zed_extension:extension_bundle
+
+BUNDLE_TAR="$SCRIPT_DIR/bazel-bin/third_party/zed/moddable_zed_bundle.tar"
+DYLIB_PATH="$SCRIPT_DIR/bazel-bin/zed/folio_zed_mod/libfolio_zed_mod.dylib"
+
+MODDABLE_STAGE="$(mktemp -d)"
+trap 'rm -rf "$MODDABLE_STAGE"' EXIT
+tar -xf "$BUNDLE_TAR" -C "$MODDABLE_STAGE"
 
 APP_BUNDLE="$SCRIPT_DIR/Folio Zed.app"
 rm -rf "$APP_BUNDLE"
-mkdir -p "$APP_BUNDLE/Contents/MacOS" "$APP_BUNDLE/Contents/Resources"
+mkdir -p \
+  "$APP_BUNDLE/Contents/MacOS" \
+  "$APP_BUNDLE/Contents/Frameworks" \
+  "$APP_BUNDLE/Contents/Resources/builtin_extensions/folio-markdown-outline"
 
-cp "$ZED_BIN" "$APP_BUNDLE/Contents/MacOS/zed"
+cp "$MODDABLE_STAGE/zed" "$APP_BUNDLE/Contents/MacOS/zed"
 chmod +x "$APP_BUNDLE/Contents/MacOS/zed"
 
-if [[ -x "$CLI_BIN" ]]; then
-  cp "$CLI_BIN" "$APP_BUNDLE/Contents/MacOS/cli"
+if [[ -x "$MODDABLE_STAGE/cli" ]]; then
+  cp "$MODDABLE_STAGE/cli" "$APP_BUNDLE/Contents/MacOS/cli"
   chmod +x "$APP_BUNDLE/Contents/MacOS/cli"
 fi
+
+cp "$DYLIB_PATH" "$APP_BUNDLE/Contents/Frameworks/libfolio_zed_mod.dylib"
+chmod +x "$APP_BUNDLE/Contents/Frameworks/libfolio_zed_mod.dylib"
+
+cp "$SCRIPT_DIR/zed/folio_zed_extension/extension.toml" \
+  "$APP_BUNDLE/Contents/Resources/builtin_extensions/folio-markdown-outline/extension.toml"
+cp -R "$SCRIPT_DIR/zed/folio_zed_extension/languages" \
+  "$APP_BUNDLE/Contents/Resources/builtin_extensions/folio-markdown-outline/languages"
 
 if [[ -f "$SCRIPT_DIR/macos/FolioApp/AppIcon.icns" ]]; then
   cp "$SCRIPT_DIR/macos/FolioApp/AppIcon.icns" "$APP_BUNDLE/Contents/Resources/AppIcon.icns"
 fi
-if [[ -f "$ZED_DIR/crates/zed/resources/Document.icns" ]]; then
-  cp "$ZED_DIR/crates/zed/resources/Document.icns" "$APP_BUNDLE/Contents/Resources/Document.icns"
+if [[ -f "$MODDABLE_STAGE/Document.icns" ]]; then
+  cp "$MODDABLE_STAGE/Document.icns" "$APP_BUNDLE/Contents/Resources/Document.icns"
 fi
 
 APP_VERSION="${FOLIO_VERSION:-1.0.0}"
@@ -176,12 +147,13 @@ cat > "$PLIST_PATH" <<EOF
 EOF
 
 ENTITLEMENTS_PATH="$APP_BUNDLE/Contents/Resources/zed.entitlements"
-if [[ -f "$ZED_DIR/crates/zed/resources/zed.entitlements" ]]; then
-  sed '/com.apple.developer.associated-domains/,+1d' "$ZED_DIR/crates/zed/resources/zed.entitlements" > "$ENTITLEMENTS_PATH"
+if [[ -f "$MODDABLE_STAGE/zed.entitlements" ]]; then
+  sed '/com.apple.developer.associated-domains/,+1d' "$MODDABLE_STAGE/zed.entitlements" > "$ENTITLEMENTS_PATH"
 fi
 
 SIGN_IDENTITY="${APPLE_CODESIGN_IDENTITY:--}"
 if [[ "$SIGN_IDENTITY" == "-" ]]; then
+  codesign --force --sign "-" "$APP_BUNDLE/Contents/Frameworks/libfolio_zed_mod.dylib"
   if [[ -f "$ENTITLEMENTS_PATH" ]]; then
     codesign --force --deep --entitlements "$ENTITLEMENTS_PATH" --sign "-" "$APP_BUNDLE"
   else
@@ -189,6 +161,7 @@ if [[ "$SIGN_IDENTITY" == "-" ]]; then
   fi
 else
   echo "Signing Folio Zed.app with identity: $SIGN_IDENTITY"
+  codesign --force --options runtime --timestamp --sign "$SIGN_IDENTITY" "$APP_BUNDLE/Contents/Frameworks/libfolio_zed_mod.dylib"
   if [[ -x "$APP_BUNDLE/Contents/MacOS/cli" ]]; then
     codesign --force --deep --options runtime --timestamp --sign "$SIGN_IDENTITY" "$APP_BUNDLE/Contents/MacOS/cli"
   fi

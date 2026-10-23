@@ -54,6 +54,7 @@ ZED_BIN="${ZED_UPSTREAM_DIR}/target/debug/zed"
 ZED_CLI_BIN="${ZED_UPSTREAM_DIR}/target/debug/cli"
 FOLIO_CLI_WRAPPER="${ZED_UPSTREAM_DIR}/target/debug/folio"
 DEV_ICON_PATH="${REPO_ROOT}/macos/FolioApp/AppIcon-Dev.icns"
+DYLIB_PATH="${REPO_ROOT}/bazel-bin/zed/folio_zed_mod/libfolio_zed_mod.dylib"
 DEFAULT_WORKSPACE="${MAIN_REPO_ROOT:-${REPO_ROOT}}"
 CALLER_CWD="${BUILD_WORKING_DIRECTORY:-$(pwd)}"
 
@@ -65,6 +66,10 @@ ZED_CLI_BIN="${ZED_CLI_BIN}"
 ZED_BIN="${ZED_BIN}"
 export FOLIO_DEV_ICON_PATH="${DEV_ICON_PATH}"
 export FOLIO_DEFAULT_WORKSPACE="${DEFAULT_WORKSPACE}"
+export FOLIO_ZED_MOD_DYLIB_PATH="${DYLIB_PATH}"
+export FOLIO_BUILTIN_EXTENSION_DIR="${EXTENSION_DIR}"
+export FOLIO_ZED_MOD_DYLIB_PATH="${DYLIB_PATH}"
+export FOLIO_BUILTIN_EXTENSION_DIR="${EXTENSION_DIR}"
 
 # If the caller already passed --zed, forward arguments directly.
 for arg in "\$@"; do
@@ -150,6 +155,8 @@ done
 
 export FOLIO_DEV_ICON_PATH="${DEV_ICON_PATH}"
 export FOLIO_DEFAULT_WORKSPACE="${DEFAULT_WORKSPACE}"
+export FOLIO_ZED_MOD_DYLIB_PATH="${DYLIB_PATH}"
+export FOLIO_BUILTIN_EXTENSION_DIR="${EXTENSION_DIR}"
 
 echo "[Folio] Launching Zed IDE with Folio Markdown WYSIWYG mod..."
 if [[ ${#ZED_ARGS[@]} -eq 0 ]]; then
