@@ -52,11 +52,17 @@ ZED_BIN="$TARGET_BASE/$TARGET_SUBDIR/zed"
 CLI_BIN="$TARGET_BASE/$TARGET_SUBDIR/cli"
 
 if [[ "${FOLIO_ZED_SKIP_CARGO_BUILD:-0}" != "1" || ! -x "$ZED_BIN" ]]; then
+  if [[ "${CI:-}" == "true" || "${FOLIO_SYNC_CARGO_MTIMES:-0}" == "1" ]]; then
+    python3 "$SCRIPT_DIR/scripts/sync_cargo_mtimes.py" restore "$SCRIPT_DIR" "$TARGET_BASE"
+  fi
   echo "Building Folio Zed binaries (profile: $PROFILE)..."
   (
     cd "$ZED_DIR"
     cargo build "${CARGO_PROFILE_ARGS[@]}" --package zed --package cli --bin zed --bin cli
   )
+  if [[ "${CI:-}" == "true" || "${FOLIO_SYNC_CARGO_MTIMES:-0}" == "1" ]]; then
+    python3 "$SCRIPT_DIR/scripts/sync_cargo_mtimes.py" record "$SCRIPT_DIR" "$TARGET_BASE"
+  fi
 fi
 
 APP_BUNDLE="$SCRIPT_DIR/Folio Zed.app"
