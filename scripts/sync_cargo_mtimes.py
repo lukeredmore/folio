@@ -25,16 +25,9 @@ BASELINE_MTIME = 1700000000
 
 TRACKED_DIRS = (
     "third_party/zed/upstream",
-    "core/folio_engine",
-    "third_party/cmark_gfm",
-    "zed/folio_zed_mod",
-    "zed/folio_zed_extension",
 )
 
-TRACKED_FILES = (
-    "Cargo.toml",
-    "Cargo.lock",
-)
+TRACKED_FILES: tuple[str, ...] = ()
 
 SKIP_DIR_NAMES = {".git", "target"}
 
@@ -124,52 +117,18 @@ def git_changed_files_since_baseline(repo_root: str) -> set[str]:
     if check_ref.returncode != 0:
         return changed
 
-    diff_cmd = [
-        "git",
-        "-C",
-        repo_root,
-        "diff",
-        "--name-only",
-        baseline_ref,
-        "--",
-        "core/folio_engine",
-        "third_party/cmark_gfm",
-        "zed/folio_zed_mod",
-        "zed/folio_zed_extension",
-        "Cargo.toml",
-        "Cargo.lock",
-        "third_party/zed/patches/0002-real-zed-editor-folio-wysiwyg.patch",
-    ]
-    res = subprocess.run(diff_cmd, capture_output=True, text=True, check=False)
-    if res.returncode == 0:
-        for line in res.stdout.splitlines():
-            if line.strip():
-                changed.add(line.strip())
-
-    untracked_cmd = [
-        "git",
-        "-C",
-        repo_root,
-        "ls-files",
-        "--others",
-        "--exclude-standard",
-        "--",
-        "core/folio_engine",
-        "third_party/cmark_gfm",
-        "zed/folio_zed_mod",
-        "zed/folio_zed_extension",
-    ]
-    res_untracked = subprocess.run(
-        untracked_cmd, capture_output=True, text=True, check=False
-    )
-    if res_untracked.returncode == 0:
-        for line in res_untracked.stdout.splitlines():
-            if line.strip():
-                changed.add(line.strip())
-
     patch_rel = "third_party/zed/patches/0002-real-zed-editor-folio-wysiwyg.patch"
+    diff_res = subprocess.run(
+        ["git", "-C", repo_root, "diff", "--name-only", baseline_ref, "--", patch_rel],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    if diff_res.returncode != 0 or not diff_res.stdout.strip():
+        return changed
+
     zed_dir = os.path.join(repo_root, "third_party/zed/upstream")
-    if patch_rel in changed and os.path.isdir(zed_dir):
+    if os.path.isdir(zed_dir):
         for cmd in (
             ["git", "-C", zed_dir, "diff", "--name-only"],
             ["git", "-C", zed_dir, "ls-files", "--others", "--exclude-standard"],

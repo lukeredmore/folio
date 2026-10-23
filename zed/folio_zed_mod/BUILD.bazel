@@ -1,16 +1,29 @@
-load("@rules_rust//rust:defs.bzl", "rust_library", "rust_test")
+load("@rules_rust//rust:defs.bzl", "rust_library", "rust_shared_library", "rust_test")
 
 package(default_visibility = ["//visibility:public"])
 
+MOD_SRCS = [
+    "src/editor_session.rs",
+    "src/ffi.rs",
+    "src/inlay_folding.rs",
+    "src/lib.rs",
+    "src/math_canvas.rs",
+    "src/theme_sync.rs",
+]
+
 rust_library(
     name = "folio_zed_mod",
-    srcs = [
-        "src/editor_session.rs",
-        "src/inlay_folding.rs",
-        "src/lib.rs",
-        "src/math_canvas.rs",
-        "src/theme_sync.rs",
+    srcs = MOD_SRCS,
+    crate_name = "folio_zed_mod",
+    edition = "2021",
+    deps = [
+        "//core/folio_engine",
     ],
+)
+
+rust_shared_library(
+    name = "folio_zed_mod_dylib",
+    srcs = MOD_SRCS,
     crate_name = "folio_zed_mod",
     edition = "2021",
     deps = [
@@ -21,6 +34,16 @@ rust_library(
 rust_test(
     name = "folio_zed_mod_test",
     srcs = ["tst/session_tests.rs"],
+    edition = "2021",
+    deps = [
+        ":folio_zed_mod",
+        "//core/folio_engine",
+    ],
+)
+
+rust_test(
+    name = "folio_zed_mod_ffi_test",
+    srcs = ["tst/ffi_tests.rs"],
     edition = "2021",
     deps = [
         ":folio_zed_mod",
