@@ -91,6 +91,7 @@ def launch(binary, home):
     env.pop("ZED_STATELESS", None)
     return subprocess.Popen(
         [binary],
+        cwd=home,
         env=env,
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT,
@@ -116,11 +117,21 @@ def case_runs_next_to_vanilla_zed(binary, home):
             if handshake == FOLIO_HANDSHAKE:
                 break
             time.sleep(0.02)
+        if handshake == FOLIO_HANDSHAKE:
+            # Verify Folio Zed stays alive past settings::init / GPUI startup
+            # when launched outside a source checkout (cwd=home).
+            time.sleep(1.5)
+        early_exit = proc.poll()
         output = stop(proc)
     if ALREADY_RUNNING in output:
         return f"Folio Zed handed its launch to vanilla Zed on port {VANILLA_PORT}:\n{output}"
     if handshake != FOLIO_HANDSHAKE:
         return f"Folio Zed did not answer on port {FOLIO_PORT} (got {handshake!r}):\n{output}"
+    if early_exit is not None or "panicked at" in output:
+        return (
+            f"Folio Zed crashed during startup after binding port {FOLIO_PORT} "
+            f"(exit={early_exit}):\n{output}"
+        )
     return None
 
 
