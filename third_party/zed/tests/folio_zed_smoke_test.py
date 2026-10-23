@@ -1,13 +1,16 @@
 #!/usr/bin/env python3
-"""Smoke test for the Folio Zed single-instance check.
+"""Smoke tests for a built Folio Zed app.
 
-Usage: single_instance_smoke_test.py <Folio Zed.app | Folio-Zed.dmg>
+Usage: folio_zed_smoke_test.py <Folio Zed.app | Folio-Zed.dmg>
 
 Case 1: a vanilla Zed holds its port. Folio Zed must start, not hand off to it.
 Case 2: a Folio Zed holds the Folio port. A second Folio Zed must hand off and exit.
+Case 3: the app must report the Folio release from Info.plist, which the updater
+        compares with the latest release. Otherwise it updates in a loop.
 """
 
 import os
+import plistlib
 import signal
 import socket
 import subprocess
@@ -148,6 +151,22 @@ def case_hands_off_to_running_folio_zed(binary, home):
     return None
 
 
+def case_reports_folio_release_version(binary, home):
+    with open(os.path.join(os.path.dirname(os.path.dirname(binary)), "Info.plist"), "rb") as f:
+        info = plistlib.load(f)
+    expected = "v{}+stable.{}.{}".format(
+        info["CFBundleShortVersionString"], info["CFBundleVersion"], info["FolioCommitSHA"]
+    )
+    env = dict(os.environ, HOME=home)
+    result = subprocess.run(
+        [binary, "--system-specs"], env=env, capture_output=True, text=True, timeout=60
+    )
+    version_line = next((l for l in result.stdout.splitlines() if l.startswith("Zed: ")), "")
+    if version_line.split(" ")[1:2] != [expected]:
+        return f"Folio Zed reports {version_line!r}, but Info.plist says {expected!r}:\n{result.stdout}{result.stderr}"
+    return None
+
+
 def resolve_binary(path, stack):
     if path.endswith(".dmg"):
         mount = tempfile.mkdtemp(prefix="folio-zed-dmg-")
@@ -165,11 +184,19 @@ def main():
     if len(sys.argv) != 2:
         print(__doc__, file=sys.stderr)
         return 2
+    if read_handshake(FOLIO_PORT, len(FOLIO_HANDSHAKE)) == FOLIO_HANDSHAKE:
+        print(f"A Folio Zed is already running on port {FOLIO_PORT}. Quit it, then run again.", file=sys.stderr)
+        return 2
     cleanups = []
     failures = []
     try:
         binary = resolve_binary(sys.argv[1], cleanups)
-        for case in (case_runs_next_to_vanilla_zed, case_hands_off_to_running_folio_zed):
+        cases = (
+            case_runs_next_to_vanilla_zed,
+            case_hands_off_to_running_folio_zed,
+            case_reports_folio_release_version,
+        )
+        for case in cases:
             with tempfile.TemporaryDirectory(prefix="folio-zed-home-") as home:
                 error = case(binary, home)
             print(f"{'FAIL' if error else 'PASS'}: {case.__name__}", flush=True)
