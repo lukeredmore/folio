@@ -246,9 +246,9 @@ jobs:
           path: |
             ~/.cache/bazel-repo
             ~/.cache/bazel-disk
-          key: bazel-zed-macos26-${{ runner.os }}-${{ hashFiles('third_party/zed/patches/0002-real-zed-editor-folio-wysiwyg.patch', 'third_party/zed/build_moddable_zed.sh') }}-${{ hashFiles('MODULE.bazel', 'MODULE.bazel.lock', 'Cargo.lock', 'core/**/*.rs', 'zed/**/*.rs', 'BUILD.bazel', '.bazelrc') }}
+          key: bazel-zed-macos26-${{ runner.os }}-${{ hashFiles('third_party/zed/ZED_VERSION', 'third_party/zed/patches/0002-real-zed-editor-folio-wysiwyg.patch', 'third_party/zed/build_moddable_zed.sh') }}-${{ hashFiles('MODULE.bazel', 'MODULE.bazel.lock', 'Cargo.lock', 'core/**/*.rs', 'zed/**/*.rs', 'BUILD.bazel', '.bazelrc') }}
           restore-keys: |
-            bazel-zed-macos26-${{ runner.os }}-${{ hashFiles('third_party/zed/patches/0002-real-zed-editor-folio-wysiwyg.patch', 'third_party/zed/build_moddable_zed.sh') }}-
+            bazel-zed-macos26-${{ runner.os }}-${{ hashFiles('third_party/zed/ZED_VERSION', 'third_party/zed/patches/0002-real-zed-editor-folio-wysiwyg.patch', 'third_party/zed/build_moddable_zed.sh') }}-
             bazel-zed-macos26-${{ runner.os }}-
             bazel-opt-macos26-${{ runner.os }}-
 
@@ -320,7 +320,7 @@ jobs:
             ~/.cargo/registry
             ~/.cargo/git
             third_party/zed/upstream/target
-          key: cargo-zed-macos26-${{ runner.os }}-${{ hashFiles('third_party/zed/patches/0002-real-zed-editor-folio-wysiwyg.patch', 'third_party/zed/build_moddable_zed.sh') }}
+          key: cargo-zed-macos26-${{ runner.os }}-${{ hashFiles('third_party/zed/ZED_VERSION', 'third_party/zed/patches/0002-real-zed-editor-folio-wysiwyg.patch', 'third_party/zed/build_moddable_zed.sh') }}
           restore-keys: |
             cargo-zed-macos26-${{ runner.os }}-
 

@@ -15,6 +15,7 @@ exports_files(
 genrule(
     name = "moddable_zed_bundle",
     srcs = [
+        "ZED_VERSION",
         "patches/0002-real-zed-editor-folio-wysiwyg.patch",
         "build_moddable_zed.sh",
     ],

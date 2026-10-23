@@ -26,7 +26,7 @@ Folio decouples the **Moddable Zed** host binary (`//third_party/zed:moddable_ze
    - Instead, Moddable Zed dynamically loads `libfolio_zed_mod.dylib` at runtime via `dlopen`/`dlsym` (`crates/markdown/src/folio_dylib.rs`) and loads `zed/folio_zed_extension` from `Contents/Resources/builtin_extensions/` (or `FOLIO_BUILTIN_EXTENSION_DIR`).
    - Editing `core/folio_engine/**`, `zed/folio_zed_mod/**`, or `zed/folio_zed_extension/**` **never** requires compiling upstream Zed or having `third_party/zed/upstream` checked out locally.
 2. **Content-Addressed Moddable Zed Bundle Cache (`~/.cache/folio/moddable-zed/<key>/`)**:
-   - `third_party/zed/build_moddable_zed.sh` computes a deterministic key from `PINNED_ZED_COMMIT`, the SHA-256 of `third_party/zed/patches/0002-real-zed-editor-folio-wysiwyg.patch`, and the build profile.
+   - `third_party/zed/build_moddable_zed.sh` computes a deterministic key from the vanilla Zed release in `third_party/zed/ZED_VERSION`, the SHA-256 of `third_party/zed/patches/0002-real-zed-editor-folio-wysiwyg.patch`, and the build profile.
    - It resolves `moddable_zed_bundle.tar` in order:
      1. Local cache `~/.cache/folio/moddable-zed/<key>/moddable_zed_bundle.tar` (instant, 0 GB `upstream/` needed).
      2. Prebuilt GitHub Release `moddable-zed-<key>` on `lukeredmore/folio` (~170 MB `.tar.zst` download in ~2s, 0 GB `upstream/` needed).
@@ -49,10 +49,11 @@ WORKTREE_ROOT="$(git rev-parse --show-toplevel)"
 MAIN_REPO_ROOT="$(cd "$(git rev-parse --git-common-dir)/.." && pwd)"
 MAIN_ZED_UPSTREAM="${MAIN_REPO_ROOT}/third_party/zed/upstream"
 
-# Create a clean checkout of the base Zed commit inside your worktree
+# Create a clean checkout of the pinned vanilla Zed release inside your worktree
+ZED_TAG="v$(cat "${WORKTREE_ROOT}/third_party/zed/ZED_VERSION")"
+git -C "${MAIN_ZED_UPSTREAM}" fetch --depth 1 origin tag "${ZED_TAG}"
 git -C "${MAIN_ZED_UPSTREAM}" worktree add --detach \
-  "${WORKTREE_ROOT}/third_party/zed/upstream" \
-  56934ec0560bce8929025497411de7f5322fb6ca
+  "${WORKTREE_ROOT}/third_party/zed/upstream" "${ZED_TAG}"
 
 # Apply your worktree's Folio patch
 git -C "${WORKTREE_ROOT}/third_party/zed/upstream" apply \
@@ -95,6 +96,14 @@ Before removing your Folio worktree, prune or remove the nested `third_party/zed
 git -C "${MAIN_ZED_UPSTREAM}" worktree remove --force \
   "${WORKTREE_ROOT}/third_party/zed/upstream"
 ```
+
+### Updating the Pinned Zed Version
+
+`third_party/zed/ZED_VERSION` is the only Zed pin. It must name a vanilla Zed **stable** release (for example `1.25.3` for tag `v1.25.3`), because Folio Zed downloads that release's vanilla `zed-remote-server` for SSH, WSL, and Docker remotes. Update it in its own PR:
+
+1. Change `third_party/zed/ZED_VERSION`.
+2. Rebase the patch: check out the new tag (Step 1), apply the old patch, fix conflicts, and export it (Step 3).
+3. `build_moddable_zed.sh` fails if `crates/zed/Cargo.toml` in the checkout does not match `ZED_VERSION`.
 
 ---
 

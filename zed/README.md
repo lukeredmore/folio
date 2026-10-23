@@ -76,4 +76,4 @@ folio path/to/document.md   # Open a specific Markdown file
 
 - [`zed/folio_zed_mod/`](folio_zed_mod) — Rust crate bridging `folio_engine` to Zed's GPUI editor (`EditorSession`, `InlayFolding`, `MathCanvas`, `ThemeSync`).
 - [`zed/folio_zed_extension/`](folio_zed_extension) — Built-in Zed extension (`extension.toml`, `languages/markdown/config.toml`, `languages/markdown/outline.scm`, and slash command providers).
-- `third_party/zed/patches/0002-real-zed-editor-folio-wysiwyg.patch` — Git patch applied onto upstream Zed (`56934ec0560bce8929025497411de7f5322fb6ca`). See [`AGENTS.md`](../AGENTS.md) for worktree build and patch regeneration instructions.
+- `third_party/zed/patches/0002-real-zed-editor-folio-wysiwyg.patch` — Git patch applied onto the vanilla Zed stable release named in `third_party/zed/ZED_VERSION`. See [`AGENTS.md`](../AGENTS.md) for worktree build and patch regeneration instructions.
