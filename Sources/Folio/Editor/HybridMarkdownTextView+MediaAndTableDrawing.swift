@@ -110,8 +110,8 @@ extension HybridMarkdownTextView {
             let startX = origin.x + max(glyphX, currentOffset)
             let remainingWidth = max(80.0, (origin.x + contentWidth) - startX)
 
-            let isVideo = FolioMediaImageCache.isVideoURL(url)
-            let loadedImg = FolioMediaImageCache.shared.image(
+            let isVideo = FolioMediaImageCache.shared.isKnownVideo(for: url, baseDirectoryURL: baseDirectoryURL)
+            let loadedImg = animatedMediaFrame(
                 for: url,
                 baseDirectoryURL: baseDirectoryURL,
                 isDark: currentTheme.isDark
@@ -145,6 +145,7 @@ extension HybridMarkdownTextView {
                     width: drawW,
                     height: drawH
                 )
+                updateInlineVideoFrameIfActive(for: url, fullRange: fullRange, drawRect: drawRect)
                 img.draw(in: drawRect, from: .zero, operation: .sourceOver, fraction: dimFactor, respectFlipped: true, hints: nil)
 
                 if isVideo {

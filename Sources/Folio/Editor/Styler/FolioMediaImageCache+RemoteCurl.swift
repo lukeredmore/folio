@@ -21,17 +21,13 @@ extension FolioMediaImageCache {
                 _curlCommandPrefix = normalized
                 failedRemoteURLs.removeAll()
                 imageCache = imageCache.filter { !$0.key.hasPrefix("remote:") }
+                animatedFramesCache = animatedFramesCache.filter { !$0.key.hasPrefix("remote:") }
+                remoteVideoFileURLs.removeAll()
                 didChange = true
             }
             lock.unlock()
             if didChange {
-                if Thread.isMainThread {
-                    NotificationCenter.default.post(name: Self.imageDidLoadNotification, object: nil)
-                } else {
-                    DispatchQueue.main.async {
-                        NotificationCenter.default.post(name: Self.imageDidLoadNotification, object: nil)
-                    }
-                }
+                postImageDidLoadNotification()
             }
         }
     }
@@ -41,7 +37,13 @@ extension FolioMediaImageCache {
         lock.lock()
         failedRemoteURLs.removeAll()
         imageCache = imageCache.filter { !$0.key.hasPrefix("remote:") }
+        animatedFramesCache = animatedFramesCache.filter { !$0.key.hasPrefix("remote:") }
+        remoteVideoFileURLs.removeAll()
         lock.unlock()
+        postImageDidLoadNotification()
+    }
+
+    private func postImageDidLoadNotification() {
         if Thread.isMainThread {
             NotificationCenter.default.post(name: Self.imageDidLoadNotification, object: nil)
         } else {
@@ -186,6 +188,7 @@ extension FolioMediaImageCache {
 
     func decodeRemoteImageData(_ data: Data, url: URL) -> NSImage? {
         guard !data.isEmpty else { return nil }
+        let cacheKey = Self.remoteCacheKey(for: url)
         let isSVGExtension = url.pathExtension.lowercased() == "svg"
         let headData = data.prefix(1024)
         let headString = String(data: headData, encoding: .utf8)?
@@ -196,6 +199,17 @@ extension FolioMediaImageCache {
             if let img = svgImage(for: svgStr).image {
                 return img
             }
+        }
+        if Self.isVideoURL(url.absoluteString) || Self.looksLikeVideoData(data) {
+            if let videoThumb = cacheAndDecodeRemoteVideo(data, url: url, cacheKey: cacheKey) {
+                return videoThumb
+            }
+        }
+        if let animated = Self.decodeAnimatedFrames(from: data), let firstFrame = animated.frames.first {
+            lock.lock()
+            animatedFramesCache[cacheKey] = animated
+            lock.unlock()
+            return firstFrame
         }
         return NSImage(data: data)
     }

@@ -1,4 +1,5 @@
 import AppKit
+import AVFoundation
 import FolioEngineFFI
 import SwiftUI
 
@@ -18,6 +19,7 @@ public final class HybridMarkdownTextView: NSTextView {
     public var lineDecorations: [LineDecoration] = [] {
         didSet {
             refreshWideTableLayout()
+            syncInlineVideoOverlayWithDecorations()
             needsDisplay = true
         }
     }
@@ -45,6 +47,11 @@ public final class HybridMarkdownTextView: NSTextView {
 
     public var onToggleCheckboxAtCharacterIndex: ((Int) -> Void)?
     var mediaHoverTrackingArea: NSTrackingArea?
+    var gifAnimationTimer: Timer?
+    var activeInlineVideoContainer: NSView?
+    public internal(set) var activeInlineVideoURL: String?
+    var activeInlineVideoRange: NSRange?
+    var activeInlineVideoPlayer: AVPlayer?
 
     public func applyProgrammaticDocumentText(_ newText: String, selectedRange: NSRange) {
         let coord = editorCoordinator

@@ -10,6 +10,8 @@ public final class FolioMediaImageCache: @unchecked Sendable {
 
     let lock = NSLock()
     var imageCache: [String: NSImage] = [:]
+    var animatedFramesCache: [String: FolioAnimatedMediaFrames] = [:]
+    var remoteVideoFileURLs: [String: URL] = [:]
     var svgStringCache: [String: String] = [:]
     var inFlightRemoteURLs: Set<String> = []
     var failedRemoteURLs: Set<String> = []
@@ -150,8 +152,7 @@ public final class FolioMediaImageCache: @unchecked Sendable {
                             let (img, _) = svgImage(for: svgStr)
                             if let img = img { storeImage(img, forKey: cacheKey) }
                             return img
-                        } else if let img = NSImage(data: data) {
-                            storeImage(img, forKey: cacheKey)
+                        } else if let img = storeAndDecodeImageData(data, forKey: cacheKey) {
                             return img
                         }
                     }
@@ -161,8 +162,8 @@ public final class FolioMediaImageCache: @unchecked Sendable {
                         let (img, _) = svgImage(for: decoded)
                         if let img = img { storeImage(img, forKey: cacheKey) }
                         return img
-                    } else if let data = decoded.data(using: .utf8), let img = NSImage(data: data) {
-                        storeImage(img, forKey: cacheKey)
+                    } else if let data = decoded.data(using: .utf8),
+                              let img = storeAndDecodeImageData(data, forKey: cacheKey) {
                         return img
                     }
                 }
@@ -171,23 +172,8 @@ public final class FolioMediaImageCache: @unchecked Sendable {
         }
 
         // 4. Local file:// URL, ~/path, /absolute/path, or relative path
-        let resolvedFileURL: URL?
-        if trimmed.lowercased().hasPrefix("file://"), let url = URL(string: trimmed) {
-            resolvedFileURL = url
-        } else {
-            let unescaped = trimmed.removingPercentEncoding ?? trimmed
-            if unescaped.hasPrefix("~/") {
-                let expanded = (unescaped as NSString).expandingTildeInPath
-                resolvedFileURL = URL(fileURLWithPath: expanded)
-            } else if unescaped.hasPrefix("/") {
-                resolvedFileURL = URL(fileURLWithPath: unescaped)
-            } else {
-                let baseDir = baseDirectoryURL ?? URL(fileURLWithPath: FileManager.default.currentDirectoryPath, isDirectory: true)
-                resolvedFileURL = baseDir.appendingPathComponent(unescaped).standardizedFileURL
-            }
-        }
-
-        if let fileURL = resolvedFileURL, FileManager.default.fileExists(atPath: fileURL.path) {
+        if let fileURL = resolveLocalFileURL(from: trimmed, baseDirectoryURL: baseDirectoryURL),
+           FileManager.default.fileExists(atPath: fileURL.path) {
             let ext = fileURL.pathExtension.lowercased()
             if ext == "svg",
                let rawSVG = try? String(contentsOf: fileURL, encoding: .utf8) {
@@ -198,18 +184,13 @@ public final class FolioMediaImageCache: @unchecked Sendable {
                 }
             }
             if ["mp4", "mov", "m4v", "webm"].contains(ext) {
-                let asset = AVAsset(url: fileURL)
-                let generator = AVAssetImageGenerator(asset: asset)
-                generator.appliesPreferredTrackTransform = true
-                generator.maximumSize = CGSize(width: 960, height: 540)
-                if let cgImg = try? generator.copyCGImage(at: CMTime(seconds: 0.1, preferredTimescale: 600), actualTime: nil) {
-                    let img = NSImage(cgImage: cgImg, size: NSSize(width: cgImg.width, height: cgImg.height))
+                if let img = Self.extractVideoThumbnail(from: fileURL) {
                     storeImage(img, forKey: cacheKey)
                     return img
                 }
             }
-            if let data = try? Data(contentsOf: fileURL), let img = NSImage(data: data) {
-                storeImage(img, forKey: cacheKey)
+            if let data = try? Data(contentsOf: fileURL),
+               let img = storeAndDecodeImageData(data, forKey: cacheKey) {
                 return img
             }
             if let img = NSImage(contentsOf: fileURL) {
@@ -219,6 +200,35 @@ public final class FolioMediaImageCache: @unchecked Sendable {
         }
 
         return nil
+    }
+
+    func resolveLocalFileURL(from trimmed: String, baseDirectoryURL: URL?) -> URL? {
+        if trimmed.lowercased().hasPrefix("file://"), let url = URL(string: trimmed) {
+            return url
+        }
+        let unescaped = trimmed.removingPercentEncoding ?? trimmed
+        if unescaped.hasPrefix("~/") {
+            let expanded = (unescaped as NSString).expandingTildeInPath
+            return URL(fileURLWithPath: expanded)
+        } else if unescaped.hasPrefix("/") {
+            return URL(fileURLWithPath: unescaped)
+        } else {
+            let baseDir = baseDirectoryURL ?? URL(fileURLWithPath: FileManager.default.currentDirectoryPath, isDirectory: true)
+            return baseDir.appendingPathComponent(unescaped).standardizedFileURL
+        }
+    }
+
+    func storeAndDecodeImageData(_ data: Data, forKey key: String) -> NSImage? {
+        if let animated = Self.decodeAnimatedFrames(from: data), let first = animated.frames.first {
+            lock.lock()
+            animatedFramesCache[key] = animated
+            imageCache[key] = first
+            lock.unlock()
+            return first
+        }
+        guard let img = NSImage(data: data) else { return nil }
+        storeImage(img, forKey: key)
+        return img
     }
 
     public static func isVideoURL(_ rawURL: String) -> Bool {

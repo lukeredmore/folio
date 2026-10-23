@@ -49,6 +49,8 @@ extension FolioMediaImageCache {
                 _sshAuthConfig = newValue
                 failedRemoteURLs.removeAll()
                 imageCache = imageCache.filter { !$0.key.hasPrefix("remote:") }
+                animatedFramesCache = animatedFramesCache.filter { !$0.key.hasPrefix("remote:") }
+                remoteVideoFileURLs.removeAll()
                 didChange = true
             }
             lock.unlock()
