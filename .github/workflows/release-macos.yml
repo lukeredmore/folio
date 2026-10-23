@@ -24,7 +24,7 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Select Xcode 26+ & configure Bazel cache
+      - name: Select Xcode 26+ & configure Bazel CI profile
         run: |
           XCODE26="$(ls -d /Applications/Xcode_26*.app 2>/dev/null | sort -V | tail -n 1 || true)"
           if [[ -n "$XCODE26" ]]; then
@@ -32,10 +32,7 @@ jobs:
           fi
           xcodebuild -version
           swiftc --version
-          cat >> ~/.bazelrc <<EOF
-          build --repository_cache=~/.cache/bazel-repo
-          build --disk_cache=~/.cache/bazel-disk
-          EOF
+          echo "common --config=ci" >> ~/.bazelrc
 
       - name: Cache Bazel repository & disk cache (test)
         uses: actions/cache@v4
@@ -62,7 +59,9 @@ jobs:
 
       - name: Run all workspace tests and hygiene checks
         run: |
+          python3 ./scripts/sync_cargo_mtimes.py restore . target
           ./scripts/audit_slop.sh
+          python3 ./scripts/sync_cargo_mtimes.py record . target
           bazel test //...
 
   build-folio-dmg:
@@ -82,6 +81,17 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Cache Bazel repository & disk cache (opt)
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cache/bazel-repo
+            ~/.cache/bazel-disk
+          key: bazel-opt-macos26-${{ runner.os }}-${{ hashFiles('MODULE.bazel', 'MODULE.bazel.lock', 'Cargo.lock') }}-${{ hashFiles('Sources/**/*.swift', 'macos/**', 'core/**', 'BUILD.bazel', '.bazelrc') }}
+          restore-keys: |
+            bazel-opt-macos26-${{ runner.os }}-${{ hashFiles('MODULE.bazel', 'MODULE.bazel.lock', 'Cargo.lock') }}-
+            bazel-opt-macos26-${{ runner.os }}-
+
       - name: Select Xcode 26+ & compute Folio.dmg Bazel graph hash
         id: graph
         run: |
@@ -91,10 +101,7 @@ jobs:
           fi
           xcodebuild -version
           swiftc --version
-          cat >> ~/.bazelrc <<EOF
-          build --repository_cache=~/.cache/bazel-repo
-          build --disk_cache=~/.cache/bazel-disk
-          EOF
+          echo "common --config=ci" >> ~/.bazelrc
           chmod +x ./scripts/bazel_target_hash.sh
           GRAPH_HASH="$(./scripts/bazel_target_hash.sh //:package_folio_dmg)"
           echo "Computed //:package_folio_dmg Bazel graph hash: $GRAPH_HASH"
@@ -132,18 +139,6 @@ jobs:
             fi
           fi
           echo "reused=false" >> "$GITHUB_OUTPUT"
-
-      - name: Cache Bazel repository & disk cache (opt)
-        if: steps.dmg_cache.outputs.cache-hit != 'true' && steps.reuse_release.outputs.reused != 'true'
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/.cache/bazel-repo
-            ~/.cache/bazel-disk
-          key: bazel-opt-macos26-${{ runner.os }}-${{ hashFiles('MODULE.bazel', 'MODULE.bazel.lock', 'Cargo.lock') }}-${{ steps.graph.outputs.hash }}
-          restore-keys: |
-            bazel-opt-macos26-${{ runner.os }}-${{ hashFiles('MODULE.bazel', 'MODULE.bazel.lock', 'Cargo.lock') }}-
-            bazel-opt-macos26-${{ runner.os }}-
 
       - name: Import Apple signing certificate (if configured in Secrets)
         id: codesign
@@ -247,6 +242,17 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Cache Bazel repository & disk cache for graph query
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cache/bazel-repo
+            ~/.cache/bazel-disk
+          key: bazel-opt-macos26-${{ runner.os }}-${{ hashFiles('MODULE.bazel', 'MODULE.bazel.lock', 'Cargo.lock') }}-${{ hashFiles('Sources/**/*.swift', 'macos/**', 'core/**', 'BUILD.bazel', '.bazelrc') }}
+          restore-keys: |
+            bazel-opt-macos26-${{ runner.os }}-${{ hashFiles('MODULE.bazel', 'MODULE.bazel.lock', 'Cargo.lock') }}-
+            bazel-opt-macos26-${{ runner.os }}-
+
       - name: Select Xcode 26+ & compute Folio-Zed.dmg Bazel graph hash
         id: graph
         run: |
@@ -256,6 +262,7 @@ jobs:
           fi
           xcodebuild -version
           swiftc --version
+          echo "common --config=ci" >> ~/.bazelrc
           chmod +x ./scripts/bazel_target_hash.sh
           GRAPH_HASH="$(./scripts/bazel_target_hash.sh //:package_zed_dmg)"
           echo "Computed //:package_zed_dmg Bazel graph hash: $GRAPH_HASH"
@@ -293,6 +300,17 @@ jobs:
             fi
           fi
           echo "reused=false" >> "$GITHUB_OUTPUT"
+
+      - name: Cache Rust toolchain for Zed
+        if: steps.dmg_cache.outputs.cache-hit != 'true' && steps.reuse_release.outputs.reused != 'true'
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.rustup/toolchains
+            ~/.rustup/update-hashes
+          key: rustup-zed-macos26-${{ runner.os }}-${{ hashFiles('build_zed_app.sh') }}
+          restore-keys: |
+            rustup-zed-macos26-${{ runner.os }}-
 
       - name: Cache Cargo & Zed build artifacts
         if: steps.dmg_cache.outputs.cache-hit != 'true' && steps.reuse_release.outputs.reused != 'true'
