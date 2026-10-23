@@ -1,8 +1,9 @@
 diff --git a/Cargo.toml b/Cargo.toml
-index 770f7d0..f1e882a 100644
+index 411682a..339b674 100644
 --- a/Cargo.toml
 +++ b/Cargo.toml
-@@ -1091,6 +1091,10 @@ serde_json = { opt-level = 3 }
+@@ -1059,7 +1059,11 @@ minidumper = { opt-level = 3 }
+ serde_json = { opt-level = 3 }
  # Build single-source-file crates with cg=1 as it helps make `cargo build` of a whole workspace a bit faster
  activity_indicator = { codegen-units = 1 }
 -assets = { codegen-units = 1 }
@@ -1197,7 +1198,7 @@ index e1c2ba0..05c22c1 100644
              return;
          };
 diff --git a/crates/markdown/src/markdown.rs b/crates/markdown/src/markdown.rs
-index 10bd60d..b32bce9 100644
+index 5a28ca7..2fe5dc2 100644
 --- a/crates/markdown/src/markdown.rs
 +++ b/crates/markdown/src/markdown.rs
 @@ -1,3 +1,4 @@
@@ -1468,7 +1469,7 @@ index 10bd60d..b32bce9 100644
  }
  
  #[derive(Debug, Clone, Default)]
-@@ -1741,6 +1880,7 @@ pub struct MarkdownElement {
+@@ -1738,6 +1877,7 @@ pub struct MarkdownElement {
      code_span_link: Option<CodeSpanLinkCallback>,
      on_source_click: Option<SourceClickCallback>,
      on_checkbox_toggle: Option<CheckboxToggleCallback>,
@@ -1476,7 +1477,7 @@ index 10bd60d..b32bce9 100644
      on_mermaid_zoom: Option<MermaidZoomCallback>,
      image_resolver: Option<Box<dyn Fn(&str, &App) -> Option<ImageSource>>>,
      show_root_block_markers: bool,
-@@ -1768,6 +1908,7 @@ impl MarkdownElement {
+@@ -1765,6 +1905,7 @@ impl MarkdownElement {
              code_span_link: None,
              on_source_click: None,
              on_checkbox_toggle: None,
@@ -1484,7 +1485,7 @@ index 10bd60d..b32bce9 100644
              on_mermaid_zoom: None,
              image_resolver: None,
              show_root_block_markers: false,
-@@ -1856,6 +1997,14 @@ impl MarkdownElement {
+@@ -1853,6 +1994,14 @@ impl MarkdownElement {
          self
      }
  
@@ -1499,7 +1500,7 @@ index 10bd60d..b32bce9 100644
      /// Registers a callback invoked when a mermaid diagram's zoom level changes.
      /// Consumers that scroll the markdown can use this to keep the diagram's
      /// position anchored while it grows or shrinks.
-@@ -1983,6 +2132,16 @@ impl MarkdownElement {
+@@ -1980,6 +2129,16 @@ impl MarkdownElement {
                              });
                          }
                      })
@@ -1516,7 +1517,7 @@ index 10bd60d..b32bce9 100644
              } else {
                  wrapper
              };
-@@ -2009,6 +2168,50 @@ impl MarkdownElement {
+@@ -2006,6 +2165,50 @@ impl MarkdownElement {
          builder.push_image_child(image_element);
      }
  
@@ -1567,7 +1568,7 @@ index 10bd60d..b32bce9 100644
      fn push_markdown_paragraph(
          &self,
          builder: &mut MarkdownElementBuilder,
-@@ -2252,7 +2455,7 @@ impl MarkdownElement {
+@@ -2249,7 +2452,7 @@ impl MarkdownElement {
      fn push_markdown_list_item(
          &self,
          builder: &mut MarkdownElementBuilder,
@@ -1576,7 +1577,7 @@ index 10bd60d..b32bce9 100644
          range: &Range<usize>,
          markdown_end: usize,
      ) {
-@@ -2265,7 +2468,7 @@ impl MarkdownElement {
+@@ -2262,7 +2465,7 @@ impl MarkdownElement {
                  })
                  .h_flex()
                  .items_start()
@@ -1585,7 +1586,7 @@ index 10bd60d..b32bce9 100644
              range,
              markdown_end,
          );
-@@ -2289,8 +2492,11 @@ impl MarkdownElement {
+@@ -2286,8 +2489,11 @@ impl MarkdownElement {
              return;
          }
  
@@ -1597,7 +1598,7 @@ index 10bd60d..b32bce9 100644
              && (rendered_text
                  .image_link_for_position(window.mouse_position())
                  .is_some()
-@@ -2341,7 +2547,9 @@ impl MarkdownElement {
+@@ -2338,7 +2544,9 @@ impl MarkdownElement {
                          let position_result =
                              rendered_text.source_index_for_position(event.position);
  
@@ -1608,7 +1609,7 @@ index 10bd60d..b32bce9 100644
                              if let Some(footnote_ref) =
                                  rendered_text.footnote_ref_for_source_index(source_index)
                              {
-@@ -2618,16 +2826,59 @@ impl Element for MarkdownElement {
+@@ -2615,16 +2823,59 @@ impl Element for MarkdownElement {
              }
          };
  
@@ -1669,7 +1670,7 @@ index 10bd60d..b32bce9 100644
          let mut builder = MarkdownElementBuilder::new(
              &self.style.container_style,
              self.style.base_text_style.clone(),
-@@ -2641,6 +2892,9 @@ impl Element for MarkdownElement {
+@@ -2638,6 +2889,9 @@ impl Element for MarkdownElement {
          };
          let mut code_block_ids = HashSet::default();
          let mut current_code_block_text = None;
@@ -1679,7 +1680,7 @@ index 10bd60d..b32bce9 100644
  
          let mut current_img_block_range: Option<Range<usize>> = None;
          let mut handled_html_block = false;
-@@ -2695,6 +2949,19 @@ impl Element for MarkdownElement {
+@@ -2692,6 +2946,19 @@ impl Element for MarkdownElement {
                  MarkdownEvent::Start(tag) => {
                      match tag {
                          MarkdownTag::Image { dest_url, .. } => {
@@ -1699,7 +1700,7 @@ index 10bd60d..b32bce9 100644
                              let alt_text = collect_image_alt_text(
                                  &parsed_markdown.events[index..],
                                  &parsed_markdown.source,
-@@ -2714,6 +2981,10 @@ impl Element for MarkdownElement {
+@@ -2711,6 +2978,10 @@ impl Element for MarkdownElement {
                                  .image_resolver
                                  .as_ref()
                                  .and_then(|resolve| resolve(dest_url.as_ref(), cx))
@@ -1710,7 +1711,7 @@ index 10bd60d..b32bce9 100644
                              {
                                  current_img_block_range = Some(range.clone());
                                  self.push_markdown_image(
-@@ -2738,6 +3009,16 @@ impl Element for MarkdownElement {
+@@ -2735,6 +3006,16 @@ impl Element for MarkdownElement {
                                  markdown_end,
                                  text_align_override,
                              );
@@ -1727,7 +1728,7 @@ index 10bd60d..b32bce9 100644
                          }
                          MarkdownTag::Heading { level, .. } => {
                              let text_align_override = builder
-@@ -2751,6 +3032,43 @@ impl Element for MarkdownElement {
+@@ -2748,6 +3029,43 @@ impl Element for MarkdownElement {
                                  markdown_end,
                                  text_align_override,
                              );
@@ -1771,7 +1772,7 @@ index 10bd60d..b32bce9 100644
                          }
                          MarkdownTag::BlockQuote(kind) => {
                              self.push_markdown_block_quote(
-@@ -2759,9 +3077,61 @@ impl Element for MarkdownElement {
+@@ -2756,9 +3074,61 @@ impl Element for MarkdownElement {
                                  range,
                                  markdown_end,
                              );
@@ -1835,7 +1836,7 @@ index 10bd60d..b32bce9 100644
                                  && let Some(mermaid_diagram) =
                                      parsed_markdown.mermaid_diagrams.get(&range.start)
                              {
-@@ -2799,6 +3169,34 @@ impl Element for MarkdownElement {
+@@ -2796,6 +3166,34 @@ impl Element for MarkdownElement {
                                  continue;
                              }
  
@@ -1870,7 +1871,7 @@ index 10bd60d..b32bce9 100644
                              current_code_block_text = match &self.code_block_renderer {
                                  CodeBlockRenderer::Default {
                                      copy_button_visibility,
-@@ -2810,6 +3208,14 @@ impl Element for MarkdownElement {
+@@ -2807,6 +3205,14 @@ impl Element for MarkdownElement {
                              };
  
                              let language = parsed_markdown.code_block_language(kind);
@@ -1885,7 +1886,7 @@ index 10bd60d..b32bce9 100644
  
                              let is_indented = matches!(kind, CodeBlockKind::Indented);
                              let scroll_handle = if self.style.code_block_overflow_x_scroll {
-@@ -2889,15 +3295,72 @@ impl Element for MarkdownElement {
+@@ -2886,15 +3292,72 @@ impl Element for MarkdownElement {
                                      builder.push_text_style(self.style.code_block.text.to_owned());
                                      builder.push_code_block(language);
                                      builder.push_div(code_block, range, markdown_end);
@@ -1961,7 +1962,7 @@ index 10bd60d..b32bce9 100644
                              }
                          }
                          MarkdownTag::List(bullet_index) => {
-@@ -2912,9 +3375,83 @@ impl Element for MarkdownElement {
+@@ -2909,9 +3372,83 @@ impl Element for MarkdownElement {
                              );
                          }
                          MarkdownTag::Item => {
@@ -2047,7 +2048,7 @@ index 10bd60d..b32bce9 100644
                                  let source = &parsed_markdown.source()[range.clone()];
                                  let checkbox = Checkbox::new(
                                      ElementId::Name(source.to_string().into()),
-@@ -2933,37 +3470,225 @@ impl Element for MarkdownElement {
+@@ -2930,37 +3467,225 @@ impl Element for MarkdownElement {
                                      checkbox.visualization_only(true)
                                  };
  
@@ -2296,7 +2297,7 @@ index 10bd60d..b32bce9 100644
                              builder.push_text_style(TextStyleRefinement {
                                  strikethrough: Some(StrikethroughStyle {
                                      thickness: px(1.),
-@@ -2974,6 +3699,39 @@ impl Element for MarkdownElement {
+@@ -2971,6 +3696,39 @@ impl Element for MarkdownElement {
                          }
                          MarkdownTag::Link { dest_url, .. } => {
                              if builder.code_block_stack.is_empty() {
@@ -2336,7 +2337,7 @@ index 10bd60d..b32bce9 100644
                                  builder.link_depth += 1;
                                  builder.push_link(dest_url.clone(), range.clone());
                                  let style = self
-@@ -3139,19 +3897,49 @@ impl Element for MarkdownElement {
+@@ -3136,19 +3894,49 @@ impl Element for MarkdownElement {
                          self.pop_markdown_paragraph(&mut builder);
                      }
                      MarkdownTagEnd::Heading(_) => {
@@ -2387,7 +2388,7 @@ index 10bd60d..b32bce9 100644
  
                          if let CodeBlockRenderer::Default {
                              copy_button_visibility,
-@@ -3159,10 +3947,13 @@ impl Element for MarkdownElement {
+@@ -3156,10 +3944,13 @@ impl Element for MarkdownElement {
                              ..
                          } = &self.code_block_renderer
                              && (*copy_button_visibility != CopyButtonVisibility::Hidden
@@ -2402,7 +2403,7 @@ index 10bd60d..b32bce9 100644
                              builder.modify_current_div(|el| {
                                  let any_hover = copy_button_visibility
                                      == CopyButtonVisibility::VisibleOnHover
-@@ -3179,6 +3970,7 @@ impl Element for MarkdownElement {
+@@ -3176,6 +3967,7 @@ impl Element for MarkdownElement {
                                          format!("markdown_code_block_buttons_{}", range.end)
                                      })
                                      .gap_0p5()
@@ -2410,7 +2411,7 @@ index 10bd60d..b32bce9 100644
                                      .absolute()
                                      .bg(cx.theme().colors().editor_background)
                                      .when_else(
-@@ -3188,6 +3980,18 @@ impl Element for MarkdownElement {
+@@ -3185,6 +3977,18 @@ impl Element for MarkdownElement {
                                          },
                                          |this| this.top_1p5().right_1p5(),
                                      )
@@ -2429,7 +2430,7 @@ index 10bd60d..b32bce9 100644
                                      .when(
                                          wrap_button_visibility != WrapButtonVisibility::Hidden,
                                          |this| {
-@@ -3229,13 +4033,51 @@ impl Element for MarkdownElement {
+@@ -3226,13 +4030,51 @@ impl Element for MarkdownElement {
                      MarkdownTagEnd::Item => {
                          self.pop_markdown_list_item(&mut builder);
                      }
@@ -2485,7 +2486,7 @@ index 10bd60d..b32bce9 100644
                          }
                      }
                      MarkdownTagEnd::Table => {
-@@ -3286,54 +4128,166 @@ impl Element for MarkdownElement {
+@@ -3283,54 +4125,166 @@ impl Element for MarkdownElement {
                      );
                  }
                  MarkdownEvent::Code => {
@@ -2664,7 +2665,7 @@ index 10bd60d..b32bce9 100644
                  }
                  MarkdownEvent::Rule => {
                      builder.push_div(
-@@ -3355,6 +4309,148 @@ impl Element for MarkdownElement {
+@@ -3352,6 +4306,148 @@ impl Element for MarkdownElement {
                  MarkdownEvent::TaskListMarker(_) => {
                      // handled inside the `MarkdownTag::Item` case
                  }
@@ -2813,7 +2814,7 @@ index 10bd60d..b32bce9 100644
                  MarkdownEvent::FootnoteReference(label) => {
                      builder.push_footnote_ref(label.clone(), range.clone());
                      builder.push_text_style(self.style.link.clone());
-@@ -3373,6 +4469,7 @@ impl Element for MarkdownElement {
+@@ -3370,6 +4466,7 @@ impl Element for MarkdownElement {
                  .update(cx, |markdown, _| markdown.clear_code_block_scroll_handles());
          }
          let mut rendered_markdown = builder.build();
@@ -2821,7 +2822,7 @@ index 10bd60d..b32bce9 100644
          #[cfg(test)]
          if let Some(on_render) = self.on_render.as_ref() {
              on_render(rendered_markdown.text.clone());
-@@ -3382,76 +4479,654 @@ impl Element for MarkdownElement {
+@@ -3379,76 +4476,654 @@ impl Element for MarkdownElement {
          (layout_id, rendered_markdown)
      }
  
@@ -3537,7 +3538,7 @@ index 10bd60d..b32bce9 100644
      }
  }
  
-@@ -3924,6 +5599,22 @@ impl MarkdownElementBuilder {
+@@ -3921,6 +5596,22 @@ impl MarkdownElementBuilder {
          }
      }
  
@@ -3560,7 +3561,7 @@ index 10bd60d..b32bce9 100644
      fn push_text_style(&mut self, style: TextStyleRefinement) {
          self.text_style_stack.push(style);
      }
-@@ -4156,12 +5847,29 @@ impl MarkdownElementBuilder {
+@@ -4153,12 +5844,29 @@ impl MarkdownElementBuilder {
          source_range: Range<usize>,
          highlights: Option<&ResolvedHighlights>,
      ) {
@@ -3592,7 +3593,7 @@ index 10bd60d..b32bce9 100644
  
          // Compute the base text style once
          let text_style = self.text_style();
-@@ -4176,22 +5884,26 @@ impl MarkdownElementBuilder {
+@@ -4175,22 +5883,26 @@ impl MarkdownElementBuilder {
              };
              let mut offset = 0;
              for (run_range, highlight_id) in runs.iter() {
@@ -3630,7 +3631,7 @@ index 10bd60d..b32bce9 100644
              }
  
              if offset < text.len() {
-@@ -4209,8 +5921,19 @@ impl MarkdownElementBuilder {
+@@ -4208,8 +5920,19 @@ impl MarkdownElementBuilder {
              self.pending_line
                  .text
                  .truncate(self.pending_line.text.len() - 1);
@@ -3652,7 +3653,7 @@ index 10bd60d..b32bce9 100644
          }
      }
  
-@@ -4300,17 +6023,30 @@ impl MarkdownElementBuilder {
+@@ -4299,17 +6022,30 @@ impl MarkdownElementBuilder {
  
      fn flush_text(&mut self) {
          let text_align = self.text_style().text_align;
@@ -3686,7 +3687,7 @@ index 10bd60d..b32bce9 100644
              })
              .unwrap_or_default();
          let text = StyledText::new(line.text).with_runs(line.runs);
-@@ -4349,6 +6085,7 @@ impl MarkdownElementBuilder {
+@@ -4348,6 +6084,7 @@ impl MarkdownElementBuilder {
                  image_links: self.rendered_image_links.into(),
                  footnote_refs: self.rendered_footnote_refs.into(),
              },
@@ -3694,7 +3695,7 @@ index 10bd60d..b32bce9 100644
          }
      }
  }
-@@ -4630,14 +6367,27 @@ impl RenderedLine {
+@@ -4629,14 +6366,27 @@ impl RenderedLine {
              return self.layout.len();
          }
  
@@ -3726,7 +3727,7 @@ index 10bd60d..b32bce9 100644
      }
  
      fn source_index_for_rendered_index(&self, rendered_index: usize) -> usize {
-@@ -4645,14 +6395,21 @@ impl RenderedLine {
+@@ -4644,14 +6394,21 @@ impl RenderedLine {
              return self.source_end;
          }
  
@@ -3752,7 +3753,7 @@ index 10bd60d..b32bce9 100644
      }
  
      /// Returns the source index for use as an exclusive range end at a word/selection boundary.
-@@ -4669,9 +6426,17 @@ impl RenderedLine {
+@@ -4668,9 +6425,17 @@ impl RenderedLine {
              .binary_search_by_key(&rendered_index, |probe| probe.rendered_index)
          {
              Ok(ix) => ix,
@@ -3772,7 +3773,7 @@ index 10bd60d..b32bce9 100644
              }
          };
  
-@@ -4679,7 +6444,9 @@ impl RenderedLine {
+@@ -4678,7 +6443,9 @@ impl RenderedLine {
          if ix > 0 {
              let prev_mapping = &self.source_mappings[ix - 1];
              let mapping = &self.source_mappings[ix];
@@ -3783,7 +3784,7 @@ index 10bd60d..b32bce9 100644
              let prev_source_end = prev_mapping.source_index + prev_segment_len;
              if prev_source_end < mapping.source_index {
                  return prev_source_end;
-@@ -4803,6 +6570,7 @@ fn source_index_for_rendered(mappings: &[SourceMapping], rendered_index: usize)
+@@ -4802,6 +6569,7 @@ fn source_index_for_rendered(mappings: &[SourceMapping], rendered_index: usize)
  pub struct RenderedMarkdown {
      element: AnyElement,
      text: RenderedText,
@@ -3791,7 +3792,7 @@ index 10bd60d..b32bce9 100644
  }
  
  #[derive(Clone)]
-@@ -4948,8 +6716,20 @@ impl RenderedText {
+@@ -4947,8 +6715,20 @@ impl RenderedText {
              }
  
              // Track fallback for Y-coordinate based matching
@@ -3814,7 +3815,7 @@ index 10bd60d..b32bce9 100644
              }
  
              // Handle gap between lines
-@@ -4991,7 +6771,10 @@ impl RenderedText {
+@@ -4990,7 +6770,10 @@ impl RenderedText {
              if source_index > line.source_end {
                  continue;
              }
@@ -3826,7 +3827,7 @@ index 10bd60d..b32bce9 100644
              let source_index = source_index.max(line_source_start);
              let line_height = line.layout.line_height();
              let rendered_index_within_line = line.rendered_index_for_source_index(source_index);
-@@ -5006,11 +6789,18 @@ impl RenderedText {
+@@ -5005,11 +6788,18 @@ impl RenderedText {
              if source_index > line.source_end {
                  continue;
              }
@@ -3848,7 +3849,7 @@ index 10bd60d..b32bce9 100644
  
              let scope = line.language.as_ref().map(|l| l.default_scope());
              let classifier = CharClassifier::new(scope);
-@@ -5053,7 +6843,10 @@ impl RenderedText {
+@@ -5052,7 +6842,10 @@ impl RenderedText {
              if source_index > line.source_end {
                  continue;
              }
@@ -3860,7 +3861,7 @@ index 10bd60d..b32bce9 100644
              return line_source_start..line.source_end;
          }
  
-@@ -5067,7 +6860,10 @@ impl RenderedText {
+@@ -5066,7 +6859,10 @@ impl RenderedText {
              if range.start > line.source_end {
                  continue;
              }
@@ -3872,7 +3873,7 @@ index 10bd60d..b32bce9 100644
              if range.end < line_source_start {
                  break;
              }
-@@ -5086,6 +6882,8 @@ impl RenderedText {
+@@ -5085,6 +6881,8 @@ impl RenderedText {
              }
              .min(text.len());
  
@@ -3881,7 +3882,7 @@ index 10bd60d..b32bce9 100644
              accumulator.push_str(&text[start..end]);
              accumulator.push('\n');
          }
-@@ -5119,13 +6917,19 @@ impl RenderedText {
+@@ -5118,13 +6916,19 @@ impl RenderedText {
  struct MarkdownInputHandler {
      markdown: Entity<Markdown>,
      rendered_text: RenderedText,
@@ -3902,7 +3903,7 @@ index 10bd60d..b32bce9 100644
          }
      }
  }
-@@ -5169,21 +6973,32 @@ impl InputHandler for MarkdownInputHandler {
+@@ -5168,21 +6972,32 @@ impl InputHandler for MarkdownInputHandler {
  
      fn replace_text_in_range(
          &mut self,
@@ -3944,7 +3945,7 @@ index 10bd60d..b32bce9 100644
      }
  
      fn unmark_text(&mut self, _: &mut Window, _: &mut App) {}
-@@ -5225,7 +7040,7 @@ impl InputHandler for MarkdownInputHandler {
+@@ -5224,7 +7039,7 @@ impl InputHandler for MarkdownInputHandler {
      }
  
      fn accepts_text_input(&mut self, _: &mut Window, _: &mut App) -> bool {
@@ -3953,7 +3954,7 @@ index 10bd60d..b32bce9 100644
      }
  }
  
-@@ -5456,7 +7271,7 @@ mod tests {
+@@ -5455,7 +7270,7 @@ mod tests {
          assert!(vertical_clipped_position.y > px(80.));
          assert!(vertical_clipped_position.y < px(200.));
  
@@ -3962,7 +3963,7 @@ index 10bd60d..b32bce9 100644
          assert_eq!(
              cx.update(|window, cx| handler.character_index_for_point(
                  horizontal_clipped_position,
-@@ -5497,7 +7312,7 @@ mod tests {
+@@ -5496,7 +7311,7 @@ mod tests {
              .expect("revealed character position")
              + point(px(0.1), first_line.layout.line_height() / 2.);
          assert!(revealed_position.x > px(0.) && revealed_position.x < px(300.));
@@ -3971,7 +3972,7 @@ index 10bd60d..b32bce9 100644
          assert_eq!(
              cx.update(|window, cx| handler.character_index_for_point(
                  revealed_position,
-@@ -9376,4 +11191,235 @@ mod tests {
+@@ -9373,4 +11188,235 @@ mod tests {
          (321, "- a\n  > b\n  ```\n  c\n  ```\n- d\n", &["c\n"]),
          (324, "1. ```\n   foo\n   ```\n\n   bar\n", &["foo\n"]),
      ];
@@ -4624,7 +4625,7 @@ index 3b0e9f6..22b8c53 100644
              .flex_1()
              .min_h_0()
 diff --git a/crates/release_channel/src/lib.rs b/crates/release_channel/src/lib.rs
-index c79ca14..77ca828 100644
+index c79ca14..c8d3aa2 100644
 --- a/crates/release_channel/src/lib.rs
 +++ b/crates/release_channel/src/lib.rs
 @@ -9,13 +9,48 @@ use semver::Version;
@@ -4680,8 +4681,106 @@ index c79ca14..77ca828 100644
  });
  
  /// When a crate in zed is used as a dependency that uses the `crane` nix
+@@ -91,6 +126,10 @@ struct GlobalAppVersion(Version);
+ 
+ impl Global for GlobalAppVersion {}
+ 
++struct GlobalUpstreamZedVersion(Version);
++
++impl Global for GlobalUpstreamZedVersion {}
++
+ /// The version of Zed.
+ pub struct AppVersion;
+ 
+@@ -124,6 +163,20 @@ impl AppVersion {
+         version
+     }
+ 
++    /// Sets the vanilla Zed release version that this build is based on.
++    pub fn set_upstream(version: Version, cx: &mut App) {
++        cx.set_global(GlobalUpstreamZedVersion(version));
++    }
++
++    /// Returns the vanilla Zed release version, which selects the vanilla remote server.
++    pub fn upstream(cx: &App) -> Version {
++        if cx.has_global::<GlobalUpstreamZedVersion>() {
++            cx.global::<GlobalUpstreamZedVersion>().0.clone()
++        } else {
++            Self::global(cx)
++        }
++    }
++
+     /// Returns the global version number.
+     pub fn global(cx: &App) -> Version {
+         if cx.has_global::<GlobalAppVersion>() {
+diff --git a/crates/remote/src/transport/docker.rs b/crates/remote/src/transport/docker.rs
+index fb7c221..f33239a 100644
+--- a/crates/remote/src/transport/docker.rs
++++ b/crates/remote/src/transport/docker.rs
+@@ -85,7 +85,7 @@ impl DockerExecConnection {
+         let (release_channel, version, commit) = cx.update(|cx| {
+             (
+                 ReleaseChannel::global(cx),
+-                AppVersion::global(cx),
++                AppVersion::upstream(cx),
+                 AppCommitSha::try_global(cx),
+             )
+         });
+@@ -283,7 +283,7 @@ impl DockerExecConnection {
+                     dst_path
+                 )
+             }
+-            _ => Ok(Some(AppVersion::global(cx))),
++            _ => Ok(Some(AppVersion::upstream(cx))),
+         })?;
+ 
+         let tmp_path_gz = paths::remote_server_dir_relative().join(
+diff --git a/crates/remote/src/transport/ssh.rs b/crates/remote/src/transport/ssh.rs
+index ed0987a..e4d44c3 100644
+--- a/crates/remote/src/transport/ssh.rs
++++ b/crates/remote/src/transport/ssh.rs
+@@ -1002,7 +1002,7 @@ impl SshRemoteConnection {
+         };
+ 
+         let (release_channel, version) =
+-            cx.update(|cx| (ReleaseChannel::global(cx), AppVersion::global(cx)));
++            cx.update(|cx| (ReleaseChannel::global(cx), AppVersion::upstream(cx)));
+         this.remote_binary_path = Some(
+             this.ensure_server_binary(&delegate, release_channel, version, cx)
+                 .await?,
+@@ -1082,7 +1082,7 @@ impl SshRemoteConnection {
+                     dst_path
+                 )
+             }
+-            _ => Ok(Some(AppVersion::global(cx))),
++            _ => Ok(Some(AppVersion::upstream(cx))),
+         })?;
+ 
+         let tmp_path_compressed = remote_server_dir_relative().join(
+diff --git a/crates/remote/src/transport/wsl.rs b/crates/remote/src/transport/wsl.rs
+index 25cce39..bd77088 100644
+--- a/crates/remote/src/transport/wsl.rs
++++ b/crates/remote/src/transport/wsl.rs
+@@ -74,7 +74,7 @@ impl WslRemoteConnection {
+             connection_options.user
+         );
+         let (release_channel, version) =
+-            cx.update(|cx| (ReleaseChannel::global(cx), AppVersion::global(cx)));
++            cx.update(|cx| (ReleaseChannel::global(cx), AppVersion::upstream(cx)));
+ 
+         let mut this = Self {
+             connection_options,
+@@ -276,7 +276,7 @@ impl WslRemoteConnection {
+ 
+         let wanted_version = match release_channel {
+             ReleaseChannel::Nightly | ReleaseChannel::Dev => None,
+-            _ => Some(cx.update(|cx| AppVersion::global(cx))),
++            _ => Some(cx.update(|cx| AppVersion::upstream(cx))),
+         };
+ 
+         let src_path = delegate
 diff --git a/crates/zed/src/main.rs b/crates/zed/src/main.rs
-index c3bde91..5215c29 100644
+index c3bde91..067d905 100644
 --- a/crates/zed/src/main.rs
 +++ b/crates/zed/src/main.rs
 @@ -302,10 +302,16 @@ fn main() {
@@ -4734,7 +4833,18 @@ index c3bde91..5215c29 100644
      let app = build_application()
          .with_assets(Assets)
          .with_restart_arguments(restart_arguments);
-@@ -1553,6 +1581,29 @@ pub(crate) async fn restore_or_create_workspace(
+@@ -490,6 +518,10 @@ fn main() {
+         zed_actions::init();
+ 
+         release_channel::init(app_version, cx);
++        AppVersion::set_upstream(
++            env!("CARGO_PKG_VERSION").parse().expect("invalid version in Cargo.toml"),
++            cx,
++        );
+         gpui_tokio::init(cx);
+         if let Some(app_commit_sha) = app_commit_sha {
+             AppCommitSha::set_global(app_commit_sha, cx);
+@@ -1553,6 +1585,29 @@ pub(crate) async fn restore_or_create_workspace(
              })
              .await?;
          }
@@ -4764,7 +4874,7 @@ index c3bde91..5215c29 100644
      } else if matches!(kvp.read_kvp(FIRST_OPEN), Ok(None)) {
          cx.update(|cx| show_onboarding_view(app_state, cx)).await?;
      } else {
-@@ -1630,7 +1681,7 @@ pub(crate) async fn restorable_workspace_locations(
+@@ -1630,7 +1685,7 @@ pub(crate) async fn restorable_workspace_locations(
                  })
          }
          workspace::RestoreOnStartupBehavior::LastSession => {
@@ -4773,7 +4883,7 @@ index c3bde91..5215c29 100644
                  let ordered = last_session_window_stack.is_some();
  
                  let mut locations = workspace::last_session_workspace_locations(
-@@ -1651,6 +1702,21 @@ pub(crate) async fn restorable_workspace_locations(
+@@ -1651,6 +1706,21 @@ pub(crate) async fn restorable_workspace_locations(
                  locations
              } else {
                  None
@@ -4796,7 +4906,7 @@ index c3bde91..5215c29 100644
          }
          _ => None,
 diff --git a/crates/zed/src/zed/mac_only_instance.rs b/crates/zed/src/zed/mac_only_instance.rs
-index eec89de..6beeddc 100644
+index eec89de..c8bebde 100644
 --- a/crates/zed/src/zed/mac_only_instance.rs
 +++ b/crates/zed/src/zed/mac_only_instance.rs
 @@ -13,6 +13,7 @@ const CONNECT_TIMEOUT: Duration = Duration::from_millis(10);
