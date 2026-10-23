@@ -19,6 +19,7 @@ extension HybridMarkdownEditorRepresentable {
         var lastFileURL: URL?
         var lastFocusMode: Bool?
         var lastActiveLineRange: NSRange?
+        var lastKnownTextHash: Int?
         var lastContentWidth: CGFloat = 0
 
         /// Strong owner of the layout manager delegate (the layout manager holds it weakly).
@@ -104,6 +105,7 @@ extension HybridMarkdownEditorRepresentable {
             guard !isProgrammaticUpdate, !isRestyling, let tv = textView else { return }
             isUpdatingFromTextView = true
             let currentText = tv.string
+            lastKnownTextHash = currentText.hashValue
             let sel = tv.selectedRange()
             if !isApplyingReflow {
                 reflowAnchors.append(sel.location)
