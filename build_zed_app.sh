@@ -71,8 +71,8 @@ if [[ -x "$CLI_BIN" ]]; then
   chmod +x "$APP_BUNDLE/Contents/MacOS/cli"
 fi
 
-if [[ -f "$SCRIPT_DIR/macos/FolioApp/AppIcon.icns" ]]; then
-  cp "$SCRIPT_DIR/macos/FolioApp/AppIcon.icns" "$APP_BUNDLE/Contents/Resources/AppIcon.icns"
+if [[ -f "$SCRIPT_DIR/macos/FolioApp/AppIcon-Zed.icns" ]]; then
+  cp "$SCRIPT_DIR/macos/FolioApp/AppIcon-Zed.icns" "$APP_BUNDLE/Contents/Resources/AppIcon.icns"
 fi
 if [[ -f "$ZED_DIR/crates/zed/resources/Document.icns" ]]; then
   cp "$ZED_DIR/crates/zed/resources/Document.icns" "$APP_BUNDLE/Contents/Resources/Document.icns"
