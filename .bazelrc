@@ -7,3 +7,10 @@ build --host_copt=-Wno-#warnings
 build --incompatible_enable_cc_toolchain_resolution
 build --define=apple.experimental.tree_artifact_outputs=1
 test --test_output=errors
+
+# CI profile for GitHub Actions macOS Apple Silicon runners
+common:ci --color=yes
+common:ci --curses=no
+common:ci --show_timestamps
+common:ci --repository_cache=~/.cache/bazel-repo
+build:ci --disk_cache=~/.cache/bazel-disk
