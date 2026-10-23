@@ -115,6 +115,11 @@ extension HybridMarkdownTextView {
             return
         }
 
+        // 0b. Click on a rendered video starts/toggles inline playback without unfolding the line
+        if handleVideoClickIfNeeded(at: point) {
+            return
+        }
+
         // 1. Hit-test code fence language selector badge on the right
         if !isSourceCodeMode, let layoutManager = self.layoutManager {
             let origin = self.textContainerOrigin

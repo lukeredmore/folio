@@ -74,11 +74,25 @@ pub(crate) fn try_scan_anchor_image(
 
 fn scan_html_img_tag(
     ctx: &mut InlineScanContext<'_>,
+    tag_name: &str,
     attrs: &str,
     open_lt: usize,
     open_gt: usize,
 ) -> Option<usize> {
-    let src = extract_html_attr(attrs, "src")?.replace("&amp;", "&");
+    let mut end_idx = open_gt + 1;
+    let mut inner_slice = "";
+    if tag_name == "video" {
+        if let Some(close_rel) = ctx.line_slice[open_gt + 1..]
+            .to_ascii_lowercase()
+            .find("</video>")
+        {
+            inner_slice = &ctx.line_slice[open_gt + 1..open_gt + 1 + close_rel];
+            end_idx = open_gt + 1 + close_rel + "</video>".len();
+        }
+    }
+    let raw_src = extract_html_attr(attrs, "src")
+        .or_else(|| extract_html_attr(inner_slice, "src"))?;
+    let src = raw_src.replace("&amp;", "&");
     let alt = extract_html_attr(attrs, "alt").unwrap_or_default();
     let title = extract_html_attr(attrs, "title");
     let width = extract_html_attr(attrs, "width")
@@ -86,12 +100,12 @@ fn scan_html_img_tag(
     let height = extract_html_attr(attrs, "height")
         .and_then(|h| h.trim_end_matches("px").parse::<u32>().ok());
     ctx.syntax_fold_spans.push(SyntaxFoldSpan {
-        byte_range: (ctx.base_offset + open_lt)..(ctx.base_offset + open_gt + 1),
+        byte_range: (ctx.base_offset + open_lt)..(ctx.base_offset + end_idx),
         kind: SyntaxTokenKind::HtmlTag,
         is_revealed: ctx.is_active_line,
     });
     ctx.block_decorations.push(MarkdownBlockDecoration {
-        byte_range: (ctx.base_offset + open_lt)..(ctx.base_offset + open_gt + 1),
+        byte_range: (ctx.base_offset + open_lt)..(ctx.base_offset + end_idx),
         line_number: ctx.line_number,
         kind: MarkdownBlockDecorationKind::Image {
             alt,
@@ -103,7 +117,7 @@ fn scan_html_img_tag(
             is_active: ctx.is_active_line,
         },
     });
-    Some(open_gt + 1)
+    Some(end_idx)
 }
 
 fn map_paired_html_tag(tag_name: &str) -> Option<HtmlInlineTagKind> {
@@ -190,7 +204,7 @@ pub(crate) fn try_scan_inline_html_tag(
     let attrs = &without_self_close[tag_end..];
 
     match tag_name.as_str() {
-        "img" => return scan_html_img_tag(ctx, attrs, open_lt, open_gt),
+        "img" | "video" => return scan_html_img_tag(ctx, &tag_name, attrs, open_lt, open_gt),
         "svg" => return scan_inline_svg_tag(ctx, open_lt, open_gt),
         "br" => {
             let span = (ctx.base_offset + open_lt)..(ctx.base_offset + open_gt + 1);
