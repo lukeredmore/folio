@@ -242,16 +242,16 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Cache Bazel repository & disk cache for graph query
+      - name: Cache Bazel repository & disk cache for Zed & Folio mod
         uses: actions/cache@v4
         with:
           path: |
             ~/.cache/bazel-repo
             ~/.cache/bazel-disk
-          key: bazel-opt-macos26-${{ runner.os }}-${{ hashFiles('MODULE.bazel', 'MODULE.bazel.lock', 'Cargo.lock') }}-${{ hashFiles('Sources/**/*.swift', 'macos/**', 'core/**', 'BUILD.bazel', '.bazelrc') }}
+          key: bazel-zed-macos26-${{ runner.os }}-${{ hashFiles('third_party/zed/patches/0002-real-zed-editor-folio-wysiwyg.patch', 'third_party/zed/build_moddable_zed.sh') }}-${{ hashFiles('MODULE.bazel', 'MODULE.bazel.lock', 'Cargo.lock', 'core/**/*.rs', 'zed/**/*.rs', 'BUILD.bazel', '.bazelrc') }}
           restore-keys: |
-            bazel-opt-macos26-${{ runner.os }}-${{ hashFiles('MODULE.bazel', 'MODULE.bazel.lock', 'Cargo.lock') }}-
-            bazel-opt-macos26-${{ runner.os }}-
+            bazel-zed-macos26-${{ runner.os }}-${{ hashFiles('third_party/zed/patches/0002-real-zed-editor-folio-wysiwyg.patch', 'third_party/zed/build_moddable_zed.sh') }}-
+            bazel-zed-macos26-${{ runner.os }}-
 
       - name: Select Xcode 26+ & compute Folio-Zed.dmg Bazel graph hash
         id: graph
@@ -312,7 +312,7 @@ jobs:
           restore-keys: |
             rustup-zed-macos26-${{ runner.os }}-
 
-      - name: Cache Cargo & Zed build artifacts
+      - name: Cache Cargo & Moddable Zed build artifacts
         if: steps.dmg_cache.outputs.cache-hit != 'true' && steps.reuse_release.outputs.reused != 'true'
         uses: actions/cache@v4
         with:
@@ -320,9 +320,8 @@ jobs:
             ~/.cargo/registry
             ~/.cargo/git
             third_party/zed/upstream/target
-          key: cargo-zed-macos26-${{ runner.os }}-${{ hashFiles('Cargo.lock', 'third_party/zed/patches/0002-real-zed-editor-folio-wysiwyg.patch') }}-${{ steps.graph.outputs.hash }}
+          key: cargo-zed-macos26-${{ runner.os }}-${{ hashFiles('third_party/zed/patches/0002-real-zed-editor-folio-wysiwyg.patch', 'third_party/zed/build_moddable_zed.sh') }}
           restore-keys: |
-            cargo-zed-macos26-${{ runner.os }}-${{ hashFiles('Cargo.lock', 'third_party/zed/patches/0002-real-zed-editor-folio-wysiwyg.patch') }}
             cargo-zed-macos26-${{ runner.os }}-
 
       - name: Import Apple signing certificate (if configured in Secrets)

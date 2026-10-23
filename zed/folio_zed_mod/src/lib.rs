@@ -1,6 +1,7 @@
 #![deny(warnings)]
 
 pub mod editor_session;
+pub mod ffi;
 pub mod inlay_folding;
 pub mod math_canvas;
 pub mod theme_sync;

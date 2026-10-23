@@ -7,7 +7,23 @@ exports_files(
     glob([
         "upstream_seed/**",
         "patches/*.patch",
-    ]),
+    ]) + [
+        "build_moddable_zed.sh",
+    ],
+)
+
+genrule(
+    name = "moddable_zed_bundle",
+    srcs = [
+        "patches/0002-real-zed-editor-folio-wysiwyg.patch",
+        "build_moddable_zed.sh",
+    ],
+    outs = ["moddable_zed_bundle.tar"],
+    cmd = "PROFILE=debug; if [ \"$(COMPILATION_MODE)\" = \"opt\" ]; then PROFILE=release-fast; fi; $(location build_moddable_zed.sh) $@ $(location patches/0002-real-zed-editor-folio-wysiwyg.patch) $$PROFILE",
+    tags = [
+        "manual",
+        "no-sandbox",
+    ],
 )
 
 objc_library(
@@ -28,9 +44,11 @@ sh_binary(
     name = "zed_with_folio_mod",
     srcs = ["run_zed_with_folio_mod.sh"],
     data = [
+        "build_moddable_zed.sh",
         "patches/0002-real-zed-editor-folio-wysiwyg.patch",
         "//zed/folio_zed_extension:extension_bundle",
         "//zed/folio_zed_mod",
+        "//zed/folio_zed_mod:folio_zed_mod_dylib",
     ],
 )
 

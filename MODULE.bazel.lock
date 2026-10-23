@@ -173,7 +173,7 @@
         "bzlTransitiveDigest": "UmrRoknsqllpvBNUopz49C3AsxzVGqIEjeR9x1Gc6sY=",
         "usagesDigest": "BDaTFzfcuPOXW26blZ67eVKcumdu9vguyHQlKFK35aQ=",
         "recordedFileInputs": {
-          "@@//zed/folio_zed_mod/Cargo.toml": "64e7d2d93b4eb84fa24094bce5b4b4f23c732a6cdf008e1c7b73a0bdd6e5a3b3",
+          "@@//zed/folio_zed_mod/Cargo.toml": "fa21b9b50882e6a77583bbf6f4b1466e00f47d54ebbb9c7de73e3a0d956c1632",
           "@@//Cargo.toml": "3e615e88b10ffdde3943303bc2f13b5ba98469e5b819b69910ff220f3d24be7b",
           "@@//zed/folio_zed_extension/Cargo.toml": "e726c0b0f38c0ca55982075b30a116015e2cbaddd399bcfe96e83064e29adb30",
           "@@//Cargo.lock": "9e6b692725d9b2e0329ffd4b7aec8d68f00bd0e56004eb85305fade21c6ec4ff",
