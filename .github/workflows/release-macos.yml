@@ -55,9 +55,9 @@ jobs:
             ~/.cargo/registry
             ~/.cargo/git
             target
-          key: cargo-test-macos26-${{ runner.os }}-${{ hashFiles('Cargo.lock') }}-${{ hashFiles('core/**/*.rs', 'zed/**/*.rs') }}
+          key: cargo-test-macos26-${{ runner.os }}-${{ hashFiles('rust-toolchain.toml', 'Cargo.lock') }}-${{ hashFiles('core/**/*.rs', 'zed/**/*.rs') }}
           restore-keys: |
-            cargo-test-macos26-${{ runner.os }}-${{ hashFiles('Cargo.lock') }}-
+            cargo-test-macos26-${{ runner.os }}-${{ hashFiles('rust-toolchain.toml', 'Cargo.lock') }}-
             cargo-test-macos26-${{ runner.os }}-
 
       - name: Run all workspace tests and hygiene checks
