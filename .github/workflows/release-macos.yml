@@ -212,16 +212,43 @@ jobs:
       - name: Read build metadata from Folio.dmg
         id: meta
         run: |
-          PLIST="Folio.app/Contents/Info.plist"
-          if [[ ! -f "$PLIST" ]]; then
+          MOUNT_DIR="$(mktemp -d "${RUNNER_TEMP:-/tmp}/folio-dmg-meta.XXXXXX")"
+          MOUNTED=0
+          cleanup_mount() {
+            if [[ "$MOUNTED" -eq 1 ]]; then
+              hdiutil detach "$MOUNT_DIR" -force >/dev/null 2>&1 || true
+            fi
+            rm -rf "$MOUNT_DIR"
+          }
+          trap cleanup_mount EXIT
+
+          if hdiutil attach -nobrowse -readonly -noverify -mountpoint "$MOUNT_DIR" Folio.dmg >/dev/null 2>&1; then
+            MOUNTED=1
+          fi
+
+          if [[ -f "$MOUNT_DIR/Folio.app/Contents/Info.plist" ]]; then
+            PLIST="$MOUNT_DIR/Folio.app/Contents/Info.plist"
+          elif [[ -f "Folio.app/Contents/Info.plist" ]]; then
+            PLIST="Folio.app/Contents/Info.plist"
+          else
             PLIST="macos/FolioApp/Info.plist"
           fi
-          VERSION=$(/usr/libexec/PlistBuddy -c "Print :CFBundleShortVersionString" "$PLIST")
-          BUILD_NUM=$(git rev-list --count HEAD 2>/dev/null || echo 1)
-          SHA=$(git rev-parse --short HEAD 2>/dev/null || echo dev)
-          ENGINE_VER=$(awk -F'"' '/^version[[:space:]]*=/ { print $2; exit }' core/folio_engine/Cargo.toml 2>/dev/null || echo "0.1.0")
+
+          VERSION=$(/usr/libexec/PlistBuddy -c "Print :CFBundleShortVersionString" "$PLIST" 2>/dev/null || echo "1.0.0")
+          BUILD_NUM=$(/usr/libexec/PlistBuddy -c "Print :CFBundleVersion" "$PLIST" 2>/dev/null || true)
+          if [[ -z "$BUILD_NUM" || ! "$BUILD_NUM" =~ ^[0-9]+$ ]]; then
+            BUILD_NUM=$(git rev-list --count HEAD 2>/dev/null || echo 1)
+          fi
+          SHA=$(/usr/libexec/PlistBuddy -c "Print :FolioCommitSHA" "$PLIST" 2>/dev/null || true)
+          if [[ -z "$SHA" || "$SHA" == "dev" ]]; then
+            SHA=$(git rev-parse --short HEAD 2>/dev/null || echo dev)
+          fi
+          ENGINE_VER=$(/usr/libexec/PlistBuddy -c "Print :FolioEngineVersion" "$PLIST" 2>/dev/null || true)
+          if [[ -z "$ENGINE_VER" ]]; then
+            ENGINE_VER=$(awk -F'"' '/^version[[:space:]]*=/ { print $2; exit }' core/folio_engine/Cargo.toml 2>/dev/null || echo "0.1.0")
+          fi
           SHA256=$(shasum -a 256 Folio.dmg | awk '{print $1}')
-          COMMIT_MSG=$(git log -1 --pretty=%s)
+          COMMIT_MSG=$(git log -1 --pretty=%s "$SHA" 2>/dev/null || git log -1 --pretty=%s)
 
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
           echo "build_number=$BUILD_NUM" >> "$GITHUB_OUTPUT"

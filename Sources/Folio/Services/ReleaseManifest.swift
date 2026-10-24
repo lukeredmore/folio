@@ -156,7 +156,38 @@ public struct AppVersionInfo: Equatable, Sendable {
         bundle: Bundle = .main,
         environment: [String: String] = ProcessInfo.processInfo.environment
     ) -> AppVersionInfo {
-        let info = bundle.infoDictionary ?? [:]
+        fromInfoDictionary(
+            bundle.infoDictionary ?? [:],
+            bundle: bundle,
+            environment: environment
+        )
+    }
+
+    public static func fromAppBundle(
+        at appBundleURL: URL,
+        environment: [String: String] = [:]
+    ) -> AppVersionInfo? {
+        let plistURL = appBundleURL
+            .appendingPathComponent("Contents", isDirectory: true)
+            .appendingPathComponent("Info.plist", isDirectory: false)
+        guard let data = try? Data(contentsOf: plistURL),
+              let plist = try? PropertyListSerialization.propertyList(from: data, options: [], format: nil),
+              let info = plist as? [String: Any] else {
+            return nil
+        }
+        return fromInfoDictionary(
+            info,
+            bundlePath: appBundleURL.path,
+            environment: environment
+        )
+    }
+
+    public static func fromInfoDictionary(
+        _ info: [String: Any],
+        bundle: Bundle = .main,
+        bundlePath: String? = nil,
+        environment: [String: String] = ProcessInfo.processInfo.environment
+    ) -> AppVersionInfo {
         let shortVersion = (info["CFBundleShortVersionString"] as? String) ?? "1.0.0"
         let buildString = (info["CFBundleVersion"] as? String) ?? "1"
         let buildNumber = Int(buildString.trimmingCharacters(in: .whitespacesAndNewlines)) ?? 1
@@ -164,9 +195,17 @@ public struct AppVersionInfo: Equatable, Sendable {
         let engineVersion = (info["FolioEngineVersion"] as? String) ?? "0.1.0"
         let repository = (info["FolioRepository"] as? String) ?? "lukeredmore/folio"
         let normalizedSHA = commitSHA.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-        let isDevBuild = FolioBrandIcon.isRunningDevBuild(bundle: bundle, environment: environment)
-            || normalizedSHA.isEmpty
-            || normalizedSHA == "dev"
+        let isDevFromIcon: Bool
+        if let bundlePath {
+            isDevFromIcon = FolioBrandIcon.isRunningDevBuild(
+                bundlePath: bundlePath,
+                infoDictionary: info,
+                environment: environment
+            )
+        } else {
+            isDevFromIcon = FolioBrandIcon.isRunningDevBuild(bundle: bundle, environment: environment)
+        }
+        let isDevBuild = isDevFromIcon || normalizedSHA.isEmpty || normalizedSHA == "dev"
 
         return AppVersionInfo(
             shortVersion: shortVersion,
@@ -176,6 +215,23 @@ public struct AppVersionInfo: Equatable, Sendable {
             repository: repository,
             isDevBuild: isDevBuild
         )
+    }
+
+    public func matchesReleaseIdentity(of other: AppVersionInfo) -> Bool {
+        let lhsSHA = commitSHA.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        let rhsSHA = other.commitSHA.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        let shaMatches = lhsSHA == rhsSHA || lhsSHA.hasPrefix(rhsSHA) || rhsSHA.hasPrefix(lhsSHA)
+        return shortVersion == other.shortVersion && buildNumber == other.buildNumber && shaMatches
+    }
+
+    public static func installedUpdateToken(for version: AppVersionInfo, remote: ReleaseManifest) -> String {
+        let sha = version.commitSHA.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        let dmgDigest = remote.dmgSHA256.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        if !dmgDigest.isEmpty {
+            return "\(version.shortVersion)|\(version.buildNumber)|\(sha)|sha256:\(dmgDigest)"
+        }
+        let remoteSHA = remote.commitSHA.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        return "\(version.shortVersion)|\(version.buildNumber)|\(sha)|manifest:\(remote.version)|\(remote.buildNumber)|\(remoteSHA)"
     }
 
     public var displayString: String {

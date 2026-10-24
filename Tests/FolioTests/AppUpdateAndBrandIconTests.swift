@@ -110,6 +110,51 @@ final class AppUpdateAndBrandIconTests: XCTestCase {
         XCTAssertEqual(parsed.notes, "feat: rolling update")
         XCTAssertTrue(AppUpdateManager.isUpdateAvailable(current: installed, remote: parsed))
         XCTAssertFalse(AppUpdateManager.isUpdateAvailable(current: devBuild, remote: parsed))
+
+        // 7. Prevent infinite update loop when a rolling release reuses an unchanged Folio.dmg
+        // (e.g. installed app is Build #63 / 17694ec, release manifest says Build #64 / c8e075f,
+        // but Folio.dmg has the same SHA-256 already installed for Build #63).
+        let build63 = AppVersionInfo(
+            shortVersion: "1.0.0",
+            buildNumber: 63,
+            commitSHA: "17694ec",
+            engineVersion: "0.1.0",
+            repository: "lukeredmore/folio"
+        )
+        let reusedDMGManifest = ReleaseManifest(
+            version: "1.0.0",
+            buildNumber: 64,
+            commitSHA: "c8e075f",
+            engineVersion: "0.1.0",
+            publishedAt: "2026-10-23T23:13:56Z",
+            dmgURL: "https://github.com/lukeredmore/folio/releases/latest/download/Folio.dmg",
+            dmgSHA256: "c76c4ef697078a1fb20a88b6eeda78d9941788422208581ca684ba690db49263"
+        )
+        let installedToken = AppVersionInfo.installedUpdateToken(for: build63, remote: reusedDMGManifest)
+        XCTAssertFalse(
+            AppUpdateManager.isUpdateAvailable(
+                current: build63,
+                remote: reusedDMGManifest,
+                lastInstalledToken: installedToken
+            )
+        )
+        // Once a genuinely new Folio.dmg with a different SHA-256 is published, update is offered again
+        let newDMGManifest = ReleaseManifest(
+            version: "1.0.0",
+            buildNumber: 65,
+            commitSHA: "f00baa1",
+            engineVersion: "0.1.0",
+            publishedAt: "2026-10-24T20:00:00Z",
+            dmgURL: "https://github.com/lukeredmore/folio/releases/latest/download/Folio.dmg",
+            dmgSHA256: "9999999999999999999999999999999999999999999999999999999999999999"
+        )
+        XCTAssertTrue(
+            AppUpdateManager.isUpdateAvailable(
+                current: build63,
+                remote: newDMGManifest,
+                lastInstalledToken: installedToken
+            )
+        )
     }
 
     func testDevBuildIconDetectionAndBannerRendering() throws {
