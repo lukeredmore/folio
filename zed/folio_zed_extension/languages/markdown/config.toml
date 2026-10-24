@@ -1,13 +1,39 @@
 name = "Markdown"
 grammar = "markdown"
-path_suffixes = ["md", "markdown", "mdown", "mkd"]
+path_suffixes = ["md", "mdx", "mdwn", "mdown", "mkd", "mdc", "markdown", "MD"]
+modeline_aliases = ["md"]
+completion_query_characters = ["-"]
 line_comments = ["<!-- "]
-block_comment = ["<!--", "-->"]
+block_comment = { start = "<!--", prefix = "", end = "-->", tab_size = 1 }
 autoclose_before = ";:.,=}])>` \n\t"
 brackets = [
-    { start = "[", end = "]", close = true, newline = false },
-    { start = "(", end = ")", close = true, newline = false },
-    { start = "{", end = "}", close = true, newline = false },
+    { start = "{", end = "}", close = true, newline = true },
+    { start = "[", end = "]", close = true, newline = true },
+    { start = "(", end = ")", close = true, newline = true },
+    { start = "<", end = ">", close = true, newline = true },
+    { start = "\"", end = "\"", close = false, newline = false },
+    { start = "'", end = "'", close = false, newline = false },
     { start = "`", end = "`", close = true, newline = false },
-    { start = "$", end = "$", close = true, newline = false },
+    { start = "$", end = "$", close = true, newline = false, surround = true },
+    { start = "*", end = "*", close = false, newline = false, surround = true },
+    { start = "~", end = "~", close = false, newline = false, surround = true },
 ]
+rewrap_prefixes = [
+    "[-*+]\\s+",
+    "\\d+\\.\\s+",
+    ">\\s*",
+    "[-*+]\\s+\\[[\\sx]\\]\\s+"
+]
+unordered_list = ["- ", "* ", "+ "]
+ordered_list = [{ pattern = "(\\d+)\\. ", format = "{1}. " }]
+task_list = { prefixes = ["- [ ] ", "- [x] ", "- [X] "], continuation = "- [ ] " }
+
+auto_indent_on_paste = false
+auto_indent_using_last_non_empty_line = false
+tab_size = 2
+decrease_indent_patterns = [
+    { pattern = "^\\s*-", valid_after = ["list_item"] },
+    { pattern = "^\\s*\\d", valid_after = ["list_item"] },
+    { pattern = "^\\s*", valid_after = ["list_item"] },
+]
+prettier_parser_name = "markdown"
