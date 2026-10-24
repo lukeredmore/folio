@@ -230,167 +230,61 @@ jobs:
           echo "dmg_sha256=$SHA256" >> "$GITHUB_OUTPUT"
           echo "commit_msg=$COMMIT_MSG" >> "$GITHUB_OUTPUT"
 
-  build-folio-zed-dmg:
-    name: Build & Package Folio-Zed.dmg
+  build-zed-extension:
+    name: Build & Package Folio Zed Extension (wasm32-wasip2)
     runs-on: macos-26
     outputs:
-      zed_dmg_sha256: ${{ steps.meta.outputs.zed_dmg_sha256 }}
-      zed_graph_hash: ${{ steps.graph.outputs.hash }}
+      extension_version: ${{ steps.meta.outputs.extension_version }}
+      extension_sha256: ${{ steps.meta.outputs.extension_sha256 }}
     steps:
       - name: Checkout repository (full history for commit count build number)
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
-      - name: Select Xcode 26+ & compute Folio-Zed.dmg Bazel graph hash
-        id: graph
-        run: |
-          XCODE26="$(ls -d /Applications/Xcode_26*.app 2>/dev/null | sort -V | tail -n 1 || true)"
-          if [[ -n "$XCODE26" ]]; then
-            sudo xcode-select -s "$XCODE26/Contents/Developer"
-          fi
-          xcodebuild -version
-          swiftc --version
-          chmod +x ./scripts/bazel_target_hash.sh
-          GRAPH_HASH="$(./scripts/bazel_target_hash.sh //:package_zed_dmg)"
-          echo "Computed //:package_zed_dmg Bazel graph hash: $GRAPH_HASH"
-          echo "hash=$GRAPH_HASH" >> "$GITHUB_OUTPUT"
-
-      - name: Restore cached Folio-Zed.dmg if Bazel graph is unchanged
-        id: dmg_cache
-        uses: actions/cache@v4
-        with:
-          path: |
-            Folio-Zed.dmg
-            .folio_zed_dmg_graph_hash
-          key: folio-zed-dmg-artifact-macos26-${{ steps.graph.outputs.hash }}
-
-      - name: Reuse Folio-Zed.dmg from latest GitHub Release if Bazel graph is unchanged
-        id: reuse_release
-        if: steps.dmg_cache.outputs.cache-hit != 'true'
-        env:
-          GH_TOKEN: ${{ github.token }}
-          EXPECTED_HASH: ${{ steps.graph.outputs.hash }}
-        run: |
-          BODY="$(gh api "repos/${{ github.repository }}/releases/latest" --jq '.body // ""' 2>/dev/null || true)"
-          RELEASE_HASH="$(python3 -c '
-          import json, re, sys
-          m = re.search(r"<!--\s*folio-release:\s*(\{.*?\})\s*-->", sys.stdin.read(), re.S)
-          if m:
-              print(json.loads(m.group(1)).get("zed_graph_hash", ""))
-          ' <<< "$BODY" 2>/dev/null || true)"
-          if [[ -n "$RELEASE_HASH" && "$RELEASE_HASH" == "$EXPECTED_HASH" ]]; then
-            echo "Latest release Folio-Zed.dmg matches Bazel graph hash ($EXPECTED_HASH); downloading existing Folio-Zed.dmg..."
-            if gh release download latest --repo "${{ github.repository }}" --pattern "Folio-Zed.dmg" --clobber; then
-              printf '%s\n' "$EXPECTED_HASH" > .folio_zed_dmg_graph_hash
-              echo "reused=true" >> "$GITHUB_OUTPUT"
-              exit 0
-            fi
-          fi
-          echo "reused=false" >> "$GITHUB_OUTPUT"
-
-      - name: Cache Cargo & Zed build artifacts
-        if: steps.dmg_cache.outputs.cache-hit != 'true' && steps.reuse_release.outputs.reused != 'true'
+      - name: Cache Cargo WASI extension build artifacts
         uses: actions/cache@v4
         with:
           path: |
             ~/.cargo/registry
             ~/.cargo/git
-            third_party/zed/upstream/target
-          key: cargo-zed-macos26-${{ runner.os }}-${{ hashFiles('Cargo.lock', 'zed/folio_zed_extension/extension.toml') }}-${{ steps.graph.outputs.hash }}
+            target/wasm-extension
+          key: cargo-zed-ext-macos26-${{ runner.os }}-${{ hashFiles('Cargo.lock', 'zed/folio_zed_extension/wasm/Cargo.toml', 'zed/folio_zed_extension/extension.toml') }}-${{ hashFiles('core/**/*.rs', 'zed/**/*.rs') }}
           restore-keys: |
-            cargo-zed-macos26-${{ runner.os }}-${{ hashFiles('Cargo.lock', 'zed/folio_zed_extension/extension.toml') }}
-            cargo-zed-macos26-${{ runner.os }}-
+            cargo-zed-ext-macos26-${{ runner.os }}-${{ hashFiles('Cargo.lock', 'zed/folio_zed_extension/wasm/Cargo.toml', 'zed/folio_zed_extension/extension.toml') }}-
+            cargo-zed-ext-macos26-${{ runner.os }}-
 
-      - name: Import Apple signing certificate (if configured in Secrets)
-        id: codesign
-        if: steps.dmg_cache.outputs.cache-hit != 'true' && steps.reuse_release.outputs.reused != 'true'
-        env:
-          APPLE_CERTIFICATE_P12_BASE64: ${{ secrets.APPLE_CERTIFICATE_P12_BASE64 }}
-          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
-          APPLE_CODESIGN_IDENTITY_OVERRIDE: ${{ secrets.APPLE_CODESIGN_IDENTITY }}
-        run: |
-          if [[ -z "$APPLE_CERTIFICATE_P12_BASE64" || -z "$APPLE_CERTIFICATE_PASSWORD" ]]; then
-            echo "No APPLE_CERTIFICATE_P12_BASE64 secret configured; using ad-hoc signing (-)."
-            echo "identity=-" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-
-          KEYCHAIN_PATH="$RUNNER_TEMP/folio-signing.keychain-db"
-          KEYCHAIN_PASS="$(uuidgen)"
-          CERT_PATH="$RUNNER_TEMP/certificate.p12"
-
-          echo "$APPLE_CERTIFICATE_P12_BASE64" | base64 --decode > "$CERT_PATH"
-
-          security create-keychain -p "$KEYCHAIN_PASS" "$KEYCHAIN_PATH"
-          security set-keychain-settings -lut 21600 "$KEYCHAIN_PATH"
-          security unlock-keychain -p "$KEYCHAIN_PASS" "$KEYCHAIN_PATH"
-          curl -fsSL https://www.apple.com/certificateauthority/AppleWWDRCAG3.cer -o "$RUNNER_TEMP/AppleWWDRCAG3.cer" && \
-            security import "$RUNNER_TEMP/AppleWWDRCAG3.cer" -k "$KEYCHAIN_PATH" -T /usr/bin/codesign || true
-          security import "$CERT_PATH" -P "$APPLE_CERTIFICATE_PASSWORD" -A -t cert -f pkcs12 -k "$KEYCHAIN_PATH"
-          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$KEYCHAIN_PASS" "$KEYCHAIN_PATH"
-          security list-keychains -d user -s "$KEYCHAIN_PATH" $(security list-keychains -d user | tr -d '"')
-          rm -f "$CERT_PATH" "$RUNNER_TEMP/AppleWWDRCAG3.cer"
-
-          if [[ -n "$APPLE_CODESIGN_IDENTITY_OVERRIDE" ]]; then
-            IDENTITY="$APPLE_CODESIGN_IDENTITY_OVERRIDE"
-          else
-            IDENTITY=$(security find-identity -v -p codesigning "$KEYCHAIN_PATH" | awk 'NR==1 {print $2}')
-          fi
-
-          if [[ -z "$IDENTITY" ]]; then
-            echo "Warning: No valid codesigning identity found in imported p12; falling back to ad-hoc signing (-)."
-            IDENTITY="-"
-          else
-            echo "Using Apple signing identity: $IDENTITY"
-          fi
-          echo "identity=$IDENTITY" >> "$GITHUB_OUTPUT"
-
-      - name: Build Folio Zed.app and package Folio-Zed.dmg
-        env:
-          FOLIO_REPOSITORY: ${{ github.repository }}
-          FOLIO_ZED_PROFILE: release-fast
-          FOLIO_ZED_GRAPH_HASH: ${{ steps.graph.outputs.hash }}
-          APPLE_CODESIGN_IDENTITY: ${{ steps.codesign.outputs.identity || '-' }}
-          APPLE_ID: ${{ secrets.APPLE_ID }}
-          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
-          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
-        run: |
-          chmod +x ./build_zed_app.sh ./scripts/package_zed_dmg.sh
-          ./scripts/package_zed_dmg.sh
-
-      - name: Clean up temporary signing keychain
-        if: always()
-        run: |
-          rm -f "$RUNNER_TEMP/certificate.p12"
-          security delete-keychain "$RUNNER_TEMP/folio-signing.keychain-db" 2>/dev/null || true
-
-      - name: Upload Folio-Zed.dmg artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: Folio-Zed.dmg
-          path: Folio-Zed.dmg
-          retention-days: 14
-
-      - name: Compute Folio-Zed.dmg SHA-256
+      - name: Build and package folio-markdown-outline.tar.gz
         id: meta
         run: |
-          ZED_SHA256=$(shasum -a 256 Folio-Zed.dmg | awk '{print $1}')
-          echo "zed_dmg_sha256=$ZED_SHA256" >> "$GITHUB_OUTPUT"
+          BUILD_NUM=$(git rev-list --count HEAD 2>/dev/null || echo 1)
+          EXT_VERSION="0.2.${BUILD_NUM}"
+          chmod +x ./zed/package_extension.sh
+          ./zed/package_extension.sh --version "$EXT_VERSION" --output folio-markdown-outline.tar.gz
+          EXT_SHA256=$(shasum -a 256 folio-markdown-outline.tar.gz | awk '{print $1}')
+          echo "extension_version=$EXT_VERSION" >> "$GITHUB_OUTPUT"
+          echo "extension_sha256=$EXT_SHA256" >> "$GITHUB_OUTPUT"
+
+      - name: Upload folio-markdown-outline.tar.gz artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: folio-markdown-outline.tar.gz
+          path: folio-markdown-outline.tar.gz
+          retention-days: 14
 
   release:
     name: Update Rolling GitHub Release
     needs:
       - test
       - build-folio-dmg
-      - build-folio-zed-dmg
+      - build-zed-extension
     if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Download Folio.dmg and Folio-Zed.dmg artifacts
+      - name: Download Folio.dmg and folio-markdown-outline.tar.gz artifacts
         uses: actions/download-artifact@v4
         with:
           merge-multiple: true
@@ -404,8 +298,8 @@ jobs:
           ENGINE_VER: ${{ needs.build-folio-dmg.outputs.engine_version }}
           DMG_SHA256: ${{ needs.build-folio-dmg.outputs.dmg_sha256 }}
           FOLIO_GRAPH_HASH: ${{ needs.build-folio-dmg.outputs.folio_graph_hash }}
-          ZED_SHA256: ${{ needs.build-folio-zed-dmg.outputs.zed_dmg_sha256 }}
-          ZED_GRAPH_HASH: ${{ needs.build-folio-zed-dmg.outputs.zed_graph_hash }}
+          EXT_VERSION: ${{ needs.build-zed-extension.outputs.extension_version }}
+          EXT_SHA256: ${{ needs.build-zed-extension.outputs.extension_sha256 }}
           COMMIT_MSG: ${{ needs.build-folio-dmg.outputs.commit_msg }}
         run: |
           PUBLISHED_AT=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
@@ -418,11 +312,11 @@ jobs:
               "dmg_url": f"https://github.com/{sys.argv[6]}/releases/latest/download/Folio.dmg",
               "dmg_sha256": sys.argv[7],
               "folio_graph_hash": sys.argv[8],
-              "zed_dmg_url": f"https://github.com/{sys.argv[6]}/releases/latest/download/Folio-Zed.dmg",
-              "zed_dmg_sha256": sys.argv[9],
-              "zed_graph_hash": sys.argv[10],
+              "extension_version": sys.argv[9],
+              "extension_url": f"https://github.com/{sys.argv[6]}/releases/latest/download/folio-markdown-outline.tar.gz",
+              "extension_sha256": sys.argv[10],
               "notes": sys.argv[11],
-          }))' "$VERSION" "$BUILD_NUM" "$SHA" "$ENGINE_VER" "$PUBLISHED_AT" "${{ github.repository }}" "$DMG_SHA256" "$FOLIO_GRAPH_HASH" "$ZED_SHA256" "$ZED_GRAPH_HASH" "$COMMIT_MSG")
+          }))' "$VERSION" "$BUILD_NUM" "$SHA" "$ENGINE_VER" "$PUBLISHED_AT" "${{ github.repository }}" "$DMG_SHA256" "$FOLIO_GRAPH_HASH" "$EXT_VERSION" "$EXT_SHA256" "$COMMIT_MSG")
 
           TAG="latest"
           TITLE="Folio v${VERSION} (Build #${BUILD_NUM} — ${SHA})"
@@ -430,11 +324,12 @@ jobs:
           Automated rolling macOS build from \`main\` (${{ github.sha }}).
 
           - **App Version:** \`v${VERSION}\` (Build \`#${BUILD_NUM}\`)
+          - **Zed Extension (\`folio-markdown-outline\`):** \`v${EXT_VERSION}\`
           - **Core Engine (\`folio_engine\`):** \`v${ENGINE_VER}\`
           - **Folio.dmg SHA-256:** \`${DMG_SHA256}\`
-          - **Folio-Zed.dmg SHA-256:** \`${ZED_SHA256}\`
+          - **folio-markdown-outline.tar.gz SHA-256:** \`${EXT_SHA256}\`
 
-          Existing installations of **Folio.app** and **Folio Zed.app** will automatically detect and install this build via **Check for Updates…** (or on launch).
+          Existing installations of **Folio.app** and the **Folio Markdown Outline** Zed extension will automatically detect and install this build.
 
           <!-- folio-release: ${METADATA_JSON} -->
           EOF
@@ -446,7 +341,7 @@ jobs:
 
           gh release create "$TAG" \
             Folio.dmg \
-            Folio-Zed.dmg \
+            folio-markdown-outline.tar.gz \
             --target "${{ github.sha }}" \
             --title "$TITLE" \
             --notes "$NOTES" \
