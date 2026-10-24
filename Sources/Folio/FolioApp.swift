@@ -37,7 +37,7 @@ public struct MainWindowView: View {
             }
             .background(viewModel.theme.editorBackgroundColor)
 
-            // Floating Quick Open overlay (Cmd+P)
+            // Floating Quick Open overlay (Shift+Shift)
             if viewModel.showQuickOpen {
                 Color.black.opacity(0.18)
                     .ignoresSafeArea()
@@ -56,6 +56,7 @@ public struct MainWindowView: View {
         .preferredColorScheme(viewModel.theme.colorScheme)
         .navigationTitle(viewModel.documentTitle + (viewModel.activeConflict != nil ? " — Conflict" : ""))
         .background(WindowStatePersistenceAccessor(userDefaults: viewModel.userDefaults))
+        .background(DoubleShiftEventMonitorAccessor(viewModel: viewModel))
         .sheet(isPresented: $viewModel.showInsertTableSheet) {
             InsertTableModalView(viewModel: viewModel)
         }
@@ -156,8 +157,37 @@ struct WindowStatePersistenceAccessor: NSViewRepresentable {
 
 @MainActor
 public final class FolioAppDelegate: NSObject, NSApplicationDelegate {
+    public weak var viewModel: EditorWorkspaceViewModel?
+    private var pendingOpenPaths: [String] = []
+
     public func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
         true
+    }
+
+    public func application(_ application: NSApplication, open urls: [URL]) {
+        let paths = urls.filter(\.isFileURL).map(\.path)
+        handleOpenPaths(paths)
+    }
+
+    public func application(_ sender: NSApplication, openFiles filenames: [String]) {
+        handleOpenPaths(filenames)
+        sender.reply(toOpenOrPrint: .success)
+    }
+
+    public func drainPendingOpenPaths() -> [String] {
+        let queued = pendingOpenPaths
+        pendingOpenPaths.removeAll()
+        return queued
+    }
+
+    private func handleOpenPaths(_ paths: [String]) {
+        guard !paths.isEmpty else { return }
+        if let vm = viewModel {
+            vm.openPathsFromCLI(paths)
+            NSApplication.shared.activate(ignoringOtherApps: true)
+        } else {
+            pendingOpenPaths.append(contentsOf: paths)
+        }
     }
 }
 
@@ -179,7 +209,17 @@ public struct FolioApp: App {
             MainWindowView(viewModel: viewModel)
                 .frame(minWidth: 720, minHeight: 480)
                 .onAppear {
+                    appDelegate.viewModel = viewModel
                     NSApplication.shared.activate(ignoringOtherApps: true)
+                    FolioCLIManager.shared.setupCLIOnFirstLaunchIfNeeded(userDefaults: viewModel.userDefaults)
+                    let cliArgs = FolioCLIManager.extractCommandLinePaths(from: ProcessInfo.processInfo.arguments)
+                    let queuedPaths = FolioCLIManager.drainPendingOpenRequests()
+                    let delegatePaths = appDelegate.drainPendingOpenPaths()
+                    viewModel.openPathsFromCLI(cliArgs + queuedPaths + delegatePaths)
+                    FolioCLIManager.shared.startListeningForCLIOpenSignal { paths in
+                        viewModel.openPathsFromCLI(paths)
+                        NSApplication.shared.activate(ignoringOtherApps: true)
+                    }
                     updateManager.checkForUpdatesOnLaunchIfNeeded()
                     viewModel.remoteWorkspaceManager.startBackgroundSyncLoop()
                 }

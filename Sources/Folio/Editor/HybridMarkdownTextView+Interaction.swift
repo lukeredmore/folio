@@ -239,4 +239,34 @@ extension HybridMarkdownTextView {
         scrollView.contentView.scroll(to: NSPoint(x: currentX, y: targetY))
         scrollView.reflectScrolledClipView(scrollView.contentView)
     }
+
+    public override func printView(_ sender: Any?) {
+        if let vm = workspaceViewModel {
+            vm.printDocument()
+        } else {
+            super.printView(sender)
+        }
+    }
+
+    public override func performFindPanelAction(_ sender: Any?) {
+        guard let vm = workspaceViewModel else {
+            super.performFindPanelAction(sender)
+            return
+        }
+        let tag = (sender as? NSMenuItem)?.tag ?? 1
+        switch tag {
+        case 2: // NSFindPanelAction.next
+            vm.findNextInDocument()
+        case 3: // NSFindPanelAction.previous
+            vm.findPreviousInDocument()
+        case 4: // NSFindPanelAction.replaceAll
+            vm.replaceAllInDocument()
+        case 5, 6: // NSFindPanelAction.replace, replaceAndFind
+            vm.replaceCurrentMatch()
+        case 12: // NSFindPanelAction.showReplaceInterface
+            vm.openDocumentFind(withReplace: true)
+        default:
+            vm.openDocumentFind(withReplace: false)
+        }
+    }
 }

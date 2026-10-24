@@ -6,12 +6,27 @@ struct FolioAppCommands: Commands {
     @ObservedObject var updateManager: AppUpdateManager
 
     var body: some Commands {
-        // MARK: - Software Updates
+        appCommandGroups
+        fileCommandGroups
+        editCommandGroups
+        paragraphCommandMenu
+        formatCommandMenu
+        viewCommandGroup
+        themesCommandMenu
+    }
+
+    @CommandsBuilder
+    private var appCommandGroups: some Commands {
+        // MARK: - Software Updates & CLI Installation
         CommandGroup(after: .appInfo) {
             Button("Check for Updates...") {
                 Task {
                     await updateManager.checkForUpdates(userInitiated: true)
                 }
+            }
+
+            Button("Install 'folio' Command in PATH...") {
+                FolioCLIManager.shared.installCLIFromMenu()
             }
         }
 
@@ -22,7 +37,10 @@ struct FolioAppCommands: Commands {
             }
             .keyboardShortcut(",", modifiers: [.command])
         }
+    }
 
+    @CommandsBuilder
+    private var fileCommandGroups: some Commands {
         // MARK: - File Menu
         CommandGroup(replacing: .newItem) {
             Button("New") {
@@ -59,13 +77,18 @@ struct FolioAppCommands: Commands {
             Button("Connect Remote Folder or File (SSH)...") {
                 viewModel.showAddRemoteModal = true
             }
-            .keyboardShortcut("r", modifiers: [.command, .shift])
+            .keyboardShortcut("r", modifiers: [.command, .option, .shift])
 
             Divider()
 
-            Button("Quick Open...") {
-                viewModel.quickOpenQuery = ""
-                viewModel.showQuickOpen.toggle()
+            Button("Quick Open (Shift+Shift)...") {
+                viewModel.toggleQuickOpen()
+            }
+        }
+
+        CommandGroup(replacing: .printItem) {
+            Button("Print…") {
+                viewModel.printDocument()
             }
             .keyboardShortcut("p", modifiers: [.command])
         }
@@ -88,11 +111,6 @@ struct FolioAppCommands: Commands {
 
             Divider()
 
-            Button("Print…") {
-                viewModel.printDocument()
-            }
-            .keyboardShortcut("p", modifiers: [.command, .option])
-
             Menu("Export") {
                 Button("HTML...") {
                     viewModel.exportToHTML()
@@ -102,7 +120,10 @@ struct FolioAppCommands: Commands {
                 }
             }
         }
+    }
 
+    @CommandsBuilder
+    private var editCommandGroups: some Commands {
         // MARK: - Infinite Undo / Redo Menu
         CommandGroup(replacing: .undoRedo) {
             Button(viewModel.undoActionTitle) {
@@ -119,23 +140,38 @@ struct FolioAppCommands: Commands {
         }
 
         // MARK: - Edit / Find Menu
-        CommandGroup(after: .textEditing) {
-            Divider()
-            Button("Find and Replace...") {
-                viewModel.showFindReplaceBar.toggle()
+        CommandGroup(replacing: .textEditing) {
+            Button("Find...") {
+                viewModel.openDocumentFind(withReplace: false)
             }
-            .keyboardShortcut("f", modifiers: [.command, .option])
+            .keyboardShortcut("f", modifiers: [.command])
 
-            Button("Find in Workspace...") {
-                viewModel.showSidebar = true
-                viewModel.activeSidebarTab = .search
+            Button("Find and Replace...") {
+                viewModel.openDocumentFind(withReplace: true)
+            }
+            .keyboardShortcut("r", modifiers: [.command])
+
+            Button("Find Next") {
+                viewModel.findNextInDocument()
+            }
+            .keyboardShortcut("g", modifiers: [.command])
+
+            Button("Find Previous") {
+                viewModel.findPreviousInDocument()
+            }
+            .keyboardShortcut("g", modifiers: [.command, .shift])
+
+            Divider()
+
+            Button("Find in Files...") {
+                viewModel.openWorkspaceSearch(withReplace: false)
             }
             .keyboardShortcut("f", modifiers: [.command, .shift])
-        }
 
-        paragraphCommandMenu
-        formatCommandMenu
-        viewCommandGroup
-        themesCommandMenu
+            Button("Find and Replace in Files...") {
+                viewModel.openWorkspaceSearch(withReplace: true)
+            }
+            .keyboardShortcut("r", modifiers: [.command, .shift])
+        }
     }
 }

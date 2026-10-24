@@ -11,15 +11,20 @@ public struct QuickOpenModalView: View {
     }
 
     private var filteredFiles: [WorkspaceFileNode] {
-        let q = viewModel.quickOpenQuery.trimmingCharacters(in: .whitespacesAndNewlines)
-        if q.isEmpty {
-            return Array(viewModel.flatMarkdownFiles.prefix(25))
+        viewModel.quickOpenFilteredFiles
+    }
+
+    private var directPathCandidate: QuickOpenPathCandidate? {
+        guard let candidate = viewModel.resolveQuickOpenPathCandidate(for: viewModel.quickOpenQuery) else {
+            return nil
         }
-        return viewModel.flatMarkdownFiles.filter {
-            $0.name.localizedCaseInsensitiveContains(q) ||
-            $0.url.path.localizedCaseInsensitiveContains(q) ||
-            ($0.remoteConnectionString?.localizedCaseInsensitiveContains(q) ?? false)
+        if candidate.exists && !candidate.isDirectory && candidate.lineNumber == nil {
+            let candidateResolved = candidate.url.resolvingSymlinksInPath()
+            if filteredFiles.contains(where: { $0.url.resolvingSymlinksInPath() == candidateResolved }) {
+                return nil
+            }
         }
+        return candidate
     }
 
     public var body: some View {
@@ -29,16 +34,13 @@ public struct QuickOpenModalView: View {
                     .font(.system(size: 15, weight: .medium))
                     .foregroundColor(viewModel.theme.linkColor)
 
-                TextField("Search file by name (Cmd+P)...", text: $viewModel.quickOpenQuery)
+                TextField("Search file by name or paste path (Shift+Shift)...", text: $viewModel.quickOpenQuery)
                     .textFieldStyle(.plain)
                     .font(.system(size: 15))
                     .foregroundColor(viewModel.theme.textColor)
                     .focused($isSearchFocused)
                     .onSubmit {
-                        if let first = filteredFiles.first {
-                            viewModel.openFile(at: first.url)
-                            viewModel.showQuickOpen = false
-                        }
+                        viewModel.submitQuickOpen()
                     }
 
                 Button {
@@ -64,8 +66,12 @@ public struct QuickOpenModalView: View {
 
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: 2) {
-                    if filteredFiles.isEmpty {
-                        Text("No matching files in workspace")
+                    if let candidate = directPathCandidate {
+                        directPathCandidateRow(candidate)
+                    }
+
+                    if filteredFiles.isEmpty && directPathCandidate == nil {
+                        Text("No matching files in workspace — paste any file or folder path to open")
                             .font(.system(size: 12.5))
                             .foregroundColor(viewModel.theme.secondaryTextColor)
                             .padding(16)
@@ -119,6 +125,57 @@ public struct QuickOpenModalView: View {
         .onAppear {
             isSearchFocused = true
         }
+    }
+
+    @ViewBuilder
+    private func directPathCandidateRow(_ candidate: QuickOpenPathCandidate) -> some View {
+        let iconName = !candidate.exists
+            ? "doc.badge.plus"
+            : (candidate.isDirectory ? "folder.fill" : "doc.text.fill")
+        let titleText: String = {
+            let name = candidate.url.lastPathComponent
+            if !candidate.exists {
+                return "Create & Open \"\(name)\""
+            }
+            if candidate.isDirectory {
+                return "Open Folder \"\(name)\""
+            }
+            if let line = candidate.lineNumber {
+                return "\(name):\(line)"
+            }
+            return name
+        }()
+
+        Button {
+            viewModel.openQuickOpenCandidate(candidate)
+        } label: {
+            HStack(spacing: 10) {
+                Image(systemName: iconName)
+                    .font(.system(size: 14))
+                    .foregroundColor(viewModel.theme.linkColor)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(titleText)
+                        .font(.system(size: 13, weight: .medium))
+                        .foregroundColor(viewModel.theme.textColor)
+                    Text(candidate.url.path)
+                        .font(.system(size: 10.5))
+                        .foregroundColor(viewModel.theme.secondaryTextColor)
+                        .lineLimit(1)
+                }
+                Spacer()
+                Text("Return ↵")
+                    .font(.system(size: 10, weight: .medium, design: .monospaced))
+                    .foregroundColor(viewModel.theme.secondaryTextColor)
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 7)
+            .background(
+                RoundedRectangle(cornerRadius: 6)
+                    .fill(viewModel.theme.linkColor.opacity(0.12))
+            )
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
     }
 }
 
@@ -230,66 +287,5 @@ public struct InsertTableModalView: View {
         }
         .padding(18)
         .frame(width: 340)
-    }
-}
-
-public struct FindReplaceBannerView: View {
-    @ObservedObject var viewModel: EditorWorkspaceViewModel
-
-    public init(viewModel: EditorWorkspaceViewModel) {
-        self.viewModel = viewModel
-    }
-
-    public var body: some View {
-        HStack(spacing: 8) {
-            Image(systemName: "magnifyingglass")
-                .font(.system(size: 11.5))
-                .foregroundColor(viewModel.theme.secondaryTextColor)
-
-            TextField("Find in document...", text: $viewModel.findQuery)
-                .textFieldStyle(.roundedBorder)
-                .font(.system(size: 12))
-                .frame(width: 180)
-                .onSubmit {
-                    viewModel.findNextInDocument()
-                }
-
-            TextField("Replace with...", text: $viewModel.replaceQuery)
-                .textFieldStyle(.roundedBorder)
-                .font(.system(size: 12))
-                .frame(width: 160)
-
-            Button("Next") {
-                viewModel.findNextInDocument()
-            }
-            .controlSize(.small)
-
-            Button("Replace") {
-                viewModel.replaceCurrentMatch()
-            }
-            .controlSize(.small)
-
-            Button("Replace All") {
-                viewModel.replaceAllInDocument()
-            }
-            .controlSize(.small)
-
-            Spacer()
-
-            Button {
-                viewModel.showFindReplaceBar = false
-            } label: {
-                Image(systemName: "xmark")
-                    .font(.system(size: 11, weight: .semibold))
-                    .foregroundColor(viewModel.theme.secondaryTextColor)
-            }
-            .buttonStyle(.plain)
-        }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 7)
-        .background(viewModel.theme.sidebarBackgroundColor)
-        .overlay(alignment: .bottom) {
-            Divider().overlay(viewModel.theme.borderColor)
-        }
     }
 }
