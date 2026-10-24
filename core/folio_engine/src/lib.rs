@@ -1,5 +1,6 @@
 #![deny(warnings)]
 
+#[cfg(not(target_arch = "wasm32"))]
 pub mod ffi;
 pub mod markdown;
 pub mod math;

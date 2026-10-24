@@ -38,11 +38,6 @@ alias(
 )
 
 alias(
-    name = "zed_with_folio_mod",
-    actual = "//zed/folio_zed_mod:zed_with_folio_mod",
-)
-
-alias(
     name = "folio_zed_extension",
     actual = "//zed/folio_zed_extension:extension_bundle",
 )
@@ -64,9 +59,9 @@ sh_binary(
         "Cargo.lock",
         "Cargo.toml",
         "build_zed_app.sh",
-        ":zed_with_folio_mod",
+        ":folio_zed_extension",
         "//core/folio_engine:Cargo.toml",
-        "//macos/FolioApp:AppIcon-Zed.icns",
+        "//macos/FolioApp:AppIcon.icns",
     ],
 )
 

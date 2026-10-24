@@ -10,7 +10,7 @@ use folio_engine::markdown::{
 use folio_engine::stats::DocumentStats;
 use std::ops::Range;
 
-/// Snapshot of the Folio GPUI Mod's live WYSIWYG rendering state for a Zed Markdown buffer.
+/// Snapshot of the Folio Extension's live WYSIWYG rendering state for a Zed Markdown buffer.
 #[derive(Debug, Clone)]
 pub struct FolioZedRenderFrame {
     pub folds: Vec<ZedFoldRange>,
@@ -23,7 +23,7 @@ pub struct FolioZedRenderFrame {
     pub pretty_mode: bool,
 }
 
-/// Lightweight in-buffer WYSIWYG controller attached to a Zed `Editor` instance for `.md` / `.markdown` buffers.
+/// Lightweight in-buffer WYSIWYG controller for `.md` / `.markdown` buffers in Zed.
 /// Respects Zed's native dark/light appearance mode without overriding Zed's workspace tabs, sidebars, or theme system.
 #[derive(Debug, Clone)]
 pub struct FolioZedModSession {
@@ -56,7 +56,7 @@ impl FolioZedModSession {
         self.pretty_mode
     }
 
-    /// Computes a complete `FolioZedRenderFrame` for Zed's `EditorElement::prepaint` and `paint`.
+    /// Computes a complete `FolioZedRenderFrame` for Zed's editor highlights and decorations API.
     pub fn evaluate_buffer(
         &self,
         buffer_text: &str,

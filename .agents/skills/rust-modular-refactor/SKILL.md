@@ -25,9 +25,8 @@ description: >-
    - Place Swift tests in focused domain-specific `*Tests.swift` files (`<= 350` lines each) under `Tests/FolioTests/`.
 3. **No Linter Tampering**:
    - `allow_attributes = "deny"` is enforced in workspace Clippy lints. Do not silence `clippy::too_many_lines` or `clippy::cognitive_complexity` with `#[allow(...)]`; split the function or module instead.
-4. **Minimal Zed Patch Surface**:
-   - Never embed standalone algorithms, string/cursor manipulation helpers, or unit tests directly inside `third_party/zed/patches/*.patch`.
-   - Implement pure logic in `core/folio_engine` or `zed/folio_zed_mod`, test it in `tst/`, and keep the Zed patch to thin delegation glue.
+4. **Self-Contained Zed Extension**:
+   - All Zed integration logic lives in `core/folio_engine` and `zed/folio_zed_extension`, tested in `tst/`, and compiled to a WASI component via `zed/folio_zed_extension/wasm`.
 
 ---
 
@@ -43,4 +42,4 @@ When splitting a monolithic module `foo.rs` into a directory module `foo/`:
 ## 3. Shared Behavior-Asserting Tests (`tst/specs/`)
 Whenever adding or fixing markdown live styling, active-line reveal/collapse, list continuation, inline delimiter toggling, heading toggling, or reflow:
 1. Add a declarative cursor-marked test case (using `|` for cursor or `[...]` for selection) in `tst/specs/*.json`.
-2. Verify that **both** `core/folio_engine/tst/behavior_suite.rs`, `zed/folio_zed_mod/tst/behavior_suite.rs`, and Swift `Tests/FolioTests/BehaviorSpecTests.swift` pass against the shared spec definition.
+2. Verify that **both** `core/folio_engine/tst/behavior_suite.rs`, `zed/folio_zed_extension/tst/behavior_suite.rs`, and Swift `Tests/FolioTests/BehaviorSpecTests.swift` pass against the shared spec definition.

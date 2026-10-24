@@ -3,7 +3,7 @@ name = "folio_zed_extension"
 version = "0.1.0"
 edition = "2021"
 license = "MIT"
-description = "Folio Markdown Tree-sitter outline extension for Zed"
+description = "Folio WYSIWYG Markdown extension for Zed (v0.8.0 Editor Highlights & Decorations API)"
 
 [dependencies]
 folio_engine = { path = "../../core/folio_engine" }
@@ -11,6 +11,18 @@ folio_engine = { path = "../../core/folio_engine" }
 [[test]]
 name = "extension_tests"
 path = "tst/extension_tests.rs"
+
+[[test]]
+name = "session_tests"
+path = "tst/session_tests.rs"
+
+[[test]]
+name = "controller_tests"
+path = "tst/controller_tests.rs"
+
+[[test]]
+name = "behavior_suite"
+path = "tst/behavior_suite.rs"
 
 [lints]
 workspace = true

@@ -4,6 +4,10 @@ use std::path::PathBuf;
 use std::process::Command;
 
 fn main() {
+    if env::var("CARGO_CFG_TARGET_ARCH").as_deref() == Ok("wasm32") {
+        return;
+    }
+
     let manifest_dir = PathBuf::from(env::var("CARGO_MANIFEST_DIR").expect("CARGO_MANIFEST_DIR"));
     let cmark_root = manifest_dir.join("../../third_party/cmark_gfm");
     let src_dir = cmark_root.join("src");

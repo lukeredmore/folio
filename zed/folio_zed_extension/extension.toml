@@ -1,7 +1,7 @@
 id = "folio-markdown-outline"
-name = "Folio Markdown Outline"
-version = "0.1.0"
+name = "Folio WYSIWYG Markdown"
+version = "0.2.0"
 schema_version = 1
 authors = ["Folio"]
-description = "Provides native Markdown document outline (H1–H6) and breadcrumb hierarchy to Zed's built-in Outline Panel."
+description = "Provides Typora-style WYSIWYG Markdown inline syntax folding, KaTeX math canvas rendering, task checkboxes, code fence cards, and document outline to Zed."
 repository = "https://github.com/lukeredmore/Folio"

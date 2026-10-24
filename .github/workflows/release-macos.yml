@@ -57,9 +57,7 @@ jobs:
 
       - name: Run all workspace tests and hygiene checks
         run: |
-          python3 ./scripts/sync_cargo_mtimes.py restore . target
           ./scripts/audit_slop.sh
-          python3 ./scripts/sync_cargo_mtimes.py record . target
           bazel test //...
 
   build-folio-dmg:
@@ -79,17 +77,6 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Cache Bazel repository & disk cache (opt)
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/.cache/bazel-repo
-            ~/.cache/bazel-disk
-          key: bazel-opt-macos26-${{ runner.os }}-${{ hashFiles('MODULE.bazel', 'MODULE.bazel.lock', 'Cargo.lock') }}-${{ hashFiles('Sources/**/*.swift', 'macos/**', 'core/**', 'BUILD.bazel', '.bazelrc') }}
-          restore-keys: |
-            bazel-opt-macos26-${{ runner.os }}-${{ hashFiles('MODULE.bazel', 'MODULE.bazel.lock', 'Cargo.lock') }}-
-            bazel-opt-macos26-${{ runner.os }}-
-
       - name: Select Xcode 26+ & compute Folio.dmg Bazel graph hash
         id: graph
         run: |
@@ -99,7 +86,10 @@ jobs:
           fi
           xcodebuild -version
           swiftc --version
-          echo "common --config=ci" >> ~/.bazelrc
+          cat >> ~/.bazelrc <<EOF
+          build --repository_cache=~/.cache/bazel-repo
+          build --disk_cache=~/.cache/bazel-disk
+          EOF
           chmod +x ./scripts/bazel_target_hash.sh
           GRAPH_HASH="$(./scripts/bazel_target_hash.sh //:package_folio_dmg)"
           echo "Computed //:package_folio_dmg Bazel graph hash: $GRAPH_HASH"
@@ -137,6 +127,18 @@ jobs:
             fi
           fi
           echo "reused=false" >> "$GITHUB_OUTPUT"
+
+      - name: Cache Bazel repository & disk cache (opt)
+        if: steps.dmg_cache.outputs.cache-hit != 'true' && steps.reuse_release.outputs.reused != 'true'
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cache/bazel-repo
+            ~/.cache/bazel-disk
+          key: bazel-opt-macos26-${{ runner.os }}-${{ hashFiles('MODULE.bazel', 'MODULE.bazel.lock', 'Cargo.lock') }}-${{ steps.graph.outputs.hash }}
+          restore-keys: |
+            bazel-opt-macos26-${{ runner.os }}-${{ hashFiles('MODULE.bazel', 'MODULE.bazel.lock', 'Cargo.lock') }}-
+            bazel-opt-macos26-${{ runner.os }}-
 
       - name: Import Apple signing certificate (if configured in Secrets)
         id: codesign
@@ -240,18 +242,6 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Cache Bazel repository & disk cache for Zed & Folio mod
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/.cache/bazel-repo
-            ~/.cache/bazel-disk
-          key: bazel-zed-macos26-${{ runner.os }}-${{ hashFiles('third_party/zed/ZED_VERSION', 'third_party/zed/patches/0002-real-zed-editor-folio-wysiwyg.patch', 'third_party/zed/build_moddable_zed.sh') }}-${{ hashFiles('MODULE.bazel', 'MODULE.bazel.lock', 'Cargo.lock', 'core/**/*.rs', 'zed/**/*.rs', 'BUILD.bazel', '.bazelrc') }}
-          restore-keys: |
-            bazel-zed-macos26-${{ runner.os }}-${{ hashFiles('third_party/zed/ZED_VERSION', 'third_party/zed/patches/0002-real-zed-editor-folio-wysiwyg.patch', 'third_party/zed/build_moddable_zed.sh') }}-
-            bazel-zed-macos26-${{ runner.os }}-
-            bazel-opt-macos26-${{ runner.os }}-
-
       - name: Select Xcode 26+ & compute Folio-Zed.dmg Bazel graph hash
         id: graph
         run: |
@@ -261,7 +251,6 @@ jobs:
           fi
           xcodebuild -version
           swiftc --version
-          echo "common --config=ci" >> ~/.bazelrc
           chmod +x ./scripts/bazel_target_hash.sh
           GRAPH_HASH="$(./scripts/bazel_target_hash.sh //:package_zed_dmg)"
           echo "Computed //:package_zed_dmg Bazel graph hash: $GRAPH_HASH"
@@ -300,28 +289,17 @@ jobs:
           fi
           echo "reused=false" >> "$GITHUB_OUTPUT"
 
-      - name: Cache Rust toolchain for Zed
+      - name: Cache Cargo & Zed build artifacts
         if: steps.dmg_cache.outputs.cache-hit != 'true' && steps.reuse_release.outputs.reused != 'true'
         uses: actions/cache@v4
         with:
           path: |
-            ~/.rustup/toolchains
-            ~/.rustup/update-hashes
-          key: rustup-zed-macos26-${{ runner.os }}-${{ hashFiles('build_zed_app.sh') }}
-          restore-keys: |
-            rustup-zed-macos26-${{ runner.os }}-
-
-      - name: Cache Cargo & Moddable Zed build artifacts
-        if: steps.dmg_cache.outputs.cache-hit != 'true' && steps.reuse_release.outputs.reused != 'true'
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/.cache/folio/moddable-zed
             ~/.cargo/registry
             ~/.cargo/git
             third_party/zed/upstream/target
-          key: cargo-zed-macos26-${{ runner.os }}-${{ hashFiles('third_party/zed/ZED_VERSION', 'third_party/zed/patches/0002-real-zed-editor-folio-wysiwyg.patch', 'third_party/zed/build_moddable_zed.sh') }}
+          key: cargo-zed-macos26-${{ runner.os }}-${{ hashFiles('Cargo.lock', 'zed/folio_zed_extension/extension.toml') }}-${{ steps.graph.outputs.hash }}
           restore-keys: |
+            cargo-zed-macos26-${{ runner.os }}-${{ hashFiles('Cargo.lock', 'zed/folio_zed_extension/extension.toml') }}
             cargo-zed-macos26-${{ runner.os }}-
 
       - name: Import Apple signing certificate (if configured in Secrets)
@@ -370,7 +348,6 @@ jobs:
 
       - name: Build Folio Zed.app and package Folio-Zed.dmg
         env:
-          GH_TOKEN: ${{ github.token }}
           FOLIO_REPOSITORY: ${{ github.repository }}
           FOLIO_ZED_PROFILE: release-fast
           FOLIO_ZED_GRAPH_HASH: ${{ steps.graph.outputs.hash }}
@@ -379,23 +356,14 @@ jobs:
           APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
         run: |
-          chmod +x ./build_zed_app.sh ./scripts/package_zed_dmg.sh ./third_party/zed/build_moddable_zed.sh
+          chmod +x ./build_zed_app.sh ./scripts/package_zed_dmg.sh
           ./scripts/package_zed_dmg.sh
-          if [[ "${{ github.event_name }}" != "pull_request" && "${{ github.ref }}" == "refs/heads/main" ]]; then
-            KEY="$(./third_party/zed/build_moddable_zed.sh --print-key third_party/zed/patches/0002-real-zed-editor-folio-wysiwyg.patch "$FOLIO_ZED_PROFILE")"
-            if ! gh release view "moddable-zed-${KEY}" --repo "${{ github.repository }}" >/dev/null 2>&1; then
-              ./third_party/zed/build_moddable_zed.sh --publish-release third_party/zed/patches/0002-real-zed-editor-folio-wysiwyg.patch "$FOLIO_ZED_PROFILE" || true
-            fi
-          fi
 
       - name: Clean up temporary signing keychain
         if: always()
         run: |
           rm -f "$RUNNER_TEMP/certificate.p12"
           security delete-keychain "$RUNNER_TEMP/folio-signing.keychain-db" 2>/dev/null || true
-
-      - name: Smoke-test the Folio Zed single-instance check
-        run: python3 -I third_party/zed/tests/single_instance_smoke_test.py Folio-Zed.dmg
 
       - name: Upload Folio-Zed.dmg artifact
         uses: actions/upload-artifact@v4
