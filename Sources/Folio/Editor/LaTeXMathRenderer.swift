@@ -42,7 +42,25 @@ public struct MathLayoutBox {
     public let width: CGFloat
     public let ascent: CGFloat
     public let descent: CGFloat
+    public let tag: String?
+    public let usesNativeOpenTypeMath: Bool
     public let drawBox: (_ x: CGFloat, _ baselineY: CGFloat, _ color: NSColor) -> Void
+
+    public init(
+        width: CGFloat,
+        ascent: CGFloat,
+        descent: CGFloat,
+        tag: String? = nil,
+        usesNativeOpenTypeMath: Bool = false,
+        drawBox: @escaping (_ x: CGFloat, _ baselineY: CGFloat, _ color: NSColor) -> Void
+    ) {
+        self.width = width
+        self.ascent = ascent
+        self.descent = descent
+        self.tag = tag
+        self.usesNativeOpenTypeMath = usesNativeOpenTypeMath
+        self.drawBox = drawBox
+    }
 
     public var totalHeight: CGFloat { ascent + descent }
 }
@@ -63,11 +81,39 @@ public final class LaTeXMathRenderer {
         return parseSequence(chars, index: &index, stopOnRightCommand: false, stopOnCloseBrace: false, depth: 0)
     }
 
-    /// Executes 2D math parsing and box layout directly through the shared Rust core engine (`//core/folio_engine`).
+    /// Executes 2D math parsing and OpenType MATH layout via SwiftMath, falling back to the Rust/Swift engine if incomplete.
     public static func layoutLatex(
         _ latex: String,
         baseFontSize: CGFloat,
-        isDisplayStyle: Bool
+        isDisplayStyle: Bool,
+        macros: [String: LaTeXMacroDefinition]? = nil
+    ) -> MathLayoutBox {
+        if let nativeBox = layoutWithSwiftMath(
+            latex,
+            baseFontSize: baseFontSize,
+            isDisplayStyle: isDisplayStyle,
+            macros: macros
+        ) {
+            return nativeBox
+        }
+        var effectiveMacros = currentDocumentMacros()
+        if let macros {
+            for (k, v) in macros { effectiveMacros[k] = v }
+        }
+        let (expanded, tag) = LaTeXMacroExpander.expandAndNormalize(latex, macros: effectiveMacros)
+        return layoutWithFallbackEngine(
+            expanded.isEmpty ? latex : expanded,
+            baseFontSize: baseFontSize,
+            isDisplayStyle: isDisplayStyle,
+            tag: tag
+        )
+    }
+
+    public static func layoutWithFallbackEngine(
+        _ latex: String,
+        baseFontSize: CGFloat,
+        isDisplayStyle: Bool,
+        tag: String? = nil
     ) -> MathLayoutBox {
         let rawPtr = latex.withCString { cStr in
             ot_engine_layout_latex(cStr, Double(baseFontSize), isDisplayStyle)
@@ -128,7 +174,9 @@ public final class LaTeXMathRenderer {
         return MathLayoutBox(
             width: CGFloat(res.width),
             ascent: CGFloat(res.ascent),
-            descent: CGFloat(res.descent)
+            descent: CGFloat(res.descent),
+            tag: tag,
+            usesNativeOpenTypeMath: false
         ) { originX, baselineY, color in
             for item in captured {
                 switch item {

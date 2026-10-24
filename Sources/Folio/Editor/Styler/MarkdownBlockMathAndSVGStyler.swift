@@ -68,8 +68,13 @@ extension MarkdownLiveStyler {
                 latexParts.append(mLine.text)
                 decorations.append(LineDecoration(lineRange: mLine.lineRange, kind: .mathBlockBody(isActive: isMathBlockActive)))
             }
+        }
 
-            if isMathBlockActive {
+        let combinedLatex = latexParts.joined(separator: "\n").trimmingCharacters(in: .whitespacesAndNewlines)
+
+        if isMathBlockActive {
+            for mLine in mathLines {
+                let t = mLine.text.trimmingCharacters(in: .whitespaces)
                 let mathMono = theme.codeFont(size: effectiveBaseSize * 0.92)
                 let mathPara = NSMutableParagraphStyle()
                 mathPara.lineSpacing = 3.5
@@ -89,27 +94,48 @@ extension MarkdownLiveStyler {
                 } else {
                     highlightLaTeXSource(in: storage, range: mLine.contentRange, theme: theme, dimFactor: 1.0)
                 }
+            }
+        } else {
+            let mathBox = LaTeXMathRenderer.layoutLatex(
+                combinedLatex,
+                baseFontSize: effectiveBaseSize,
+                isDisplayStyle: true
+            )
+            let totalCardHeight: CGFloat
+            if mathBox.width == 0 && LaTeXMacroExpander.isStandaloneMacroDefinitionBlock(combinedLatex) {
+                totalCardHeight = 26.0
             } else {
+                let naturalHeight = ceil(mathBox.totalHeight) + 20.0
+                let minBlockHeight = max(effectiveBaseSize * 2.1, 36.0)
+                totalCardHeight = max(minBlockHeight, naturalHeight)
+            }
+            let perLineHeight = max(6.0, ceil(totalCardHeight / CGFloat(max(1, mathLines.count))))
+            let hiddenLineFont = theme.bodyFont(size: min(effectiveBaseSize, max(4.0, perLineHeight * 0.55)))
+
+            for mLine in mathLines {
                 let mathPara = NSMutableParagraphStyle()
                 mathPara.alignment = .center
-                mathPara.lineSpacing = 4.0
-                mathPara.paragraphSpacing = 4.0
+                mathPara.lineSpacing = 0.0
+                mathPara.paragraphSpacingBefore = 0.0
+                mathPara.paragraphSpacing = 0.0
+                mathPara.minimumLineHeight = perLineHeight
+                mathPara.maximumLineHeight = perLineHeight
+                mathPara.lineBreakMode = .byClipping
                 mathPara.tailIndent = effectiveContainerWidth
                 storage.addAttributes([
-                    .font: theme.bodyFont(size: effectiveBaseSize),
+                    .font: hiddenLineFont,
                     .foregroundColor: NSColor.clear,
                     .paragraphStyle: mathPara,
                     .kern: 0.0
                 ], range: mLine.lineRange)
             }
-        }
 
-        let combinedLatex = latexParts.joined(separator: " ").trimmingCharacters(in: .whitespacesAndNewlines)
-        if !isMathBlockActive && !combinedLatex.isEmpty {
-            decorations.append(LineDecoration(
-                lineRange: fullBlockRange,
-                kind: .mathBlockRendered(latex: combinedLatex, fullBlockRange: fullBlockRange, dimFactor: blockDim)
-            ))
+            if !combinedLatex.isEmpty {
+                decorations.append(LineDecoration(
+                    lineRange: fullBlockRange,
+                    kind: .mathBlockRendered(latex: combinedLatex, fullBlockRange: fullBlockRange, dimFactor: blockDim)
+                ))
+            }
         }
 
         return (scanIndex, scanLineCount)

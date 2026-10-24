@@ -211,15 +211,41 @@ extension HybridMarkdownTextView {
                 let cardPath = NSBezierPath(roundedRect: blockRect.insetBy(dx: 0, dy: 2), xRadius: 8, yRadius: 8)
                 cardPath.fill()
 
+                let effectiveFontSize = currentTheme.baseFontSize * typographySettings.fontSizeScale
                 let mathBox = LaTeXMathRenderer.layoutLatex(
                     latex,
-                    baseFontSize: currentTheme.baseFontSize * typographySettings.fontSizeScale,
+                    baseFontSize: effectiveFontSize,
                     isDisplayStyle: true
                 )
-                let startX = origin.x + max(12.0, (contentWidth - mathBox.width) * 0.5)
-                let baselineY = blockRect.midY + (mathBox.ascent - mathBox.descent) * 0.5
                 let mathColor = currentTheme.headingNSColor.withAlphaComponent(dimFactor)
-                mathBox.drawBox(startX, baselineY, mathColor)
+                if mathBox.width == 0 && LaTeXMacroExpander.isStandaloneMacroDefinitionBlock(latex) {
+                    let badgeText = "𝑓(x) LaTeX Macros" as NSString
+                    let badgeAttrs: [NSAttributedString.Key: Any] = [
+                        .font: currentTheme.codeFont(size: effectiveFontSize * 0.78),
+                        .foregroundColor: currentTheme.secondaryTextNSColor.withAlphaComponent(0.75 * dimFactor)
+                    ]
+                    let badgeSize = badgeText.size(withAttributes: badgeAttrs)
+                    badgeText.draw(
+                        at: NSPoint(x: origin.x + (contentWidth - badgeSize.width) * 0.5, y: blockRect.midY - badgeSize.height * 0.5),
+                        withAttributes: badgeAttrs
+                    )
+                } else {
+                    let startX = origin.x + max(12.0, (contentWidth - mathBox.width) * 0.5)
+                    let baselineY = blockRect.midY + (mathBox.ascent - mathBox.descent) * 0.5
+                    mathBox.drawBox(startX, baselineY, mathColor)
+                    if let tag = mathBox.tag, !tag.isEmpty {
+                        let tagNS = tag as NSString
+                        let tagAttrs: [NSAttributedString.Key: Any] = [
+                            .font: currentTheme.bodyFont(size: effectiveFontSize * 0.92),
+                            .foregroundColor: currentTheme.secondaryTextNSColor.withAlphaComponent(0.85 * dimFactor)
+                        ]
+                        let tagSize = tagNS.size(withAttributes: tagAttrs)
+                        tagNS.draw(
+                            at: NSPoint(x: origin.x + contentWidth - tagSize.width - 14.0, y: blockRect.midY - tagSize.height * 0.5),
+                            withAttributes: tagAttrs
+                        )
+                    }
+                }
 
             case .inlineMathRendered(let latex, let mathRange, let fontSize, let dimFactor):
                 let mathGlyphs = layoutManager.glyphRange(forCharacterRange: mathRange, actualCharacterRange: nil)

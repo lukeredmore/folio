@@ -32,6 +32,7 @@ macos_application(
     resources = [
         "AppIcon.icns",
         "AppIcon-Dev.icns",
+        "@swift_math//:math_fonts_bundle",
     ],
     deps = [
         ":FolioAppMainLib",
