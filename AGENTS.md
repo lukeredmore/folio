@@ -64,3 +64,20 @@ To prevent monolithic files and duplicated test logic across the Zed extension a
    - Product behaviors shared between the Zed extension and Standalone Folio (active-line syntax reveal vs. inactive-line folding, block decorations, newline list/task continuation, inline delimiter toggling, heading toggling, and paragraph reflow) are defined in cursor-annotated JSON specs under `tst/specs/` and executed against `folio_engine`, `folio_zed_extension`, and `FolioTests`.
 4. **No Linter Tampering**:
    - Workspace Clippy lints enforce `allow_attributes = "deny"`, `too_many_lines = "warn"`, and `cognitive_complexity = "warn"` (configured in `clippy.toml`). Never silence warnings with `#[allow(...)]`; refactor the function or module instead.
+
+---
+
+## 5. Always Include Local Run Commands in Your Final Response
+
+Whenever you finish a task in **Folio**, always include the full, copy-pasteable commands to run it locally in your final response (including the `cd` into the active worktree or repository directory), for example:
+- **Standalone macOS App**:
+  ```bash
+  cd <worktree_or_repo_path>
+  bazel run //:FolioApp
+  ```
+- **Zed WASI Extension**:
+  ```bash
+  cd <worktree_or_repo_path>
+  ./zed/install_extension.sh
+  ```
+

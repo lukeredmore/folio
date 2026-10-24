@@ -143,7 +143,7 @@
         "bzlTransitiveDigest": "UmrRoknsqllpvBNUopz49C3AsxzVGqIEjeR9x1Gc6sY=",
         "usagesDigest": "l6vrs6omTC87Fc6MFdSyPbNsDo/3rxIimDlCFzPtykU=",
         "recordedFileInputs": {
-          "@@//Cargo.toml": "7f254d424608c1e8a6412c6a20560680ac3e1d1631a4d97d4232fed46cb07dc6",
+          "@@//Cargo.toml": "6a41442a984b383e563a45d9223f4b3541f0b929037c49e48d62900f8ef20874",
           "@@//zed/folio_zed_extension/Cargo.toml": "804c0b58aa5296c8336f42d74da604fd4d82788039d219a07fc175554e987272",
           "@@//Cargo.lock": "540988ba9736834dd8a6883d33d29cf07d6871371f1a908b7d9a979ee039b4b5",
           "@@//core/folio_engine/Cargo.toml": "753048bb2ef560390f6ae5ecc79206345f696c9d8e2afbe51727b6d9fcfe3157",
