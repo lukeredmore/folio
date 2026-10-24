@@ -1,0 +1,3 @@
+package(default_visibility = ["//visibility:public"])
+
+exports_files(["update_markdown_spec.py"])

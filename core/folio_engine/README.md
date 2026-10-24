@@ -1,13 +1,13 @@
 # Folio Core Engine (`//core/folio_engine`)
 
-`folio_engine` is the shared native Rust engine powering both the standalone macOS application ([`//:FolioApp`](../../macos/README.md)) and the Folio-modded Zed IDE ([`//:zed_with_folio_mod`](../../zed/README.md)).
+`folio_engine` is the shared native Rust engine powering both the standalone macOS application ([`//:FolioApp`](../../macos/README.md)) and the Folio Zed WASI extension ([`//zed/folio_zed_extension`](../../zed/README.md)).
 
 ---
 
 ## Responsibilities
 
 - **Single-Pass Markdown Scanning (`src/markdown/`)**:
-  - Backed by `cmark-gfm` (`//third_party/cmark_gfm`) plus custom inline/block scanners.
+  - Backed by `cmark-gfm` (`@cmark_gfm//:cmark_gfm`, fetched via [`//third_party:upstream_deps.bzl`](../../third_party/upstream_deps.bzl)) plus custom inline/block scanners.
   - Produces block decorations (headings `H1`–`H6`, fenced code blocks with language badges, GFM pipe tables, blockquotes/callouts, task lists, horizontal rules, display math `$$...$$`, and Mermaid diagrams) and inline spans (`**bold**`, `*italic*`, `~~strikethrough~~`, `==highlight==`, `` `code` ``, `[links](url)`, `![images](url)`, `$math$`, and inline HTML).
   - Computes cursor-aware active-line syntax reveal vs. inactive-line delimiter folding ranges.
 - **Native $\text{LaTeX}$ Math Layout (`src/math/`)**:
@@ -31,4 +31,4 @@ bazel test //core/folio_engine/...
 cargo test -p folio_engine
 ```
 
-Shared cross-product behavior specifications live in [`tst/specs/*.json`](../../tst/specs) and are verified against `folio_engine`, `folio_zed_mod`, and `FolioTests`.
+Shared cross-product behavior specifications live in [`tst/specs/*.json`](../../tst/specs) and are verified against `folio_engine`, `folio_zed_extension`, and `FolioTests`.

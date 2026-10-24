@@ -16,4 +16,4 @@ doctest = false
 
 [dependencies]
 folio_zed_extension = { path = ".." }
-wit-bindgen = "0.41"
+zed_extension_api = { git = "https://github.com/lukeredmore/zed", branch = "main" }

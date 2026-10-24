@@ -6,10 +6,20 @@ use std::fs;
 use std::path::PathBuf;
 
 fn spec_file_path(filename: &str) -> PathBuf {
-    let candidates = [
+    let mut candidates = vec![
         PathBuf::from(format!("third_party/markdown_spec/{filename}")),
         PathBuf::from(format!("../../third_party/markdown_spec/{filename}")),
     ];
+    if let Ok(test_srcdir) = std::env::var("TEST_SRCDIR") {
+        let srcdir = PathBuf::from(&test_srcdir);
+        if let Ok(entries) = fs::read_dir(&srcdir) {
+            for entry in entries.flatten() {
+                let p = entry.path();
+                candidates.push(p.join(filename));
+                candidates.push(p.join("third_party/markdown_spec").join(filename));
+            }
+        }
+    }
     for c in &candidates {
         if c.exists() {
             return c.clone();

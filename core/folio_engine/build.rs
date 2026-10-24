@@ -9,9 +9,24 @@ fn main() {
     }
 
     let manifest_dir = PathBuf::from(env::var("CARGO_MANIFEST_DIR").expect("CARGO_MANIFEST_DIR"));
-    let cmark_root = manifest_dir.join("../../third_party/cmark_gfm");
+    let repo_root = manifest_dir.join("../..");
+    let cmark_root = repo_root.join("third_party/cmark_gfm");
+    let spec_root = repo_root.join("third_party/markdown_spec");
     let src_dir = cmark_root.join("src");
     let ext_dir = cmark_root.join("extensions");
+    if !src_dir.join("cmark-gfm.h").exists() || !spec_root.join("gfm_spec.txt").exists() {
+        let updater = repo_root.join("tools/update_markdown_spec.py");
+        if updater.exists() {
+            let status = Command::new("python3")
+                .arg(&updater)
+                .status()
+                .expect("Failed to execute tools/update_markdown_spec.py");
+            assert!(
+                status.success(),
+                "tools/update_markdown_spec.py failed to fetch upstream cmark-gfm sources"
+            );
+        }
+    }
     if !src_dir.exists() {
         return;
     }

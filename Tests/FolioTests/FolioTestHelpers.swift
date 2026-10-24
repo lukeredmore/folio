@@ -14,11 +14,18 @@ extension XCTestCase {
     func locateSpecFixture(_ relativePath: String) throws -> URL {
         let fm = FileManager.default
         let env = ProcessInfo.processInfo.environment
+        let basename = (relativePath as NSString).lastPathComponent
         var candidates: [String] = [relativePath]
         if let testSrcdir = env["TEST_SRCDIR"] {
             let workspace = env["TEST_WORKSPACE"] ?? "_main"
             candidates.append("\(testSrcdir)/\(workspace)/\(relativePath)")
             candidates.append("\(testSrcdir)/folio/\(relativePath)")
+            if let entries = try? fm.contentsOfDirectory(atPath: testSrcdir) {
+                for entry in entries {
+                    candidates.append("\(testSrcdir)/\(entry)/\(relativePath)")
+                    candidates.append("\(testSrcdir)/\(entry)/\(basename)")
+                }
+            }
         }
         if let pwd = env["PWD"] {
             candidates.append("\(pwd)/\(relativePath)")
