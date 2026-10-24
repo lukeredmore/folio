@@ -8,11 +8,11 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
 
 concurrency:
-  group: release-macos-${{ github.ref }}
-  cancel-in-progress: true
+  group: release-macos-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   test:
@@ -30,6 +30,7 @@ jobs:
           fi
           xcodebuild -version
           swiftc --version
+          rustup target add wasm32-wasip2
           echo "common --config=ci" >> ~/.bazelrc
 
       - name: Cache Bazel repository & disk cache (test)
@@ -38,7 +39,7 @@ jobs:
           path: |
             ~/.cache/bazel-repo
             ~/.cache/bazel-disk
-          key: bazel-test-macos26-${{ runner.os }}-${{ hashFiles('MODULE.bazel', 'MODULE.bazel.lock', 'Cargo.lock') }}-${{ hashFiles('core/**/*.rs', 'zed/**/*.rs', 'Sources/**/*.swift', 'Tests/**/*.swift') }}
+          key: bazel-test-macos26-${{ runner.os }}-${{ hashFiles('MODULE.bazel', 'MODULE.bazel.lock', 'Cargo.lock') }}-${{ hashFiles('core/**/*.rs', 'zed/**/*.rs', 'Sources/**/*.swift', 'Tests/**/*.swift', 'tst/specs/**/*.json') }}
           restore-keys: |
             bazel-test-macos26-${{ runner.os }}-${{ hashFiles('MODULE.bazel', 'MODULE.bazel.lock', 'Cargo.lock') }}-
             bazel-test-macos26-${{ runner.os }}-
@@ -50,7 +51,7 @@ jobs:
             ~/.cargo/registry
             ~/.cargo/git
             target
-          key: cargo-test-macos26-${{ runner.os }}-${{ hashFiles('rust-toolchain.toml', 'Cargo.lock') }}-${{ hashFiles('core/**/*.rs', 'zed/**/*.rs') }}
+          key: cargo-test-macos26-${{ runner.os }}-${{ hashFiles('rust-toolchain.toml', 'Cargo.lock') }}-${{ hashFiles('core/**/*.rs', 'zed/**/*.rs', 'tst/specs/**/*.json') }}
           restore-keys: |
             cargo-test-macos26-${{ runner.os }}-${{ hashFiles('rust-toolchain.toml', 'Cargo.lock') }}-
             cargo-test-macos26-${{ runner.os }}-
@@ -58,7 +59,7 @@ jobs:
       - name: Run all workspace tests and hygiene checks
         run: |
           ./scripts/audit_slop.sh
-          bazel test //...
+          bazel test //... --test_output=errors
 
   build-folio-dmg:
     name: Build & Package Folio.dmg
@@ -274,6 +275,8 @@ jobs:
 
   release:
     name: Update Rolling GitHub Release
+    permissions:
+      contents: write
     needs:
       - test
       - build-folio-dmg
