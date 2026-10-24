@@ -53,15 +53,10 @@ sh_binary(
 )
 
 sh_binary(
-    name = "package_zed_dmg",
-    srcs = ["scripts/package_zed_dmg.sh"],
+    name = "package_zed_extension",
+    srcs = ["zed/package_extension.sh"],
     data = [
-        "Cargo.lock",
-        "Cargo.toml",
-        "build_zed_app.sh",
         ":folio_zed_extension",
-        "//core/folio_engine:Cargo.toml",
-        "//macos/FolioApp:AppIcon.icns",
     ],
 )
 
