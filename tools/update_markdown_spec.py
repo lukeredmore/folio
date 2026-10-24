@@ -12,17 +12,17 @@ import argparse
 import hashlib
 import io
 import json
-import os
 import re
 import shutil
-import sys
 import tarfile
 import urllib.request
 from pathlib import Path
 
 
 DEFAULT_CMARK_GFM_REF = "0.29.0.gfm.13"
+DEFAULT_CMARK_GFM_SHA256 = "5abc61798ebd9de5660bc076443c07abad2b8d15dbc11094a3a79644b8ad243a"
 DEFAULT_COMMONMARK_VERSION = "0.31.2"
+DEFAULT_COMMONMARK_SHA256 = "d431b29d97b6f73e69d547109cf5081578fac931e72afe95639ebe766c1b2a20"
 
 CONFIG_H_CONTENT = """\
 #ifndef CMARK_CONFIG_H
@@ -226,6 +226,7 @@ def make_version_h(major: int, minor: int, patch: int, gfm: int) -> str:
 
 
 def main():
+    repo_root = Path(__file__).resolve().parent.parent
     parser = argparse.ArgumentParser(description="Update upstream cmark-gfm and Markdown spec fixtures.")
     parser.add_argument(
         "--cmark-gfm-ref",
@@ -237,30 +238,66 @@ def main():
         default=DEFAULT_COMMONMARK_VERSION,
         help=f"CommonMark spec version from spec.commonmark.org (default: {DEFAULT_COMMONMARK_VERSION})",
     )
+    parser.add_argument(
+        "--cmark-tar",
+        default="",
+        help="Optional local path to pre-downloaded cmark-gfm tar.gz archive",
+    )
+    parser.add_argument(
+        "--commonmark-json",
+        default="",
+        help="Optional local path to pre-downloaded CommonMark spec.json",
+    )
+    parser.add_argument(
+        "--output-cmark-dir",
+        default=str(repo_root / "third_party" / "cmark_gfm"),
+        help="Output directory for cmark-gfm C sources (pass 'none' to skip)",
+    )
+    parser.add_argument(
+        "--output-spec-dir",
+        default=str(repo_root / "third_party" / "markdown_spec"),
+        help="Output directory for Markdown spec fixtures (pass 'none' to skip)",
+    )
     args = parser.parse_args()
 
-    repo_root = Path(__file__).resolve().parent.parent
-    cmark_dir = repo_root / "third_party" / "cmark_gfm"
-    spec_dir = repo_root / "third_party" / "markdown_spec"
+    cmark_dir = None if args.output_cmark_dir == "none" else Path(args.output_cmark_dir)
+    spec_dir = None if args.output_spec_dir == "none" else Path(args.output_spec_dir)
 
     cmark_tar_url = f"https://github.com/github/cmark-gfm/archive/{args.cmark_gfm_ref}.tar.gz"
     commonmark_json_url = f"https://spec.commonmark.org/{args.commonmark_version}/spec.json"
 
-    print(f"[1/4] Downloading cmark-gfm ({args.cmark_gfm_ref}) from {cmark_tar_url} ...")
-    cmark_tar_bytes = download_bytes(cmark_tar_url)
+    if args.cmark_tar:
+        cmark_tar_bytes = Path(args.cmark_tar).read_bytes()
+    else:
+        print(f"[1/4] Downloading cmark-gfm ({args.cmark_gfm_ref}) from {cmark_tar_url} ...")
+        cmark_tar_bytes = download_bytes(cmark_tar_url)
     cmark_tar_sha256 = hashlib.sha256(cmark_tar_bytes).hexdigest()
+    if args.cmark_gfm_ref == DEFAULT_CMARK_GFM_REF and cmark_tar_sha256 != DEFAULT_CMARK_GFM_SHA256:
+        raise RuntimeError(
+            f"SHA-256 mismatch for {cmark_tar_url}: expected {DEFAULT_CMARK_GFM_SHA256}, got {cmark_tar_sha256}"
+        )
 
-    print(f"[2/4] Downloading CommonMark {args.commonmark_version} spec.json from {commonmark_json_url} ...")
-    commonmark_json_bytes = download_bytes(commonmark_json_url)
-    commonmark_json_sha256 = hashlib.sha256(commonmark_json_bytes).hexdigest()
-    commonmark_tests = json.loads(commonmark_json_bytes.decode("utf-8"))
+    commonmark_json_bytes = b"[]"
+    commonmark_json_sha256 = ""
+    commonmark_tests = []
+    if spec_dir is not None:
+        if args.commonmark_json:
+            commonmark_json_bytes = Path(args.commonmark_json).read_bytes()
+        else:
+            print(f"[2/4] Downloading CommonMark {args.commonmark_version} spec.json from {commonmark_json_url} ...")
+            commonmark_json_bytes = download_bytes(commonmark_json_url)
+        commonmark_json_sha256 = hashlib.sha256(commonmark_json_bytes).hexdigest()
+        if args.commonmark_version == DEFAULT_COMMONMARK_VERSION and commonmark_json_sha256 != DEFAULT_COMMONMARK_SHA256:
+            raise RuntimeError(
+                f"SHA-256 mismatch for {commonmark_json_url}: expected {DEFAULT_COMMONMARK_SHA256}, got {commonmark_json_sha256}"
+            )
+        commonmark_tests = json.loads(commonmark_json_bytes.decode("utf-8"))
 
-    print("[3/4] Extracting cmark-gfm C library and upstream spec files ...")
-    if cmark_dir.exists():
-        shutil.rmtree(cmark_dir)
-    (cmark_dir / "src").mkdir(parents=True, exist_ok=True)
-    (cmark_dir / "extensions").mkdir(parents=True, exist_ok=True)
-    spec_dir.mkdir(parents=True, exist_ok=True)
+    if cmark_dir is not None:
+        (cmark_dir / "src").mkdir(parents=True, exist_ok=True)
+        (cmark_dir / "extensions").mkdir(parents=True, exist_ok=True)
+    if spec_dir is not None:
+        spec_dir.mkdir(parents=True, exist_ok=True)
 
     cmake_root_text = ""
     gfm_spec_txt = ""
@@ -279,11 +316,11 @@ def main():
             data = tf.extractfile(member).read()
             if rel_str == "CMakeLists.txt":
                 cmake_root_text = data.decode("utf-8")
-            elif rel_str == "COPYING":
+            elif cmark_dir is not None and rel_str == "COPYING":
                 (cmark_dir / "COPYING").write_bytes(data)
-            elif rel.parts[0] == "src" and rel.suffix in (".c", ".h", ".inc") and rel.name != "main.c":
+            elif cmark_dir is not None and rel.parts[0] == "src" and rel.suffix in (".c", ".h", ".inc") and rel.name != "main.c":
                 (cmark_dir / rel).write_bytes(data)
-            elif rel.parts[0] == "extensions" and rel.suffix in (".c", ".h"):
+            elif cmark_dir is not None and rel.parts[0] == "extensions" and rel.suffix in (".c", ".h"):
                 (cmark_dir / rel).write_bytes(data)
             elif rel_str == "test/spec.txt":
                 gfm_spec_txt = data.decode("utf-8")
@@ -291,59 +328,54 @@ def main():
                 gfm_extensions_txt = data.decode("utf-8")
 
     major, minor, patch, gfm = parse_version_from_cmake(cmake_root_text)
-    (cmark_dir / "src" / "config.h").write_text(CONFIG_H_CONTENT, encoding="utf-8")
-    (cmark_dir / "src" / "cmark-gfm_version.h").write_text(
-        make_version_h(major, minor, patch, gfm), encoding="utf-8"
-    )
-    (cmark_dir / "src" / "cmark-gfm_export.h").write_text(CMARK_GFM_EXPORT_H_CONTENT, encoding="utf-8")
-    (cmark_dir / "extensions" / "cmark-gfm-extensions_export.h").write_text(
-        CMARK_GFM_EXTENSIONS_EXPORT_H_CONTENT, encoding="utf-8"
-    )
-    (cmark_dir / "BUILD.bazel").write_text(CMARK_GFM_BUILD_BAZEL, encoding="utf-8")
+    if cmark_dir is not None:
+        (cmark_dir / "src" / "config.h").write_text(CONFIG_H_CONTENT, encoding="utf-8")
+        (cmark_dir / "src" / "cmark-gfm_version.h").write_text(
+            make_version_h(major, minor, patch, gfm), encoding="utf-8"
+        )
+        (cmark_dir / "src" / "cmark-gfm_export.h").write_text(CMARK_GFM_EXPORT_H_CONTENT, encoding="utf-8")
+        (cmark_dir / "extensions" / "cmark-gfm-extensions_export.h").write_text(
+            CMARK_GFM_EXTENSIONS_EXPORT_H_CONTENT, encoding="utf-8"
+        )
+        (cmark_dir / "BUILD.bazel").write_text(CMARK_GFM_BUILD_BAZEL, encoding="utf-8")
 
-    print("[4/4] Generating parsed spec test fixtures ...")
-    gfm_spec_tests = parse_spec_txt(gfm_spec_txt)
-    gfm_ext_tests = parse_spec_txt(gfm_extensions_txt)
+    if spec_dir is not None:
+        gfm_spec_tests = parse_spec_txt(gfm_spec_txt)
+        gfm_ext_tests = parse_spec_txt(gfm_extensions_txt)
 
-    (spec_dir / "gfm_spec.txt").write_text(gfm_spec_txt, encoding="utf-8")
-    (spec_dir / "gfm_extensions.txt").write_text(gfm_extensions_txt, encoding="utf-8")
-    (spec_dir / "gfm_spec.json").write_text(
-        json.dumps(gfm_spec_tests, indent=2, ensure_ascii=False) + "\n",
-        encoding="utf-8",
-    )
-    (spec_dir / "gfm_extensions.json").write_text(
-        json.dumps(gfm_ext_tests, indent=2, ensure_ascii=False) + "\n",
-        encoding="utf-8",
-    )
-    (spec_dir / "commonmark_spec.json").write_bytes(commonmark_json_bytes)
-    (spec_dir / "BUILD.bazel").write_text(MARKDOWN_SPEC_BUILD_BAZEL, encoding="utf-8")
+        (spec_dir / "gfm_spec.txt").write_text(gfm_spec_txt, encoding="utf-8")
+        (spec_dir / "gfm_extensions.txt").write_text(gfm_extensions_txt, encoding="utf-8")
+        (spec_dir / "gfm_spec.json").write_text(
+            json.dumps(gfm_spec_tests, indent=2, ensure_ascii=False) + "\n",
+            encoding="utf-8",
+        )
+        (spec_dir / "gfm_extensions.json").write_text(
+            json.dumps(gfm_ext_tests, indent=2, ensure_ascii=False) + "\n",
+            encoding="utf-8",
+        )
+        (spec_dir / "commonmark_spec.json").write_bytes(commonmark_json_bytes)
+        (spec_dir / "BUILD.bazel").write_text(MARKDOWN_SPEC_BUILD_BAZEL, encoding="utf-8")
 
-    manifest = {
-        "cmark_gfm": {
-            "ref": args.cmark_gfm_ref,
-            "version": f"{major}.{minor}.{patch}.gfm.{gfm}",
-            "archive_url": cmark_tar_url,
-            "archive_sha256": cmark_tar_sha256,
-            "gfm_spec_test_count": len(gfm_spec_tests),
-            "gfm_extensions_test_count": len(gfm_ext_tests),
-        },
-        "commonmark": {
-            "version": args.commonmark_version,
-            "spec_json_url": commonmark_json_url,
-            "spec_json_sha256": commonmark_json_sha256,
-            "test_count": len(commonmark_tests),
-        },
-    }
-    (spec_dir / "spec_manifest.json").write_text(
-        json.dumps(manifest, indent=2) + "\n",
-        encoding="utf-8",
-    )
-
-    print(
-        f"Done! Imported cmark-gfm {major}.{minor}.{patch}.gfm.{gfm}, "
-        f"{len(gfm_spec_tests)} GFM spec tests, {len(gfm_ext_tests)} GFM extension tests, "
-        f"and {len(commonmark_tests)} CommonMark {args.commonmark_version} spec tests."
-    )
+        manifest = {
+            "cmark_gfm": {
+                "ref": args.cmark_gfm_ref,
+                "version": f"{major}.{minor}.{patch}.gfm.{gfm}",
+                "archive_url": cmark_tar_url,
+                "archive_sha256": cmark_tar_sha256,
+                "gfm_spec_test_count": len(gfm_spec_tests),
+                "gfm_extensions_test_count": len(gfm_ext_tests),
+            },
+            "commonmark": {
+                "version": args.commonmark_version,
+                "spec_json_url": commonmark_json_url,
+                "spec_json_sha256": commonmark_json_sha256,
+                "test_count": len(commonmark_tests),
+            },
+        }
+        (spec_dir / "spec_manifest.json").write_text(
+            json.dumps(manifest, indent=2) + "\n",
+            encoding="utf-8",
+        )
 
 
 if __name__ == "__main__":

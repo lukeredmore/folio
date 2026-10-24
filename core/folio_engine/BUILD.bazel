@@ -38,14 +38,14 @@ ENGINE_SRCS = [
     "src/theme.rs",
 ]
 
-# Native Rust library consumed by Zed GPUI Mod (//zed/folio_zed_mod)
+# Native Rust library consumed by Zed extension crate (//zed/folio_zed_extension)
 rust_library(
     name = "folio_engine",
     srcs = ENGINE_SRCS,
     crate_name = "folio_engine",
     edition = "2021",
     deps = [
-        "//third_party/cmark_gfm:cmark_gfm",
+        "@cmark_gfm//:cmark_gfm",
         "@crates//:mermaid-rs-renderer",
     ],
 )
@@ -57,7 +57,7 @@ rust_static_library(
     crate_name = "folio_engine",
     edition = "2021",
     deps = [
-        "//third_party/cmark_gfm:cmark_gfm",
+        "@cmark_gfm//:cmark_gfm",
         "@crates//:mermaid-rs-renderer",
     ],
 )
@@ -77,7 +77,7 @@ cc_library(
     ],
     deps = [
         ":folio_engine_static",
-        "//third_party/cmark_gfm:cmark_gfm",
+        "@cmark_gfm//:cmark_gfm",
     ],
 )
 
@@ -92,7 +92,7 @@ rust_test(
     name = "cmark_gfm_spec_test",
     srcs = ["tst/cmark_gfm_spec_tests.rs"],
     data = [
-        "//third_party/markdown_spec:all_spec_files",
+        "@markdown_spec//:all_spec_files",
     ],
     edition = "2021",
     deps = [":folio_engine"],

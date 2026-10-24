@@ -24,7 +24,7 @@ swift_test(
         "6",
     ],
     data = [
-        "//third_party/markdown_spec:all_spec_files",
+        "@markdown_spec//:all_spec_files",
         "//tst/specs:all_behavior_specs",
     ],
     deps = [
