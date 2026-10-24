@@ -305,4 +305,44 @@ final class WorkspaceAndPersistenceTests: XCTestCase {
         hostingView.layoutSubtreeIfNeeded()
         XCTAssertTrue(vm.showSidebar, "Clicking the StatusBar sidebar button again must re-open the sidebar")
     }
+
+    @MainActor
+    func testProfileSidebarResizeAnimationLatency() throws {
+        let vm = EditorWorkspaceViewModel()
+        let hosting = NSHostingView(rootView: HybridMarkdownEditorRepresentable(viewModel: vm))
+        hosting.frame = NSRect(x: 0, y: 0, width: 1000, height: 700)
+        hosting.layoutSubtreeIfNeeded()
+
+        guard let tv = vm.activeTextView, let sv = tv.enclosingScrollView else {
+            return XCTFail("Expected activeTextView and enclosingScrollView")
+        }
+
+        // Simulate 60 animation frames of NSSplitViewController resizing the editor pane
+        // from 1000pt (sidebar collapsed) down to 735pt (sidebar expanded, 265pt wide) and back.
+        let steps = 30
+        var widths: [CGFloat] = []
+        for i in 1...steps {
+            widths.append(1000.0 - CGFloat(i) * (265.0 / CGFloat(steps)))
+        }
+        for i in 1...steps {
+            widths.append(735.0 + CGFloat(i) * (265.0 / CGFloat(steps)))
+        }
+
+        let start = CFAbsoluteTimeGetCurrent()
+        for w in widths {
+            sv.setFrameSize(NSSize(width: w, height: 700))
+            tv.layoutManager?.ensureLayout(for: tv.textContainer!)
+        }
+        let elapsedMs = (CFAbsoluteTimeGetCurrent() - start) * 1000.0
+        let avgFrameMs = elapsedMs / Double(widths.count)
+        XCTAssertLessThan(
+            avgFrameMs,
+            10.0,
+            String(format: "Sidebar resize animation frame budget exceeded: %.2f ms/frame (%.2f ms total)", avgFrameMs, elapsedMs)
+        )
+        let viewportWidth = max(sv.contentView.bounds.width, 320)
+        let proseWidth = min(max(viewportWidth - 72, 200), vm.typography.maxColumnWidth)
+        let expectedInset = max((viewportWidth - proseWidth) / 2.0, 36.0)
+        XCTAssertEqual(tv.textContainerOrigin.x, expectedInset, accuracy: 0.5)
+    }
 }

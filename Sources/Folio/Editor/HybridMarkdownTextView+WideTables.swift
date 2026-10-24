@@ -32,6 +32,10 @@ extension HybridMarkdownTextView {
     /// the canvas, otherwise pinned to the canvas margin and scrolled by `tableScrollOffsets`.
     func refreshWideTableLayout() {
         guard let container = textContainer as? WideBlockTextContainer, let layoutManager = layoutManager else { return }
+        let tables = Self.tableSpans(in: lineDecorations)
+        if tables.isEmpty && container.regions.isEmpty && overflowingTables.isEmpty {
+            return
+        }
         let column = container.containerSize.width
         let margin = Self.wideTableCanvasMargin
         let available = max(column, bounds.width - margin * 2)
@@ -39,7 +43,7 @@ extension HybridMarkdownTextView {
 
         var regions: [WideBlockTextContainer.Region] = []
         var overflowing: [OverflowingTable] = []
-        for table in Self.tableSpans(in: lineDecorations) where table.width > column + 0.5 {
+        for table in tables where table.width > column + 0.5 {
             let width = ceil(table.width)
             if width <= available {
                 regions.append(.init(range: table.range, x: -floor((width - column) / 2), width: width))
