@@ -107,15 +107,12 @@ public struct QuickOpenModalView: View {
             .frame(maxHeight: 280)
         }
         .frame(width: 500)
-        .background(
-            RoundedRectangle(cornerRadius: 10)
-                .fill(viewModel.theme.sidebarBackgroundColor)
-                .shadow(color: Color.black.opacity(0.28), radius: 20, x: 0, y: 10)
-        )
+        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 12))
         .overlay(
-            RoundedRectangle(cornerRadius: 10)
+            RoundedRectangle(cornerRadius: 12)
                 .stroke(viewModel.theme.borderColor, lineWidth: 1)
         )
+        .shadow(color: Color.black.opacity(0.28), radius: 20, x: 0, y: 10)
         .onAppear {
             isSearchFocused = true
         }

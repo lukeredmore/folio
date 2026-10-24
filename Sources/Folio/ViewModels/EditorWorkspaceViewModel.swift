@@ -9,6 +9,14 @@ public enum SidebarTab: String, CaseIterable, Identifiable {
     case search = "Search"
 
     public var id: String { rawValue }
+
+    public var systemImage: String {
+        switch self {
+        case .files: return "folder"
+        case .outline: return "list.bullet.indent"
+        case .search: return "magnifyingglass"
+        }
+    }
 }
 
 public enum FileDisplayStyle: String, CaseIterable {
@@ -243,6 +251,7 @@ public final class EditorWorkspaceViewModel: ObservableObject {
         }
     }
     @Published public var outlineFilterText: String = ""
+    @Published public var fileFilterText: String = ""
 
     // MARK: - Modals & Banners
     @Published public var showQuickOpen: Bool = false

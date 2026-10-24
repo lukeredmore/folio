@@ -67,7 +67,7 @@ public enum BlockDecorationKind: Equatable {
     )
 }
 
-public struct LineDecoration {
+public struct LineDecoration: Equatable {
     public let lineRange: NSRange
     public let kind: BlockDecorationKind
 }

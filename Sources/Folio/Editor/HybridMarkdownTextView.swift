@@ -9,25 +9,47 @@ public final class HybridMarkdownTextView: NSTextView {
     weak var editorCoordinator: HybridMarkdownEditorRepresentable.Coordinator?
 
     public var currentTheme: EditorTheme = .daylight {
-        didSet { needsDisplay = true }
+        didSet {
+            if currentTheme != oldValue {
+                needsDisplay = true
+            }
+        }
     }
 
     public var typographySettings: EditorTypographySettings = .default {
-        didSet { needsDisplay = true }
+        didSet {
+            if typographySettings != oldValue {
+                needsDisplay = true
+            }
+        }
     }
 
     public var lineDecorations: [LineDecoration] = [] {
         didSet {
-            refreshWideTableLayout()
-            syncInlineVideoOverlayWithDecorations()
-            needsDisplay = true
+            if lineDecorations != oldValue {
+                refreshWideTableLayout()
+                syncInlineVideoOverlayWithDecorations()
+                needsDisplay = true
+            }
+        }
+    }
+
+    /// Optional horizontal column inset managed by `Coordinator.updateInsets` so centering the
+    /// fixed-width prose column during split-view/window resize does not call `setTextContainerInset:`
+    /// (which forces `NSLayoutManager.textContainerChangedGeometry` even when container width is unchanged).
+    var horizontalColumnInset: CGFloat? {
+        didSet {
+            if horizontalColumnInset != oldValue {
+                invalidateTextContainerOrigin()
+                needsDisplay = true
+            }
         }
     }
 
     /// The column always starts at the inset. NSTextView would otherwise move the container right
     /// so that wide table fragments starting left of the column fit in the view.
     public override var textContainerOrigin: NSPoint {
-        NSPoint(x: textContainerInset.width, y: textContainerInset.height)
+        NSPoint(x: horizontalColumnInset ?? textContainerInset.width, y: textContainerInset.height)
     }
 
     /// Horizontal scroll offset of each table wider than the canvas, by the table's first character.
@@ -35,11 +57,19 @@ public final class HybridMarkdownTextView: NSTextView {
     var overflowingTables: [OverflowingTable] = []
 
     public var externalUpdateHighlightRanges: [NSRange] = [] {
-        didSet { needsDisplay = true }
+        didSet {
+            if externalUpdateHighlightRanges != oldValue {
+                needsDisplay = true
+            }
+        }
     }
 
     public var proseColumnWidth: CGFloat = 0 {
-        didSet { needsDisplay = true }
+        didSet {
+            if abs(proseColumnWidth - oldValue) > 0.5 {
+                needsDisplay = true
+            }
+        }
     }
 
     public var isTypewriterMode: Bool = false
@@ -60,6 +90,7 @@ public final class HybridMarkdownTextView: NSTextView {
         if self.string != newText {
             self.string = newText
         }
+        coord?.lastKnownTextHash = newText.hashValue
         let nsLen = (self.string as NSString).length
         let safeLoc = max(0, min(selectedRange.location, nsLen))
         let safeLen = max(0, min(selectedRange.length, nsLen - safeLoc))

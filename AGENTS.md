@@ -139,3 +139,20 @@ To prevent monolithic files and duplicated test logic across Zed and Standalone 
 4. **No Linter Tampering**:
    - Workspace Clippy lints enforce `allow_attributes = "deny"`, `too_many_lines = "warn"`, and `cognitive_complexity = "warn"` (configured in `clippy.toml`). Never silence warnings with `#[allow(...)]`; refactor the function or module instead.
 
+---
+
+## 6. Always Include Local Run Commands in Your Final Response
+
+Whenever you finish a task in **Folio**, always include the full, copy-pasteable commands to run it locally in your final response (including the `cd` into the active worktree or repository directory), for example:
+- **Standalone macOS App**:
+  ```bash
+  cd <worktree_or_repo_path>
+  bazel run //:FolioApp
+  ```
+- **Moddable Zed with Folio**:
+  ```bash
+  cd <worktree_or_repo_path>
+  bazel run //:zed_with_folio_mod
+  ```
+
+

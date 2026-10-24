@@ -19,7 +19,11 @@ extension HybridMarkdownEditorRepresentable {
         var lastFileURL: URL?
         var lastFocusMode: Bool?
         var lastActiveLineRange: NSRange?
+        var lastKnownTextHash: Int?
         var lastContentWidth: CGFloat = 0
+        var lastViewportWidth: CGFloat = 0
+        var lastMaxColumnWidth: CGFloat = 0
+        var pendingResizeRestyleWorkItem: DispatchWorkItem?
 
         /// Strong owner of the layout manager delegate (the layout manager holds it weakly).
         let softLineBreakLayoutDelegate = SoftLineBreakLayoutDelegate()
@@ -44,8 +48,21 @@ extension HybridMarkdownEditorRepresentable {
             updateInsets(for: scrollView, textView: tv, theme: viewModel.theme)
             let newContentWidth = currentContentWidth(for: tv)
             if abs(newContentWidth - lastContentWidth) > 0.5 {
-                restyle(textView: tv)
+                scheduleResizeRestyle(for: tv)
             }
+        }
+
+        func scheduleResizeRestyle(for textView: HybridMarkdownTextView) {
+            pendingResizeRestyleWorkItem?.cancel()
+            let item = DispatchWorkItem { [weak self, weak textView] in
+                guard let self = self, let tv = textView else { return }
+                let width = self.currentContentWidth(for: tv)
+                if abs(width - self.lastContentWidth) > 0.5 {
+                    self.restyle(textView: tv)
+                }
+            }
+            pendingResizeRestyleWorkItem = item
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.06, execute: item)
         }
 
         func currentContentWidth(for textView: HybridMarkdownTextView) -> CGFloat {
@@ -61,11 +78,19 @@ extension HybridMarkdownEditorRepresentable {
         func updateInsets(for scrollView: NSScrollView, textView: HybridMarkdownTextView, theme: EditorTheme) {
             let viewportWidth = max(320.0, scrollView.contentView.bounds.width > 0 ? scrollView.contentView.bounds.width : scrollView.bounds.width)
             let maxWrite = viewModel.typography.maxColumnWidth
+            guard abs(viewportWidth - lastViewportWidth) > 0.5 || abs(maxWrite - lastMaxColumnWidth) > 0.5 else {
+                return
+            }
+            lastViewportWidth = viewportWidth
+            lastMaxColumnWidth = maxWrite
+
             let horizontalPad = max(44.0, floor((viewportWidth - maxWrite) / 2.0))
             let proseWidth = max(200.0, viewportWidth - horizontalPad * 2.0)
-            let newInset = NSSize(width: horizontalPad, height: 42.0)
-            if textView.textContainerInset != newInset {
-                textView.textContainerInset = newInset
+            if textView.textContainerInset.height != 42.0 {
+                textView.textContainerInset = NSSize(width: 44.0, height: 42.0)
+            }
+            if textView.horizontalColumnInset != horizontalPad {
+                textView.horizontalColumnInset = horizontalPad
             }
             if abs(textView.proseColumnWidth - proseWidth) > 0.5 {
                 textView.proseColumnWidth = proseWidth
@@ -73,7 +98,6 @@ extension HybridMarkdownEditorRepresentable {
 
             // The canvas is exactly the viewport; tables wider than the column are laid out by
             // WideBlockTextContainer instead of widening the canvas.
-            textView.minSize = NSSize(width: viewportWidth, height: 400)
             if abs(textView.frame.size.width - viewportWidth) > 0.5 {
                 textView.frame.size.width = viewportWidth
             }
@@ -104,6 +128,7 @@ extension HybridMarkdownEditorRepresentable {
             guard !isProgrammaticUpdate, !isRestyling, let tv = textView else { return }
             isUpdatingFromTextView = true
             let currentText = tv.string
+            lastKnownTextHash = currentText.hashValue
             let sel = tv.selectedRange()
             if !isApplyingReflow {
                 reflowAnchors.append(sel.location)
@@ -198,6 +223,8 @@ extension HybridMarkdownEditorRepresentable {
         }
 
         func restyle(textView: HybridMarkdownTextView) {
+            pendingResizeRestyleWorkItem?.cancel()
+            pendingResizeRestyleWorkItem = nil
             guard !isRestyling, let storage = textView.textStorage else { return }
             isRestyling = true
             let sel = textView.selectedRange()
