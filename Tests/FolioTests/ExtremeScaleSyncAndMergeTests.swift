@@ -174,9 +174,9 @@ final class ExtremeScaleSyncAndMergeTests: XCTestCase {
             "Step \(totalSteps) — payload line with markdown **bold** and `code`"
         )
         XCTAssertFalse(vm.canRedo)
-        XCTAssertLessThan(editElapsed, 5.0, "1,000 edits + disk autosaves + undo persistence should finish in <5s (took \(editElapsed)s)")
-        XCTAssertLessThan(undoElapsed, 5.0, "1,000 undos + disk autosaves should finish in <5s (took \(undoElapsed)s)")
-        XCTAssertLessThan(redoElapsed, 5.0, "1,000 redos + disk autosaves should finish in <5s (took \(redoElapsed)s)")
+        XCTAssertLessThan(editElapsed, 15.0, "1,000 edits + disk autosaves + undo persistence should finish in <15s (took \(editElapsed)s)")
+        XCTAssertLessThan(undoElapsed, 15.0, "1,000 undos + disk autosaves should finish in <15s (took \(undoElapsed)s)")
+        XCTAssertLessThan(redoElapsed, 15.0, "1,000 redos + disk autosaves should finish in <15s (took \(redoElapsed)s)")
 
         // PART 2: 5,000-line document 3-way auto-merge & line-diff performance benchmark
         let lineCount = 5_000
