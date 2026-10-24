@@ -5,13 +5,10 @@
 Folio.app/
 Folio.dmg
 .folio_dmg_graph_hash
-Folio Zed.app/
-Folio-Zed.dmg
-.folio_zed_dmg_graph_hash
+folio-markdown-outline.tar.gz
 *.xcodeproj
 *.xcworkspace
 xcuserdata/
 DerivedData/
 bazel-*
 target/
-third_party/zed/upstream/
