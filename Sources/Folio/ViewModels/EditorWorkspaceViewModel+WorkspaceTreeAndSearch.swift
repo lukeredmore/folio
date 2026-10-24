@@ -5,56 +5,6 @@ import SwiftUI
 
 extension EditorWorkspaceViewModel {
 
-    // MARK: - Find & Replace in Current Document
-    public func findNextInDocument() {
-        guard !findQuery.isEmpty, let tv = activeTextView else { return }
-        let nsStr = tv.string as NSString
-        let startLoc = min(NSMaxRange(tv.selectedRange()), nsStr.length)
-        let searchRange = NSRange(location: startLoc, length: nsStr.length - startLoc)
-
-        var found = nsStr.range(of: findQuery, options: [.caseInsensitive], range: searchRange)
-        if found.location == NSNotFound && startLoc > 0 {
-            found = nsStr.range(of: findQuery, options: [.caseInsensitive], range: NSRange(location: 0, length: startLoc))
-        }
-        if found.location != NSNotFound {
-            tv.setSelectedRange(found)
-            tv.scrollRangeToVisible(found)
-        }
-    }
-
-    public func replaceCurrentMatch() {
-        guard !findQuery.isEmpty, let tv = activeTextView else { return }
-        let sel = tv.selectedRange()
-        let nsStr = tv.string as NSString
-        if sel.length > 0 && nsStr.substring(with: sel).caseInsensitiveCompare(findQuery) == .orderedSame {
-            withUndoMetadata(origin: .findReplace, summary: "Replace") {
-                if tv.shouldChangeText(in: sel, replacementString: replaceQuery) {
-                    tv.replaceCharacters(in: sel, with: replaceQuery)
-                    tv.didChangeText()
-                }
-            }
-        }
-        findNextInDocument()
-    }
-
-    public func replaceAllInDocument() {
-        guard !findQuery.isEmpty else { return }
-        let updated = markdownText.replacingOccurrences(of: findQuery, with: replaceQuery, options: [.caseInsensitive])
-        if updated != markdownText {
-            withUndoMetadata(origin: .findReplace, summary: "Replace All") {
-                markdownText = updated
-                if let tv = activeTextView {
-                    let clamped = DocumentLineDiff.adjustedSelection(
-                        for: tv.selectedRange(),
-                        inOldText: tv.string,
-                        toNewText: updated
-                    )
-                    tv.applyProgrammaticDocumentText(updated, selectedRange: clamped)
-                }
-            }
-        }
-    }
-
     // MARK: - Workspace Folder Tree & Multi-file Search
     public func loadWorkspaceFolder(_ folderURL: URL) {
         workspaceFolderURL = folderURL
@@ -222,27 +172,12 @@ extension EditorWorkspaceViewModel {
     }
 
     public func performWorkspaceSearch() {
-        let query = workspaceSearchQuery.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !query.isEmpty else {
+        guard let regex = makeWorkspaceSearchRegex() else {
             workspaceSearchMatches = []
             return
         }
 
         var results: [WorkspaceSearchMatch] = []
-        let pattern: String
-        if searchUseRegex {
-            pattern = query
-        } else if searchWholeWord {
-            pattern = "\\b\(NSRegularExpression.escapedPattern(for: query))\\b"
-        } else {
-            pattern = NSRegularExpression.escapedPattern(for: query)
-        }
-
-        let regexOptions: NSRegularExpression.Options = searchCaseSensitive ? [] : [.caseInsensitive]
-        guard let regex = try? NSRegularExpression(pattern: pattern, options: regexOptions) else {
-            workspaceSearchMatches = []
-            return
-        }
 
         // Also search current active buffer first if unsaved
         if currentFileURL == nil {
@@ -255,8 +190,16 @@ extension EditorWorkspaceViewModel {
             )
         }
 
+        let currentStdURL = currentFileURL?.standardizedFileURL
         for fileNode in flatMarkdownFiles {
-            guard let text = try? String(contentsOf: fileNode.url, encoding: .utf8) else { continue }
+            let text: String
+            if let currentStdURL, fileNode.url.standardizedFileURL == currentStdURL {
+                text = markdownText
+            } else if let diskText = try? String(contentsOf: fileNode.url, encoding: .utf8) {
+                text = diskText
+            } else {
+                continue
+            }
             searchInText(text, fileURL: fileNode.url, fileName: fileNode.name, regex: regex, results: &results)
             if results.count >= 200 { break }
         }

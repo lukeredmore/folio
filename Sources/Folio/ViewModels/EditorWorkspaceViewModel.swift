@@ -251,6 +251,8 @@ public final class EditorWorkspaceViewModel: ObservableObject {
     @Published public var showInsertTableSheet: Bool = false
     @Published public var showSettingsModal: Bool = false
     @Published public var showFindReplaceBar: Bool = false
+    @Published public var showDocumentReplaceControls: Bool = false
+    @Published public var findBarFocusRequestID: Int = 0
     @Published public var showAddRemoteModal: Bool = false
     @Published public var findQuery: String = ""
     @Published public var replaceQuery: String = ""
@@ -285,6 +287,9 @@ public final class EditorWorkspaceViewModel: ObservableObject {
     var isRestoringState: Bool = true
 
     @Published public var workspaceSearchQuery: String = ""
+    @Published public var workspaceReplaceQuery: String = ""
+    @Published public var showWorkspaceReplace: Bool = false
+    @Published public var workspaceSearchFocusRequestID: Int = 0
     @Published public var searchCaseSensitive: Bool = false
     @Published public var searchWholeWord: Bool = false
     @Published public var searchUseRegex: Bool = false

@@ -42,3 +42,88 @@ fi
 
 APP_VERSION="$(/usr/libexec/PlistBuddy -c "Print :CFBundleShortVersionString" "$PLIST_PATH")"
 echo "Built native macOS bundle at: $SCRIPT_DIR/Folio.app (v${APP_VERSION}, Build #${BUILD_NUM}, ${COMMIT_SHA}, Engine v${ENGINE_VERSION})"
+
+# Install or refresh the `folio` CLI launcher in writable PATH directories (/usr/local/bin, ~/.local/bin)
+QUEUE_FILE="$HOME/Library/Application Support/Folio/cli_open_requests.txt"
+for BIN_DIR in "/usr/local/bin" "$HOME/.local/bin"; do
+  mkdir -p "$BIN_DIR" 2>/dev/null || true
+  if [[ -w "$BIN_DIR" ]]; then
+    cat > "$BIN_DIR/folio" <<EOF
+#!/usr/bin/env bash
+# Folio CLI launcher — opens Markdown files and folders in Folio.app
+set -euo pipefail
+QUEUE_FILE="${QUEUE_FILE}"
+FALLBACK_APP="$SCRIPT_DIR/Folio.app"
+
+if [[ "\${1:-}" == "-h" || "\${1:-}" == "--help" ]]; then
+    echo "Usage: folio [path ...]"
+    echo "Open files or folders in Folio."
+    exit 0
+fi
+if [[ "\${1:-}" == "-v" || "\${1:-}" == "--version" ]]; then
+    echo "folio ${APP_VERSION}"
+    exit 0
+fi
+
+resolve_app_bundle() {
+    for candidate in "\${FOLIO_APP_PATH:-}" "/Applications/Folio.app" "\$HOME/Applications/Folio.app" "\${FALLBACK_APP}"; do
+        if [[ -n "\${candidate}" && -d "\${candidate}" ]]; then
+            echo "\${candidate}"
+            return 0
+        fi
+    done
+    local found
+    found="\$(mdfind "kMDItemCFBundleIdentifier == 'app.folio.macos'" 2>/dev/null | head -n 1 || true)"
+    if [[ -n "\${found}" && -d "\${found}" ]]; then
+        echo "\${found}"
+        return 0
+    fi
+    return 1
+}
+
+ABS_PATHS=()
+for arg in "\$@"; do
+    [[ "\${arg}" == -* ]] && continue
+    if [[ -d "\${arg}" ]]; then
+        ABS_PATHS+=("\$(cd "\${arg}" && pwd -P)")
+    else
+        if [[ ! -e "\${arg}" ]]; then
+            mkdir -p "\$(dirname "\${arg}")"
+            touch "\${arg}"
+        fi
+        dir_part="\$(cd "\$(dirname "\${arg}")" && pwd -P)"
+        ABS_PATHS+=("\${dir_part}/\$(basename "\${arg}")")
+    fi
+done
+
+if (( \${#ABS_PATHS[@]} > 0 )); then
+    mkdir -p "\$(dirname "\${QUEUE_FILE}")"
+    for p in "\${ABS_PATHS[@]}"; do
+        printf '%s\n' "\${p}" >> "\${QUEUE_FILE}"
+    done
+fi
+
+RUNNING_PIDS="\$(pgrep -x "Folio" 2>/dev/null || pgrep -x "FolioApp" 2>/dev/null || true)"
+if [[ -n "\${RUNNING_PIDS}" ]]; then
+    for pid in \${RUNNING_PIDS}; do
+        kill -USR1 "\${pid}" 2>/dev/null || true
+    done
+    osascript -e 'tell application "System Events" to set frontmost of every process whose name is "Folio" or name is "FolioApp" to true' >/dev/null 2>&1 || true
+    exit 0
+fi
+
+if APP_BUNDLE="\$(resolve_app_bundle)"; then
+    if (( \${#ABS_PATHS[@]} > 0 )); then
+        open -a "\${APP_BUNDLE}" --args "\${ABS_PATHS[@]}"
+    else
+        open -a "\${APP_BUNDLE}"
+    fi
+else
+    echo "folio: could not locate Folio.app. Move Folio.app to /Applications or set FOLIO_APP_PATH." >&2
+    exit 1
+fi
+EOF
+    chmod 755 "$BIN_DIR/folio"
+    echo "Installed 'folio' CLI command at: $BIN_DIR/folio"
+  fi
+done
