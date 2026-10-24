@@ -4,6 +4,8 @@ build --macos_minimum_os=26.0
 build --host_macos_minimum_os=26.0
 build --copt=-Wno-#warnings
 build --host_copt=-Wno-#warnings
+build --@rules_rust//rust/settings:extra_exec_rustc_flag=-Cstrip=none
+build --@rules_rust//rust/settings:extra_rustc_flag=-Cstrip=none
 build --incompatible_enable_cc_toolchain_resolution
 build --define=apple.experimental.tree_artifact_outputs=1
 common --repository_cache=~/.cache/bazel-repo
