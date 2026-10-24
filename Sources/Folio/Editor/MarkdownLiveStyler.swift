@@ -88,6 +88,8 @@ public final class MarkdownLiveStyler {
 
         var headings: [OutlineHeading] = []
         var decorations: [LineDecoration] = []
+        let docMacros = (!sourceCodeMode && string.contains("\\")) ? LaTeXMacroExpander.extractDocumentMacros(from: string) : [:]
+        LaTeXMathRenderer.setDocumentMacros(docMacros)
 
         let specAST = sourceCodeMode ? (blocks: [CmarkAstBlock](), inlines: [CmarkAstInline]()) : parseSpecAST(string)
         var indentedCodeBlockLines = Set<Int>()

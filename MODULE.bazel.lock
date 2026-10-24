@@ -112,7 +112,7 @@
   "moduleExtensions": {
     "//third_party:upstream_deps.bzl%upstream_deps": {
       "general": {
-        "bzlTransitiveDigest": "r6WscTGjaVphedUkpAETQ/gJYfXmIQPyIbZ334wckuY=",
+        "bzlTransitiveDigest": "37vLzKD9ZuRL//T6+d2f4mrQb8IHTgAPOijhArDhCig=",
         "usagesDigest": "1NcBRKZHu8dUFOryKgmAvs/1uXEHk/zexdEcNKfJY3M=",
         "recordedFileInputs": {},
         "recordedDirentsInputs": {},
@@ -126,6 +126,11 @@
           "markdown_spec": {
             "bzlFile": "@@//third_party:upstream_deps.bzl",
             "ruleClassName": "markdown_spec_repository",
+            "attributes": {}
+          },
+          "swift_math": {
+            "bzlFile": "@@//third_party:upstream_deps.bzl",
+            "ruleClassName": "swift_math_repository",
             "attributes": {}
           }
         },
@@ -169,7 +174,7 @@
           "@@//zed/folio_zed_extension/Cargo.toml": "804c0b58aa5296c8336f42d74da604fd4d82788039d219a07fc175554e987272",
           "@@//Cargo.lock": "540988ba9736834dd8a6883d33d29cf07d6871371f1a908b7d9a979ee039b4b5",
           "@@//core/folio_engine/Cargo.toml": "753048bb2ef560390f6ae5ecc79206345f696c9d8e2afbe51727b6d9fcfe3157",
-          "@@//MODULE.bazel": "7e1677197b2e1fc3398d3aa41dbe49ca4a06893b2ddc5982ff16eeca8c9f9722",
+          "@@//MODULE.bazel": "a4ded652dd04529d9fbf433e7247e0ded37a0e94abd2011aea016efc8f479a85",
           "@@rules_rust~~rust_host_tools~rust_host_tools//rust_host_tools": "ENOENT"
         },
         "recordedDirentsInputs": {},
