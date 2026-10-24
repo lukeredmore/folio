@@ -1,75 +1,55 @@
 #![deny(warnings)]
 
-use std::fs;
-use std::io;
-use std::path::Path;
+pub mod canvas_builder;
+pub mod editor_session;
+pub mod extension_bridge;
+pub mod extension_types;
+pub mod inlay_folding;
+pub mod keystroke_controller;
+mod keystroke_helpers;
+pub mod markdown_formatting;
+pub mod math_canvas;
+pub mod outline;
+pub mod preview_bridge;
+pub mod text_navigation;
+pub mod theme_sync;
 
-use folio_engine::markdown::{analyze_markdown_document, OutlineHeadingItem};
-
-pub const EXTENSION_ID: &str = "folio-markdown-outline";
-pub const EXTENSION_TOML: &str = include_str!("../extension.toml");
-pub const LANGUAGE_CONFIG_TOML: &str = include_str!("../languages/markdown/config.toml");
-pub const OUTLINE_SCM: &str = include_str!("../languages/markdown/outline.scm");
-
-/// Ensures the built-in Folio Markdown extension (`folio-markdown-outline`) is materialized
-/// inside Zed's `extensions/installed` directory so it is loaded out of the box without
-/// requiring any network download or manual installation.
-///
-/// Returns `Ok(true)` if any extension file was created or updated on disk.
-pub fn ensure_builtin_extension_installed(installed_extensions_dir: &Path) -> io::Result<bool> {
-    let ext_root = installed_extensions_dir.join(EXTENSION_ID);
-    let lang_dir = ext_root.join("languages").join("markdown");
-    fs::create_dir_all(&lang_dir)?;
-
-    let files = [
-        (ext_root.join("extension.toml"), EXTENSION_TOML),
-        (lang_dir.join("config.toml"), LANGUAGE_CONFIG_TOML),
-        (lang_dir.join("outline.scm"), OUTLINE_SCM),
-    ];
-
-    let mut updated = false;
-    for (path, expected_contents) in files {
-        let matches_existing = fs::read_to_string(&path)
-            .map(|existing| existing == expected_contents)
-            .unwrap_or(false);
-        if !matches_existing {
-            fs::write(&path, expected_contents.as_bytes())?;
-            updated = true;
-        }
-    }
-
-    Ok(updated)
-}
-
-/// Represents an entry in Zed's native Outline Panel (`outline_panel::OutlineItem`)
-/// populated by the Folio Markdown extension.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct ZedOutlineSymbol {
-    pub depth: usize,
-    pub context_marker: String,
-    pub text: String,
-    pub byte_offset: usize,
-    pub row: usize,
-}
-
-impl From<OutlineHeadingItem> for ZedOutlineSymbol {
-    fn from(h: OutlineHeadingItem) -> Self {
-        Self {
-            depth: h.level,
-            context_marker: "#".repeat(h.level),
-            text: h.title,
-            byte_offset: h.byte_offset,
-            row: h.line_number.saturating_sub(1),
-        }
-    }
-}
-
-/// Computes Zed Outline Panel symbols (`@context` + `@name`) for a Markdown buffer.
-pub fn extract_zed_outline_symbols(markdown_text: &str) -> Vec<ZedOutlineSymbol> {
-    let analysis = analyze_markdown_document(markdown_text, 0, true, false);
-    analysis
-        .headings
-        .into_iter()
-        .map(ZedOutlineSymbol::from)
-        .collect()
-}
+pub use canvas_builder::{
+    append_task_checkbox_folds, block_decoration_to_canvas, math_descriptor_to_canvas,
+};
+pub use editor_session::{FolioZedModSession, FolioZedRenderFrame};
+pub use extension_bridge::FolioZedExtension;
+pub use extension_types::{
+    byte_offset_to_row, pack_engine_rgba, pack_rgba, BlockDecoration, CanvasElement,
+    CanvasGlyphRun, CanvasQuad, CanvasTextReplacement, EditorDecorations, EditorHighlights,
+    InlineFoldDecoration, Range, RowHighlight, TextHighlight,
+};
+pub use folio_engine;
+pub use folio_engine::markdown::{HtmlInlineTagKind, NewlineAction, OutlineHeadingItem};
+pub use folio_engine::stats::DocumentStats;
+pub use inlay_folding::{
+    analyze_buffer_for_zed, analyze_buffer_for_zed_with_options, compute_zed_folds,
+    translate_block_decorations, ZedBlockDecoration, ZedFoldRange,
+};
+pub use keystroke_controller::{
+    evaluate_markdown_keystroke, KeystrokeDecision, KeystrokeInput,
+};
+pub use markdown_formatting::{
+    cycle_code_block_language, toggle_heading_level, toggle_inline_delimiter,
+};
+pub use math_canvas::{
+    build_gpui_math_canvas, GpuiMathCanvasDescriptor, GpuiMathPrimitive,
+};
+pub use outline::{
+    ensure_builtin_extension_installed, extract_zed_outline_symbols, ZedOutlineSymbol,
+    EXTENSION_ID, EXTENSION_TOML, LANGUAGE_CONFIG_TOML, OUTLINE_SCM,
+};
+pub use preview_bridge::{
+    dispatch_preview_command, encode_keystroke_decision, encode_math_canvas,
+};
+pub use text_navigation::{
+    extract_html_attr, next_word_boundary, percent_decode_str, prev_word_boundary,
+    snap_char_boundary_left, snap_char_boundary_right, surrounding_code_span_delimiters,
+    word_range_at,
+};
+pub use theme_sync::{ZedAppearanceMode, ZedThemeOverrides};

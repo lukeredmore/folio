@@ -13,7 +13,22 @@ filegroup(
 
 rust_library(
     name = "folio_zed_extension",
-    srcs = ["src/lib.rs"],
+    srcs = [
+        "src/canvas_builder.rs",
+        "src/editor_session.rs",
+        "src/extension_bridge.rs",
+        "src/extension_types.rs",
+        "src/inlay_folding.rs",
+        "src/keystroke_controller.rs",
+        "src/keystroke_helpers.rs",
+        "src/lib.rs",
+        "src/markdown_formatting.rs",
+        "src/math_canvas.rs",
+        "src/outline.rs",
+        "src/preview_bridge.rs",
+        "src/text_navigation.rs",
+        "src/theme_sync.rs",
+    ],
     compile_data = [
         "extension.toml",
         "languages/markdown/config.toml",
@@ -29,6 +44,37 @@ rust_library(
 rust_test(
     name = "folio_zed_extension_test",
     srcs = ["tst/extension_tests.rs"],
+    edition = "2021",
+    deps = [
+        ":folio_zed_extension",
+        "//core/folio_engine",
+    ],
+)
+
+rust_test(
+    name = "folio_zed_extension_session_test",
+    srcs = ["tst/session_tests.rs"],
+    edition = "2021",
+    deps = [
+        ":folio_zed_extension",
+        "//core/folio_engine",
+    ],
+)
+
+rust_test(
+    name = "folio_zed_extension_controller_test",
+    srcs = ["tst/controller_tests.rs"],
+    edition = "2021",
+    deps = [
+        ":folio_zed_extension",
+        "//core/folio_engine",
+    ],
+)
+
+rust_test(
+    name = "folio_zed_extension_behavior_suite",
+    srcs = ["tst/behavior_suite.rs"],
+    data = ["//tst/specs:all_behavior_specs"],
     edition = "2021",
     deps = [
         ":folio_zed_extension",

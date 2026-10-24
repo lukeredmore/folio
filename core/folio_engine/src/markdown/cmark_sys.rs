@@ -1,9 +1,13 @@
+#[cfg(not(target_arch = "wasm32"))]
 use std::ffi::{CStr, CString};
+#[cfg(not(target_arch = "wasm32"))]
 use std::os::raw::{c_char, c_int, c_void};
+#[cfg(not(target_arch = "wasm32"))]
 use std::sync::{Mutex, Once};
 
 use super::types::UpstreamSpecExample;
 
+#[cfg(not(target_arch = "wasm32"))]
 #[repr(C)]
 pub(crate) struct CmarkMem {
     pub calloc: unsafe extern "C" fn(usize, usize) -> *mut c_void,
@@ -11,21 +15,33 @@ pub(crate) struct CmarkMem {
     pub free: unsafe extern "C" fn(*mut c_void),
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 pub(crate) enum CmarkParser {}
+#[cfg(not(target_arch = "wasm32"))]
 pub(crate) enum CmarkNode {}
+#[cfg(not(target_arch = "wasm32"))]
 pub(crate) enum CmarkIter {}
+#[cfg(not(target_arch = "wasm32"))]
 pub(crate) enum CmarkSyntaxExtension {}
+#[cfg(not(target_arch = "wasm32"))]
 pub(crate) enum CmarkLlist {}
 
+#[cfg(not(target_arch = "wasm32"))]
 pub(crate) const CMARK_OPT_DEFAULT: c_int = 0;
+#[cfg(not(target_arch = "wasm32"))]
 pub(crate) const CMARK_OPT_FOOTNOTES: c_int = 1 << 13;
+#[cfg(not(target_arch = "wasm32"))]
 pub(crate) const CMARK_OPT_UNSAFE: c_int = 1 << 17;
 
+#[cfg(not(target_arch = "wasm32"))]
 pub(crate) const CMARK_EVENT_DONE: c_int = 1;
+#[cfg(not(target_arch = "wasm32"))]
 pub(crate) const CMARK_EVENT_ENTER: c_int = 2;
 
+#[cfg(not(target_arch = "wasm32"))]
 pub(crate) const CMARK_ORDERED_LIST: c_int = 2;
 
+#[cfg(not(target_arch = "wasm32"))]
 extern "C" {
     pub(crate) fn cmark_gfm_core_extensions_ensure_registered();
     pub(crate) fn cmark_get_default_mem_allocator() -> *mut CmarkMem;
@@ -74,12 +90,15 @@ extern "C" {
     pub(crate) fn cmark_gfm_extensions_get_tasklist_item_checked(node: *mut CmarkNode) -> bool;
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 static CMARK_INIT: Once = Once::new();
 /// Upstream `cmark-gfm` mutates a non-thread-safe global `SPECIAL_CHARS` table inside
 /// `cmark_manage_extensions_special_characters` during `cmark_parser_finish`.
 /// Guarding `cmark` parse invocations with `CMARK_LOCK` makes multi-threaded calls 100% deterministic.
+#[cfg(not(target_arch = "wasm32"))]
 pub(crate) static CMARK_LOCK: Mutex<()> = Mutex::new(());
 
+#[cfg(not(target_arch = "wasm32"))]
 pub(crate) fn ensure_cmark_gfm_initialized() {
     CMARK_INIT.call_once(|| unsafe {
         cmark_gfm_core_extensions_ensure_registered();
@@ -96,6 +115,7 @@ pub const DEFAULT_GFM_EXTENSIONS: &[&str] = &[
 
 /// Renders Markdown to HTML using the upstream `cmark-gfm` specification parser
 /// with the requested GFM syntax extensions.
+#[cfg(not(target_arch = "wasm32"))]
 pub fn render_markdown_to_html(markdown: &str, extensions: &[&str]) -> String {
     ensure_cmark_gfm_initialized();
     let _guard = CMARK_LOCK
@@ -141,6 +161,11 @@ pub fn render_markdown_to_html(markdown: &str, extensions: &[&str]) -> String {
         cmark_parser_free(parser);
         html
     }
+}
+
+#[cfg(target_arch = "wasm32")]
+pub fn render_markdown_to_html(_markdown: &str, _extensions: &[&str]) -> String {
+    String::new()
 }
 
 /// Renders GitHub Flavored Markdown (with all 5 standard GFM extensions enabled) to HTML.

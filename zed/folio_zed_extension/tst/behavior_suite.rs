@@ -1,4 +1,4 @@
-use folio_zed_mod::FolioZedModSession;
+use folio_zed_extension::FolioZedModSession;
 use std::collections::BTreeMap;
 use std::fs;
 use std::path::PathBuf;
@@ -170,7 +170,7 @@ fn test_zed_mod_session_matches_shared_cursor_edit_specs() {
         let actual_annotated = join_cursor(&actual_text, actual_cursor);
         assert_eq!(
             &actual_annotated, expected_annotated,
-            "Zed Mod behavior spec failed for case {id:?}"
+            "Zed Extension behavior spec failed for case {id:?}"
         );
     }
 }
@@ -189,13 +189,13 @@ fn test_zed_mod_session_matches_shared_fold_reveal_specs() {
         let frame = session.evaluate_buffer(&input_text, cursor_byte..cursor_byte);
         assert!(
             frame.folds.len() >= expected_folded_min,
-            "Zed Mod case {id}: expected >= {expected_folded_min} folds, got {}",
+            "Zed Extension case {id}: expected >= {expected_folded_min} folds, got {}",
             frame.folds.len()
         );
         // Active cursor byte must never be inside any Zed fold range
         assert!(
             frame.folds.iter().all(|f| !f.byte_range.contains(&cursor_byte)),
-            "Zed Mod case {id}: active cursor {cursor_byte} must not be folded"
+            "Zed Extension case {id}: active cursor {cursor_byte} must not be folded"
         );
     }
 }

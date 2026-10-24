@@ -2,8 +2,11 @@
 resolver = "2"
 members = [
     "core/folio_engine",
-    "zed/folio_zed_mod",
     "zed/folio_zed_extension",
+]
+exclude = [
+    "zed/folio_zed_extension/wasm",
+    "third_party/zed/upstream",
 ]
 
 [workspace.lints.rust]

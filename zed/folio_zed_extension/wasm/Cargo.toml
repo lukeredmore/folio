@@ -1,0 +1,19 @@
+[package]
+name = "folio_markdown_outline"
+version = "0.2.0"
+edition = "2021"
+license = "MIT"
+description = "WASI Preview 2 WebAssembly entrypoint for the Folio WYSIWYG Markdown Zed extension"
+publish = false
+
+[workspace]
+
+[lib]
+path = "src/lib.rs"
+crate-type = ["cdylib"]
+test = false
+doctest = false
+
+[dependencies]
+folio_zed_extension = { path = ".." }
+zed_extension_api = { path = "../../../third_party/zed/upstream/crates/extension_api" }

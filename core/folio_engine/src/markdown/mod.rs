@@ -1,6 +1,7 @@
 pub mod analyzer;
 pub(crate) mod block_handlers;
 pub mod block_scanner;
+#[cfg(not(target_arch = "wasm32"))]
 pub mod cmark_ast;
 pub mod cmark_sys;
 pub mod editing;
@@ -12,7 +13,15 @@ pub mod tables;
 pub mod types;
 
 pub use analyzer::{analyze_markdown_document, analyze_markdown_document_with_options};
+#[cfg(not(target_arch = "wasm32"))]
 pub use cmark_ast::parse_cmark_gfm_ast;
+#[cfg(target_arch = "wasm32")]
+pub fn parse_cmark_gfm_ast(_markdown: &str) -> CmarkAstAnalysis {
+    CmarkAstAnalysis {
+        blocks: Vec::new(),
+        inlines: Vec::new(),
+    }
+}
 pub use cmark_sys::{
     parse_upstream_spec_txt, render_gfm_to_html, render_markdown_to_html, DEFAULT_GFM_EXTENSIONS,
 };
