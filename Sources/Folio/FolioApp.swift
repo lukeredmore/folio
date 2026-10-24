@@ -4,21 +4,11 @@ import SwiftUI
 public struct MainWindowView: View {
     @ObservedObject var viewModel: EditorWorkspaceViewModel
     @ObservedObject var updateManager: AppUpdateManager = .shared
+    @State private var columnVisibility: NavigationSplitViewVisibility = .all
 
     public init(viewModel: EditorWorkspaceViewModel) {
         self.viewModel = viewModel
-    }
-
-    private var sidebarVisibilityBinding: Binding<NavigationSplitViewVisibility> {
-        Binding<NavigationSplitViewVisibility>(
-            get: { viewModel.showSidebar ? .all : .detailOnly },
-            set: { newVisibility in
-                let shouldShow = (newVisibility != .detailOnly)
-                if viewModel.showSidebar != shouldShow {
-                    viewModel.showSidebar = shouldShow
-                }
-            }
-        )
+        self._columnVisibility = State(initialValue: viewModel.showSidebar ? .all : .detailOnly)
     }
 
     private var navigationSubtitleText: String {
@@ -39,7 +29,7 @@ public struct MainWindowView: View {
 
     public var body: some View {
         ZStack {
-            NavigationSplitView(columnVisibility: sidebarVisibilityBinding) {
+            NavigationSplitView(columnVisibility: $columnVisibility) {
                 SidebarView(viewModel: viewModel)
                     .navigationSplitViewColumnWidth(min: 220, ideal: 265, max: 380)
             } detail: {
@@ -122,6 +112,18 @@ public struct MainWindowView: View {
             }
         }
         .preferredColorScheme(viewModel.theme.colorScheme)
+        .onChange(of: columnVisibility) { _, newVisibility in
+            let shouldShow = (newVisibility != .detailOnly)
+            if viewModel.showSidebar != shouldShow {
+                viewModel.showSidebar = shouldShow
+            }
+        }
+        .onChange(of: viewModel.showSidebar) { _, shouldShow in
+            let target: NavigationSplitViewVisibility = shouldShow ? .all : .detailOnly
+            if columnVisibility != target {
+                columnVisibility = target
+            }
+        }
         .background(WindowStatePersistenceAccessor(userDefaults: viewModel.userDefaults))
         .sheet(isPresented: $viewModel.showInsertTableSheet) {
             InsertTableModalView(viewModel: viewModel)

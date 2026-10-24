@@ -34,10 +34,22 @@ public final class HybridMarkdownTextView: NSTextView {
         }
     }
 
+    /// Optional horizontal column inset managed by `Coordinator.updateInsets` so centering the
+    /// fixed-width prose column during split-view/window resize does not call `setTextContainerInset:`
+    /// (which forces `NSLayoutManager.textContainerChangedGeometry` even when container width is unchanged).
+    var horizontalColumnInset: CGFloat? {
+        didSet {
+            if horizontalColumnInset != oldValue {
+                invalidateTextContainerOrigin()
+                needsDisplay = true
+            }
+        }
+    }
+
     /// The column always starts at the inset. NSTextView would otherwise move the container right
     /// so that wide table fragments starting left of the column fit in the view.
     public override var textContainerOrigin: NSPoint {
-        NSPoint(x: textContainerInset.width, y: textContainerInset.height)
+        NSPoint(x: horizontalColumnInset ?? textContainerInset.width, y: textContainerInset.height)
     }
 
     /// Horizontal scroll offset of each table wider than the canvas, by the table's first character.
