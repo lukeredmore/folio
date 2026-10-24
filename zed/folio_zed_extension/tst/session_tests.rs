@@ -1,4 +1,4 @@
-use folio_zed_mod::{FolioZedModSession, NewlineAction, ZedBlockDecoration};
+use folio_zed_extension::{FolioZedModSession, NewlineAction, ZedBlockDecoration};
 
 #[test]
 fn test_zed_mod_folds_inactive_lines_and_unfolds_active_line() {

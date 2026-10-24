@@ -4,57 +4,76 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$SCRIPT_DIR"
 
-PROFILE="${FOLIO_ZED_PROFILE:-debug}"
-BAZEL_MODE_ARGS=()
-if [[ "$PROFILE" == "release" || "$PROFILE" == "release-fast" ]]; then
-  BAZEL_MODE_ARGS=(-c opt)
+ZED_DIR="$SCRIPT_DIR/third_party/zed/upstream"
+ZED_FORK_URL="${FOLIO_ZED_FORK_URL:-https://github.com/lukeredmore/zed.git}"
+ZED_FORK_BRANCH="${FOLIO_ZED_FORK_BRANCH:-feat/extension-editor-decorations-canvas}"
+
+MAIN_REPO_ROOT="$(cd "$(git -C "$SCRIPT_DIR" rev-parse --git-common-dir)/.." && pwd)"
+MAIN_ZED_DIR="$MAIN_REPO_ROOT/third_party/zed/upstream"
+
+if [[ ! -e "$ZED_DIR/.git" ]]; then
+  mkdir -p "$(dirname "$ZED_DIR")"
+  if [[ -d "$MAIN_ZED_DIR/.git" && "$MAIN_ZED_DIR" != "$ZED_DIR" ]]; then
+    echo "Creating isolated Zed fork worktree from $MAIN_ZED_DIR ($ZED_FORK_BRANCH)..."
+    git -C "$MAIN_ZED_DIR" worktree prune
+    git -C "$MAIN_ZED_DIR" worktree add --detach "$ZED_DIR" "$ZED_FORK_BRANCH"
+  else
+    echo "Cloning Zed fork repository ($ZED_FORK_URL @ $ZED_FORK_BRANCH) into $ZED_DIR..."
+    git clone --depth 1 --branch "$ZED_FORK_BRANCH" "$ZED_FORK_URL" "$ZED_DIR"
+  fi
 fi
 
-chmod +x "$SCRIPT_DIR/third_party/zed/build_moddable_zed.sh"
+if [[ -L "$ZED_DIR/target" && ! -d "$ZED_DIR/target" ]]; then
+  rm -f "$ZED_DIR/target"
+fi
+if [[ -d "$MAIN_ZED_DIR/target" && ! -e "$ZED_DIR/target" ]]; then
+  ln -s "$MAIN_ZED_DIR/target" "$ZED_DIR/target"
+fi
 
-echo "Building Moddable Zed bundle + Folio Zed Mod dylib in parallel via Bazel (profile: $PROFILE)..."
-bazel build ${BAZEL_MODE_ARGS[@]+"${BAZEL_MODE_ARGS[@]}"} \
-  //third_party/zed:moddable_zed_bundle \
-  //zed/folio_zed_mod:folio_zed_mod_dylib \
-  //zed/folio_zed_extension:extension_bundle
+echo "Building and installing Folio Zed Extension (wasm32-wasip2)..."
+"$SCRIPT_DIR/zed/install_extension.sh"
 
-BUNDLE_TAR="$SCRIPT_DIR/bazel-bin/third_party/zed/moddable_zed_bundle.tar"
-DYLIB_PATH="$SCRIPT_DIR/bazel-bin/zed/folio_zed_mod/libfolio_zed_mod.dylib"
+PROFILE="${FOLIO_ZED_PROFILE:-debug}"
+if [[ "$PROFILE" == "debug" ]]; then
+  CARGO_PROFILE_ARGS=()
+  TARGET_SUBDIR="debug"
+elif [[ "$PROFILE" == "release" ]]; then
+  CARGO_PROFILE_ARGS=(--release)
+  TARGET_SUBDIR="release"
+else
+  CARGO_PROFILE_ARGS=(--profile "$PROFILE")
+  TARGET_SUBDIR="$PROFILE"
+fi
 
-MODDABLE_STAGE="$(mktemp -d)"
-trap 'rm -rf "$MODDABLE_STAGE"' EXIT
-tar -xf "$BUNDLE_TAR" -C "$MODDABLE_STAGE"
+TARGET_BASE="${CARGO_TARGET_DIR:-$ZED_DIR/target}"
+ZED_BIN="$TARGET_BASE/$TARGET_SUBDIR/zed"
+CLI_BIN="$TARGET_BASE/$TARGET_SUBDIR/cli"
+
+if [[ "${FOLIO_ZED_SKIP_CARGO_BUILD:-0}" != "1" || ! -x "$ZED_BIN" ]]; then
+  echo "Building Folio Zed binaries (profile: $PROFILE)..."
+  (
+    cd "$ZED_DIR"
+    cargo build ${CARGO_PROFILE_ARGS[@]+"${CARGO_PROFILE_ARGS[@]}"} --package zed --package cli --bin zed --bin cli
+  )
+fi
 
 APP_BUNDLE="$SCRIPT_DIR/Folio Zed.app"
 rm -rf "$APP_BUNDLE"
-mkdir -p \
-  "$APP_BUNDLE/Contents/MacOS" \
-  "$APP_BUNDLE/Contents/Frameworks" \
-  "$APP_BUNDLE/Contents/Resources/builtin_extensions/folio-markdown-outline"
+mkdir -p "$APP_BUNDLE/Contents/MacOS" "$APP_BUNDLE/Contents/Resources"
 
-cp "$MODDABLE_STAGE/zed" "$APP_BUNDLE/Contents/MacOS/zed"
+cp "$ZED_BIN" "$APP_BUNDLE/Contents/MacOS/zed"
 chmod +x "$APP_BUNDLE/Contents/MacOS/zed"
 
-if [[ -x "$MODDABLE_STAGE/cli" ]]; then
-  cp "$MODDABLE_STAGE/cli" "$APP_BUNDLE/Contents/MacOS/cli"
+if [[ -x "$CLI_BIN" ]]; then
+  cp "$CLI_BIN" "$APP_BUNDLE/Contents/MacOS/cli"
   chmod +x "$APP_BUNDLE/Contents/MacOS/cli"
 fi
 
-cp "$DYLIB_PATH" "$APP_BUNDLE/Contents/Frameworks/libfolio_zed_mod.dylib"
-chmod +x "$APP_BUNDLE/Contents/Frameworks/libfolio_zed_mod.dylib"
-
-cp "$SCRIPT_DIR/zed/folio_zed_extension/extension.toml" \
-  "$APP_BUNDLE/Contents/Resources/builtin_extensions/folio-markdown-outline/extension.toml"
-cp -R "$SCRIPT_DIR/zed/folio_zed_extension/languages" \
-  "$APP_BUNDLE/Contents/Resources/builtin_extensions/folio-markdown-outline/languages"
-
-if [[ -f "$SCRIPT_DIR/macos/FolioApp/AppIcon-Zed.icns" ]]; then
-  cp "$SCRIPT_DIR/macos/FolioApp/AppIcon-Zed.icns" "$APP_BUNDLE/Contents/Resources/AppIcon.icns"
-elif [[ -f "$SCRIPT_DIR/macos/FolioApp/AppIcon.icns" ]]; then
+if [[ -f "$SCRIPT_DIR/macos/FolioApp/AppIcon.icns" ]]; then
   cp "$SCRIPT_DIR/macos/FolioApp/AppIcon.icns" "$APP_BUNDLE/Contents/Resources/AppIcon.icns"
 fi
-if [[ -f "$MODDABLE_STAGE/Document.icns" ]]; then
-  cp "$MODDABLE_STAGE/Document.icns" "$APP_BUNDLE/Contents/Resources/Document.icns"
+if [[ -f "$ZED_DIR/crates/zed/resources/Document.icns" ]]; then
+  cp "$ZED_DIR/crates/zed/resources/Document.icns" "$APP_BUNDLE/Contents/Resources/Document.icns"
 fi
 
 APP_VERSION="${FOLIO_VERSION:-1.0.0}"
@@ -149,13 +168,12 @@ cat > "$PLIST_PATH" <<EOF
 EOF
 
 ENTITLEMENTS_PATH="$APP_BUNDLE/Contents/Resources/zed.entitlements"
-if [[ -f "$MODDABLE_STAGE/zed.entitlements" ]]; then
-  sed '/com.apple.developer.associated-domains/,+1d' "$MODDABLE_STAGE/zed.entitlements" > "$ENTITLEMENTS_PATH"
+if [[ -f "$ZED_DIR/crates/zed/resources/zed.entitlements" ]]; then
+  sed '/com.apple.developer.associated-domains/,+1d' "$ZED_DIR/crates/zed/resources/zed.entitlements" > "$ENTITLEMENTS_PATH"
 fi
 
 SIGN_IDENTITY="${APPLE_CODESIGN_IDENTITY:--}"
 if [[ "$SIGN_IDENTITY" == "-" ]]; then
-  codesign --force --sign "-" "$APP_BUNDLE/Contents/Frameworks/libfolio_zed_mod.dylib"
   if [[ -f "$ENTITLEMENTS_PATH" ]]; then
     codesign --force --deep --entitlements "$ENTITLEMENTS_PATH" --sign "-" "$APP_BUNDLE"
   else
@@ -163,7 +181,6 @@ if [[ "$SIGN_IDENTITY" == "-" ]]; then
   fi
 else
   echo "Signing Folio Zed.app with identity: $SIGN_IDENTITY"
-  codesign --force --options runtime --timestamp --sign "$SIGN_IDENTITY" "$APP_BUNDLE/Contents/Frameworks/libfolio_zed_mod.dylib"
   if [[ -x "$APP_BUNDLE/Contents/MacOS/cli" ]]; then
     codesign --force --deep --options runtime --timestamp --sign "$SIGN_IDENTITY" "$APP_BUNDLE/Contents/MacOS/cli"
   fi

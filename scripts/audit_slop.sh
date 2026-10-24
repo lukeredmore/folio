@@ -18,7 +18,7 @@ while IFS= read -r -d '' file; do
     elif (( lines > WARN_LINES )); then
         echo "⚠️  WARN: ${rel} has ${lines} lines (target <= ${WARN_LINES} lines)."
     fi
-done < <(find core zed -name "*.rs" -type f -print0)
+done < <(find core zed -name "*.rs" -not -path "*/target/*" -type f -print0)
 
 echo "=== [2/5] Checking Swift Sources/ & Tests/ files for line count (warn > ${WARN_LINES}, max ${MAX_LINES}) ==="
 while IFS= read -r -d '' file; do
@@ -45,10 +45,10 @@ while IFS= read -r -d '' file; do
         grep -nE '#\[(cfg\(test\)|test)\]' "${file}"
         FAILED=1
     fi
-done < <(find core zed -path "*/src/*.rs" -type f -print0)
+done < <(find core zed -path "*/src/*.rs" -not -path "*/target/*" -type f -print0)
 
 echo "=== [4/5] Checking that every workspace crate has a tst/ directory ==="
-for crate_dir in core/folio_engine zed/folio_zed_mod zed/folio_zed_extension; do
+for crate_dir in core/folio_engine zed/folio_zed_extension; do
     if [[ ! -d "${crate_dir}/tst" ]]; then
         echo "❌ FAIL: ${crate_dir}/tst directory is missing!"
         FAILED=1

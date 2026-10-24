@@ -1,14 +1,8 @@
-use folio_zed_mod::ffi::folio_zed_mod_free_string;
-use folio_zed_mod::ffi_controller::{
-    folio_zed_mod_cycle_code_block_language, folio_zed_mod_evaluate_keystroke,
-    folio_zed_mod_extract_html_attr, folio_zed_mod_free_keystroke_decision,
-    folio_zed_mod_free_source_edit, folio_zed_mod_percent_decode,
-    folio_zed_mod_surrounding_code_span_delimiters,
-};
-use folio_zed_mod::{
-    cycle_code_block_language, evaluate_markdown_keystroke, extract_html_attr, next_word_boundary,
-    percent_decode_str, prev_word_boundary, surrounding_code_span_delimiters, toggle_heading_level,
-    toggle_inline_delimiter, KeystrokeDecision, KeystrokeInput,
+use folio_zed_extension::{
+    cycle_code_block_language, dispatch_preview_command, evaluate_markdown_keystroke,
+    extract_html_attr, next_word_boundary, percent_decode_str, prev_word_boundary,
+    surrounding_code_span_delimiters, toggle_heading_level, toggle_inline_delimiter,
+    KeystrokeDecision, KeystrokeInput,
 };
 
 #[test]
@@ -85,7 +79,7 @@ fn test_word_navigation_and_html_helpers() {
 }
 
 #[test]
-fn test_keystroke_controller_and_ffi_roundtrip() {
+fn test_keystroke_controller_and_preview_bridge_roundtrip() {
     let src = "- item 1";
     let enter_decision = evaluate_markdown_keystroke(
         src,
@@ -110,69 +104,60 @@ fn test_keystroke_controller_and_ffi_roundtrip() {
         }
     );
 
-    unsafe {
-        let key = "b";
-        let res = folio_zed_mod_evaluate_keystroke(
-            src.as_ptr(),
-            src.len(),
-            2,
-            6,
-            6,
-            2,
-            key.as_ptr(),
-            key.len(),
-            true,
-            false,
-            false,
-            false,
-            false,
-        );
-        assert_eq!(res.kind, 6);
-        assert_eq!(res.range_start..res.range_end, 2..6);
-        assert!(res.has_post_selection);
-        assert_eq!(res.post_sel_start..res.post_sel_end, 4..8);
-        let repl = std::ffi::CStr::from_ptr(res.replacement).to_str().unwrap();
-        assert_eq!(repl, "**item**");
-        folio_zed_mod_free_keystroke_decision(res);
+    let res = dispatch_preview_command(
+        "evaluate_keystroke",
+        &[
+            src.to_string(),
+            "2".to_string(),
+            "6".to_string(),
+            "6".to_string(),
+            "2".to_string(),
+            "b".to_string(),
+            "1".to_string(),
+        ],
+    )
+    .unwrap();
+    assert_eq!(res, "6\t2\t6\t1\t4\t8\n**item**");
 
-        let code_src = "a `x` b";
-        let delims = folio_zed_mod_surrounding_code_span_delimiters(
-            code_src.as_ptr(),
-            code_src.len(),
-            3,
-            4,
-        );
-        assert!(delims.valid);
-        assert_eq!(delims.open_start..delims.open_end, 2..3);
-        assert_eq!(delims.close_start..delims.close_end, 4..5);
+    let delims = dispatch_preview_command(
+        "surrounding_code_span_delimiters",
+        &["a `x` b".to_string(), "3".to_string(), "4".to_string()],
+    )
+    .unwrap();
+    assert_eq!(delims, "1\t2\t3\t4\t5");
 
-        let block = "```rust\nx\n```";
-        let lang = "rust";
-        let edit = folio_zed_mod_cycle_code_block_language(
-            block.as_ptr(),
-            block.len(),
-            0,
-            block.len(),
-            lang.as_ptr(),
-            lang.len(),
-        );
-        assert!(edit.valid);
-        folio_zed_mod_free_source_edit(edit);
+    let block = "```rust\nx\n```";
+    let edit = dispatch_preview_command(
+        "cycle_code_block_language",
+        &[
+            block.to_string(),
+            "0".to_string(),
+            block.len().to_string(),
+            "rust".to_string(),
+        ],
+    )
+    .unwrap();
+    assert_eq!(edit, "1\t0\t7\n```python");
 
-        let tag = "<img src=\"a.svg\">";
-        let attr = "src";
-        let ptr = folio_zed_mod_extract_html_attr(
-            tag.as_ptr(),
-            tag.len(),
-            attr.as_ptr(),
-            attr.len(),
-        );
-        assert!(!ptr.is_null());
-        folio_zed_mod_free_string(ptr);
+    let attr = dispatch_preview_command(
+        "extract_html_attr",
+        &["<img src=\"a.svg\">".to_string(), "src".to_string()],
+    )
+    .unwrap();
+    assert_eq!(attr, "1\na.svg");
 
-        let enc = "%3Csvg%3E";
-        let dec_ptr = folio_zed_mod_percent_decode(enc.as_ptr(), enc.len());
-        assert!(!dec_ptr.is_null());
-        folio_zed_mod_free_string(dec_ptr);
-    }
+    let dec = dispatch_preview_command("percent_decode", &["%3Csvg%3E".to_string()]).unwrap();
+    assert_eq!(dec, "<svg>");
+
+    let math = dispatch_preview_command(
+        "build_math_canvas",
+        &[
+            "\\frac{a}{b}".to_string(),
+            "16.0".to_string(),
+            "1".to_string(),
+        ],
+    )
+    .unwrap();
+    assert!(math.contains("G\t"));
+    assert!(math.contains("R\t"));
 }
