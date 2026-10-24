@@ -6,7 +6,6 @@ members = [
 ]
 exclude = [
     "zed/folio_zed_extension/wasm",
-    "third_party/zed/upstream",
 ]
 
 [workspace.lints.rust]

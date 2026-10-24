@@ -111,7 +111,7 @@ name = "folio_markdown_outline"
 version = "0.2.0"
 dependencies = [
  "folio_zed_extension",
- "zed_extension_api",
+ "wit-bindgen",
 ]
 
 [[package]]
@@ -951,15 +951,6 @@ dependencies = [
  "quote",
  "syn 3.0.9",
  "synstructure",
-]
-
-[[package]]
-name = "zed_extension_api"
-version = "0.8.0"
-dependencies = [
- "serde",
- "serde_json",
- "wit-bindgen",
 ]
 
 [[package]]

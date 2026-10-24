@@ -16,4 +16,4 @@ doctest = false
 
 [dependencies]
 folio_zed_extension = { path = ".." }
-zed_extension_api = { path = "../../../third_party/zed/upstream/crates/extension_api" }
+wit-bindgen = "0.41"
