@@ -72,4 +72,19 @@ COPYFILE_DISABLE=1 tar -czf "${OUTPUT_ARCHIVE}" -C "${STAGE_DIR}" \
     extension.wasm \
     languages
 
-echo "Packaged Folio Zed extension archive at ${OUTPUT_ARCHIVE}"
+python3 - "${OUTPUT_ARCHIVE}" <<'PY'
+import sys, tarfile
+archive_path = sys.argv[1]
+with tarfile.open(archive_path, "r:gz") as tf:
+    names = set(tf.getnames())
+    for required in ("extension.toml", "extension.wasm", "languages/markdown/config.toml", "languages/markdown/outline.scm"):
+        if required not in names:
+            raise SystemExit(f"Error: packaged archive missing {required} (found: {sorted(names)})")
+    wasm_bytes = tf.extractfile("extension.wasm").read()
+    if not wasm_bytes.startswith(b"\x00asm"):
+        raise SystemExit("Error: extension.wasm does not have a valid WebAssembly header")
+    if b"zed:api-version" not in wasm_bytes:
+        raise SystemExit("Error: extension.wasm is missing the zed:api-version custom section")
+PY
+
+echo "Packaged and verified Folio Zed extension archive at ${OUTPUT_ARCHIVE}"
