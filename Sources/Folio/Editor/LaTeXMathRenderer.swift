@@ -238,7 +238,7 @@ public final class LaTeXMathRenderer {
         return String(cString: ptr)
     }
 
-    static func flattenToText(_ node: MathNode) -> String {
+    public static func flattenToText(_ node: MathNode) -> String {
         switch node {
         case .row(let children):
             return children.map(flattenToText).joined()
@@ -259,6 +259,58 @@ public final class LaTeXMathRenderer {
             return "\(l)\(flattenToText(body))\(r)"
         case .accent(let base, let mark):
             return "\(flattenToText(base))\(mark)"
+        }
+    }
+}
+
+extension HybridMarkdownTextView {
+    func drawRenderedMathBlock(
+        mathBox: MathLayoutBox,
+        blockRect: NSRect,
+        origin: NSPoint,
+        contentWidth: CGFloat,
+        effectiveFontSize: CGFloat,
+        mathColor: NSColor,
+        dimFactor: CGFloat
+    ) {
+        let tagAttrs: [NSAttributedString.Key: Any] = [
+            .font: currentTheme.bodyFont(size: effectiveFontSize * 0.92),
+            .foregroundColor: currentTheme.secondaryTextNSColor.withAlphaComponent(0.85 * dimFactor)
+        ]
+        var tagSize: NSSize = .zero
+        if let tag = mathBox.tag, !tag.isEmpty {
+            tagSize = (tag as NSString).size(withAttributes: tagAttrs)
+        }
+        let horizontalPad: CGFloat = 14.0
+        let tagReserve: CGFloat = tagSize.width > 0 ? (tagSize.width + 18.0) : 0.0
+        let availableMathWidth = max(80.0, contentWidth - horizontalPad * 2.0 - tagReserve)
+        let scale: CGFloat = mathBox.width > availableMathWidth
+            ? (availableMathWidth / max(1.0, mathBox.width))
+            : 1.0
+        let scaledWidth = mathBox.width * scale
+        let centeredOffsetX = (contentWidth - scaledWidth) * 0.5
+        let maxOffsetX = horizontalPad + availableMathWidth - scaledWidth
+        let startX = origin.x + max(horizontalPad, min(centeredOffsetX, maxOffsetX))
+        let baselineY = blockRect.midY + (mathBox.ascent - mathBox.descent) * 0.5 * scale
+
+        if scale < 0.999, let ctx = NSGraphicsContext.current?.cgContext {
+            ctx.saveGState()
+            ctx.translateBy(x: startX, y: baselineY)
+            ctx.scaleBy(x: scale, y: scale)
+            mathBox.drawBox(0.0, 0.0, mathColor)
+            ctx.restoreGState()
+        } else {
+            mathBox.drawBox(startX, baselineY, mathColor)
+        }
+
+        if let tag = mathBox.tag, !tag.isEmpty {
+            (tag as NSString).draw(
+                at: NSPoint(
+                    x: origin.x + contentWidth - tagSize.width - horizontalPad,
+                    y: blockRect.midY - tagSize.height * 0.5
+                ),
+                withAttributes: tagAttrs
+            )
         }
     }
 }

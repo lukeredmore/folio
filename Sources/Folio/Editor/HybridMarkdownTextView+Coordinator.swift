@@ -226,6 +226,15 @@ extension HybridMarkdownEditorRepresentable {
                     for dec in analysis.decorations {
                         lm.removeTemporaryAttribute(.spellingState, forCharacterRange: dec.lineRange)
                     }
+                    storage.enumerateAttribute(
+                        MarkdownLiveStyler.noSpellCheckAttributeKey,
+                        in: fullRange,
+                        options: []
+                    ) { val, range, _ in
+                        if val != nil {
+                            lm.removeTemporaryAttribute(.spellingState, forCharacterRange: range)
+                        }
+                    }
                 }
             }
 

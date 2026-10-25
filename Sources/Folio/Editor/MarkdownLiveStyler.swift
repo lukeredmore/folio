@@ -7,6 +7,17 @@ public final class MarkdownLiveStyler {
     public static let inlineCodeFontAttributeKey = NSAttributedString.Key("FolioInlineCodeFont")
     /// Marks a source newline inside an inactive paragraph that renders as a space (CommonMark soft line break).
     public static let softLineBreakAttributeKey = NSAttributedString.Key("FolioSoftLineBreak")
+    /// Marks an inactive inline math span (`$...$`) with its atomic layout metrics (`InlineMathLayoutInfo`).
+    public static let inlineMathSpanAttributeKey = NSAttributedString.Key("FolioInlineMathSpan")
+    /// Marks ranges (math, code, syntax tokens) where spellcheck squiggles must be suppressed.
+    public static let noSpellCheckAttributeKey = NSAttributedString.Key("FolioNoSpellCheck")
+
+    public struct InlineMathLayoutInfo: Equatable, Sendable {
+        public let range: NSRange
+        public let width: CGFloat
+        public let ascent: CGFloat
+        public let descent: CGFloat
+    }
 
     static let headingRegex = try! NSRegularExpression(pattern: #"^( {0,3})(#{1,6})(?:([ \t]+)(.*?))?(?:(?<![ \t])[ \t]+#+[ \t]*)?$"#)
     static let setextH1Regex = try! NSRegularExpression(pattern: #"^ {0,3}=+[ \t]*$"#)

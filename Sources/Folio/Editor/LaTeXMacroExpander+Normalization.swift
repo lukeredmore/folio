@@ -40,6 +40,9 @@ extension LaTeXMacroExpander {
                         for (argIdx, argVal) in args.enumerated() {
                             expanded = expanded.replacingOccurrences(of: "#\(argIdx + 1)", with: argVal)
                         }
+                        expanded = expanded
+                            .replacingOccurrences(of: "^{}", with: "")
+                            .replacingOccurrences(of: "_{}", with: "")
                         out.append(expanded)
                         i = idx
                         continue

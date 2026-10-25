@@ -76,6 +76,16 @@ public final class HybridMarkdownTextView: NSTextView {
         workspaceViewModel?.breakUndoCoalescing()
     }
 
+    public override func setSpellingState(_ value: Int, range charRange: NSRange) {
+        if value != 0,
+           let storage = textStorage,
+           WideBlockLayoutManager.shouldSuppressSpellCheck(in: storage, range: charRange) {
+            super.setSpellingState(0, range: charRange)
+            return
+        }
+        super.setSpellingState(value, range: charRange)
+    }
+
     @objc public func undo(_ sender: Any?) {
         workspaceViewModel?.undo()
     }

@@ -109,6 +109,7 @@ extension MarkdownLiveStyler {
         guard !bodySource.isEmpty else { return nil }
 
         let blockDim: CGFloat = (focusMode && !isDiagramBlockActive) ? 0.30 : 1.0
+        storage.addAttribute(noSpellCheckAttributeKey, value: true, range: fullBlockRange)
         // Rendered in the background; until it is ready, the card reserves a default height.
         let diagramImg = DiagramImageRenderer.shared.image(for: DiagramImageRenderer.Key(
             kind: lowerLang == "mermaid" ? .mermaid(isDark: theme.isDark) : .svg,
@@ -186,7 +187,8 @@ extension MarkdownLiveStyler {
             .foregroundColor: theme.markdownTokenNSColor.withAlphaComponent(isActiveLine ? 0.9 : 0.45 * dimFactor),
             .paragraphStyle: fencePara,
             .baselineOffset: 0.0,
-            .kern: 0.0
+            .kern: 0.0,
+            noSpellCheckAttributeKey: true
         ], range: lineRange)
     }
 
@@ -219,7 +221,8 @@ extension MarkdownLiveStyler {
             .foregroundColor: theme.textNSColor.withAlphaComponent(dimFactor),
             .paragraphStyle: codePara,
             .baselineOffset: 0.0,
-            .kern: 0.0
+            .kern: 0.0,
+            noSpellCheckAttributeKey: true
         ], range: lineRange)
 
         if let language = language {

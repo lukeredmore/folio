@@ -50,6 +50,7 @@ extension MarkdownLiveStyler {
             ).length > 0
         let blockDim: CGFloat = (focusMode && !isMathBlockActive) ? 0.30 : 1.0
         let fullBlockRange = NSRange(location: lineRange.location, length: scanIndex - lineRange.location)
+        storage.addAttribute(noSpellCheckAttributeKey, value: true, range: fullBlockRange)
 
         var latexParts: [String] = []
         for (idx, mLine) in mathLines.enumerated() {
@@ -187,6 +188,7 @@ extension MarkdownLiveStyler {
         guard foundClosingSVG else { return nil }
 
         let fullBlockRange = NSRange(location: lineRange.location, length: scanIndex - lineRange.location)
+        storage.addAttribute(noSpellCheckAttributeKey, value: true, range: fullBlockRange)
         let isSVGBlockActive = svgLines.contains(where: { $0.isActive }) ||
             NSIntersectionRange(fullBlockRange, selectedRange).length > 0
         let blockDim: CGFloat = (focusMode && !isSVGBlockActive) ? 0.30 : 1.0
