@@ -1,0 +1,76 @@
+\documentclass[11pt,a4paper]{article}
+\usepackage{amsmath,amssymb,amsthm}
+\usepackage{hyperref}
+\usepackage{graphicx}
+
+% Custom document macros (expanded live in SwiftMath!)
+\newcommand{\R}{\mathbb{R}}
+\newcommand{\E}{\mathbb{E}}
+\newcommand{\norm}[1]{\left\lVert #1 \right\rVert}
+\newcommand{\inner}[2]{\left\langle #1, #2 \right\rangle}
+\DeclareMathOperator*{\argmin}{arg\,min}
+
+\begin{document}
+
+\title{Native Live-Typeset \LaTeX{} Documents in Folio}
+\author{Folio Research Group}
+\date{October 2026}
+\maketitle
+
+\begin{abstract}
+We present a native macOS \textbf{WYSIWYG \LaTeX{} editor} built directly on AppKit and \texttt{SwiftMath}. Standard \texttt{.tex} and \texttt{.bib} files open natively with collapsible preambles, auto-numbered sections, theorem callout cards, numbered equations, and resolved cross-reference and citation pills \cite{knuth1984texbook,vaswani2017attention}.
+\end{abstract}
+
+\section{Introduction}\label{sec:intro}
+
+Traditional scientific writing forces a choice between raw source code and slow PDF compilation cycles. In Folio, clicking any line reveals its underlying \LaTeX{} source tokens, while inactive lines typeset \emph{live} using OpenType \texttt{MATH} layout tables.
+
+As shown in \autoref{sec:variational} and \autoref{thm:cauchy}, custom preamble macros such as $\R^n$, $\norm{x}_2$, and $\inner{u}{v}$ work seamlessly across both inline and display equations.
+
+\subsection{Key Capabilities}\label{sec:capabilities}
+
+\begin{itemize}
+  \item \textbf{Collapsible Preamble Card:} Click the top preamble banner to edit \texttt{\textbackslash usepackage} and \texttt{\textbackslash newcommand} declarations.
+  \item \textbf{Live Cross-References \& Citations:} Hover or Command-click \autoref{eq:euler}, \eqref{eq:gaussian}, or \cite{einstein1905electrodynamics} to jump to the target definition.
+  \item \textbf{Structured Environments:} Native callout cards for \texttt{theorem}, \texttt{lemma}, \texttt{definition}, \texttt{proof}, and \texttt{abstract}.
+\end{itemize}
+
+\section{Variational Analysis \& Hilbert Spaces}\label{sec:variational}
+
+\begin{definition}[Inner Product Space]\label{def:hilbert}
+Let $\mathcal{H}$ be a real vector space over $\R$. A mapping $\inner{\cdot}{\cdot} : \mathcal{H} \times \mathcal{H} \to \R$ is an inner product if it is symmetric, linear in its first argument, and positive definite.
+\end{definition}
+
+\begin{theorem}[Cauchy--Schwarz Inequality]\label{thm:cauchy}
+For all vectors $u, v \in \R^n$, the inner product satisfies
+\end{theorem}
+
+\begin{equation}\label{eq:cauchy}
+  \left| \inner{u}{v} \right| \le \norm{u} \, \norm{v}
+\end{equation}
+
+\begin{proof}
+If $v = 0$, the inequality holds trivially with equality. Otherwise, consider the quadratic polynomial $p(t) = \norm{u - t v}^2 \ge 0$ for $t = \frac{\inner{u}{v}}{\norm{v}^2}$.
+\end{proof}
+
+\subsection{Numbered Equations \& Multi-Line Alignment}\label{sec:equations}
+
+Euler's identity and the Gaussian integral are numbered automatically and can be referenced via \eqref{eq:euler} and \eqref{eq:gaussian}:
+
+\begin{equation}\label{eq:euler}
+  e^{i\pi} + 1 = 0
+\end{equation}
+
+\begin{align}\label{eq:gaussian}
+  \int_{-\infty}^{\infty} e^{-\alpha x^2} \, dx &= \sqrt{\frac{\pi}{\alpha}} \\
+  \E_{x \sim \mathcal{N}(0, \Sigma)}\!\left[ \norm{x}^2 \right] &= \operatorname{Tr}(\Sigma)
+\end{align}
+
+For constrained optimization problems, the proximal operator is defined using our custom $\argmin$ macro:
+\[
+  \operatorname{prox}_{\lambda f}(v) = \argmin_{x \in \R^d} \left\{ f(x) + \frac{1}{2\lambda} \norm{x - v}_2^2 \right\}
+\]
+
+\bibliography{references}
+
+\end{document}

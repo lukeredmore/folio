@@ -33,10 +33,11 @@ extension EditorWorkspaceViewModel {
         if let url = currentFileURL {
             return url.lastPathComponent
         }
+        let ext = isCurrentDocumentLaTeX ? "tex" : (isCurrentDocumentBibTeX ? "bib" : "md")
         if let firstH1 = headings.first(where: { $0.level == 1 }) {
-            return "\(firstH1.title).md"
+            return "\(firstH1.title).\(ext)"
         }
-        return "Untitled.md"
+        return "Untitled.\(ext)"
     }
 
     // MARK: - Live Editor Updates
@@ -69,7 +70,9 @@ extension EditorWorkspaceViewModel {
                     typography: typography,
                     sourceCodeMode: sourceCodeMode,
                     focusMode: focusMode,
-                    selectedRange: selectedRange
+                    selectedRange: selectedRange,
+                    baseDirectoryURL: currentFileURL?.deletingLastPathComponent() ?? workspaceFolderURL,
+                    fileURL: currentFileURL
                 )
                 headings = analysis.headings
             }
@@ -144,20 +147,24 @@ extension EditorWorkspaceViewModel {
 
     // MARK: - Formatting & Markdown Insertion Commands
     public func applyInlineFormatting(prefix: String, suffix: String, placeholder: String) {
+        let resolved = resolvedInlineDelimiters(prefix: prefix, suffix: suffix, placeholder: placeholder)
         withUndoMetadata(origin: .formattingAction, summary: "Inline Formatting") {
             guard let tv = activeTextView else {
-                markdownText += "\(prefix)\(placeholder)\(suffix)"
+                markdownText += "\(resolved.prefix)\(resolved.placeholder)\(resolved.suffix)"
                 return
             }
             let sel = tv.selectedRange()
             let nsStr = tv.string as NSString
-            let selectedText = sel.length > 0 ? nsStr.substring(with: sel) : placeholder
-            let replacement = "\(prefix)\(selectedText)\(suffix)"
+            let selectedText = sel.length > 0 ? nsStr.substring(with: sel) : resolved.placeholder
+            let replacement = "\(resolved.prefix)\(selectedText)\(resolved.suffix)"
 
             if tv.shouldChangeText(in: sel, replacementString: replacement) {
                 tv.replaceCharacters(in: sel, with: replacement)
                 tv.didChangeText()
-                let innerRange = NSRange(location: sel.location + (prefix as NSString).length, length: (selectedText as NSString).length)
+                let innerRange = NSRange(
+                    location: sel.location + (resolved.prefix as NSString).length,
+                    length: (selectedText as NSString).length
+                )
                 tv.setSelectedRange(innerRange)
             }
         }
@@ -170,6 +177,7 @@ extension EditorWorkspaceViewModel {
 
     /// Hard-wraps the paragraph at the cursor to `effectiveReflowWidth` columns.
     public func reflowCurrentParagraph() {
+        guard !isCurrentDocumentLaTeX && !isCurrentDocumentBibTeX else { return }
         withUndoMetadata(origin: .formattingAction, summary: "Reflow Paragraph") {
             guard let tv = activeTextView else { return }
             let text = tv.string
@@ -192,6 +200,7 @@ extension EditorWorkspaceViewModel {
 
     /// Hard-wraps every paragraph in the document to `effectiveReflowWidth` columns.
     public func reflowDocument() {
+        guard !isCurrentDocumentLaTeX && !isCurrentDocumentBibTeX else { return }
         withUndoMetadata(origin: .formattingAction, summary: "Reflow Document") {
             guard let tv = activeTextView else {
                 let reflowed = MarkdownSourceReflow.reflowDocument(markdownText, width: effectiveReflowWidth)
@@ -218,6 +227,10 @@ extension EditorWorkspaceViewModel {
     }
 
     public func setHeadingLevel(_ level: Int) {
+        if isCurrentDocumentLaTeX {
+            setLaTeXHeadingLevel(level)
+            return
+        }
         withUndoMetadata(origin: .formattingAction, summary: level == 0 ? "Convert to Paragraph" : "Heading \(level)") {
             guard let tv = activeTextView else { return }
             let sel = tv.selectedRange()
@@ -248,14 +261,26 @@ extension EditorWorkspaceViewModel {
     }
 
     public func insertBlockquote() {
+        if isCurrentDocumentLaTeX {
+            insertSnippetAtCursor("\n\\begin{quote}\n\n\\end{quote}\n", cursorOffsetFromStart: 15, summary: "Insert Quote")
+            return
+        }
         prefixCurrentLine(with: "> ", summary: "Insert Blockquote")
     }
 
     public func insertUnorderedList() {
+        if isCurrentDocumentLaTeX {
+            insertSnippetAtCursor("\n\\begin{itemize}\n  \\item \n\\end{itemize}\n", cursorOffsetFromStart: 25, summary: "Insert Bullet List")
+            return
+        }
         prefixCurrentLine(with: "- ", summary: "Insert Bullet List")
     }
 
     public func insertOrderedList() {
+        if isCurrentDocumentLaTeX {
+            insertSnippetAtCursor("\n\\begin{enumerate}\n  \\item \n\\end{enumerate}\n", cursorOffsetFromStart: 27, summary: "Insert Numbered List")
+            return
+        }
         prefixCurrentLine(with: "1. ", summary: "Insert Numbered List")
     }
 
@@ -276,48 +301,6 @@ extension EditorWorkspaceViewModel {
                 tv.setSelectedRange(NSRange(location: sel.location + (prefix as NSString).length, length: 0))
             }
         }
-    }
-
-    public func insertCodeFence(language: String = "swift") {
-        let snippet = "\n```\(language)\n\n```\n"
-        insertSnippetAtCursor(snippet, cursorOffsetFromStart: 5 + language.count, summary: "Insert Code Block")
-    }
-
-    public func insertMathBlock() {
-        let snippet = "\n$$\n\\int_{-\\infty}^{\\infty} e^{-x^2} dx = \\sqrt{\\pi}\n$$\n"
-        insertSnippetAtCursor(snippet, cursorOffsetFromStart: 4, summary: "Insert Math Block")
-    }
-
-    public func insertMermaidBlock() {
-        let snippet = "\n```mermaid\ngraph TD\n    A[Start] --> B[End]\n```\n"
-        insertSnippetAtCursor(snippet, cursorOffsetFromStart: 12)
-    }
-
-    public func insertSVGBlock() {
-        let snippet = "\n```svg\n<svg viewBox=\"0 0 120 40\"><rect x=\"4\" y=\"4\" width=\"112\" height=\"32\" rx=\"6\" fill=\"#3b82f6\"/><text x=\"60\" y=\"25\" fill=\"#ffffff\" text-anchor=\"middle\" font-size=\"13\">SVG</text></svg>\n```\n"
-        insertSnippetAtCursor(snippet, cursorOffsetFromStart: 8)
-    }
-
-    public func insertHorizontalRule() {
-        let snippet = "\n---\n"
-        insertSnippetAtCursor(snippet, cursorOffsetFromStart: snippet.count, summary: "Insert Horizontal Rule")
-    }
-
-    public func insertTable(rows: Int, columns: Int) {
-        let r = max(1, min(30, rows))
-        let c = max(1, min(12, columns))
-        let headers = (1...c).map { "Header \($0)" }.joined(separator: " | ")
-        let sep = (1...c).map { _ in "---" }.joined(separator: " | ")
-        var tableLines = [
-            "| \(headers) |",
-            "| \(sep) |"
-        ]
-        for rowIdx in 1...r {
-            let cells = (1...c).map { "Row \(rowIdx) Col \($0)" }.joined(separator: " | ")
-            tableLines.append("| \(cells) |")
-        }
-        let snippet = "\n" + tableLines.joined(separator: "\n") + "\n"
-        insertSnippetAtCursor(snippet, cursorOffsetFromStart: 3, summary: "Insert Table")
     }
 
     func insertSnippetAtCursor(_ snippet: String, cursorOffsetFromStart: Int, summary: String = "Insert Snippet") {

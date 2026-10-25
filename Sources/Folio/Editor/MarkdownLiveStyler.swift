@@ -67,10 +67,26 @@ public final class MarkdownLiveStyler {
         containerWidth: CGFloat = 0,
         prettyMode: Bool = true,
         baseDirectoryURL: URL? = nil,
-        textAlignment: NSTextAlignment = .natural
+        textAlignment: NSTextAlignment = .natural,
+        fileURL: URL? = nil
     ) -> MarkdownDocumentAnalysis {
         let typography = typography ?? theme.typography
         let string = storage.string
+        if LaTeXLiveStyler.isLaTeXOrBibTeXDocument(string, fileURL: fileURL) {
+            return LaTeXLiveStyler.applyStyles(
+                to: storage,
+                theme: theme,
+                typography: typography,
+                textAlignment: textAlignment,
+                sourceCodeMode: sourceCodeMode,
+                prettyMode: prettyMode,
+                focusMode: focusMode,
+                selectedRange: selectedRange,
+                containerWidth: containerWidth,
+                baseDirectoryURL: baseDirectoryURL,
+                fileURL: fileURL
+            )
+        }
         let nsString = string as NSString
         let fullLength = nsString.length
         guard fullLength > 0 else { return MarkdownDocumentAnalysis(headings: [], decorations: []) }

@@ -32,7 +32,10 @@ $$
 ## 2. Inline Math & Custom Macros in Prose
 
 - **Hilbert Spaces & Norms**: For any vectors $u, v \in \R^n$ and operator $A \in \C^{m \times n}$, the Cauchy–Schwarz inequality states that $\abs{\ip{u}{v}} \le \norm{u}_2 \norm{v}_2$, while the Frobenius norm satisfies $\norm{A}_F = \sqrt{\Tr(A^* A)}$.
-- **Parameterized & Optional-Argument Macros**: Using `\pdv` with its default order gives the first partial derivative $\pdv{u}{t}$, while passing the optional argument `[2]` produces the second partial derivative $\pdv[2]{u}{x} + \pdv[2]{u}{y} = 0$.
+- **Parameterized & Optioit nal-Argument Macros**: Using `\pdv` with its default
+  order gives the first partial derivative $\pdv{u}{t}$, while passing the
+  optional argument `[2]` produces the second partial derivative
+  $\pdv[2]{u}{x} + \pdv[2]{u}{y} = 0$.
 - **Font Alphabets**: Compare Roman $\mathrm{d}x$, Bold $\mathbf{F} = m\mathbf{a}$, Bold-Italic $\boldsymbol{\theta}^*$, Calligraphic $\mathcal{F}\{f(t)\}$, Blackboard Bold $\R, \C, \N, \mathbb{Z}, \mathbb{Q}$, Fraktur $\mathfrak{su}(2) \oplus \mathfrak{u}(1)$, Sans-Serif $\mathsf{T}_{\mu\nu}$, and Monospace $\mathtt{O(n \log n)}$.
 
 ---

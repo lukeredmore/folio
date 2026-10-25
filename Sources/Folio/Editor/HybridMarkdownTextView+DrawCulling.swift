@@ -20,7 +20,20 @@ extension HybridMarkdownTextView {
     /// line to its closing fence, so it is drawn while any of its lines are visible.
     func decorationSpan(at index: Int) -> NSRange {
         let decoration = lineDecorations[index]
-        guard case .codeFenceStart = decoration.kind else { return decoration.lineRange }
+        switch decoration.kind {
+        case .latexPreambleCard(_, _, let fullBlockRange, _),
+             .latexTheoremCard(_, _, let fullBlockRange, _),
+             .latexAbstractCard(let fullBlockRange, _),
+             .latexEquationNumber(_, let fullBlockRange, _),
+             .mathBlockRendered(_, let fullBlockRange, _),
+             .mermaidBlockRendered(_, let fullBlockRange, _),
+             .svgBlockRendered(_, let fullBlockRange, _):
+            return fullBlockRange
+        case .codeFenceStart:
+            break
+        default:
+            return decoration.lineRange
+        }
         var end = decoration.lineRange
         var scan = index + 1
         while scan < lineDecorations.count {

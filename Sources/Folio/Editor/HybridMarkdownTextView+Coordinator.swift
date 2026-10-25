@@ -188,6 +188,10 @@ extension HybridMarkdownEditorRepresentable {
         /// them. Runs after the current edit and selection change complete.
         func reflowEditedParagraphsOutsideSelection() {
             guard let tv = textView, !reflowAnchors.isEmpty, !isApplyingReflow else { return }
+            if LaTeXLiveStyler.isLaTeXOrBibTeXDocument(tv.string, fileURL: viewModel.currentFileURL) {
+                reflowAnchors.removeAll()
+                return
+            }
             let width = viewModel.sourceLineWidth
             guard width > 0 else {
                 reflowAnchors.removeAll()
@@ -255,7 +259,8 @@ extension HybridMarkdownEditorRepresentable {
                 containerWidth: contentWidth,
                 prettyMode: viewModel.prettyModeEnabled,
                 baseDirectoryURL: baseDir,
-                textAlignment: viewModel.textAlignment.nsAlignment
+                textAlignment: viewModel.textAlignment.nsAlignment,
+                fileURL: viewModel.currentFileURL
             )
 
             // Clear any spellchecker squiggles on code/math/table decorations

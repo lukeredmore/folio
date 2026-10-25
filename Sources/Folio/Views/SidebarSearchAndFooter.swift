@@ -105,7 +105,7 @@ extension SidebarView {
                 ContentUnavailableView(
                     "Outline is Empty",
                     systemImage: "list.bullet.indent",
-                    description: Text("Add Markdown headings (# H1, ## H2) to navigate sections.")
+                    description: Text("Add Markdown (# H1) or LaTeX (\\section) headings to navigate sections.")
                 )
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
@@ -248,6 +248,14 @@ extension SidebarView {
             }
             .buttonStyle(.borderless)
             .help("New Markdown File in Workspace")
+            .contextMenu {
+                Button("New Markdown File (.md)") {
+                    viewModel.createNewFileInWorkspace()
+                }
+                Button("New LaTeX File (.tex)") {
+                    viewModel.createNewLaTeXFileInWorkspace()
+                }
+            }
 
             Button {
                 viewModel.showAddRemoteModal = true
@@ -270,6 +278,17 @@ extension SidebarView {
                 }
                 if !remoteManager.mounts.isEmpty {
                     Text("Remotes: \(remoteManager.mounts.count) connected")
+                }
+                Divider()
+                Button {
+                    viewModel.createNewFileInWorkspace()
+                } label: {
+                    Label("New Markdown File (.md)", systemImage: "doc.badge.plus")
+                }
+                Button {
+                    viewModel.createNewLaTeXFileInWorkspace()
+                } label: {
+                    Label("New LaTeX File (.tex)", systemImage: "function")
                 }
                 Divider()
                 Button {

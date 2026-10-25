@@ -139,7 +139,7 @@ public struct SidebarView: View {
             ContentUnavailableView {
                 Label("No Open Folder", systemImage: "folder.badge.plus")
             } description: {
-                Text("Open a local Markdown workspace or mount a remote folder via SSH.")
+                Text("Open a local Markdown or LaTeX workspace, or mount a remote folder via SSH.")
             } actions: {
                 VStack(spacing: 8) {
                     Button("Open Folder…") {
@@ -178,6 +178,7 @@ public struct SidebarView: View {
                                 mountConnectionState: node.remoteMountID.flatMap { remoteManager.connectionStates[$0] },
                                 liveSyncStatus: remoteManager.syncStatus(forLocalURL: node.url),
                                 onNewFileInDirectory: { viewModel.createNewFileInWorkspace(in: $0) },
+                                onNewLaTeXFileInDirectory: { viewModel.createNewLaTeXFileInWorkspace(in: $0) },
                                 onSyncMount: { mountID in
                                     Task { await remoteManager.syncMount(id: mountID, isBackground: false) }
                                 },
@@ -204,6 +205,7 @@ public struct SidebarView: View {
                                 mountConnectionState: node.remoteMountID.flatMap { remoteManager.connectionStates[$0] },
                                 liveSyncStatus: remoteManager.syncStatus(forLocalURL: node.url),
                                 onNewFileInDirectory: { viewModel.createNewFileInWorkspace(in: $0) },
+                                onNewLaTeXFileInDirectory: { viewModel.createNewLaTeXFileInWorkspace(in: $0) },
                                 onSyncMount: { mountID in
                                     Task { await remoteManager.syncMount(id: mountID, isBackground: false) }
                                 },
@@ -225,6 +227,7 @@ public struct SidebarView: View {
                                 mountConnectionState: node.remoteMountID.flatMap { remoteManager.connectionStates[$0] },
                                 liveSyncStatus: remoteManager.syncStatus(forLocalURL: node.url),
                                 onNewFileInDirectory: { viewModel.createNewFileInWorkspace(in: $0) },
+                                onNewLaTeXFileInDirectory: { viewModel.createNewLaTeXFileInWorkspace(in: $0) },
                                 onSyncMount: { mountID in
                                     Task { await remoteManager.syncMount(id: mountID, isBackground: false) }
                                 },

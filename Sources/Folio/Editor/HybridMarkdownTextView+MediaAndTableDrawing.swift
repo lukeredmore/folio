@@ -339,7 +339,7 @@ extension HybridMarkdownTextView {
             }
 
         default:
-            break
+            drawLaTeXDecoration(dec, glyphRange: glyphRange, layoutManager: layoutManager, textContainer: textContainer, origin: origin, contentWidth: contentWidth)
         }
     }
 }

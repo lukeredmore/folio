@@ -8,13 +8,14 @@ struct SidebarArticleRow: View {
     let mountConnectionState: RemoteConnectionState?
     let liveSyncStatus: RemoteFileSyncStatus
     let onNewFileInDirectory: (URL) -> Void
+    let onNewLaTeXFileInDirectory: (URL) -> Void
     let onSyncMount: (UUID) -> Void
     let onDisconnectMount: (UUID) -> Void
     let sshDisplayPath: String?
 
     var body: some View {
         HStack(spacing: 8) {
-            Image(systemName: node.isRemote ? "network" : (node.isMarkdownFile ? "doc.text" : "doc"))
+            Image(systemName: node.isRemote ? "network" : node.iconSystemName)
                 .foregroundStyle(.secondary)
 
             VStack(alignment: .leading, spacing: 2) {
@@ -49,6 +50,7 @@ struct SidebarArticleRow: View {
                 node: node,
                 sshDisplayPath: sshDisplayPath,
                 onNewFileInDirectory: onNewFileInDirectory,
+                onNewLaTeXFileInDirectory: onNewLaTeXFileInDirectory,
                 onSyncMount: onSyncMount,
                 onDisconnectMount: onDisconnectMount
             )
@@ -62,6 +64,7 @@ struct SidebarFileRow: View {
     let mountConnectionState: RemoteConnectionState?
     let liveSyncStatus: RemoteFileSyncStatus
     let onNewFileInDirectory: (URL) -> Void
+    let onNewLaTeXFileInDirectory: (URL) -> Void
     let onSyncMount: (UUID) -> Void
     let onDisconnectMount: (UUID) -> Void
     let sshDisplayPath: String?
@@ -70,7 +73,7 @@ struct SidebarFileRow: View {
         if node.isDirectory {
             return node.isRemoteRoot ? "externaldrive.connected.to.line.below" : "folder"
         }
-        return node.isRemoteRoot ? "network" : (node.isMarkdownFile ? "doc.text" : "doc")
+        return node.isRemoteRoot ? "network" : node.iconSystemName
     }
 
     var body: some View {
@@ -94,6 +97,7 @@ struct SidebarFileRow: View {
                 node: node,
                 sshDisplayPath: sshDisplayPath,
                 onNewFileInDirectory: onNewFileInDirectory,
+                onNewLaTeXFileInDirectory: onNewLaTeXFileInDirectory,
                 onSyncMount: onSyncMount,
                 onDisconnectMount: onDisconnectMount
             )
@@ -105,6 +109,7 @@ struct SidebarNodeContextMenu: View {
     let node: WorkspaceFileNode
     let sshDisplayPath: String?
     let onNewFileInDirectory: (URL) -> Void
+    let onNewLaTeXFileInDirectory: (URL) -> Void
     let onSyncMount: (UUID) -> Void
     let onDisconnectMount: (UUID) -> Void
 
@@ -113,7 +118,12 @@ struct SidebarNodeContextMenu: View {
             Button {
                 onNewFileInDirectory(node.url)
             } label: {
-                Label("New Markdown File", systemImage: "doc.badge.plus")
+                Label("New Markdown File (.md)", systemImage: "doc.badge.plus")
+            }
+            Button {
+                onNewLaTeXFileInDirectory(node.url)
+            } label: {
+                Label("New LaTeX File (.tex)", systemImage: "function")
             }
             Divider()
         }
