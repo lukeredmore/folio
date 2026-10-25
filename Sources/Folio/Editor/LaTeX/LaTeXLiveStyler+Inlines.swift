@@ -62,7 +62,7 @@ extension LaTeXLiveStyler {
                 with: NSRange(location: range.location, length: commentStart - range.location)
             ).trimmingCharacters(in: .whitespaces).isEmpty
 
-            if isWholeLineComment || isActiveLine || !prettyMode {
+            if isActiveLine || !prettyMode {
                 let commentFont = theme.bodyFont(size: fontSize * 0.92, italic: true)
                 storage.addAttributes([
                     .font: commentFont,
@@ -70,6 +70,18 @@ extension LaTeXLiveStyler {
                 ], range: commentRange)
             } else {
                 MarkdownLiveStyler.collapseWhitespaceRange(in: storage, range: commentRange)
+                if isWholeLineComment {
+                    let pStyle = NSMutableParagraphStyle()
+                    pStyle.minimumLineHeight = 2.0
+                    pStyle.maximumLineHeight = 2.0
+                    pStyle.lineSpacing = 0
+                    pStyle.paragraphSpacing = 0
+                    storage.addAttributes([
+                        .font: NSFont.systemFont(ofSize: 1.0),
+                        .foregroundColor: NSColor.clear,
+                        .paragraphStyle: pStyle
+                    ], range: lineRange)
+                }
             }
             effectiveRange = NSRange(location: range.location, length: max(0, commentStart - range.location))
         }
@@ -77,7 +89,8 @@ extension LaTeXLiveStyler {
         let lineSub = nsString.substring(with: effectiveRange)
         let hasBackslash = lineSub.contains("\\")
         let hasDollar = lineSub.contains("$")
-        guard hasBackslash || hasDollar else { return }
+        let hasTeXQuotes = lineSub.contains("``") || lineSub.contains("''")
+        guard hasBackslash || hasDollar || hasTeXQuotes else { return }
 
         var protectedRanges: [NSRange] = []
         let isProtected: (NSRange) -> Bool = { r in
@@ -127,7 +140,7 @@ extension LaTeXLiveStyler {
             }
         }
 
-        guard hasBackslash else { return }
+        guard hasBackslash || hasTeXQuotes else { return }
 
         // 3. Citations (\cite{...}, \citep{...}, \citet{...})
         if lineSub.contains("cite") {

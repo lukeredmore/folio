@@ -142,7 +142,6 @@ enum LaTeXDocumentIndexer {
         let fullLength = nsString.length
         var charIndex = 0
         var inPreamble = true
-        var preambleStart: Int?
         var secCounters = [0, 0, 0, 0] // section, subsection, subsubsection, paragraph
         var eqCounter = 0
         var thmCounters: [String: Int] = [:]
@@ -157,9 +156,6 @@ enum LaTeXDocumentIndexer {
             let trimmed = line.trimmingCharacters(in: .whitespacesAndNewlines)
 
             if trimmed.hasPrefix("\\documentclass") {
-                if preambleStart == nil {
-                    preambleStart = lineRange.location
-                }
                 if let m = docClassRegex.firstMatch(in: line, range: NSRange(location: 0, length: (line as NSString).length)) {
                     if m.range(at: 1).location != NSNotFound {
                         idx.documentClassOptions = (line as NSString).substring(with: m.range(at: 1))
@@ -169,8 +165,8 @@ enum LaTeXDocumentIndexer {
             }
             if trimmed.hasPrefix("\\begin{document}") {
                 idx.beginDocumentLineRange = lineRange
-                if let pStart = preambleStart ?? (lineRange.location > 0 ? 0 : nil), lineRange.location > pStart {
-                    idx.preambleRange = NSRange(location: pStart, length: lineRange.location - pStart)
+                if lineRange.location > 0 {
+                    idx.preambleRange = NSRange(location: 0, length: lineRange.location)
                 }
                 inPreamble = false
             } else if trimmed.hasPrefix("\\end{document}") {

@@ -110,6 +110,12 @@ public enum BlockDecorationKind: Equatable {
         isCitation: Bool,
         dimFactor: CGFloat
     )
+    case latexInlineText(
+        text: String,
+        font: NSFont,
+        range: NSRange,
+        dimFactor: CGFloat
+    )
 }
 
 public struct LineDecoration: Equatable {

@@ -30,6 +30,12 @@ extension LaTeXLiveStyler {
     static let latexColorGroupRegex = try! NSRegularExpression(
         pattern: #"(\{\\color\{[^}]+\}[ \t]*)([^{}]*(?:\{[^{}]*\}[^{}]*)*)(\})"#
     )
+    static let latexProseMacroRegex = try! NSRegularExpression(
+        pattern: #"\\([A-Za-z]+)(?:\{\}|\b(?![\{]))"#
+    )
+    static let latexTeXQuotesRegex = try! NSRegularExpression(
+        pattern: #"``|''"#
+    )
 
     static func reserveAtomicInlineSpan(
         in storage: NSTextStorage,
@@ -255,6 +261,69 @@ extension LaTeXLiveStyler {
                 let wordRange = match.range(at: 1)
                 if wordRange.location != NSNotFound && wordRange.length > 0 {
                     MarkdownLiveStyler.styleSyntaxToken(in: storage, range: wordRange, isActiveLine: showTokens, theme: theme, dimFactor: dimFactor)
+                }
+            }
+        }
+
+        // Zero-argument document macros in prose (e.g. \letterdate, \sendername, \originaltoll{}, \invoice{})
+        let docMacros = LaTeXMathRenderer.currentDocumentMacros()
+        if !docMacros.isEmpty && lineSub.contains("\\") {
+            latexProseMacroRegex.enumerateMatches(in: string, options: [], range: effectiveRange) { match, _, _ in
+                guard let match = match, !isProtected(match.range) else { return }
+                let cmdName = nsString.substring(with: match.range(at: 1))
+                guard let def = docMacros["\\\(cmdName)"], def.argCount == 0, def.operatorText == nil else { return }
+                storage.addAttribute(MKey.noSpellCheck, value: true, range: match.range)
+                if showTokens {
+                    MarkdownLiveStyler.styleSyntaxToken(in: storage, range: match.range, isActiveLine: true, theme: theme, dimFactor: dimFactor)
+                } else {
+                    let parts = def.replacement.components(separatedBy: "\\\\")
+                        .map { LaTeXDocumentIndexer.cleanTeXInlineText($0) }
+                        .filter { !$0.isEmpty }
+                    let displayText = parts.joined(separator: "\n")
+                    guard !displayText.isEmpty else { return }
+                    let currentFont = (storage.attribute(.font, at: match.range.location, effectiveRange: nil) as? NSFont) ?? baseFont
+                    let maxW = parts.map { ceil(($0 as NSString).size(withAttributes: [.font: currentFont]).width) }.max() ?? 4.0
+                    let lineStep = ceil((currentFont.ascender - currentFont.descender) * 1.25)
+                    let extraDescent = CGFloat(max(0, parts.count - 1)) * lineStep
+                    reserveAtomicInlineSpan(
+                        in: storage,
+                        nsString: nsString,
+                        fullRange: match.range,
+                        width: max(4.0, maxW),
+                        ascent: currentFont.ascender,
+                        descent: -currentFont.descender + extraDescent
+                    )
+                    decorations.append(LineDecoration(
+                        lineRange: match.range,
+                        kind: .latexInlineText(text: displayText, font: currentFont, range: match.range, dimFactor: dimFactor)
+                    ))
+                }
+            }
+        }
+
+        // TeX quote ligatures: `` -> “ and '' -> ”
+        if lineSub.contains("``") || lineSub.contains("''") {
+            latexTeXQuotesRegex.enumerateMatches(in: string, options: [], range: effectiveRange) { match, _, _ in
+                guard let match = match, !isProtected(match.range) else { return }
+                if showTokens {
+                    MarkdownLiveStyler.styleSyntaxToken(in: storage, range: match.range, isActiveLine: true, theme: theme, dimFactor: dimFactor)
+                } else {
+                    let raw = nsString.substring(with: match.range)
+                    let quoteStr = raw == "``" ? "“" : "”"
+                    let currentFont = (storage.attribute(.font, at: match.range.location, effectiveRange: nil) as? NSFont) ?? baseFont
+                    let quoteW = max(3.0, ceil((quoteStr as NSString).size(withAttributes: [.font: currentFont]).width))
+                    reserveAtomicInlineSpan(
+                        in: storage,
+                        nsString: nsString,
+                        fullRange: match.range,
+                        width: quoteW,
+                        ascent: currentFont.ascender,
+                        descent: -currentFont.descender
+                    )
+                    decorations.append(LineDecoration(
+                        lineRange: match.range,
+                        kind: .latexInlineText(text: quoteStr, font: currentFont, range: match.range, dimFactor: dimFactor)
+                    ))
                 }
             }
         }
