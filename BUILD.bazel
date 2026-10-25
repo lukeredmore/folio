@@ -39,6 +39,14 @@ alias(
     actual = "//macos/FolioApp:FolioApp",
 )
 
+sh_binary(
+    name = "folio",
+    srcs = ["//macos/FolioApp:folio"],
+    data = [
+        ":FolioApp",
+    ],
+)
+
 alias(
     name = "folio_zed_extension",
     actual = "//zed/folio_zed_extension:extension_bundle",
