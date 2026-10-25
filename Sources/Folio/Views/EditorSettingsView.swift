@@ -66,12 +66,49 @@ public struct EditorSettingsView: View {
     @ViewBuilder
     var headerSection: some View {
         HStack(spacing: 6) {
-            Image(systemName: "paintbrush.pointed.fill")
+            Image(systemName: "paintpalette.fill")
                 .font(.system(size: 13, weight: .semibold))
                 .foregroundColor(.accentColor)
 
-            Text("Theme Settings")
-                .font(.system(size: 13.5, weight: .semibold))
+            Menu {
+                Section("Default Themes") {
+                    ForEach(EditorTheme.builtInThemes) { themeOption in
+                        Button {
+                            viewModel.selectTheme(themeOption)
+                        } label: {
+                            HStack {
+                                Text(themeOption.name)
+                                if viewModel.theme.id == themeOption.id {
+                                    Image(systemName: "checkmark")
+                                }
+                            }
+                        }
+                    }
+                }
+
+                if !viewModel.customThemes.isEmpty {
+                    Section("Saved Themes") {
+                        ForEach(viewModel.customThemes) { themeOption in
+                            Button {
+                                viewModel.selectTheme(themeOption)
+                            } label: {
+                                HStack {
+                                    Text(themeOption.name)
+                                    if viewModel.theme.id == themeOption.id {
+                                        Image(systemName: "checkmark")
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            } label: {
+                Text(viewModel.isCurrentThemeModified ? "\(viewModel.theme.name) *" : viewModel.theme.name)
+                    .font(.system(size: 13, weight: .semibold))
+            }
+            .menuStyle(.borderlessButton)
+            .fixedSize()
+            .help("Switch Active Theme")
 
             if viewModel.isCurrentThemeModified {
                 Text("Edited")

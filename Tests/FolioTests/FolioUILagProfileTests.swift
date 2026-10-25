@@ -257,7 +257,7 @@ final class FolioUILagProfileTests: XCTestCase {
         let hostingView = NSHostingView(rootView: MainWindowView(viewModel: vm))
         let window = NSWindow(
             contentRect: NSRect(x: 0, y: 0, width: 1000, height: 700),
-            styleMask: [.titled, .closable, .resizable],
+            styleMask: [.titled, .closable, .resizable, .fullSizeContentView],
             backing: .buffered,
             defer: false
         )
@@ -282,9 +282,26 @@ final class FolioUILagProfileTests: XCTestCase {
         XCTAssertEqual(footerHeight, editorScrollMinY, accuracy: 0.5, "Sidebar footer top edge must align with StatusBarView top edge")
         XCTAssertEqual(scrollWindowRect.maxY, hostingView.bounds.height, accuracy: 1.0, "Editor scroll view canvas must extend all the way to the top edge of the window")
 
+        if let root = window.contentView?.superview {
+            let searchField = try XCTUnwrap(findSubview(of: NSSearchField.self, in: root))
+            let modeSegmented = try XCTUnwrap(findSubview(of: NSSegmentedControl.self, in: root))
+            let searchRect = searchField.convert(searchField.bounds, to: nil)
+            let modeRect = modeSegmented.convert(modeSegmented.bounds, to: nil)
+            XCTAssertLessThan(modeRect.maxX, 265.0, "Sidebar mode picker must reside inside the sidebar titlebar column")
+            XCTAssertFalse(searchRect.intersects(modeRect), "Sidebar search field and mode switcher must never overlap")
+        }
+
         for tab in SidebarTab.allCases {
             vm.activeSidebarTab = tab
             hostingView.layoutSubtreeIfNeeded()
         }
+
+        // When sidebar closes, bottom status bar auto-hides so editor canvas bleeds full bottom & top
+        vm.showSidebar = false
+        RunLoop.current.run(until: Date().addingTimeInterval(0.35))
+        hostingView.layoutSubtreeIfNeeded()
+        let closedScrollRect = scrollView.convert(scrollView.bounds, to: nil)
+        XCTAssertEqual(closedScrollRect.minY, 0.0, accuracy: 1.0, "Editor scroll view must extend to bottom edge when sidebar is closed")
+        XCTAssertEqual(closedScrollRect.maxY, hostingView.bounds.height, accuracy: 1.0, "Editor scroll view must extend to top edge when sidebar is closed")
     }
 }

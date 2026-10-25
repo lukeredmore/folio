@@ -4,29 +4,18 @@ import SwiftUI
 extension SidebarView {
 
     // MARK: - Top Navigation Bar
-    var sidebarHeaderBar: some View {
-        VStack(spacing: 6) {
-            Picker("Sidebar Mode", selection: $viewModel.activeSidebarTab) {
-                ForEach(SidebarTab.allCases) { tab in
-                    Label(tab.rawValue, systemImage: tab.systemImage)
-                        .tag(tab)
-                }
-            }
-            .pickerStyle(.segmented)
-            .labelsHidden()
-            .controlSize(.small)
-            .help("Switch between Files (Ctrl+Cmd+2/3), Outline (Ctrl+Cmd+1), and Search (Cmd+Shift+F)")
-
-            if viewModel.activeSidebarTab == .search {
-                searchOptionsRow
-
-                if viewModel.showWorkspaceReplace {
-                    workspaceReplaceRow
-                }
+    var sidebarModePicker: some View {
+        Picker("Sidebar Mode", selection: $viewModel.activeSidebarTab) {
+            ForEach(SidebarTab.allCases) { tab in
+                Image(systemName: tab.systemImage)
+                    .tag(tab)
+                    .help(tab.rawValue)
             }
         }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 6)
+        .pickerStyle(.segmented)
+        .labelsHidden()
+        .controlSize(.small)
+        .help("Switch between Files (Ctrl+Cmd+2/3), Outline (Ctrl+Cmd+1), and Search (Cmd+Shift+F)")
     }
 
     private var searchOptionsRow: some View {
@@ -179,20 +168,32 @@ extension SidebarView {
 
     @ViewBuilder
     var searchTabContent: some View {
-        if viewModel.workspaceSearchMatches.isEmpty {
-            if viewModel.workspaceSearchQuery.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                ContentUnavailableView(
-                    "Search Workspace",
-                    systemImage: "magnifyingglass",
-                    description: Text("Use the search field to find text across all Markdown files.")
-                )
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-            } else {
-                ContentUnavailableView.search(text: viewModel.workspaceSearchQuery)
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+        List(selection: selectedSearchMatchBinding) {
+            Section {
+                VStack(spacing: 6) {
+                    searchOptionsRow
+                    if viewModel.showWorkspaceReplace {
+                        workspaceReplaceRow
+                    }
+                }
+                .padding(.vertical, 2)
             }
-        } else {
-            List(selection: selectedSearchMatchBinding) {
+
+            if viewModel.workspaceSearchMatches.isEmpty {
+                Section {
+                    if viewModel.workspaceSearchQuery.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                        Label("Type in the search field to find text across all files.", systemImage: "magnifyingglass")
+                            .font(.callout)
+                            .foregroundStyle(.secondary)
+                            .padding(.vertical, 6)
+                    } else {
+                        Label("No matches for \"\(viewModel.workspaceSearchQuery)\"", systemImage: "magnifyingglass")
+                            .font(.callout)
+                            .foregroundStyle(.secondary)
+                            .padding(.vertical, 6)
+                    }
+                }
+            } else {
                 ForEach(groupedSearchMatches) { group in
                     Section {
                         ForEach(group.matches) { match in
@@ -233,8 +234,8 @@ extension SidebarView {
                     }
                 }
             }
-            .listStyle(.sidebar)
         }
+        .listStyle(.sidebar)
     }
 
     // MARK: - Bottom Action Bar
