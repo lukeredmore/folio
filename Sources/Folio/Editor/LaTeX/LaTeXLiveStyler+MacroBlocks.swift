@@ -15,6 +15,9 @@ extension LaTeXLiveStyler {
     private static let macroVspaceRegex = try! NSRegularExpression(
         pattern: #"\\vspace\*?\{([^}]+)\}"#
     )
+    private static let macroSectionRegex = try! NSRegularExpression(
+        pattern: #"\\(part|chapter|section|subsection|subsubsection)\*?\s*\{"#
+    )
 
     private static let reservedMacroBlockNames: Set<String> = [
         "begin", "end", "section", "subsection", "subsubsection", "chapter", "part",
@@ -30,6 +33,7 @@ extension LaTeXLiveStyler {
         let color: NSColor?
         let prefixLabel: String?
         let vspacePoints: CGFloat?
+        let headingLevel: Int?
     }
 
     static func analyzeMacroTemplate(
@@ -62,7 +66,15 @@ extension LaTeXLiveStyler {
                 vspacePt = max(vspacePt ?? 0.0, parsed)
             }
         }
-        return ResolvedMacroTemplate(showsBody: showsBody, color: resolvedColor, prefixLabel: prefixLabel, vspacePoints: vspacePt)
+        var headingLevel: Int?
+        if showsBody, let sm = macroSectionRegex.firstMatch(in: active, range: fullRange) {
+            let secCmd = nsActive.substring(with: sm.range(at: 1))
+            headingLevel = LaTeXDocumentIndexer.sectionLevel(for: secCmd)
+        }
+        return ResolvedMacroTemplate(
+            showsBody: showsBody, color: resolvedColor, prefixLabel: prefixLabel,
+            vspacePoints: vspacePt, headingLevel: headingLevel
+        )
     }
 
     static func findMatchingCloseBrace(in nsString: NSString, openBraceLocation: Int, fullLength: Int) -> Int? {
@@ -122,10 +134,27 @@ extension LaTeXLiveStyler {
             let openRange = NSRange(location: contentRange.location, length: (openBraceLoc + 1) - contentRange.location)
             let innerRange = NSRange(location: openBraceLoc + 1, length: max(0, closeBraceLoc - (openBraceLoc + 1)))
             let closeRange = NSRange(location: closeBraceLoc, length: max(0, NSMaxRange(contentRange) - closeBraceLoc))
+            var lineFont = baseFont
+            if let level = tpl.headingLevel {
+                lineFont = docIndex.headingFont(level: level, scale: typography.fontSizeScale, baseSize: effectiveBaseSize, fallbackTheme: theme)
+                let pStyle = NSMutableParagraphStyle()
+                pStyle.lineSpacing = max(2.0, typography.lineSpacing * 0.7)
+                pStyle.paragraphSpacingBefore = level == 1 ? 16.0 : (level == 2 ? 12.0 : 8.0)
+                pStyle.paragraphSpacing = level <= 2 ? 10.0 : 6.0
+                pStyle.tailIndent = effectiveContainerWidth
+                storage.addAttributes([
+                    .font: lineFont,
+                    .foregroundColor: (tpl.color ?? theme.headingNSColor).withAlphaComponent(dimFactor),
+                    .paragraphStyle: pStyle
+                ], range: lineRange)
+                if level <= 2 && prettyMode && !isActiveLine {
+                    decorations.append(LineDecoration(lineRange: lineRange, kind: .headingUnderline(level: level)))
+                }
+            }
             if let c = tpl.color { storage.addAttribute(MKey.customColor, value: c, range: lineRange) }
             styleLaTeXInlineContent(
                 in: storage, string: string, nsString: nsString, range: innerRange, lineRange: lineRange,
-                baseFont: baseFont, isActiveLine: isActiveLine, docIndex: docIndex, theme: theme,
+                baseFont: lineFont, isActiveLine: isActiveLine, docIndex: docIndex, theme: theme,
                 dimFactor: dimFactor, prettyMode: prettyMode, baseDirectoryURL: baseDirectoryURL, decorations: &decorations
             )
             if let c = tpl.color {
@@ -276,15 +305,17 @@ extension LaTeXLiveStyler {
                     baseFont: baseFont, isActiveLine: curAct, docIndex: docIndex, theme: theme,
                     dimFactor: blockDim, prettyMode: prettyMode, baseDirectoryURL: baseDirectoryURL, decorations: &decorations
                 )
+                if let c = macroColor {
+                    MarkdownLiveStyler.applyAttributesToVisibleCharacters(
+                        in: storage, range: curCR, attributes: [.foregroundColor: c.withAlphaComponent(blockDim)]
+                    )
+                }
                 cur = NSMaxRange(curLR)
             }
         }
         if let c = macroColor, interiorEnd > interiorStart {
             let interiorRange = NSRange(location: interiorStart, length: interiorEnd - interiorStart)
             storage.addAttribute(MKey.customColor, value: c, range: interiorRange)
-            MarkdownLiveStyler.applyAttributesToVisibleCharacters(
-                in: storage, range: interiorRange, attributes: [.foregroundColor: c.withAlphaComponent(blockDim)]
-            )
         }
     }
 }

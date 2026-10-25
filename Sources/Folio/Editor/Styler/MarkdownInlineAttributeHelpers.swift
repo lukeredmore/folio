@@ -11,7 +11,9 @@ extension MarkdownLiveStyler {
     ) {
         guard range.length > 0 else { return }
         storage.enumerateAttributes(in: range, options: []) { attrs, subrange, _ in
-            if attrs[collapsedTokenAttributeKey] != nil || attrs[inlineMathSpanAttributeKey] != nil {
+            if attrs[collapsedTokenAttributeKey] != nil
+                || attrs[inlineMathSpanAttributeKey] != nil
+                || (attrs[.foregroundColor] as? NSColor) == NSColor.clear {
                 return
             }
             let currentFont = (attrs[.font] as? NSFont) ?? fallbackFont
@@ -27,7 +29,9 @@ extension MarkdownLiveStyler {
     ) {
         guard range.length > 0 else { return }
         storage.enumerateAttributes(in: range, options: []) { attrs, subrange, _ in
-            if attrs[collapsedTokenAttributeKey] != nil || attrs[inlineMathSpanAttributeKey] != nil {
+            if attrs[collapsedTokenAttributeKey] != nil
+                || attrs[inlineMathSpanAttributeKey] != nil
+                || (attrs[.foregroundColor] as? NSColor) == NSColor.clear {
                 return
             }
             storage.addAttributes(attributes, range: subrange)
