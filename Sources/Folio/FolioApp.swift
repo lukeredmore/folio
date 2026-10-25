@@ -96,15 +96,22 @@ public struct MainWindowView: View {
             }
         }
         .onChange(of: viewModel.showSidebar) { _, shouldShow in
-            let target: NavigationSplitViewVisibility = shouldShow ? .all : .detailOnly
-            if columnVisibility != target {
-                columnVisibility = target
+            if shouldShow {
+                if columnVisibility == .detailOnly {
+                    columnVisibility = .all
+                }
+            } else if columnVisibility != .detailOnly {
+                columnVisibility = .detailOnly
             }
         }
         .background(
-            WindowStatePersistenceAccessor(userDefaults: viewModel.userDefaults)
-                .frame(width: 0, height: 0)
-                .allowsHitTesting(false)
+            WindowStatePersistenceAccessor(
+                viewModel: viewModel,
+                showSidebar: viewModel.showSidebar,
+                columnVisibility: $columnVisibility
+            )
+            .frame(width: 0, height: 0)
+            .allowsHitTesting(false)
         )
         .background(
             DoubleShiftEventMonitorAccessor(viewModel: viewModel)
@@ -128,110 +135,6 @@ public struct MainWindowView: View {
         }
         .sheet(isPresented: $updateManager.showUpdateSheet) {
             AppUpdateModalView(updateManager: updateManager)
-        }
-    }
-}
-
-final class PassThroughAccessorNSView: NSView {
-    var onMoveToWindow: ((NSWindow) -> Void)?
-
-    override func hitTest(_ point: NSPoint) -> NSView? {
-        nil
-    }
-
-    override var acceptsFirstResponder: Bool {
-        false
-    }
-
-    override func viewDidMoveToWindow() {
-        super.viewDidMoveToWindow()
-        if let window = self.window {
-            onMoveToWindow?(window)
-        }
-    }
-}
-
-struct WindowStatePersistenceAccessor: NSViewRepresentable {
-    let userDefaults: UserDefaults
-    static let windowFrameDefaultsKey = "Folio.MainWindowFrame.v1"
-
-    func makeCoordinator() -> Coordinator {
-        Coordinator(userDefaults: userDefaults)
-    }
-
-    func makeNSView(context: Context) -> PassThroughAccessorNSView {
-        let view = PassThroughAccessorNSView(frame: .zero)
-        let coordinator = context.coordinator
-        view.onMoveToWindow = { [weak coordinator] window in
-            coordinator?.attach(to: window)
-        }
-        return view
-    }
-
-    func updateNSView(_ nsView: PassThroughAccessorNSView, context: Context) {
-        if let window = nsView.window {
-            if context.coordinator.attachedWindow !== window {
-                context.coordinator.attach(to: window)
-            } else {
-                if window.titleVisibility != .hidden {
-                    window.titleVisibility = .hidden
-                }
-                if !window.titlebarAppearsTransparent {
-                    window.titlebarAppearsTransparent = true
-                }
-            }
-        }
-    }
-
-    @MainActor
-    final class Coordinator: NSObject {
-        let userDefaults: UserDefaults
-        weak var attachedWindow: NSWindow?
-
-        init(userDefaults: UserDefaults) {
-            self.userDefaults = userDefaults
-        }
-
-        deinit {
-            NotificationCenter.default.removeObserver(self)
-        }
-
-        func attach(to window: NSWindow) {
-            guard attachedWindow !== window else { return }
-            if let oldWindow = attachedWindow {
-                NotificationCenter.default.removeObserver(self, name: NSWindow.didResizeNotification, object: oldWindow)
-                NotificationCenter.default.removeObserver(self, name: NSWindow.didMoveNotification, object: oldWindow)
-            }
-            attachedWindow = window
-            window.titleVisibility = .hidden
-            window.titlebarAppearsTransparent = true
-
-            window.setFrameAutosaveName("FolioMainWindow")
-            if let savedFrameString = userDefaults.string(forKey: WindowStatePersistenceAccessor.windowFrameDefaultsKey) {
-                let rect = NSRectFromString(savedFrameString)
-                if rect.width >= 720, rect.height >= 480 {
-                    window.setFrame(rect, display: true)
-                }
-            }
-
-            NotificationCenter.default.addObserver(
-                self,
-                selector: #selector(windowDidChangeFrame(_:)),
-                name: NSWindow.didResizeNotification,
-                object: window
-            )
-            NotificationCenter.default.addObserver(
-                self,
-                selector: #selector(windowDidChangeFrame(_:)),
-                name: NSWindow.didMoveNotification,
-                object: window
-            )
-        }
-
-        @objc func windowDidChangeFrame(_ notification: Notification) {
-            guard let window = attachedWindow else { return }
-            let frameString = NSStringFromRect(window.frame)
-            userDefaults.set(frameString, forKey: WindowStatePersistenceAccessor.windowFrameDefaultsKey)
         }
     }
 }

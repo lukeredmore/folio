@@ -241,7 +241,29 @@ extension HybridMarkdownTextView {
     }
 
     @objc public func toggleSidebar(_ sender: Any?) {
-        workspaceViewModel?.showSidebar.toggle()
+        guard let vm = workspaceViewModel else { return }
+        if let splitView = self.enclosingSplitView,
+           let svc = splitView.delegate as? NSSplitViewController,
+           let sidebarItem = svc.splitViewItems.first {
+            let newShow = sidebarItem.isCollapsed
+            vm.showSidebar = newShow
+            if sidebarItem.isCollapsed != !newShow {
+                sidebarItem.animator().isCollapsed = !newShow
+            }
+        } else {
+            vm.showSidebar.toggle()
+        }
+    }
+
+    private var enclosingSplitView: NSSplitView? {
+        var current: NSView? = self
+        while let view = current {
+            if let split = view as? NSSplitView {
+                return split
+            }
+            current = view.superview
+        }
+        return nil
     }
 
     public override func printView(_ sender: Any?) {
