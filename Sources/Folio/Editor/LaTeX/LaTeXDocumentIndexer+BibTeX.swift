@@ -45,7 +45,16 @@ extension LaTeXDocumentIndexer {
                 }
             }
         }
-        s = s.replacingOccurrences(of: "~", with: " ")
+        s = s.replacingOccurrences(of: "\\LaTeX{}", with: "LaTeX")
+            .replacingOccurrences(of: "\\LaTeX", with: "LaTeX")
+            .replacingOccurrences(of: "\\TeX{}", with: "TeX")
+            .replacingOccurrences(of: "\\TeX", with: "TeX")
+            .replacingOccurrences(of: "\\&", with: "&")
+            .replacingOccurrences(of: "\\%", with: "%")
+            .replacingOccurrences(of: "\\_", with: "_")
+            .replacingOccurrences(of: "\\#", with: "#")
+            .replacingOccurrences(of: "\\$", with: "$")
+            .replacingOccurrences(of: "~", with: " ")
             .replacingOccurrences(of: "---", with: "—")
             .replacingOccurrences(of: "--", with: "–")
             .replacingOccurrences(of: "``", with: "“")

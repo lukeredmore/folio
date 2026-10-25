@@ -24,6 +24,15 @@ extension LaTeXLiveStyler {
     static let latexStyleCmdRegex = try! NSRegularExpression(
         pattern: #"(\\(textbf|textit|emph|underline|texttt|textsc|footnote|textrm|textsf)\{)([^{}]*(?:\{[^{}]*\}[^{}]*)*)(\})"#
     )
+    static let latexLogoCmdRegex = try! NSRegularExpression(
+        pattern: #"\\(LaTeX|TeX|today)(\{\})?"#
+    )
+    static let latexTextBackslashRegex = try! NSRegularExpression(
+        pattern: #"\\(textbackslash(?:[ \t]+|\{\})?)"#
+    )
+    static let latexEscapedCharRegex = try! NSRegularExpression(
+        pattern: #"\\([&%$#_{}])"#
+    )
 
     static func styleLaTeXInlineContent(
         in storage: NSTextStorage,
@@ -96,7 +105,7 @@ extension LaTeXLiveStyler {
                 MarkdownLiveStyler.styleSyntaxToken(in: storage, range: closeRange, isActiveLine: true, theme: theme, dimFactor: dimFactor)
             } else {
                 let mathBox = LaTeXMathRenderer.layoutLatex(latexStr, baseFontSize: fontSize, isDisplayStyle: false)
-                let targetWidth = max(12.0, mathBox.width + 6.0)
+                let targetWidth = max(4.0, mathBox.width + 2.0)
                 reserveAtomicInlineSpan(
                     in: storage,
                     nsString: nsString,

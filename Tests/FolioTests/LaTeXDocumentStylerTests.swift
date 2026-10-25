@@ -134,16 +134,16 @@ final class LaTeXDocumentStylerTests: XCTestCase {
         )
 
         let hasTheoremCard = analysis.decorations.contains { dec in
-            if case .latexTheoremCard(let header, let isProof, _, _) = dec.kind {
-                return !isProof && header == "Theorem 1 (Main Bound)."
+            if case .latexTheoremCard(let header, let isProof, let showHeader, _, _) = dec.kind {
+                return !isProof && showHeader && header == "Theorem 1 (Main Bound)."
             }
             return false
         }
         XCTAssertTrue(hasTheoremCard)
 
         let hasProofCard = analysis.decorations.contains { dec in
-            if case .latexTheoremCard(_, let isProof, _, _) = dec.kind {
-                return isProof
+            if case .latexTheoremCard(let header, let isProof, let showHeader, _, _) = dec.kind {
+                return isProof && showHeader && header == "Proof."
             }
             return false
         }
@@ -195,5 +195,69 @@ final class LaTeXDocumentStylerTests: XCTestCase {
         tv.setSelectedRange(NSRange(location: 0, length: 0))
         vm.setHeadingLevel(2)
         XCTAssertEqual(tv.string, "\\subsection{\\textbf{Hello} world}")
+    }
+
+    func testFocusedTheoremBodyAndEscapedTokensAndArgminOperator() {
+        let tex = """
+        \\documentclass{article}
+        \\DeclareMathOperator*{\\argmin}{arg\\,min}
+        \\begin{document}
+        \\title{Native \\LaTeX{} Paper}
+        \\begin{definition}[Inner Product]
+        Let $x \\in \\mathbb{R}$.
+        \\end{definition}
+        \\begin{itemize}
+          \\item \\textbf{Preamble \\& Macros:} Fold \\texttt{\\textbackslash usepackage} cleanly.
+        \\end{itemize}
+        \\end{document}
+        """
+        let ns = tex as NSString
+        let macros = LaTeXMacroExpander.extractDocumentMacros(from: tex)
+        XCTAssertEqual(macros["\\argmin"]?.operatorText, "arg min")
+
+        let storage = NSTextStorage(string: tex)
+        let bodyCursor = ns.range(of: "Let $x").location + 2
+        let bodyAnalysis = MarkdownLiveStyler.applyStyles(
+            to: storage,
+            theme: .daylight,
+            sourceCodeMode: false,
+            focusMode: false,
+            selectedRange: NSRange(location: bodyCursor, length: 0),
+            fileURL: URL(fileURLWithPath: "/tmp/paper.tex")
+        )
+        // When cursor is on the body line inside definition, the card header remains visible and \begin{definition} stays folded
+        let bodyCardShowsHeader = bodyAnalysis.decorations.contains { dec in
+            if case .latexTheoremCard(let hdr, _, let showHeader, _, _) = dec.kind {
+                return showHeader && hdr == "Definition 1 (Inner Product)."
+            }
+            return false
+        }
+        XCTAssertTrue(bodyCardShowsHeader)
+
+        // When cursor is directly on \begin{definition}, showHeader becomes false so revealed source never overlaps
+        let beginCursor = ns.range(of: "\\begin{definition}").location + 2
+        let beginAnalysis = MarkdownLiveStyler.applyStyles(
+            to: storage,
+            theme: .daylight,
+            sourceCodeMode: false,
+            focusMode: false,
+            selectedRange: NSRange(location: beginCursor, length: 0),
+            fileURL: URL(fileURLWithPath: "/tmp/paper.tex")
+        )
+        let beginCardHidesHeader = beginAnalysis.decorations.contains { dec in
+            if case .latexTheoremCard(_, _, let showHeader, _, _) = dec.kind {
+                return !showHeader
+            }
+            return false
+        }
+        XCTAssertTrue(beginCardHidesHeader)
+
+        // Inactive \LaTeX{}, \&, and \textbackslash fold their control tokens
+        let latexSlashLoc = ns.range(of: "\\LaTeX{}").location
+        let ampSlashLoc = ns.range(of: "\\&").location
+        let textbackslashWordLoc = ns.range(of: "textbackslash ").location
+        XCTAssertEqual(storage.attribute(MarkdownLiveStyler.collapsedTokenAttributeKey, at: latexSlashLoc, effectiveRange: nil) as? Bool, true)
+        XCTAssertEqual(storage.attribute(MarkdownLiveStyler.collapsedTokenAttributeKey, at: ampSlashLoc, effectiveRange: nil) as? Bool, true)
+        XCTAssertEqual(storage.attribute(MarkdownLiveStyler.collapsedTokenAttributeKey, at: textbackslashWordLoc, effectiveRange: nil) as? Bool, true)
     }
 }

@@ -22,8 +22,8 @@ extension HybridMarkdownTextView {
         let decoration = lineDecorations[index]
         switch decoration.kind {
         case .latexPreambleCard(_, _, let fullBlockRange, _),
-             .latexTheoremCard(_, _, let fullBlockRange, _),
-             .latexAbstractCard(let fullBlockRange, _),
+             .latexTheoremCard(_, _, _, let fullBlockRange, _),
+             .latexAbstractCard(_, let fullBlockRange, _),
              .latexEquationNumber(_, let fullBlockRange, _),
              .mathBlockRendered(_, let fullBlockRange, _),
              .mermaidBlockRendered(_, let fullBlockRange, _),

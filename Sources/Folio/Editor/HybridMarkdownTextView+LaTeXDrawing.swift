@@ -81,7 +81,7 @@ extension HybridMarkdownTextView {
                 withAttributes: subAttrs
             )
 
-        case let .latexAbstractCard(fullBlockRange, dimFactor):
+        case let .latexAbstractCard(showHeader, fullBlockRange, dimFactor):
             let blockGlyphs = layoutManager.glyphRange(forCharacterRange: fullBlockRange, actualCharacterRange: nil)
             guard blockGlyphs.location != NSNotFound else { return }
             var blockRect = layoutManager.boundingRect(forGlyphRange: blockGlyphs, in: textContainer)
@@ -94,16 +94,18 @@ extension HybridMarkdownTextView {
             bg.setFill()
             NSBezierPath(roundedRect: cardRect, xRadius: 6.0, yRadius: 6.0).fill()
 
-            let hdrAttrs: [NSAttributedString.Key: Any] = [
-                .font: NSFont.systemFont(ofSize: effectiveFontSize * 0.78, weight: .bold),
-                .foregroundColor: currentTheme.secondaryTextNSColor.withAlphaComponent(dimFactor),
-                .kern: 1.1
-            ]
-            let hdr = "ABSTRACT" as NSString
-            let hdrSize = hdr.size(withAttributes: hdrAttrs)
-            hdr.draw(at: NSPoint(x: cardRect.midX - hdrSize.width * 0.5, y: cardRect.minY + 6.0), withAttributes: hdrAttrs)
+            if showHeader {
+                let hdrAttrs: [NSAttributedString.Key: Any] = [
+                    .font: NSFont.systemFont(ofSize: effectiveFontSize * 0.78, weight: .bold),
+                    .foregroundColor: currentTheme.secondaryTextNSColor.withAlphaComponent(dimFactor),
+                    .kern: 1.1
+                ]
+                let hdr = "ABSTRACT" as NSString
+                let hdrSize = hdr.size(withAttributes: hdrAttrs)
+                hdr.draw(at: NSPoint(x: cardRect.midX - hdrSize.width * 0.5, y: cardRect.minY + 6.0), withAttributes: hdrAttrs)
+            }
 
-        case let .latexTheoremCard(header, isProof, fullBlockRange, dimFactor):
+        case let .latexTheoremCard(header, isProof, showHeader, fullBlockRange, dimFactor):
             let blockGlyphs = layoutManager.glyphRange(forCharacterRange: fullBlockRange, actualCharacterRange: nil)
             guard blockGlyphs.location != NSNotFound else { return }
             var blockRect = layoutManager.boundingRect(forGlyphRange: blockGlyphs, in: textContainer)
@@ -131,8 +133,10 @@ extension HybridMarkdownTextView {
                 .font: hdrFont,
                 .foregroundColor: currentTheme.headingNSColor.withAlphaComponent(dimFactor)
             ]
-            let hdrStr = (isProof ? "\(header)." : header) as NSString
-            hdrStr.draw(at: NSPoint(x: cardRect.minX + 16.0, y: cardRect.minY + 5.0), withAttributes: hdrAttrs)
+            if showHeader {
+                let hdrStr = header as NSString
+                hdrStr.draw(at: NSPoint(x: cardRect.minX + 16.0, y: cardRect.minY + 5.0), withAttributes: hdrAttrs)
+            }
 
             if isProof {
                 let qedStr = "∎" as NSString

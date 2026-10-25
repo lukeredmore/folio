@@ -49,10 +49,10 @@ extension LaTeXLiveStyler {
             let isFirst = (i == 0)
             let isLast = (i == envLines.count - 1 && envLines.count > 1)
 
-            if (isFirst || isLast) && !isBlockActive && prettyMode {
+            if (isFirst || isLast) && !el.isActive && prettyMode {
                 let headerHeight: CGFloat = isFirst
                     ? (isAbstract ? 26.0 : (isTheoremOrProof ? 26.0 : 6.0))
-                    : 6.0
+                    : (envName == "proof" ? 10.0 : 6.0)
                 let pStyle = NSMutableParagraphStyle()
                 pStyle.minimumLineHeight = headerHeight
                 pStyle.maximumLineHeight = headerHeight
@@ -85,7 +85,7 @@ extension LaTeXLiveStyler {
                 .paragraphStyle: pStyle
             ], range: el.lineRange)
 
-            if (isFirst || isLast) && (isBlockActive || !prettyMode) {
+            if (isFirst || isLast) && (el.isActive || !prettyMode) {
                 storage.addAttribute(MKey.noSpellCheck, value: true, range: el.lineRange)
                 MarkdownLiveStyler.highlightLaTeXSource(in: storage, range: el.contentRange, theme: theme, dimFactor: blockDim)
             } else {
@@ -111,10 +111,12 @@ extension LaTeXLiveStyler {
             }
         }
 
+        let showHeader = !(envLines.first?.isActive ?? false) && prettyMode
+        _ = isBlockActive
         if isAbstract {
             decorations.append(LineDecoration(
                 lineRange: fullBlockRange,
-                kind: .latexAbstractCard(fullBlockRange: fullBlockRange, dimFactor: blockDim)
+                kind: .latexAbstractCard(showHeader: showHeader, fullBlockRange: fullBlockRange, dimFactor: blockDim)
             ))
         } else if isTheoremOrProof {
             let header = docIndex.blockTheoremHeaders[envLines[0].lineRange.location]?.header ?? envName.capitalized
@@ -123,6 +125,7 @@ extension LaTeXLiveStyler {
                 kind: .latexTheoremCard(
                     header: header,
                     isProof: envName == "proof",
+                    showHeader: showHeader,
                     fullBlockRange: fullBlockRange,
                     dimFactor: blockDim
                 )
@@ -189,12 +192,14 @@ extension LaTeXLiveStyler {
             let spaceRange = NSRange(location: contentRange.location + im.range(at: 4).location, length: im.range(at: 4).length)
             let bodyRange = NSRange(location: contentRange.location + im.range(at: 5).location, length: im.range(at: 5).length)
 
+            let baseIndent: CGFloat = 14.0
+            let textIndent: CGFloat = 28.0
             let pStyle = NSMutableParagraphStyle()
             pStyle.lineHeightMultiple = typography.lineHeightMultiple
             pStyle.lineSpacing = typography.lineSpacing
             pStyle.paragraphSpacing = max(3.0, typography.paragraphSpacing * 0.45)
-            pStyle.firstLineHeadIndent = 24.0
-            pStyle.headIndent = 24.0
+            pStyle.firstLineHeadIndent = baseIndent
+            pStyle.headIndent = textIndent
             pStyle.tailIndent = effectiveContainerWidth
             storage.addAttribute(.paragraphStyle, value: pStyle, range: lineRange)
 
@@ -211,6 +216,13 @@ extension LaTeXLiveStyler {
                     length: NSMaxRange(spaceRange) - contentRange.location
                 )
                 MarkdownLiveStyler.collapseWhitespaceRange(in: storage, range: prefixRange)
+                if prefixRange.length > 0 {
+                    storage.addAttribute(
+                        .kern,
+                        value: textIndent - baseIndent,
+                        range: NSRange(location: NSMaxRange(prefixRange) - 1, length: 1)
+                    )
+                }
                 decorations.append(LineDecoration(lineRange: lineRange, kind: .listBullet(range: itemTokenRange, dimFactor: dimFactor)))
             } else {
                 MarkdownLiveStyler.styleSyntaxToken(in: storage, range: itemTokenRange, isActiveLine: true, theme: theme, dimFactor: dimFactor)

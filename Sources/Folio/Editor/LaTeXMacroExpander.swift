@@ -163,7 +163,7 @@ public enum LaTeXMacroExpander {
             guard let (rawName, afterName) = readMacroNameArg(chars, at: idx) else { return nil }
             idx = skipSpaces(chars, from: afterName)
             guard let (opBody, afterBody) = readBracedGroup(chars, at: idx) else { return nil }
-            let cleanOp = opBody.trimmingCharacters(in: .whitespacesAndNewlines)
+            let cleanOp = sanitizeOperatorText(opBody)
             return (LaTeXMacroDefinition(
                 name: rawName,
                 argCount: 0,

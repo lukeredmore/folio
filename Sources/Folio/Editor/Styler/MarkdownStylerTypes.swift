@@ -74,10 +74,12 @@ public enum BlockDecorationKind: Equatable {
     case latexTheoremCard(
         header: String,
         isProof: Bool,
+        showHeader: Bool,
         fullBlockRange: NSRange,
         dimFactor: CGFloat
     )
     case latexAbstractCard(
+        showHeader: Bool,
         fullBlockRange: NSRange,
         dimFactor: CGFloat
     )

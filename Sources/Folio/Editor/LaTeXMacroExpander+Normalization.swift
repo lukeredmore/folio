@@ -155,7 +155,12 @@ extension LaTeXMacroExpander {
                     continue
                 } else if cmd == "\\operatorname" {
                     var idx = skipSpaces(chars, from: afterCmd)
-                    if idx < chars.count && chars[idx] == "*" { idx += 1 }
+                    if idx < chars.count && chars[idx] == "*" { idx = skipSpaces(chars, from: idx + 1) }
+                    if let (opBody, afterBody) = readBracedGroup(chars, at: idx) {
+                        out.append("\\mathrm{\(sanitizeOperatorText(opBody))}")
+                        i = afterBody
+                        continue
+                    }
                     out.append("\\mathrm")
                     i = idx
                     continue
@@ -212,6 +217,17 @@ extension LaTeXMacroExpander {
         default:
             return false
         }
+    }
+
+    static func sanitizeOperatorText(_ raw: String) -> String {
+        raw.replacingOccurrences(of: "\\,", with: " ")
+            .replacingOccurrences(of: "\\;", with: " ")
+            .replacingOccurrences(of: "\\:", with: " ")
+            .replacingOccurrences(of: "\\ ", with: " ")
+            .replacingOccurrences(of: "\\thinspace", with: " ")
+            .replacingOccurrences(of: "\\!", with: "")
+            .replacingOccurrences(of: "~", with: " ")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
     static func skipSpaces(_ chars: [Character], from index: Int) -> Int {

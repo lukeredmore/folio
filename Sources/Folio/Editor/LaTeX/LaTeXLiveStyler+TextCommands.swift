@@ -171,5 +171,34 @@ extension LaTeXLiveStyler {
             MarkdownLiveStyler.styleSyntaxToken(in: storage, range: openRange, isActiveLine: showTokens, theme: theme, dimFactor: dimFactor)
             MarkdownLiveStyler.styleSyntaxToken(in: storage, range: closeRange, isActiveLine: showTokens, theme: theme, dimFactor: dimFactor)
         }
+
+        // \LaTeX{}, \TeX{}, \today
+        latexLogoCmdRegex.enumerateMatches(in: string, options: [], range: effectiveRange) { match, _, _ in
+            guard let match = match, !isProtected(match.range) else { return }
+            storage.addAttribute(MKey.noSpellCheck, value: true, range: match.range)
+            let slashRange = NSRange(location: match.range.location, length: 1)
+            MarkdownLiveStyler.styleSyntaxToken(in: storage, range: slashRange, isActiveLine: showTokens, theme: theme, dimFactor: dimFactor)
+            let bracesRange = match.range(at: 2)
+            if bracesRange.location != NSNotFound && bracesRange.length > 0 {
+                MarkdownLiveStyler.styleSyntaxToken(in: storage, range: bracesRange, isActiveLine: showTokens, theme: theme, dimFactor: dimFactor)
+            }
+        }
+
+        // \textbackslash (e.g. inside \texttt{\textbackslash usepackage})
+        latexTextBackslashRegex.enumerateMatches(in: string, options: [], range: effectiveRange) { match, _, _ in
+            guard let match = match, !isProtected(match.range) else { return }
+            storage.addAttribute(MKey.noSpellCheck, value: true, range: match.range)
+            let wordRange = match.range(at: 1)
+            if wordRange.location != NSNotFound && wordRange.length > 0 {
+                MarkdownLiveStyler.styleSyntaxToken(in: storage, range: wordRange, isActiveLine: showTokens, theme: theme, dimFactor: dimFactor)
+            }
+        }
+
+        // Escaped special characters: \&, \%, \$, \#, \_, \{, \}
+        latexEscapedCharRegex.enumerateMatches(in: string, options: [], range: effectiveRange) { match, _, _ in
+            guard let match = match, !isProtected(match.range) else { return }
+            let slashRange = NSRange(location: match.range.location, length: 1)
+            MarkdownLiveStyler.styleSyntaxToken(in: storage, range: slashRange, isActiveLine: showTokens, theme: theme, dimFactor: dimFactor)
+        }
     }
 }
