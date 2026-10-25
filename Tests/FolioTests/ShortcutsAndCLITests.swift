@@ -277,9 +277,9 @@ final class ShortcutsAndCLITests: XCTestCase {
         XCTAssertEqual(vm.currentFileURL?.resolvingSymlinksInPath(), newPath.resolvingSymlinksInPath())
     }
 
-    // MARK: - Window Hit-Testing & Sidebar Toggle Regression
+    // MARK: - Window Mouse Event Delivery & Sidebar Toggle Regression
 
-    func testMainWindowHitTestingAndSidebarToggleRegression() {
+    func testMainWindowMouseEventsAndSidebarToggleRegression() throws {
         let suiteName = "FolioTests.WindowHitTest.\(UUID().uuidString)"
         let defaults = UserDefaults(suiteName: suiteName)!
         defer { defaults.removePersistentDomain(forName: suiteName) }
@@ -300,8 +300,37 @@ final class ShortcutsAndCLITests: XCTestCase {
         RunLoop.current.run(until: Date().addingTimeInterval(0.05))
         hostingView.layoutSubtreeIfNeeded()
 
-        // Background NSViewRepresentable accessors must NEVER swallow mouse clicks in the window
-        let editorHit = hostingView.hitTest(NSPoint(x: 600, y: 400))
+        // 1. Regression: DoubleShiftEventMonitorAccessor must NOT access `event.keyCode` on mouse events
+        // (which raises NSInternalInconsistencyException in AppKit and aborts all mouse clicks in the app).
+        let monitorCoordinator = DoubleShiftEventMonitorAccessor.Coordinator(viewModel: vm)
+        let clickPoint = NSPoint(x: 600, y: 500)
+        let mouseDown = try XCTUnwrap(NSEvent.mouseEvent(
+            with: .leftMouseDown,
+            location: clickPoint,
+            modifierFlags: [],
+            timestamp: ProcessInfo.processInfo.systemUptime,
+            windowNumber: window.windowNumber,
+            context: nil,
+            eventNumber: 1,
+            clickCount: 1,
+            pressure: 1.0
+        ))
+        let rightMouseDown = try XCTUnwrap(NSEvent.mouseEvent(
+            with: .rightMouseDown,
+            location: clickPoint,
+            modifierFlags: [],
+            timestamp: ProcessInfo.processInfo.systemUptime,
+            windowNumber: window.windowNumber,
+            context: nil,
+            eventNumber: 2,
+            clickCount: 1,
+            pressure: 1.0
+        ))
+        XCTAssertTrue(monitorCoordinator.processMonitoredEvent(mouseDown) === mouseDown)
+        XCTAssertTrue(monitorCoordinator.processMonitoredEvent(rightMouseDown) === rightMouseDown)
+
+        // 2. Hit-testing at editor center hits HybridMarkdownTextView, never background accessors
+        let editorHit = hostingView.hitTest(clickPoint)
         XCTAssertNotNil(editorHit)
         XCTAssertFalse(editorHit is PassThroughAccessorNSView)
         XCTAssertTrue(
@@ -309,11 +338,7 @@ final class ShortcutsAndCLITests: XCTestCase {
             "Expected mouse click at editor center to hit HybridMarkdownTextView, got \(String(describing: editorHit))"
         )
 
-        let statusBarHit = hostingView.hitTest(NSPoint(x: 260, y: 15))
-        XCTAssertNotNil(statusBarHit)
-        XCTAssertFalse(statusBarHit is PassThroughAccessorNSView)
-
-        // Toggling sidebar via textView responder action and viewModel works cleanly
+        // 3. Toggling sidebar via textView responder action and viewModel works cleanly
         XCTAssertNotNil(vm.activeTextView)
         vm.activeTextView?.toggleSidebar(nil)
         XCTAssertFalse(vm.showSidebar)

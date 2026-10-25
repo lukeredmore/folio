@@ -114,10 +114,7 @@ struct DoubleShiftEventMonitorAccessor: NSViewRepresentable {
             localMonitor = NSEvent.addLocalMonitorForEvents(
                 matching: [.flagsChanged, .keyDown, .leftMouseDown, .rightMouseDown]
             ) { [weak self] event in
-                let eventType = event.type
-                let modifierFlags = event.modifierFlags
-                let timestamp = event.timestamp
-                let keyCode = event.keyCode
+                let (eventType, modifierFlags, timestamp, keyCode) = Self.extractEventFields(from: event)
                 let shouldConsume = MainActor.assumeIsolated {
                     guard let self = self else { return false }
                     return self.handleEvent(
@@ -129,6 +126,29 @@ struct DoubleShiftEventMonitorAccessor: NSViewRepresentable {
                 }
                 return shouldConsume ? nil : event
             }
+        }
+
+        nonisolated static func extractEventFields(
+            from event: NSEvent
+        ) -> (NSEvent.EventType, NSEvent.ModifierFlags, TimeInterval, UInt16) {
+            let eventType = event.type
+            let modifierFlags = event.modifierFlags
+            let timestamp = event.timestamp
+            let keyCode: UInt16 = (eventType == .keyDown || eventType == .keyUp || eventType == .flagsChanged)
+                ? event.keyCode
+                : 0
+            return (eventType, modifierFlags, timestamp, keyCode)
+        }
+
+        func processMonitoredEvent(_ event: NSEvent) -> NSEvent? {
+            let (eventType, modifierFlags, timestamp, keyCode) = Self.extractEventFields(from: event)
+            let shouldConsume = handleEvent(
+                type: eventType,
+                modifierFlags: modifierFlags,
+                timestamp: timestamp,
+                keyCode: keyCode
+            )
+            return shouldConsume ? nil : event
         }
 
         func stopMonitoring() {
