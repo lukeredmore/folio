@@ -18,15 +18,21 @@ extension LaTeXLiveStyler {
 
     static func styleFrontmatterLine(
         in storage: NSTextStorage,
+        string: String,
+        nsString: NSString,
         lineRange: NSRange,
         contentRange: NSRange,
         match: NSTextCheckingResult,
         isActiveLine: Bool,
+        docIndex: LaTeXDocumentIndex,
         theme: EditorTheme,
         typography: EditorTypographySettings,
         effectiveBaseSize: CGFloat,
         effectiveContainerWidth: CGFloat,
-        dimFactor: CGFloat
+        prettyMode: Bool,
+        dimFactor: CGFloat,
+        baseDirectoryURL: URL?,
+        decorations: inout [LineDecoration]
     ) {
         let lineStr = storage.string as NSString
         let cmdRange = NSRange(location: contentRange.location + match.range(at: 1).location, length: match.range(at: 1).length)
@@ -63,8 +69,24 @@ extension LaTeXLiveStyler {
             .paragraphStyle: pStyle
         ], range: lineRange)
 
-        MarkdownLiveStyler.styleSyntaxToken(in: storage, range: openSyntaxRange, isActiveLine: isActiveLine, theme: theme, dimFactor: dimFactor)
-        MarkdownLiveStyler.styleSyntaxToken(in: storage, range: closeSyntaxRange, isActiveLine: isActiveLine, theme: theme, dimFactor: dimFactor)
+        MarkdownLiveStyler.styleSyntaxToken(in: storage, range: openSyntaxRange, isActiveLine: isActiveLine || !prettyMode, theme: theme, dimFactor: dimFactor)
+        MarkdownLiveStyler.styleSyntaxToken(in: storage, range: closeSyntaxRange, isActiveLine: isActiveLine || !prettyMode, theme: theme, dimFactor: dimFactor)
+
+        styleLaTeXInlineContent(
+            in: storage,
+            string: string,
+            nsString: nsString,
+            range: innerRange,
+            lineRange: lineRange,
+            baseFont: font,
+            isActiveLine: isActiveLine,
+            docIndex: docIndex,
+            theme: theme,
+            dimFactor: dimFactor,
+            prettyMode: prettyMode,
+            baseDirectoryURL: baseDirectoryURL,
+            decorations: &decorations
+        )
     }
 
     static func tryStyleLaTeXEnvironmentBlock(

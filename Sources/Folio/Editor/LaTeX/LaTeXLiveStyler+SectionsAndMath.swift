@@ -83,15 +83,21 @@ extension LaTeXLiveStyler {
         ) {
             styleFrontmatterLine(
                 in: storage,
+                string: string,
+                nsString: nsString,
                 lineRange: lineRange,
                 contentRange: contentRange,
                 match: fm,
                 isActiveLine: isActiveLine,
+                docIndex: docIndex,
                 theme: theme,
                 typography: typography,
                 effectiveBaseSize: effectiveBaseSize,
                 effectiveContainerWidth: effectiveContainerWidth,
-                dimFactor: dimFactor
+                prettyMode: prettyMode,
+                dimFactor: dimFactor,
+                baseDirectoryURL: baseDirectoryURL,
+                decorations: &decorations
             )
             return (NSMaxRange(lineRange), 1)
         }

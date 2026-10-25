@@ -256,8 +256,8 @@ extension HybridMarkdownTextView {
                     baseFontSize: fontSize,
                     isDisplayStyle: false
                 )
-                let targetWidth = max(12.0, mathBox.width + 6.0)
-                let drawX = origin.x + lineFrag.minX + glyphLoc.x + max(1.0, (targetWidth - mathBox.width) * 0.5)
+                let targetWidth = max(4.0, mathBox.width + 2.0)
+                let drawX = origin.x + lineFrag.minX + glyphLoc.x + max(0.5, (targetWidth - mathBox.width) * 0.5)
                 let mathColor = currentTheme.headingNSColor.withAlphaComponent(dimFactor)
                 mathBox.drawBox(drawX, baselineY, mathColor)
 

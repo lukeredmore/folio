@@ -192,7 +192,7 @@ extension MarkdownLiveStyler {
                 styleSyntaxToken(in: storage, range: closeRange, isActiveLine: true, theme: theme, dimFactor: dimFactor)
             } else {
                 let mathBox = LaTeXMathRenderer.layoutLatex(latexStr, baseFontSize: fontSize, isDisplayStyle: false)
-                let targetWidth = max(12.0, mathBox.width + 6.0)
+                let targetWidth = max(4.0, mathBox.width + 2.0)
                 let tinyFont = NSFont.monospacedSystemFont(ofSize: 0.01, weight: .regular)
                 let rawSubstr = nsString.substring(with: fullMatchRange) as NSString
                 let baseW = rawSubstr.size(withAttributes: [.font: tinyFont]).width
