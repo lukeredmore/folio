@@ -14,6 +14,11 @@ public struct HybridMarkdownEditorRepresentable: NSViewRepresentable {
 
     public func makeNSView(context: Context) -> NSScrollView {
         let scrollView = NSScrollView()
+        scrollView.automaticallyAdjustsContentInsets = false
+        scrollView.contentInsets = NSEdgeInsetsZero
+        if scrollView.responds(to: NSSelectorFromString("setAllowedPocketEdges:")) {
+            scrollView.setValue(0, forKey: "allowedPocketEdges")
+        }
         scrollView.hasVerticalScroller = true
         // The column is always centered and never scrolls sideways; wide tables scroll on their own.
         scrollView.hasHorizontalScroller = false
@@ -63,11 +68,16 @@ public struct HybridMarkdownEditorRepresentable: NSViewRepresentable {
         // Set initial text and apply styling
         context.coordinator.isProgrammaticUpdate = true
         textView.string = viewModel.markdownText
+        let initialLen = (viewModel.markdownText as NSString).length
+        let initialLoc = max(0, min(viewModel.currentSelectedRange.location, initialLen))
+        let initialRange = NSRange(location: initialLoc, length: 0)
+        textView.setSelectedRange(initialRange)
         context.coordinator.lastKnownTextHash = viewModel.markdownText.hashValue
         context.coordinator.isProgrammaticUpdate = false
         textView.typographySettings = viewModel.typography
         context.coordinator.updateInsets(for: scrollView, textView: textView, theme: viewModel.theme)
         context.coordinator.restyle(textView: textView)
+        textView.scrollRangeToVisible(initialRange)
 
         NotificationCenter.default.addObserver(
             context.coordinator,
@@ -116,8 +126,13 @@ public struct HybridMarkdownEditorRepresentable: NSViewRepresentable {
         if !context.coordinator.isUpdatingFromTextView &&
             context.coordinator.lastKnownTextHash != viewModel.markdownText.hashValue &&
             textView.string != viewModel.markdownText {
-            let savedSelection = textView.selectedRange()
+            let fileChanged = context.coordinator.lastFileURL != viewModel.currentFileURL
+            let savedSelection = fileChanged ? viewModel.currentSelectedRange : textView.selectedRange()
             textView.applyProgrammaticDocumentText(viewModel.markdownText, selectedRange: savedSelection)
+            if fileChanged {
+                scrollView.contentView.scroll(to: .zero)
+                scrollView.reflectScrolledClipView(scrollView.contentView)
+            }
         } else if context.coordinator.lastTheme != viewModel.theme ||
                   context.coordinator.lastTypography != viewModel.typography ||
                   context.coordinator.lastSourceMode != viewModel.sourceCodeMode ||

@@ -23,6 +23,7 @@ extension HybridMarkdownEditorRepresentable {
         var lastContentWidth: CGFloat = 0
         var lastViewportWidth: CGFloat = 0
         var lastMaxColumnWidth: CGFloat = 0
+        var hasPerformedInitialScroll = false
         var pendingResizeRestyleWorkItem: DispatchWorkItem?
 
         /// Strong owner of the layout manager delegate (the layout manager holds it weakly).
@@ -108,6 +109,15 @@ extension HybridMarkdownEditorRepresentable {
                 }
             }
             textView.refreshWideTableLayout()
+            if !hasPerformedInitialScroll && scrollView.bounds.height > 0 {
+                hasPerformedInitialScroll = true
+                if viewModel.currentSelectedRange.location == 0 {
+                    scrollView.contentView.scroll(to: .zero)
+                    scrollView.reflectScrolledClipView(scrollView.contentView)
+                } else {
+                    textView.scrollRangeToVisible(viewModel.currentSelectedRange)
+                }
+            }
         }
 
         public func textView(
