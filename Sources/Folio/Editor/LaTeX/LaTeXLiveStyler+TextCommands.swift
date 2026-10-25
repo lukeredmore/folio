@@ -28,7 +28,7 @@ extension LaTeXLiveStyler {
         pattern: #"(\{\\(Huge|huge|LARGE|Large|large|normalsize|small|footnotesize|scriptsize|tiny)\b[ \t]*)([^{}]*(?:\{[^{}]*\}[^{}]*)*)(\})"#
     )
     static let latexColorGroupRegex = try! NSRegularExpression(
-        pattern: #"(\{\\color\{[^}]+\}[ \t]*)([^{}]*(?:\{[^{}]*\}[^{}]*)*)(\})"#
+        pattern: #"(\{\\color\{([^}]+)\}[ \t]*|\\textcolor\{([^}]+)\}\{)([^{}]*(?:\{[^{}]*\}[^{}]*)*)(\})"#
     )
     static let latexProseMacroRegex = try! NSRegularExpression(
         pattern: #"\\([A-Za-z]+)(?:\{\}|\b(?![\{]))"#
@@ -79,6 +79,7 @@ extension LaTeXLiveStyler {
         fontSize: CGFloat,
         isActiveLine: Bool,
         prettyMode: Bool,
+        docIndex: LaTeXDocumentIndex,
         theme: EditorTheme,
         dimFactor: CGFloat,
         isProtected: (NSRange) -> Bool,
@@ -146,7 +147,7 @@ extension LaTeXLiveStyler {
                 case "footnotesize", "scriptsize", "tiny": scale = 0.82
                 default: scale = 1.0
                 }
-                let sizedFont = theme.bodyFont(size: fontSize * scale, semibold: scale >= 1.25)
+                let sizedFont = docIndex.bodyFont(size: fontSize * scale, semibold: scale >= 1.25, fallbackTheme: theme)
                 MarkdownLiveStyler.applyAttributesToVisibleCharacters(
                     in: storage,
                     range: innerRange,
@@ -157,17 +158,20 @@ extension LaTeXLiveStyler {
             }
         }
 
-        // {\color{...}...}
-        if lineSub.contains("\\color{") {
+        // {\color{...}...} and \textcolor{...}{...}
+        if lineSub.contains("\\color{") || lineSub.contains("\\textcolor{") {
             latexColorGroupRegex.enumerateMatches(in: string, options: [], range: effectiveRange) { match, _, _ in
                 guard let match = match, !isProtected(match.range) else { return }
                 let openRange = match.range(at: 1)
-                let innerRange = match.range(at: 2)
-                let closeRange = match.range(at: 3)
+                let colorNameRange = match.range(at: 2).location != NSNotFound ? match.range(at: 2) : match.range(at: 3)
+                let colorName = colorNameRange.location != NSNotFound ? nsString.substring(with: colorNameRange) : ""
+                let innerRange = match.range(at: 4)
+                let closeRange = match.range(at: 5)
+                let resolvedColor = docIndex.resolveColor(named: colorName, fallbackTheme: theme).withAlphaComponent(dimFactor)
                 MarkdownLiveStyler.applyAttributesToVisibleCharacters(
                     in: storage,
                     range: innerRange,
-                    attributes: [.foregroundColor: theme.linkNSColor.withAlphaComponent(dimFactor)]
+                    attributes: [.foregroundColor: resolvedColor]
                 )
                 MarkdownLiveStyler.styleSyntaxToken(in: storage, range: openRange, isActiveLine: showTokens, theme: theme, dimFactor: dimFactor)
                 MarkdownLiveStyler.styleSyntaxToken(in: storage, range: closeRange, isActiveLine: showTokens, theme: theme, dimFactor: dimFactor)
@@ -201,7 +205,7 @@ extension LaTeXLiveStyler {
                     )
                 case "texttt":
                     let codeFontSize = fontSize * 0.88
-                    let codeFont = theme.codeFont(size: codeFontSize)
+                    let codeFont = docIndex.codeFont(size: codeFontSize, fallbackTheme: theme)
                     storage.addAttributes([
                         .font: codeFont,
                         .foregroundColor: theme.inlineCodeNSColor.withAlphaComponent(dimFactor),
@@ -217,7 +221,7 @@ extension LaTeXLiveStyler {
                         in: storage,
                         range: innerRange,
                         attributes: [
-                            .font: theme.bodyFont(size: fontSize * 0.90, semibold: true),
+                            .font: docIndex.bodyFont(size: fontSize * 0.90, semibold: true, fallbackTheme: theme),
                             .kern: 0.6
                         ]
                     )
@@ -226,7 +230,7 @@ extension LaTeXLiveStyler {
                         in: storage,
                         range: innerRange,
                         attributes: [
-                            .font: theme.bodyFont(size: fontSize * 0.86, italic: true),
+                            .font: docIndex.bodyFont(size: fontSize * 0.86, italic: true, fallbackTheme: theme),
                             .foregroundColor: theme.secondaryTextNSColor.withAlphaComponent(dimFactor)
                         ]
                     )

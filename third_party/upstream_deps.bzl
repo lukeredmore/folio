@@ -81,6 +81,35 @@ def _swift_math_repo_impl(ctx):
         sha256 = SWIFTMATH_SHA256,
         stripPrefix = "SwiftMath-{}".format(SWIFTMATH_VERSION),
     )
+    patch_res = ctx.execute([
+        "python3",
+        "-c",
+        """
+p = "Sources/SwiftMath/MathRender/MTTypesetter.swift"
+with open(p, "r", encoding="utf-8") as f:
+    src = f.read()
+src = src.replace(
+    'assert(false, "Interelement space undefined for radical on the right. Treat radical as ordinary.")\\n                return Int.max',
+    'return 0'
+)
+src = src.replace(
+    'assert(false, "Interelement space undefined for type \\\\(type)")\\n            return Int.max',
+    'return 0'
+)
+src = src.replace(
+    'assert(spaceType != .invalid, "Invalid space between \\\\(left) and \\\\(right)")',
+    'if spaceType == .invalid { return 0 }'
+)
+src = src.replace(
+    'NSException(name: NSExceptionName("IllegalCharacter"), reason: "Unknown character \\\\(ch) for default style.").raise()',
+    'return ch.utf32Char'
+)
+with open(p, "w", encoding="utf-8") as f:
+    f.write(src)
+""",
+    ])
+    if patch_res.return_code != 0:
+        fail("Failed to patch SwiftMath MTTypesetter.swift:\n{}\n{}".format(patch_res.stdout, patch_res.stderr))
     ctx.file(
         "Sources/SwiftMath/MathBundle/BundleModuleAccessor.swift",
         content = """import Foundation
@@ -128,8 +157,66 @@ extension MTDisplay {
 }
 
 extension MTMathList {
+    private static func folioSanitizeInPlace(_ list: MTMathList?) {
+        guard let list = list else { return }
+        var lastSignificantAtom: MTMathAtom? = nil
+        for atom in list.atoms {
+            folioSanitizeInPlace(atom.subScript)
+            folioSanitizeInPlace(atom.superScript)
+            if let frac = atom as? MTFraction {
+                folioSanitizeInPlace(frac.numerator)
+                folioSanitizeInPlace(frac.denominator)
+            } else if let rad = atom as? MTRadical {
+                folioSanitizeInPlace(rad.radicand)
+                folioSanitizeInPlace(rad.degree)
+            } else if let inner = atom as? MTInner {
+                folioSanitizeInPlace(inner.innerList)
+            } else if let over = atom as? MTOverLine {
+                folioSanitizeInPlace(over.innerList)
+            } else if let under = atom as? MTUnderLine {
+                folioSanitizeInPlace(under.innerList)
+            } else if let acc = atom as? MTAccent {
+                folioSanitizeInPlace(acc.innerList)
+            } else if let clr = atom as? MTMathColor {
+                folioSanitizeInPlace(clr.innerList)
+            } else if let tclr = atom as? MTMathTextColor {
+                folioSanitizeInPlace(tclr.innerList)
+            } else if let cbox = atom as? MTMathColorbox {
+                folioSanitizeInPlace(cbox.innerList)
+            } else if let table = atom as? MTMathTable {
+                for r in 0..<table.cells.count {
+                    for c in 0..<table.cells[r].count {
+                        table.cells[r][c] = table.cells[r][c].finalized
+                        folioSanitizeInPlace(table.cells[r][c])
+                    }
+                }
+            }
+
+            if atom.type == .space || atom.type == .style || atom.type == .boundary {
+                continue
+            }
+            if atom.type == .binaryOperator {
+                if let prev = lastSignificantAtom, prev.type.isNotBinaryOperator() {
+                    atom.type = .unaryOperator
+                } else if lastSignificantAtom == nil {
+                    atom.type = .unaryOperator
+                }
+            } else if atom.type == .relation || atom.type == .punctuation || atom.type == .close {
+                if let prev = lastSignificantAtom, prev.type == .binaryOperator {
+                    prev.type = .unaryOperator
+                }
+            }
+            lastSignificantAtom = atom
+        }
+        if let last = lastSignificantAtom, last.type == .binaryOperator {
+            last.type = .unaryOperator
+        }
+    }
+
     public func folioTypeset(font: MTFont, style: MTLineStyle) -> MTMathListDisplay? {
-        return MTTypesetter.createLineForMathList(self, font: font, style: style)
+        let finalizedList = self.finalized
+        Self.folioSanitizeInPlace(finalizedList)
+        return MTTypesetter.createLineForMathList(finalizedList, font: font, style: style)
     }
 }
 

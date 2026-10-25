@@ -9,6 +9,7 @@ enum LaTeXBlockStyleCache {
     struct StyleConfig: Equatable {
         let theme: EditorTheme
         let typography: EditorTypographySettings
+        let documentStyle: LaTeXDocumentStyle
         let textAlignment: NSTextAlignment
         let sourceCodeMode: Bool
         let prettyMode: Bool

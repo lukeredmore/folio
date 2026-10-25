@@ -58,45 +58,33 @@ public enum LaTeXLiveStyler {
             return MarkdownDocumentAnalysis(headings: [], decorations: [])
         }
 
-        let effectiveBaseSize = theme.baseFontSize * typography.fontSizeScale
-        let effectiveContainerWidth: CGFloat = containerWidth > 200 ? containerWidth : typography.maxColumnWidth
-
-        let defaultParagraphStyle = NSMutableParagraphStyle()
-        defaultParagraphStyle.alignment = textAlignment
-        defaultParagraphStyle.lineHeightMultiple = typography.lineHeightMultiple
-        defaultParagraphStyle.lineSpacing = max(0.0, typography.lineSpacing)
-        defaultParagraphStyle.paragraphSpacing = max(4.0, typography.paragraphSpacing * 0.65)
-        defaultParagraphStyle.paragraphSpacingBefore = 0.0
-        defaultParagraphStyle.firstLineHeadIndent = 0.0
-        defaultParagraphStyle.headIndent = 0.0
-        if !sourceCodeMode {
-            defaultParagraphStyle.tailIndent = effectiveContainerWidth
-        }
-
-        let baseFont = sourceCodeMode
-            ? theme.codeFont(size: effectiveBaseSize)
-            : theme.bodyFont(size: effectiveBaseSize)
-
         let wasSourceMode = storage.attribute(LaTeXBlockStyleCache.sourceModePassAttributeKey, at: 0, effectiveRange: nil) != nil
         let kind = documentKind(for: string, fileURL: fileURL)
-
-        var baseAttributes: [NSAttributedString.Key: Any] = [
-            .font: baseFont,
-            .foregroundColor: theme.textNSColor,
-            .paragraphStyle: defaultParagraphStyle,
-            .kern: sourceCodeMode ? 0.0 : typography.characterSpacing,
-            .backgroundColor: NSColor.clear,
-            .underlineStyle: 0,
-            .strikethroughStyle: 0,
-            .baselineOffset: 0.0
-        ]
-        if sourceCodeMode {
-            baseAttributes[LaTeXBlockStyleCache.sourceModePassAttributeKey] = true
-        } else if kind == .latex {
-            baseAttributes[LaTeXBlockStyleCache.styledPassAttributeKey] = true
-        }
+        let effectiveContainerWidth: CGFloat = containerWidth > 200 ? containerWidth : typography.maxColumnWidth
 
         if kind == .bibtex {
+            let effectiveBaseSize = theme.baseFontSize * typography.fontSizeScale
+            let defaultParagraphStyle = NSMutableParagraphStyle()
+            defaultParagraphStyle.alignment = textAlignment
+            defaultParagraphStyle.lineHeightMultiple = typography.lineHeightMultiple
+            defaultParagraphStyle.lineSpacing = max(0.0, typography.lineSpacing)
+            defaultParagraphStyle.paragraphSpacing = max(4.0, typography.paragraphSpacing * 0.65)
+            let baseFont = sourceCodeMode
+                ? theme.codeFont(size: effectiveBaseSize)
+                : theme.bodyFont(size: effectiveBaseSize)
+            var baseAttributes: [NSAttributedString.Key: Any] = [
+                .font: baseFont,
+                .foregroundColor: theme.textNSColor,
+                .paragraphStyle: defaultParagraphStyle,
+                .kern: sourceCodeMode ? 0.0 : typography.characterSpacing,
+                .backgroundColor: NSColor.clear,
+                .underlineStyle: 0,
+                .strikethroughStyle: 0,
+                .baselineOffset: 0.0
+            ]
+            if sourceCodeMode {
+                baseAttributes[LaTeXBlockStyleCache.sourceModePassAttributeKey] = true
+            }
             LaTeXBlockStyleCache.invalidate()
             storage.beginEditing()
             storage.setAttributes(baseAttributes, range: fullRange)
@@ -125,10 +113,54 @@ public enum LaTeXLiveStyler {
         )
         LaTeXMathRenderer.setDocumentMacros(docMacros)
 
+        let effectiveBaseSize = sourceCodeMode
+            ? (theme.baseFontSize * typography.fontSizeScale)
+            : docIndex.effectiveBaseFontSize(theme: theme, typography: typography)
+
+        let defaultParagraphStyle = NSMutableParagraphStyle()
+        defaultParagraphStyle.alignment = textAlignment
+        defaultParagraphStyle.lineHeightMultiple = sourceCodeMode
+            ? typography.lineHeightMultiple
+            : docIndex.effectiveLineHeightMultiple(fallback: typography)
+        defaultParagraphStyle.lineSpacing = sourceCodeMode
+            ? max(0.0, typography.lineSpacing)
+            : docIndex.effectiveLineSpacing(fallback: typography)
+        defaultParagraphStyle.paragraphSpacing = sourceCodeMode
+            ? max(4.0, typography.paragraphSpacing * 0.65)
+            : docIndex.effectiveParagraphSpacing(baseSize: effectiveBaseSize, fallback: typography)
+        defaultParagraphStyle.paragraphSpacingBefore = 0.0
+        defaultParagraphStyle.firstLineHeadIndent = sourceCodeMode
+            ? 0.0
+            : docIndex.effectiveFirstLineIndent(baseSize: effectiveBaseSize)
+        defaultParagraphStyle.headIndent = 0.0
+        if !sourceCodeMode {
+            defaultParagraphStyle.tailIndent = effectiveContainerWidth
+        }
+
+        let baseFont = sourceCodeMode
+            ? docIndex.codeFont(size: effectiveBaseSize, fallbackTheme: theme)
+            : docIndex.bodyFont(size: effectiveBaseSize, fallbackTheme: theme)
+
+        var baseAttributes: [NSAttributedString.Key: Any] = [
+            .font: baseFont,
+            .foregroundColor: theme.textNSColor,
+            .paragraphStyle: defaultParagraphStyle,
+            .kern: sourceCodeMode ? 0.0 : typography.characterSpacing,
+            .backgroundColor: NSColor.clear,
+            .underlineStyle: 0,
+            .strikethroughStyle: 0,
+            .baselineOffset: 0.0
+        ]
+        if sourceCodeMode {
+            baseAttributes[LaTeXBlockStyleCache.sourceModePassAttributeKey] = true
+        } else if kind == .latex {
+            baseAttributes[LaTeXBlockStyleCache.styledPassAttributeKey] = true
+        }
+
         if sourceCodeMode {
             LaTeXBlockStyleCache.invalidate()
             let headings = extractLaTeXOutlineHeadings(docIndex: docIndex)
-            let codeFont = theme.codeFont(size: effectiveBaseSize * 0.94)
+            let codeFont = docIndex.codeFont(size: effectiveBaseSize * 0.94, fallbackTheme: theme)
             storage.beginEditing()
             storage.setAttributes(baseAttributes, range: fullRange)
             storage.addAttribute(.font, value: codeFont, range: fullRange)
@@ -152,6 +184,7 @@ public enum LaTeXLiveStyler {
         let styleConfig = LaTeXBlockStyleCache.StyleConfig(
             theme: theme,
             typography: typography,
+            documentStyle: docIndex.documentStyle,
             textAlignment: textAlignment,
             sourceCodeMode: sourceCodeMode,
             prettyMode: prettyMode,
