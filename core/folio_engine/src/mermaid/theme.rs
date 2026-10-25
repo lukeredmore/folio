@@ -102,6 +102,7 @@ fn build_renderer(is_dark: bool) -> FolioMermaidRenderer {
     let mut site_config = MermaidConfig::empty_object();
     site_config.set_value("look", "classic".into());
     site_config.set_value("flowchart.wrappingWidth", 220.into());
+    site_config.set_value("sequence.messageMargin", 42.into());
     let engine = resolved.materialize_engine(Engine::new()).with_site_config(site_config);
     let diagram_id = if is_dark { "folio-mermaid-dark" } else { "folio-mermaid-light" };
     let svg_request = SvgRequest {
