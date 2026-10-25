@@ -5,26 +5,15 @@ public struct MainWindowView: View {
     @ObservedObject var viewModel: EditorWorkspaceViewModel
     @ObservedObject var updateManager: AppUpdateManager = .shared
     @State private var columnVisibility: NavigationSplitViewVisibility = .all
+    @State private var isHoveringBottomEdge: Bool = false
 
     public init(viewModel: EditorWorkspaceViewModel) {
         self.viewModel = viewModel
         self._columnVisibility = State(initialValue: viewModel.showSidebar ? .all : .detailOnly)
     }
 
-    private var navigationSubtitleText: String {
-        var parts: [String] = []
-        if let fileURL = viewModel.currentFileURL,
-           let mount = viewModel.remoteWorkspaceManager.mount(forLocalURL: fileURL) {
-            parts.append("SSH: \(mount.host)")
-        } else if let folder = viewModel.workspaceFolderURL {
-            parts.append(folder.lastPathComponent)
-        }
-        if viewModel.activeConflict != nil {
-            parts.append("Conflict")
-        } else if viewModel.isDirty {
-            parts.append("Edited")
-        }
-        return parts.joined(separator: " • ")
+    private var isBottomBarVisibleWhenSidebarClosed: Bool {
+        isHoveringBottomEdge || viewModel.showSettingsModal || viewModel.showWordCountPopover
     }
 
     public var body: some View {
@@ -33,71 +22,55 @@ public struct MainWindowView: View {
                 SidebarView(viewModel: viewModel)
                     .navigationSplitViewColumnWidth(min: 220, ideal: 265, max: 380)
             } detail: {
-                VStack(spacing: 0) {
-                    HybridMarkdownEditorRepresentable(viewModel: viewModel)
-                        .frame(maxWidth: .infinity, maxHeight: .infinity)
-                        .ignoresSafeArea(.container, edges: .top)
-
-                    StatusBarView(viewModel: viewModel)
-                }
-                .overlay(alignment: .top) {
+                GeometryReader { proxy in
                     VStack(spacing: 0) {
-                        RemoteConnectionBannerView(viewModel: viewModel)
-                        DocumentConflictBannerView(viewModel: viewModel)
-                        ExternalUpdateBannerView(viewModel: viewModel)
-                        if viewModel.showFindReplaceBar {
-                            FindReplaceBannerView(viewModel: viewModel)
+                        HybridMarkdownEditorRepresentable(viewModel: viewModel)
+                            .frame(maxWidth: .infinity, maxHeight: .infinity)
+                            .ignoresSafeArea(.container, edges: .top)
+
+                        if viewModel.showSidebar {
+                            StatusBarView(viewModel: viewModel)
                         }
                     }
-                }
-                .background(viewModel.theme.editorBackgroundColor.ignoresSafeArea(.container, edges: .top))
-                .navigationTitle(viewModel.documentTitle)
-                .navigationSubtitle(navigationSubtitleText)
-                .toolbar {
-                    ToolbarItemGroup(placement: .navigation) {
-                        Button {
-                            viewModel.toggleQuickOpen()
-                        } label: {
-                            Label("Quick Open", systemImage: "magnifyingglass")
-                        }
-                        .help("Quick Open File (Shift+Shift)")
-                    }
-
-                    ToolbarItemGroup(placement: .primaryAction) {
-                        Button {
-                            viewModel.createNewFileInWorkspace()
-                        } label: {
-                            Label("New Document", systemImage: "square.and.pencil")
-                        }
-                        .help("New Markdown File in Workspace")
-
-                        Button {
-                            viewModel.sourceCodeMode.toggle()
-                        } label: {
-                            Label(
-                                viewModel.sourceCodeMode ? "Live WYSIWYG" : "Source Code",
-                                systemImage: "chevron.left.forwardslash.chevron.right"
-                            )
-                        }
-                        .help("Toggle Source Code Mode (Cmd+/)")
-                    }
-
-                    ToolbarSpacer(.fixed)
-
-                    ToolbarItem(placement: .primaryAction) {
-                        Button {
+                    .overlay(alignment: .top) {
+                        VStack(spacing: 0) {
+                            RemoteConnectionBannerView(viewModel: viewModel)
+                            DocumentConflictBannerView(viewModel: viewModel)
+                            ExternalUpdateBannerView(viewModel: viewModel)
                             if viewModel.showFindReplaceBar {
-                                viewModel.closeDocumentFindBar()
-                            } else {
-                                viewModel.openDocumentFind(withReplace: true)
+                                FindReplaceBannerView(viewModel: viewModel)
                             }
-                        } label: {
-                            Label("Find and Replace", systemImage: "doc.text.magnifyingglass")
                         }
-                        .help("Find and Replace in Document (Cmd+F / Cmd+R)")
+                    }
+                    .overlay(alignment: .bottom) {
+                        if !viewModel.showSidebar && isBottomBarVisibleWhenSidebarClosed {
+                            StatusBarView(viewModel: viewModel)
+                                .transition(.move(edge: .bottom).combined(with: .opacity))
+                        }
+                    }
+                    .onContinuousHover(coordinateSpace: .local) { phase in
+                        switch phase {
+                        case .active(let location):
+                            let nearBottom = (proxy.size.height - location.y) <= 34.0
+                            if isHoveringBottomEdge != nearBottom {
+                                withAnimation(.easeInOut(duration: 0.15)) {
+                                    isHoveringBottomEdge = nearBottom
+                                }
+                            }
+                        case .ended:
+                            if isHoveringBottomEdge {
+                                withAnimation(.easeInOut(duration: 0.15)) {
+                                    isHoveringBottomEdge = false
+                                }
+                            }
+                        }
                     }
                 }
+                .ignoresSafeArea(.container, edges: .top)
+                .background(viewModel.theme.editorBackgroundColor.ignoresSafeArea(.container, edges: .all))
+                .toolbarBackgroundVisibility(.hidden, for: .windowToolbar)
             }
+            .toolbar(removing: .title)
 
             // Floating Quick Open overlay (Shift+Shift)
             if viewModel.showQuickOpen {
@@ -221,6 +194,7 @@ struct WindowStatePersistenceAccessor: NSViewRepresentable {
                 NotificationCenter.default.removeObserver(self, name: NSWindow.didMoveNotification, object: oldWindow)
             }
             attachedWindow = window
+            window.titleVisibility = .hidden
 
             window.setFrameAutosaveName("FolioMainWindow")
             if let savedFrameString = userDefaults.string(forKey: WindowStatePersistenceAccessor.windowFrameDefaultsKey) {
@@ -323,7 +297,7 @@ public struct FolioApp: App {
         }
         .defaultSize(width: 1120, height: 760)
         .windowStyle(.titleBar)
-        .windowToolbarStyle(.unified(showsTitle: true))
+        .windowToolbarStyle(.unified(showsTitle: false))
         .commands {
             FolioAppCommands(viewModel: viewModel, updateManager: updateManager)
         }

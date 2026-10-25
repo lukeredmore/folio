@@ -293,19 +293,18 @@ final class WorkspaceAndPersistenceTests: XCTestCase {
             "Mouse click inside HybridMarkdownTextView must move the insertion cursor to the clicked paragraph"
         )
 
-        // 3. Click the StatusBarView sidebar toggle button ("sidebar.left") via NSApp event queue + window.sendEvent
+        // 3. Click the StatusBarView source code toggle button via NSApp event queue + window.sendEvent
         let detailOriginInWindow = (textView.enclosingScrollView ?? textView).convert(NSPoint.zero, to: nil)
-        XCTAssertTrue(vm.showSidebar)
+        XCTAssertFalse(vm.sourceCodeMode)
         try sendLeftClick(at: NSPoint(x: detailOriginInWindow.x + 20, y: 15))
-        RunLoop.current.run(until: Date().addingTimeInterval(0.25))
+        RunLoop.current.run(until: Date().addingTimeInterval(0.15))
         hostingView.layoutSubtreeIfNeeded()
-        XCTAssertFalse(vm.showSidebar, "Clicking the StatusBar sidebar button must hide the sidebar (detailOriginX=\(detailOriginInWindow.x))")
+        XCTAssertTrue(vm.sourceCodeMode, "Clicking the StatusBar source code button must toggle sourceCodeMode (detailOriginX=\(detailOriginInWindow.x))")
 
-        let closedOriginInWindow = (textView.enclosingScrollView ?? textView).convert(NSPoint.zero, to: nil)
-        try sendLeftClick(at: NSPoint(x: closedOriginInWindow.x + 20, y: 15))
-        RunLoop.current.run(until: Date().addingTimeInterval(0.25))
+        try sendLeftClick(at: NSPoint(x: detailOriginInWindow.x + 20, y: 15))
+        RunLoop.current.run(until: Date().addingTimeInterval(0.15))
         hostingView.layoutSubtreeIfNeeded()
-        XCTAssertTrue(vm.showSidebar, "Clicking the StatusBar sidebar button again must re-open the sidebar")
+        XCTAssertFalse(vm.sourceCodeMode, "Clicking the StatusBar source code button again must exit sourceCodeMode")
     }
 
     @MainActor

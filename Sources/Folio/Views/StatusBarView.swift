@@ -10,200 +10,149 @@ public struct StatusBarView: View {
         self.remoteManager = viewModel.remoteWorkspaceManager
     }
 
+    private var documentTooltipText: String {
+        if let fileURL = viewModel.currentFileURL {
+            if let sshPath = remoteManager.remoteSSHDisplayPath(forLocalURL: fileURL) {
+                return sshPath
+            }
+            return fileURL.path
+        }
+        return viewModel.documentTitle
+    }
+
     public var body: some View {
-        HStack(spacing: 12) {
-            // Left: Sidebar toggle & Source Code Mode toggle
-            Button {
-                withAnimation(.easeInOut(duration: 0.16)) {
-                    viewModel.showSidebar.toggle()
-                }
-            } label: {
-                Image(systemName: "sidebar.left")
-                    .font(.system(size: 12.5))
-                    .foregroundColor(viewModel.showSidebar ? viewModel.theme.linkColor : viewModel.theme.secondaryTextColor)
-                    .padding(.vertical, 4)
-                    .padding(.horizontal, 4)
-                    .contentShape(Rectangle())
-            }
-            .buttonStyle(.plain)
-            .help("Toggle Sidebar (Cmd+Shift+L)")
-
-            Button {
-                viewModel.sourceCodeMode.toggle()
-            } label: {
-                HStack(spacing: 4) {
-                    Image(systemName: "chevron.left.forwardslash.chevron.right")
-                        .font(.system(size: 11.5))
-                    if viewModel.sourceCodeMode {
-                        Text("Exit Source Code Mode")
-                            .font(.system(size: 11, weight: .medium))
-                    }
-                }
-                .foregroundColor(viewModel.sourceCodeMode ? viewModel.theme.linkColor : viewModel.theme.secondaryTextColor)
-            }
-            .buttonStyle(.plain)
-            .help("Toggle Source Code Mode (Cmd+/)")
-
-            Button {
-                viewModel.prettyModeEnabled.toggle()
-            } label: {
-                HStack(spacing: 4) {
-                    Image(systemName: viewModel.prettyModeEnabled ? "sparkles" : "sparkles.rectangle.stack")
-                        .font(.system(size: 11.5))
-                    Text(viewModel.prettyModeEnabled ? "Pretty" : "Raw Media")
-                        .font(.system(size: 11, weight: .medium))
-                }
-                .foregroundColor(viewModel.prettyModeEnabled && !viewModel.sourceCodeMode ? viewModel.theme.linkColor : viewModel.theme.secondaryTextColor)
-            }
-            .buttonStyle(.plain)
-            .help("Toggle Pretty Mode for Images, Mermaid, SVGs & Inline HTML (Cmd+Shift+\\)")
-
-            // Active mode badges (Focus Mode / Typewriter Mode)
-            if viewModel.focusMode {
-                modeBadge(title: "Focus Mode", icon: "eye") {
-                    viewModel.focusMode = false
-                }
-            }
-            if viewModel.typewriterMode {
-                modeBadge(title: "Typewriter", icon: "align.vertical.center") {
-                    viewModel.typewriterMode = false
-                }
-            }
-
-            if let fileURL = viewModel.currentFileURL,
-               let mount = remoteManager.mount(forLocalURL: fileURL) {
-                remoteStatusPill(for: fileURL, mount: mount)
-            }
-
-            documentPersistenceStatusPill
-
-            Spacer()
-
-            // Undo / Redo quick controls with infinite timeline depth
-            HStack(spacing: 6) {
+        ZStack {
+            HStack(spacing: 10) {
+                // Left: Icon-only mode & status controls
                 Button {
-                    viewModel.undo()
+                    viewModel.sourceCodeMode.toggle()
+                } label: {
+                    Image(systemName: "chevron.left.forwardslash.chevron.right")
+                        .foregroundStyle(viewModel.sourceCodeMode ? viewModel.theme.linkColor : .secondary)
+                }
+                .buttonStyle(.borderless)
+                .help(viewModel.sourceCodeMode ? "Exit Source Code Mode (Cmd+/)" : "Toggle Source Code Mode (Cmd+/)")
+
+                Button {
+                    viewModel.prettyModeEnabled.toggle()
+                } label: {
+                    Image(systemName: viewModel.prettyModeEnabled ? "sparkles" : "sparkles.rectangle.stack")
+                        .foregroundStyle(viewModel.prettyModeEnabled && !viewModel.sourceCodeMode ? viewModel.theme.linkColor : .secondary)
+                }
+                .buttonStyle(.borderless)
+                .help("Toggle Pretty Mode for Images, Mermaid, SVGs & Inline HTML (Cmd+Shift+\\)")
+
+                if viewModel.focusMode {
+                    Button {
+                        viewModel.focusMode = false
+                    } label: {
+                        Image(systemName: "eye")
+                            .foregroundStyle(viewModel.theme.linkColor)
+                    }
+                    .buttonStyle(.borderless)
+                    .help("Exit Focus Mode (Cmd+Shift+D)")
+                }
+
+                if viewModel.typewriterMode {
+                    Button {
+                        viewModel.typewriterMode = false
+                    } label: {
+                        Image(systemName: "align.vertical.center")
+                            .foregroundStyle(viewModel.theme.linkColor)
+                    }
+                    .buttonStyle(.borderless)
+                    .help("Exit Typewriter Mode (Cmd+Shift+T)")
+                }
+
+                if let fileURL = viewModel.currentFileURL,
+                   let mount = remoteManager.mount(forLocalURL: fileURL) {
+                    remoteStatusIcon(for: fileURL, mount: mount)
+                }
+
+                documentPersistenceStatusIcon
+
+                Spacer(minLength: 8)
+
+                // Right: Undo/Redo, Settings (with Theme Picker inside), and Word Count
+                HStack(spacing: 8) {
+                    Button {
+                        viewModel.undo()
+                    } label: {
+                        Image(systemName: "arrow.uturn.backward")
+                            .foregroundStyle(viewModel.canUndo ? .secondary : .tertiary)
+                    }
+                    .buttonStyle(.borderless)
+                    .disabled(!viewModel.canUndo)
+                    .help(viewModel.undoActionTitle + " (Cmd+Z)")
+
+                    Button {
+                        viewModel.redo()
+                    } label: {
+                        Image(systemName: "arrow.uturn.forward")
+                            .foregroundStyle(viewModel.canRedo ? .secondary : .tertiary)
+                    }
+                    .buttonStyle(.borderless)
+                    .disabled(!viewModel.canRedo)
+                    .help(viewModel.redoActionTitle + " (Cmd+Shift+Z)")
+                }
+
+                Button {
+                    viewModel.showSettingsModal.toggle()
+                } label: {
+                    Image(systemName: "slider.horizontal.3")
+                        .foregroundStyle(viewModel.showSettingsModal ? viewModel.theme.linkColor : .secondary)
+                }
+                .buttonStyle(.borderless)
+                .popover(isPresented: $viewModel.showSettingsModal, arrowEdge: .top) {
+                    EditorSettingsView(viewModel: viewModel)
+                }
+                .help("Theme, Typography & Editor Settings (Cmd+,)")
+
+                Button {
+                    viewModel.showWordCountPopover.toggle()
                 } label: {
                     HStack(spacing: 3) {
-                        Image(systemName: "arrow.uturn.backward")
-                            .font(.system(size: 11, weight: .medium))
-                        if !viewModel.currentUndoStack.isEmpty {
-                            Text("\(viewModel.currentUndoStack.count)")
-                                .font(.system(size: 10, weight: .medium, design: .monospaced))
+                        if viewModel.stats.selectedWords > 0 {
+                            Text("\(viewModel.stats.selectedWords) / \(viewModel.stats.words) Words")
+                        } else {
+                            Text("\(viewModel.stats.words) Words")
                         }
+                        Image(systemName: "chevron.up")
+                            .font(.system(size: 8.5, weight: .semibold))
                     }
-                    .foregroundColor(viewModel.canUndo ? viewModel.theme.secondaryTextColor : viewModel.theme.secondaryTextColor.opacity(0.35))
+                    .font(.system(size: 11, weight: .regular))
+                    .monospacedDigit()
+                    .foregroundStyle(viewModel.showWordCountPopover ? viewModel.theme.linkColor : .secondary)
                 }
-                .buttonStyle(.plain)
-                .disabled(!viewModel.canUndo)
-                .help(viewModel.undoActionTitle + " (Cmd+Z)")
-
-                Button {
-                    viewModel.redo()
-                } label: {
-                    Image(systemName: "arrow.uturn.forward")
-                        .font(.system(size: 11, weight: .medium))
-                        .foregroundColor(viewModel.canRedo ? viewModel.theme.secondaryTextColor : viewModel.theme.secondaryTextColor.opacity(0.35))
+                .buttonStyle(.borderless)
+                .popover(isPresented: $viewModel.showWordCountPopover, arrowEdge: .top) {
+                    WordCountPopoverView(viewModel: viewModel)
                 }
-                .buttonStyle(.plain)
-                .disabled(!viewModel.canRedo)
-                .help(viewModel.redoActionTitle + " (Cmd+Shift+Z)")
+                .help("Word Count & Document Statistics")
             }
 
-            // Theme quick selector menu
-            Menu {
-                Section("Default Themes") {
-                    ForEach(EditorTheme.builtInThemes) { themeOption in
-                        Button {
-                            viewModel.selectTheme(themeOption)
-                        } label: {
-                            HStack {
-                                Text(themeOption.name)
-                                if viewModel.theme.id == themeOption.id {
-                                    Image(systemName: "checkmark")
-                                }
-                            }
-                        }
-                    }
-                }
+            // Center: Current file name
+            HStack(spacing: 5) {
+                Text(viewModel.documentTitle)
+                    .font(.system(size: 11.5, weight: .medium))
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
 
-                if !viewModel.customThemes.isEmpty {
-                    Section("Saved Themes") {
-                        ForEach(viewModel.customThemes) { themeOption in
-                            Button {
-                                viewModel.selectTheme(themeOption)
-                            } label: {
-                                HStack {
-                                    Text(themeOption.name)
-                                    if viewModel.theme.id == themeOption.id {
-                                        Image(systemName: "checkmark")
-                                    }
-                                }
-                            }
-                        }
-                    }
+                if viewModel.isDirty {
+                    Circle()
+                        .fill(viewModel.theme.linkColor)
+                        .frame(width: 5, height: 5)
+                        .help("Edited")
                 }
-
-                Divider()
-
-                Button("Customize Theme…") {
-                    viewModel.showSettingsModal = true
-                }
-            } label: {
-                HStack(spacing: 4) {
-                    Image(systemName: "paintpalette")
-                        .font(.system(size: 11))
-                    Text(viewModel.isCurrentThemeModified ? "\(viewModel.theme.name) *" : viewModel.theme.name)
-                        .font(.system(size: 11))
-                }
-                .foregroundColor(viewModel.theme.secondaryTextColor)
             }
-            .menuStyle(.borderlessButton)
-            .fixedSize()
-            .help("Switch or Customize Theme")
-
-            // Typography & Layout Settings button
-            Button {
-                viewModel.showSettingsModal.toggle()
-            } label: {
-                HStack(spacing: 4) {
-                    Image(systemName: "slider.horizontal.3")
-                        .font(.system(size: 11))
-                    Text("Settings")
-                        .font(.system(size: 11))
-                }
-                .foregroundColor(viewModel.showSettingsModal ? viewModel.theme.linkColor : viewModel.theme.secondaryTextColor)
-            }
-            .buttonStyle(.plain)
-            .popover(isPresented: $viewModel.showSettingsModal, arrowEdge: .top) {
-                EditorSettingsView(viewModel: viewModel)
-            }
-            .help("Theme, Typography & Editor Settings (Cmd+,)")
-
-            // Right: Word Count Popover button
-            Button {
-                viewModel.showWordCountPopover.toggle()
-            } label: {
-                HStack(spacing: 4) {
-                    if viewModel.stats.selectedWords > 0 {
-                        Text("\(viewModel.stats.selectedWords) / \(viewModel.stats.words) Words")
-                    } else {
-                        Text("\(viewModel.stats.words) Words")
-                    }
-                    Image(systemName: "chevron.up")
-                        .font(.system(size: 9))
-                }
-                .font(.system(size: 11.5, weight: .regular))
-                .monospacedDigit()
-                .foregroundColor(viewModel.theme.secondaryTextColor)
-            }
-            .buttonStyle(.plain)
-            .popover(isPresented: $viewModel.showWordCountPopover, arrowEdge: .top) {
-                WordCountPopoverView(viewModel: viewModel)
-            }
-            .help("Word Count & Document Statistics")
+            .frame(maxWidth: 320)
+            .allowsHitTesting(false)
+            .help(documentTooltipText)
         }
-        .padding(.horizontal, 14)
+        .controlSize(.small)
+        .foregroundStyle(.secondary)
+        .padding(.horizontal, 12)
         .frame(height: 30)
         .background(viewModel.theme.editorBackgroundColor)
         .overlay(alignment: .top) {
@@ -214,80 +163,39 @@ public struct StatusBarView: View {
     }
 
     @ViewBuilder
-    private var documentPersistenceStatusPill: some View {
+    private var documentPersistenceStatusIcon: some View {
         if let conflict = viewModel.activeConflict {
             Button {
                 viewModel.showConflictResolverModal = true
             } label: {
-                HStack(spacing: 4) {
-                    Image(systemName: "exclamationmark.triangle.fill")
-                        .font(.system(size: 10))
-                    Text("Conflict (\(conflict.conflictHunks.count)) — Resolve…")
-                        .font(.system(size: 10.5, weight: .semibold))
-                }
-                .foregroundColor(.orange)
-                .padding(.horizontal, 7)
-                .padding(.vertical, 2)
-                .background(
-                    Capsule()
-                        .fill(Color.orange.opacity(0.16))
-                )
+                Image(systemName: "exclamationmark.triangle.fill")
+                    .foregroundStyle(.orange)
             }
-            .buttonStyle(.plain)
-            .help("External file changes conflict with local edits — Click to resolve")
+            .buttonStyle(.borderless)
+            .help("Conflict (\(conflict.conflictHunks.count)) — Click to resolve")
         } else if let notice = viewModel.externalUpdateNotice {
             Button {
                 viewModel.showExternalUpdateDiffModal = true
             } label: {
-                HStack(spacing: 4) {
-                    Image(systemName: "arrow.triangle.2.circlepath.circle.fill")
-                        .font(.system(size: 10))
-                    Text(notice.wasThreeWayMerged ? "Auto-Merged (+\(notice.addedLines)/-\(notice.removedLines))" : "Updated Externally (+\(notice.addedLines)/-\(notice.removedLines))")
-                        .font(.system(size: 10.5, weight: .medium))
-                }
-                .foregroundColor(.green)
-                .padding(.horizontal, 7)
-                .padding(.vertical, 2)
-                .background(
-                    Capsule()
-                        .fill(Color.green.opacity(0.14))
-                )
+                Image(systemName: "arrow.triangle.2.circlepath.circle.fill")
+                    .foregroundStyle(.green)
             }
-            .buttonStyle(.plain)
-            .help("Click to inspect external diff or undo")
-        } else if viewModel.currentFileURL != nil {
-            HStack(spacing: 4) {
-                Image(systemName: "checkmark.circle.fill")
-                    .font(.system(size: 9.5))
-                Text("Auto-saved")
-                    .font(.system(size: 10.5, weight: .regular))
-            }
-            .foregroundColor(viewModel.theme.secondaryTextColor.opacity(0.8))
-            .help("All edits are automatically saved to disk and infinitely undoable")
-        }
-    }
-
-    private func modeBadge(title: String, icon: String, onDismiss: @escaping () -> Void) -> some View {
-        Button(action: onDismiss) {
-            HStack(spacing: 4) {
-                Image(systemName: icon)
-                    .font(.system(size: 10))
-                Text(title)
-                    .font(.system(size: 10.5, weight: .medium))
-            }
-            .foregroundColor(viewModel.theme.linkColor)
-            .padding(.horizontal, 7)
-            .padding(.vertical, 2)
-            .background(
-                Capsule()
-                    .fill(viewModel.theme.linkColor.opacity(0.14))
+            .buttonStyle(.borderless)
+            .help(
+                (notice.wasThreeWayMerged
+                    ? "Auto-Merged (+\(notice.addedLines)/-\(notice.removedLines))"
+                    : "Updated Externally (+\(notice.addedLines)/-\(notice.removedLines))")
+                + " — Click to inspect diff or undo"
             )
+        } else if viewModel.currentFileURL != nil {
+            Image(systemName: "checkmark.circle.fill")
+                .foregroundStyle(.tertiary)
+                .help("Auto-saved — All edits are automatically saved to disk and infinitely undoable")
         }
-        .buttonStyle(.plain)
     }
 
     @ViewBuilder
-    private func remoteStatusPill(for fileURL: URL, mount: RemoteMountSpec) -> some View {
+    private func remoteStatusIcon(for fileURL: URL, mount: RemoteMountSpec) -> some View {
         let fileStatus = remoteManager.syncStatus(forLocalURL: fileURL)
         let mountState = remoteManager.connectionStates[mount.id] ?? .connected
         let sshLabel = remoteManager.remoteSSHDisplayPath(forLocalURL: fileURL) ?? mount.connectionString
@@ -314,22 +222,10 @@ public struct StatusBarView: View {
                 await remoteManager.syncMount(id: mount.id, isBackground: false)
             }
         } label: {
-            HStack(spacing: 4) {
-                Image(systemName: icon)
-                    .font(.system(size: 10))
-                Text(text)
-                    .font(.system(size: 10.5, weight: .medium))
-                    .lineLimit(1)
-            }
-            .foregroundColor(color)
-            .padding(.horizontal, 7)
-            .padding(.vertical, 2)
-            .background(
-                Capsule()
-                    .fill(color.opacity(0.14))
-            )
+            Image(systemName: icon)
+                .foregroundStyle(color)
         }
-        .buttonStyle(.plain)
-        .help("\(sshLabel) — Click to sync now")
+        .buttonStyle(.borderless)
+        .help("\(text) (\(sshLabel)) — Click to sync now")
     }
 }

@@ -90,8 +90,12 @@ public struct SidebarView: View {
                     viewModel.performWorkspaceSearch()
                 }
             }
-            .safeAreaBar(edge: .top) {
-                sidebarHeaderBar
+            .toolbar {
+                if viewModel.showSidebar {
+                    ToolbarItem(placement: .automatic) {
+                        sidebarModePicker
+                    }
+                }
             }
             .safeAreaBar(edge: .bottom) {
                 sidebarFooterBar
