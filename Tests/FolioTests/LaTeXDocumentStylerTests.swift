@@ -260,4 +260,86 @@ final class LaTeXDocumentStylerTests: XCTestCase {
         XCTAssertEqual(storage.attribute(MarkdownLiveStyler.collapsedTokenAttributeKey, at: ampSlashLoc, effectiveRange: nil) as? Bool, true)
         XCTAssertEqual(storage.attribute(MarkdownLiveStyler.collapsedTokenAttributeKey, at: textbackslashWordLoc, effectiveRange: nil) as? Bool, true)
     }
+
+    func testSourceCodeModeRoundtripRestoresLaTeXAndMarkdownLayoutCleanly() {
+        let tex = """
+        \\documentclass[11pt]{article}
+        \\usepackage{amsmath}
+        \\begin{document}
+        \\section{Variational Principles}
+        First line of soft-wrapped paragraph
+        second line of soft-wrapped paragraph.
+        \\begin{equation}
+        \\int_0^\\infty e^{-x^2}\\,dx = \\frac{\\sqrt{\\pi}}{2}
+        \\end{equation}
+        \\end{document}
+        """
+        let ns = tex as NSString
+        let storage = NSTextStorage(string: tex)
+        let layoutManager = WideBlockLayoutManager()
+        let delegate = SoftLineBreakLayoutDelegate()
+        layoutManager.delegate = delegate
+        storage.addLayoutManager(layoutManager)
+        let container = WideBlockTextContainer(containerSize: NSSize(width: 600, height: 2000))
+        layoutManager.addTextContainer(container)
+
+        let caret = NSRange(location: ns.length, length: 0)
+        let texURL = URL(fileURLWithPath: "/tmp/roundtrip.tex")
+
+        // 1. Initial WYSIWYG pass
+        let initial = MarkdownLiveStyler.applyStyles(
+            to: storage,
+            theme: .daylight,
+            sourceCodeMode: false,
+            focusMode: false,
+            selectedRange: caret,
+            fileURL: texURL
+        )
+        layoutManager.ensureLayout(for: container)
+        let sectionCmdLoc = ns.range(of: "\\section{").location
+        let eqBodyLoc = ns.range(of: "\\int_0").location
+        let initialUsedRect = layoutManager.usedRect(for: container)
+        XCTAssertLessThanOrEqual((storage.attribute(.font, at: sectionCmdLoc, effectiveRange: nil) as? NSFont)?.pointSize ?? 99, 0.2)
+        XCTAssertEqual((storage.attribute(.foregroundColor, at: eqBodyLoc, effectiveRange: nil) as? NSColor)?.alphaComponent ?? 1.0, 0.0, accuracy: 0.01)
+        XCTAssertFalse(initial.decorations.isEmpty)
+
+        // 2. Enter Source Code Mode
+        let sourcePass = MarkdownLiveStyler.applyStyles(
+            to: storage,
+            theme: .daylight,
+            sourceCodeMode: true,
+            focusMode: false,
+            selectedRange: caret,
+            fileURL: texURL
+        )
+        layoutManager.ensureLayout(for: container)
+        XCTAssertTrue(sourcePass.decorations.isEmpty)
+        XCTAssertGreaterThan((storage.attribute(.font, at: sectionCmdLoc, effectiveRange: nil) as? NSFont)?.pointSize ?? 0, 10)
+        XCTAssertGreaterThan((storage.attribute(.foregroundColor, at: eqBodyLoc, effectiveRange: nil) as? NSColor)?.alphaComponent ?? 0, 0.5)
+
+        // 3. Immediately Exit Source Code Mode -> must not reuse stale cache or leave overlaid source fonts
+        let restored = MarkdownLiveStyler.applyStyles(
+            to: storage,
+            theme: .daylight,
+            sourceCodeMode: false,
+            focusMode: false,
+            selectedRange: caret,
+            fileURL: texURL
+        )
+        layoutManager.ensureLayout(for: container)
+        let restoredUsedRect = layoutManager.usedRect(for: container)
+        XCTAssertLessThanOrEqual(
+            (storage.attribute(.font, at: sectionCmdLoc, effectiveRange: nil) as? NSFont)?.pointSize ?? 99,
+            0.2,
+            "Exiting source code mode must refold \\section{ instead of leaving 15pt source font overlaid"
+        )
+        XCTAssertEqual(
+            (storage.attribute(.foregroundColor, at: eqBodyLoc, effectiveRange: nil) as? NSColor)?.alphaComponent ?? 1.0,
+            0.0,
+            accuracy: 0.01,
+            "Exiting source code mode must hide equation source lines instead of drawing raw TeX over rendered math"
+        )
+        XCTAssertEqual(restored.decorations.count, initial.decorations.count)
+        XCTAssertEqual(restoredUsedRect.height, initialUsedRect.height, accuracy: 2.0)
+    }
 }

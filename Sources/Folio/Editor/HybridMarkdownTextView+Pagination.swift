@@ -10,10 +10,13 @@ extension HybridMarkdownTextView {
         return lineDecorations.compactMap { decoration -> NSRect? in
             let range: NSRange
             switch decoration.kind {
-            case let .mermaidBlockRendered(_, fullBlockRange, _), let .svgBlockRendered(_, fullBlockRange, _),
-                 let .mathBlockRendered(_, fullBlockRange, _):
+            case let .mermaidBlockRendered(_, fullBlockRange, _),
+                 let .svgBlockRendered(_, fullBlockRange, _),
+                 let .mathBlockRendered(_, fullBlockRange, _),
+                 let .latexTheoremCard(_, _, _, fullBlockRange, _),
+                 let .latexAbstractCard(_, fullBlockRange, _):
                 range = fullBlockRange
-            case .imageRendered:
+            case .imageRendered, .latexInputCard:
                 range = decoration.lineRange
             default:
                 return nil

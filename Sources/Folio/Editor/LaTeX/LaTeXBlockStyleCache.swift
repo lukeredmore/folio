@@ -4,6 +4,7 @@ import Foundation
 enum LaTeXBlockStyleCache {
 
     static let styledPassAttributeKey = NSAttributedString.Key("FolioLaTeXStyledPass")
+    static let sourceModePassAttributeKey = NSAttributedString.Key("FolioSourceCodeModePass")
 
     struct StyleConfig: Equatable {
         let theme: EditorTheme
@@ -46,6 +47,18 @@ enum LaTeXBlockStyleCache {
 
     nonisolated(unsafe) private static var lastEntry: StorageEntry?
     nonisolated(unsafe) static var activeBaseAttributes: [NSAttributedString.Key: Any] = [:]
+
+    static func invalidate() {
+        lastEntry = nil
+    }
+
+    static func invalidateLayoutManagers(for storage: NSTextStorage, fullRange: NSRange) {
+        guard fullRange.length > 0 else { return }
+        for lm in storage.layoutManagers {
+            lm.invalidateGlyphs(forCharacterRange: fullRange, changeInLength: 0, actualCharacterRange: nil)
+            lm.invalidateLayout(forCharacterRange: fullRange, actualCharacterRange: nil)
+        }
+    }
 
     static func resetAttributes(in storage: NSTextStorage, range: NSRange) {
         guard range.length > 0, NSMaxRange(range) <= storage.length else { return }
@@ -223,7 +236,10 @@ enum LaTeXBlockStyleCache {
 
     private static func hasStyledMarker(in storage: NSTextStorage, range: NSRange) -> Bool {
         guard range.length > 0, NSMaxRange(range) <= storage.length else { return false }
-        return storage.attribute(styledPassAttributeKey, at: range.location, effectiveRange: nil) != nil
+        guard storage.attribute(styledPassAttributeKey, at: range.location, effectiveRange: nil) != nil else {
+            return false
+        }
+        return storage.attribute(sourceModePassAttributeKey, at: range.location, effectiveRange: nil) == nil
     }
 
     private static func shiftRange(_ r: NSRange, by delta: Int) -> NSRange {

@@ -126,4 +126,112 @@ final class PageLayoutAndPrintTests: XCTestCase {
         view.adjustPageHeightNew(&bottom, top: 0, bottom: printed.midY, limit: 0)
         XCTAssertLessThanOrEqual(bottom, printed.minY + 0.5, "The print view never breaks inside the diagram card")
     }
+
+    func testDocumentPageLayoutExtractsLaTeXGeometryAndDocumentClass() {
+        let tex = """
+        \\documentclass[11pt,a4paper,landscape]{article}
+        \\usepackage[margin=1in,top=1.5in,bottom=2.54cm]{geometry}
+        \\raggedright
+        \\begin{document}
+        Hello world.
+        \\end{document}
+        """
+        let doc = DocumentPageLayout.extract(from: tex, fileURL: URL(fileURLWithPath: "/tmp/doc.tex"))
+        XCTAssertFalse(doc.isEmpty)
+        XCTAssertEqual(doc.paperSize, .a4)
+        XCTAssertEqual(doc.orientation, .landscape)
+        XCTAssertEqual(doc.baseFontSizePoints ?? 0, 11.0, accuracy: 0.01)
+        XCTAssertEqual(doc.textAlignment, .left)
+        XCTAssertEqual(doc.topMargin ?? 0, 108.0, accuracy: 0.5)
+        XCTAssertEqual(doc.bottomMargin ?? 0, 72.0, accuracy: 0.5)
+        XCTAssertEqual(doc.leftMargin ?? 0, 72.0, accuracy: 0.5)
+        XCTAssertEqual(doc.rightMargin ?? 0, 72.0, accuracy: 0.5)
+
+        let resolved = doc.resolve(
+            defaultPaper: .letter,
+            defaultOrientation: .portrait,
+            defaultMargins: .default
+        )
+        XCTAssertEqual(resolved.paperSize, .a4)
+        XCTAssertEqual(resolved.orientation, .landscape)
+        // A4 landscape width is 841.89 pt; minus 1in (72pt) left & right = 697.89 pt
+        XCTAssertEqual(resolved.printableWidth, 841.89 - 144.0, accuracy: 0.5)
+    }
+
+    func testDocumentPageLayoutExtractsMarkdownFrontmatterAndComments() {
+        let md = """
+        ---
+        title: Quarterly Report
+        paper: legal
+        orientation: landscape
+        margin: 1in
+        margin-left: 1.25in
+        fontsize: 12pt
+        align: justify
+        ---
+
+        # Quarterly Report
+
+        Body paragraph.
+        """
+        let doc = DocumentPageLayout.extract(from: md, fileURL: URL(fileURLWithPath: "/tmp/report.md"))
+        XCTAssertFalse(doc.isEmpty)
+        XCTAssertEqual(doc.paperSize, .legal)
+        XCTAssertEqual(doc.orientation, .landscape)
+        XCTAssertEqual(doc.topMargin ?? 0, 72.0, accuracy: 0.5)
+        XCTAssertEqual(doc.leftMargin ?? 0, 90.0, accuracy: 0.5)
+        XCTAssertEqual(doc.baseFontSizePoints ?? 0, 12.0, accuracy: 0.1)
+        XCTAssertEqual(doc.textAlignment, .justified)
+        XCTAssertNotNil(doc.metadataRange)
+
+        let commentMd = """
+        <!-- page: paper=a4, margin=0.5in -->
+        # Notes
+        """
+        let commentDoc = DocumentPageLayout.extract(from: commentMd, fileURL: URL(fileURLWithPath: "/tmp/notes.md"))
+        XCTAssertEqual(commentDoc.paperSize, .a4)
+        XCTAssertEqual(commentDoc.leftMargin ?? 0, 36.0, accuracy: 0.5)
+    }
+
+    func testPrintViewRespectsLaTeXDocumentGeometryAndCollapsesPreamble() {
+        let suite = "com.folio.tests.latexprint.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suite)!
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let vm = EditorWorkspaceViewModel(userDefaults: defaults)
+        vm.currentFileURL = URL(fileURLWithPath: "/tmp/paper.tex")
+        vm.markdownText = """
+        \\documentclass[11pt,a4paper]{article}
+        \\usepackage[margin=1in]{geometry}
+        \\begin{document}
+        \\section{Introduction}
+        Let $x \\in \\mathbb{R}$.
+        \\begin{equation}
+        E = mc^2
+        \\end{equation}
+        \\end{document}
+        """
+
+        let resolved = vm.resolvedPrintPageLayout()
+        XCTAssertEqual(resolved.paperSize, .a4)
+        XCTAssertEqual(resolved.margins, .normal)
+
+        let printInfo = vm.configuredPrintInfo(for: resolved)
+        XCTAssertEqual(printInfo.paperSize.width, PrintPaperSize.a4.size.width, accuracy: 0.5)
+        XCTAssertEqual(printInfo.topMargin, 72.0, accuracy: 0.5)
+        XCTAssertEqual(printInfo.leftMargin, 72.0, accuracy: 0.5)
+
+        let view = vm.makePrintView()
+        let expectedWidth = PrintPaperSize.a4.size.width - 144.0
+        XCTAssertEqual(view.frame.width, expectedWidth, accuracy: 0.5)
+        XCTAssertFalse(
+            view.lineDecorations.contains { if case .latexPreambleCard = $0.kind { return true }; return false },
+            "Print view should strip the interactive preamble banner card"
+        )
+        XCTAssertTrue(
+            view.lineDecorations.contains { if case .mathBlockRendered = $0.kind { return true }; return false },
+            "Print view should include rendered LaTeX equations"
+        )
+        let pdfData = view.dataWithPDF(inside: view.bounds)
+        XCTAssertGreaterThan(pdfData.count, 500, "Print view should produce valid PDF data with rendered decorations")
+    }
 }

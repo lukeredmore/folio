@@ -103,9 +103,12 @@ public final class MarkdownLiveStyler {
         }
         let nsString = string as NSString
         let fullLength = nsString.length
+        LaTeXBlockStyleCache.invalidate()
         guard fullLength > 0 else { return MarkdownDocumentAnalysis(headings: [], decorations: []) }
 
         let fullRange = NSRange(location: 0, length: fullLength)
+        let wasSourceMode = storage.attribute(LaTeXBlockStyleCache.sourceModePassAttributeKey, at: 0, effectiveRange: nil) != nil
+        let wasLaTeX = storage.attribute(LaTeXBlockStyleCache.styledPassAttributeKey, at: 0, effectiveRange: nil) != nil
         let activeLineRange = nsString.lineRange(for: NSRange(location: min(selectedRange.location, fullLength), length: 0))
         storage.beginEditing()
 
@@ -120,12 +123,16 @@ public final class MarkdownLiveStyler {
 
         let baseFont = sourceCodeMode ? theme.codeFont(size: effectiveBaseSize) : theme.bodyFont(size: effectiveBaseSize)
         let baseColor = theme.textNSColor
-        storage.setAttributes([
+        var mdBaseAttrs: [NSAttributedString.Key: Any] = [
             .font: baseFont,
             .foregroundColor: baseColor,
             .paragraphStyle: baseParagraph,
             .kern: sourceCodeMode ? 0.0 : typography.characterSpacing
-        ], range: fullRange)
+        ]
+        if sourceCodeMode {
+            mdBaseAttrs[LaTeXBlockStyleCache.sourceModePassAttributeKey] = true
+        }
+        storage.setAttributes(mdBaseAttrs, range: fullRange)
 
         var headings: [OutlineHeading] = []
         var decorations: [LineDecoration] = []
@@ -306,6 +313,9 @@ public final class MarkdownLiveStyler {
 
         applyProseAlignment(textAlignment, to: storage, lineRecords: lineRecords, proseLineKinds: proseLineKinds)
         storage.endEditing()
+        if wasSourceMode != sourceCodeMode || wasLaTeX {
+            LaTeXBlockStyleCache.invalidateLayoutManagers(for: storage, fullRange: fullRange)
+        }
         return MarkdownDocumentAnalysis(headings: headings, decorations: decorations)
     }
 }

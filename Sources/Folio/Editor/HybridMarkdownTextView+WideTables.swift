@@ -110,13 +110,18 @@ extension HybridMarkdownTextView {
     }
 
     public override func draw(_ dirtyRect: NSRect) {
+        if !drawsBackground {
+            drawBackground(in: dirtyRect)
+        }
         super.draw(dirtyRect)
         // NSTextView leaves its clip at the column; wide tables and their indicators extend past it.
         NSGraphicsContext.saveGraphicsState()
         defer { NSGraphicsContext.restoreGraphicsState() }
         NSBezierPath(rect: dirtyRect).setClip()
         drawWideTableGlyphs(in: dirtyRect)
-        drawTableScrollIndicators(in: dirtyRect)
+        if drawsBackground && NSGraphicsContext.currentContextDrawingToScreen() {
+            drawTableScrollIndicators(in: dirtyRect)
+        }
     }
 
     /// Draws wide table rows, which NSTextView's text pass skips (see WideBlockLayoutManager),

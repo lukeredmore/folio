@@ -3,6 +3,27 @@ import Combine
 import Foundation
 import SwiftUI
 
+public enum SidebarTab: String, CaseIterable, Identifiable {
+    case files = "Files"
+    case outline = "Outline"
+    case search = "Search"
+
+    public var id: String { rawValue }
+
+    public var systemImage: String {
+        switch self {
+        case .files: return "folder"
+        case .outline: return "list.bullet.indent"
+        case .search: return "magnifyingglass"
+        }
+    }
+}
+
+public enum FileDisplayStyle: String, CaseIterable {
+    case tree = "Tree"
+    case list = "List"
+}
+
 extension EditorWorkspaceViewModel {
 
     // MARK: - Workspace Folder Tree & Multi-file Search
