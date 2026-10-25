@@ -44,7 +44,7 @@ public struct QuickOpenModalView: View {
                     }
 
                 Button {
-                    viewModel.showQuickOpen = false
+                    viewModel.closeQuickOpen()
                 } label: {
                     Text("ESC")
                         .font(.system(size: 10, weight: .semibold, design: .monospaced))
@@ -76,10 +76,11 @@ public struct QuickOpenModalView: View {
                             .foregroundColor(viewModel.theme.secondaryTextColor)
                             .padding(16)
                     } else {
-                        ForEach(filteredFiles) { node in
+                        ForEach(Array(filteredFiles.enumerated()), id: \.element.id) { idx, node in
+                            let isSelected = idx == viewModel.quickOpenSelectedIndex
                             Button {
                                 viewModel.openFile(at: node.url)
-                                viewModel.showQuickOpen = false
+                                viewModel.closeQuickOpen()
                             } label: {
                                 HStack(spacing: 10) {
                                     Image(systemName: node.isRemote ? "network" : (node.isMarkdownFile ? "doc.text.fill" : "doc"))
@@ -100,11 +101,20 @@ public struct QuickOpenModalView: View {
                                 .padding(.vertical, 7)
                                 .background(
                                     RoundedRectangle(cornerRadius: 6)
-                                        .fill(viewModel.currentFileURL == node.url ? viewModel.theme.linkColor.opacity(0.15) : Color.clear)
+                                        .fill(
+                                            isSelected
+                                                ? viewModel.theme.linkColor.opacity(0.18)
+                                                : (viewModel.currentFileURL == node.url ? viewModel.theme.linkColor.opacity(0.08) : Color.clear)
+                                        )
                                 )
                                 .contentShape(Rectangle())
                             }
                             .buttonStyle(.plain)
+                            .onHover { hovering in
+                                if hovering {
+                                    viewModel.quickOpenSelectedIndex = idx
+                                }
+                            }
                         }
                     }
                 }

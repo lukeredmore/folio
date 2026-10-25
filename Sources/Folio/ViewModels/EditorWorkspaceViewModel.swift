@@ -246,7 +246,14 @@ public final class EditorWorkspaceViewModel: ObservableObject {
 
     // MARK: - Modals & Banners
     @Published public var showQuickOpen: Bool = false
-    @Published public var quickOpenQuery: String = ""
+    @Published public var quickOpenQuery: String = "" {
+        didSet {
+            if quickOpenQuery != oldValue {
+                quickOpenSelectedIndex = 0
+            }
+        }
+    }
+    @Published public var quickOpenSelectedIndex: Int = 0
     @Published public var showWordCountPopover: Bool = false
     @Published public var showInsertTableSheet: Bool = false
     @Published public var showSettingsModal: Bool = false

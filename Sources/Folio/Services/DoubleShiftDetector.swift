@@ -73,23 +73,23 @@ public struct DoubleShiftDetector: Sendable {
 }
 
 struct DoubleShiftEventMonitorAccessor: NSViewRepresentable {
-    @ObservedObject var viewModel: EditorWorkspaceViewModel
+    let viewModel: EditorWorkspaceViewModel
 
     func makeCoordinator() -> Coordinator {
         Coordinator(viewModel: viewModel)
     }
 
-    func makeNSView(context: Context) -> NSView {
-        let view = NSView(frame: .zero)
+    func makeNSView(context: Context) -> PassThroughAccessorNSView {
+        let view = PassThroughAccessorNSView(frame: .zero)
         context.coordinator.startMonitoring()
         return view
     }
 
-    func updateNSView(_ nsView: NSView, context: Context) {
+    func updateNSView(_ nsView: PassThroughAccessorNSView, context: Context) {
         context.coordinator.viewModel = viewModel
     }
 
-    static func dismantleNSView(_ nsView: NSView, coordinator: Coordinator) {
+    static func dismantleNSView(_ nsView: PassThroughAccessorNSView, coordinator: Coordinator) {
         coordinator.stopMonitoring()
     }
 
@@ -156,16 +156,25 @@ struct DoubleShiftEventMonitorAccessor: NSViewRepresentable {
 
             case .keyDown:
                 detector.cancelSequence()
-                // Escape key (keyCode 53) dismisses Quick Open or Find/Replace bar
-                if keyCode == 53, let vm = viewModel {
-                    if vm.showQuickOpen {
-                        vm.showQuickOpen = false
+                guard let vm = viewModel else { return false }
+                if vm.showQuickOpen {
+                    switch keyCode {
+                    case 53: // Escape
+                        vm.closeQuickOpen()
                         return true
-                    }
-                    if vm.showFindReplaceBar {
-                        vm.closeDocumentFindBar()
+                    case 125: // Down Arrow
+                        vm.moveQuickOpenSelection(by: 1)
                         return true
+                    case 126: // Up Arrow
+                        vm.moveQuickOpenSelection(by: -1)
+                        return true
+                    default:
+                        return false
                     }
+                }
+                if keyCode == 53, vm.showFindReplaceBar {
+                    vm.closeDocumentFindBar()
+                    return true
                 }
                 return false
 

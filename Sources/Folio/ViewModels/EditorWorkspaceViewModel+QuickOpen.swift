@@ -21,8 +21,30 @@ extension EditorWorkspaceViewModel {
     // MARK: - Quick Open (Shift-Shift) & Path Opening
 
     public func toggleQuickOpen() {
-        quickOpenQuery = ""
-        showQuickOpen.toggle()
+        if showQuickOpen {
+            closeQuickOpen()
+        } else {
+            quickOpenQuery = ""
+            quickOpenSelectedIndex = 0
+            showQuickOpen = true
+        }
+    }
+
+    public func closeQuickOpen() {
+        showQuickOpen = false
+        if let tv = activeTextView, let window = tv.window {
+            window.makeFirstResponder(tv)
+        }
+    }
+
+    public func moveQuickOpenSelection(by delta: Int) {
+        let count = quickOpenFilteredFiles.count
+        guard count > 0 else {
+            quickOpenSelectedIndex = 0
+            return
+        }
+        let next = (quickOpenSelectedIndex + delta) % count
+        quickOpenSelectedIndex = next < 0 ? next + count : next
     }
 
     public var quickOpenFilteredFiles: [WorkspaceFileNode] {
@@ -126,6 +148,12 @@ extension EditorWorkspaceViewModel {
         let filtered = quickOpenFilteredFiles
         let candidate = resolveQuickOpenPathCandidate(for: q)
 
+        if quickOpenSelectedIndex > 0, quickOpenSelectedIndex < filtered.count {
+            openFile(at: filtered[quickOpenSelectedIndex].url)
+            closeQuickOpen()
+            return true
+        }
+
         if let candidate, candidate.exists {
             let isExplicitPath = Self.looksLikeExplicitFilesystemPath(q) || q.contains("/")
             let matchesFirst = filtered.first.map {
@@ -139,7 +167,7 @@ extension EditorWorkspaceViewModel {
 
         if let first = filtered.first {
             openFile(at: first.url)
-            showQuickOpen = false
+            closeQuickOpen()
             return true
         }
 
@@ -156,7 +184,7 @@ extension EditorWorkspaceViewModel {
             loadWorkspaceFolder(candidate.url)
             showSidebar = true
             activeSidebarTab = .files
-            showQuickOpen = false
+            closeQuickOpen()
             return
         }
 
@@ -178,7 +206,7 @@ extension EditorWorkspaceViewModel {
         if let line = candidate.lineNumber, line > 1 {
             navigateToLineNumber(line)
         }
-        showQuickOpen = false
+        closeQuickOpen()
     }
 
     // MARK: - CLI Path Opening (`folio <path>`)
