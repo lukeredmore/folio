@@ -200,51 +200,48 @@ extension LaTeXLiveStyler {
                 )
             }
             return tryStyleLaTeXEnvironmentBlock(
-                envName: envName,
-                in: storage,
-                string: string,
-                nsString: nsString,
-                fullLength: fullLength,
-                lineRange: lineRange,
-                contentRange: contentRange,
-                lineText: lineText,
-                trimmedLine: trimmedLine,
-                isActiveLine: isActiveLine,
-                activeLineRange: activeLineRange,
-                selectedRange: selectedRange,
-                docIndex: docIndex,
-                theme: theme,
-                typography: typography,
-                textAlignment: textAlignment,
-                baseFont: baseFont,
-                effectiveBaseSize: effectiveBaseSize,
-                effectiveContainerWidth: effectiveContainerWidth,
-                prettyMode: prettyMode,
-                focusMode: focusMode,
-                baseDirectoryURL: baseDirectoryURL,
+                envName: envName, in: storage, string: string, nsString: nsString,
+                fullLength: fullLength, lineRange: lineRange, contentRange: contentRange,
+                lineText: lineText, trimmedLine: trimmedLine, isActiveLine: isActiveLine,
+                activeLineRange: activeLineRange, selectedRange: selectedRange, docIndex: docIndex,
+                theme: theme, typography: typography, textAlignment: textAlignment, baseFont: baseFont,
+                effectiveBaseSize: effectiveBaseSize, effectiveContainerWidth: effectiveContainerWidth,
+                prettyMode: prettyMode, focusMode: focusMode, baseDirectoryURL: baseDirectoryURL,
                 decorations: &decorations
             )
         }
 
-        return tryStyleSingleLineListOrFigureCommand(
-            in: storage,
-            string: string,
-            nsString: nsString,
-            lineRange: lineRange,
-            contentRange: contentRange,
-            lineText: lineText,
-            trimmedLine: trimmedLine,
-            isActiveLine: isActiveLine,
-            docIndex: docIndex,
-            theme: theme,
-            typography: typography,
-            baseFont: baseFont,
-            effectiveBaseSize: effectiveBaseSize,
-            effectiveContainerWidth: effectiveContainerWidth,
-            prettyMode: prettyMode,
-            dimFactor: dimFactor,
-            baseDirectoryURL: baseDirectoryURL,
+        if let condAdv = tryStyleLaTeXConditionalBlock(
+            in: storage, string: string, nsString: nsString, fullLength: fullLength,
+            lineRange: lineRange, contentRange: contentRange, lineText: lineText, trimmedLine: trimmedLine,
+            isActiveLine: isActiveLine, activeLineRange: activeLineRange, selectedRange: selectedRange,
+            docIndex: docIndex, theme: theme, typography: typography, baseFont: baseFont,
+            effectiveBaseSize: effectiveBaseSize, effectiveContainerWidth: effectiveContainerWidth,
+            prettyMode: prettyMode, focusMode: focusMode, baseDirectoryURL: baseDirectoryURL,
             decorations: &decorations
+        ) {
+            return condAdv
+        }
+
+        if let macroAdv = tryStyleLaTeXMacroBlock(
+            in: storage, string: string, nsString: nsString, fullLength: fullLength,
+            lineRange: lineRange, contentRange: contentRange, lineText: lineText, trimmedLine: trimmedLine,
+            isActiveLine: isActiveLine, activeLineRange: activeLineRange, selectedRange: selectedRange,
+            docIndex: docIndex, theme: theme, typography: typography, baseFont: baseFont,
+            effectiveBaseSize: effectiveBaseSize, effectiveContainerWidth: effectiveContainerWidth,
+            prettyMode: prettyMode, focusMode: focusMode, baseDirectoryURL: baseDirectoryURL,
+            decorations: &decorations
+        ) {
+            return macroAdv
+        }
+
+        return tryStyleSingleLineListOrFigureCommand(
+            in: storage, string: string, nsString: nsString, lineRange: lineRange,
+            contentRange: contentRange, lineText: lineText, trimmedLine: trimmedLine,
+            isActiveLine: isActiveLine, docIndex: docIndex, theme: theme, typography: typography,
+            baseFont: baseFont, effectiveBaseSize: effectiveBaseSize,
+            effectiveContainerWidth: effectiveContainerWidth, prettyMode: prettyMode,
+            dimFactor: dimFactor, baseDirectoryURL: baseDirectoryURL, decorations: &decorations
         )
     }
 

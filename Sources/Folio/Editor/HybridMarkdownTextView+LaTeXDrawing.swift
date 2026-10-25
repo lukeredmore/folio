@@ -249,9 +249,10 @@ extension HybridMarkdownTextView {
             let baselineY = origin.y + lineFrag.minY + glyphLoc.y
             let drawX = origin.x + lineFrag.minX + glyphLoc.x
             let drawY = baselineY - font.ascender
+            let customInlineColor = self.textStorage?.attribute(MarkdownLiveStyler.customColorAttributeKey, at: spanRange.location, effectiveRange: nil) as? NSColor
             let attrs: [NSAttributedString.Key: Any] = [
                 .font: font,
-                .foregroundColor: currentTheme.textNSColor.withAlphaComponent(dimFactor)
+                .foregroundColor: (customInlineColor ?? currentTheme.textNSColor).withAlphaComponent(dimFactor)
             ]
             let lines = text.components(separatedBy: "\n")
             let lineStep = ceil((font.ascender - font.descender) * 1.10)

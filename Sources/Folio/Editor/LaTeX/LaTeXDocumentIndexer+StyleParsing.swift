@@ -18,6 +18,55 @@ extension LaTeXDocumentIndexer {
     static let familyDefaultCmdRegex = try! NSRegularExpression(
         pattern: #"\\renewcommand\{\\familydefault\}\{\\(sfdefault|rmdefault|ttdefault)\}"#
     )
+    static let newifCmdRegex = try! NSRegularExpression(
+        pattern: #"\\newif\s*\\if([A-Za-z@]+)"#
+    )
+    static let toggleIfCmdRegex = try! NSRegularExpression(
+        pattern: #"\\([A-Za-z@]+)(true|false)\b"#
+    )
+
+    static func parseConditionalDirectives(in line: String, into style: inout LaTeXDocumentStyle) {
+        let uncommented = stripUnescapedPercentComment(in: line)
+        guard uncommented.contains("\\") else { return }
+        let nsLine = uncommented as NSString
+        let fullRange = NSRange(location: 0, length: nsLine.length)
+        if uncommented.contains("\\newif") {
+            newifCmdRegex.enumerateMatches(in: uncommented, range: fullRange) { m, _, _ in
+                guard let m = m else { return }
+                let condName = nsLine.substring(with: m.range(at: 1))
+                if style.conditionals[condName] == nil {
+                    style.conditionals[condName] = false
+                }
+            }
+        }
+        toggleIfCmdRegex.enumerateMatches(in: uncommented, range: fullRange) { m, _, _ in
+            guard let m = m else { return }
+            let condName = nsLine.substring(with: m.range(at: 1))
+            let stateStr = nsLine.substring(with: m.range(at: 2))
+            guard condName != "if", style.conditionals[condName] != nil else { return }
+            style.conditionals[condName] = (stateStr == "true")
+        }
+    }
+
+    private static func stripUnescapedPercentComment(in line: String) -> String {
+        let chars = Array(line)
+        var i = 0
+        while i < chars.count {
+            if chars[i] == "%" {
+                var backslashes = 0
+                var j = i - 1
+                while j >= 0 && chars[j] == "\\" {
+                    backslashes += 1
+                    j -= 1
+                }
+                if backslashes % 2 == 0 {
+                    return String(chars[0..<i])
+                }
+            }
+            i += 1
+        }
+        return line
+    }
 
     static func parseDocumentClassOptions(_ rawOptions: String, into style: inout LaTeXDocumentStyle) {
         for part in rawOptions.split(separator: ",") {

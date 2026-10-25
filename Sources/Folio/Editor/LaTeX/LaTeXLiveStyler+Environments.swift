@@ -13,11 +13,8 @@ extension LaTeXLiveStyler {
             return true
         }
         if trimmed == "\\vfill" || trimmed == "\\newpage" || trimmed == "\\clearpage"
-            || trimmed == "\\ifanswers" || trimmed == "\\else" || trimmed == "\\fi"
+            || trimmed == "\\else" || trimmed == "\\fi"
             || trimmed == "\\answersfalse" || trimmed == "\\answerstrue" {
-            return true
-        }
-        if trimmed.hasPrefix("\\workspace") && trimmed.hasSuffix("{") {
             return true
         }
         if trimmed.hasPrefix("\\vspace") && trimmed.hasSuffix("}") && !trimmed.dropFirst(7).contains("\\") {
@@ -228,49 +225,24 @@ extension LaTeXLiveStyler {
                     range: NSRange(location: NSMaxRange(lineRange), length: fullBlockRange.length - lineRange.length)
                 )
             }
-            for (i, el) in envLines.enumerated() {
-                let isBoundary = (i == 0 || (i == envLines.count - 1 && envLines.count > 1))
-                if isBoundary {
-                    styleDocumentBoundaryLineHelper(
-                        in: storage,
-                        lineRange: el.lineRange,
-                        contentRange: el.contentRange,
-                        isActive: el.isActive,
-                        prettyMode: prettyMode,
-                        theme: theme,
-                        effectiveBaseSize: effectiveBaseSize,
-                        effectiveContainerWidth: effectiveContainerWidth,
-                        dimFactor: blockDim
-                    )
-                    continue
-                }
-                let pStyle = NSMutableParagraphStyle()
-                pStyle.alignment = .center
-                pStyle.lineHeightMultiple = docIndex.effectiveLineHeightMultiple(fallback: typography)
-                pStyle.lineSpacing = docIndex.effectiveLineSpacing(fallback: typography)
-                pStyle.paragraphSpacing = max(3.0, typography.paragraphSpacing * 0.5)
-                pStyle.tailIndent = effectiveContainerWidth
-                storage.addAttributes([
-                    .font: baseFont,
-                    .foregroundColor: theme.textNSColor.withAlphaComponent(blockDim),
-                    .paragraphStyle: pStyle
-                ], range: el.lineRange)
-                styleLaTeXInlineContent(
-                    in: storage,
-                    string: string,
-                    nsString: nsString,
-                    range: el.contentRange,
-                    lineRange: el.lineRange,
-                    baseFont: baseFont,
-                    isActiveLine: el.isActive,
-                    docIndex: docIndex,
-                    theme: theme,
-                    dimFactor: blockDim,
-                    prettyMode: prettyMode,
-                    baseDirectoryURL: baseDirectoryURL,
-                    decorations: &decorations
-                )
-            }
+            styleCenterEnvironmentLines(
+                envLines: envLines,
+                fullBlockRange: fullBlockRange,
+                isBlockActive: isBlockActive,
+                blockDim: blockDim,
+                in: storage,
+                string: string,
+                nsString: nsString,
+                docIndex: docIndex,
+                theme: theme,
+                typography: typography,
+                baseFont: baseFont,
+                effectiveBaseSize: effectiveBaseSize,
+                effectiveContainerWidth: effectiveContainerWidth,
+                prettyMode: prettyMode,
+                baseDirectoryURL: baseDirectoryURL,
+                decorations: &decorations
+            )
             return (scanIndex, scanLineCount)
         }
 
