@@ -75,7 +75,9 @@ public final class EditorWorkspaceViewModel: ObservableObject {
     @Published public var isDirty: Bool = false {
         didSet {
             guard !isRestoringState, isDirty != oldValue else { return }
-            persistDocumentSessionState()
+            if !isLiveKeystrokeInProgress || autoSaveDelay <= 0 {
+                persistDocumentSessionState()
+            }
         }
     }
 

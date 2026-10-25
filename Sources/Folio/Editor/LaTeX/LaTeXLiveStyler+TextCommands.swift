@@ -23,6 +23,8 @@ extension LaTeXLiveStyler {
         return nil
     }
 
+    nonisolated(unsafe) private static let tinyAtomicFont = NSFont.monospacedSystemFont(ofSize: 0.01, weight: .regular)
+
     static func reserveAtomicInlineSpan(
         in storage: NSTextStorage,
         nsString: NSString,
@@ -32,9 +34,8 @@ extension LaTeXLiveStyler {
         descent: CGFloat
     ) {
         guard fullRange.length > 0 else { return }
-        let tinyFont = NSFont.monospacedSystemFont(ofSize: 0.01, weight: .regular)
-        let rawSubstr = nsString.substring(with: fullRange) as NSString
-        let baseW = rawSubstr.size(withAttributes: [.font: tinyFont]).width
+        _ = nsString
+        let baseW = CGFloat(fullRange.length) * 0.006
         let firstCharKern = max(0.0, width - baseW)
         let spanInfo = MarkdownLiveStyler.InlineMathLayoutInfo(
             range: fullRange,
@@ -43,7 +44,7 @@ extension LaTeXLiveStyler {
             descent: descent
         )
         storage.addAttributes([
-            .font: tinyFont,
+            .font: tinyAtomicFont,
             .foregroundColor: NSColor.clear,
             .kern: 0.0,
             MKey.inlineMathSpan: spanInfo,
@@ -60,6 +61,7 @@ extension LaTeXLiveStyler {
         in storage: NSTextStorage,
         string: String,
         nsString: NSString,
+        lineSub: String,
         effectiveRange: NSRange,
         baseFont: NSFont,
         fontSize: CGFloat,
@@ -73,124 +75,134 @@ extension LaTeXLiveStyler {
         let showTokens = isActiveLine || !prettyMode
 
         // \href{url}{text}
-        latexHrefRegex.enumerateMatches(in: string, options: [], range: effectiveRange) { match, _, _ in
-            guard let match = match, !isProtected(match.range) else { return }
-            let openRange = match.range(at: 1)
-            let urlRange = match.range(at: 2)
-            let textRange = match.range(at: 3)
-            let closeRange = match.range(at: 4)
-            storage.addAttribute(MKey.noSpellCheck, value: true, range: openRange)
-            storage.addAttribute(MKey.noSpellCheck, value: true, range: urlRange)
-            MarkdownLiveStyler.applyAttributesToVisibleCharacters(
-                in: storage,
-                range: textRange,
-                attributes: [
-                    .foregroundColor: theme.linkNSColor.withAlphaComponent(dimFactor),
-                    .underlineStyle: NSUnderlineStyle.single.rawValue
-                ]
-            )
-            MarkdownLiveStyler.styleSyntaxToken(in: storage, range: openRange, isActiveLine: showTokens, theme: theme, dimFactor: dimFactor)
-            MarkdownLiveStyler.styleSyntaxToken(in: storage, range: closeRange, isActiveLine: showTokens, theme: theme, dimFactor: dimFactor)
+        if lineSub.contains("\\href") {
+            latexHrefRegex.enumerateMatches(in: string, options: [], range: effectiveRange) { match, _, _ in
+                guard let match = match, !isProtected(match.range) else { return }
+                let openRange = match.range(at: 1)
+                let urlRange = match.range(at: 2)
+                let textRange = match.range(at: 3)
+                let closeRange = match.range(at: 4)
+                storage.addAttribute(MKey.noSpellCheck, value: true, range: openRange)
+                storage.addAttribute(MKey.noSpellCheck, value: true, range: urlRange)
+                MarkdownLiveStyler.applyAttributesToVisibleCharacters(
+                    in: storage,
+                    range: textRange,
+                    attributes: [
+                        .foregroundColor: theme.linkNSColor.withAlphaComponent(dimFactor),
+                        .underlineStyle: NSUnderlineStyle.single.rawValue
+                    ]
+                )
+                MarkdownLiveStyler.styleSyntaxToken(in: storage, range: openRange, isActiveLine: showTokens, theme: theme, dimFactor: dimFactor)
+                MarkdownLiveStyler.styleSyntaxToken(in: storage, range: closeRange, isActiveLine: showTokens, theme: theme, dimFactor: dimFactor)
+            }
         }
 
         // \url{...}
-        latexUrlRegex.enumerateMatches(in: string, options: [], range: effectiveRange) { match, _, _ in
-            guard let match = match, !isProtected(match.range) else { return }
-            let openRange = match.range(at: 1)
-            let urlRange = match.range(at: 2)
-            let closeRange = match.range(at: 3)
-            storage.addAttribute(MKey.noSpellCheck, value: true, range: match.range)
-            storage.addAttributes([
-                .font: theme.codeFont(size: fontSize * 0.90),
-                .foregroundColor: theme.linkNSColor.withAlphaComponent(dimFactor),
-                .underlineStyle: NSUnderlineStyle.single.rawValue
-            ], range: urlRange)
-            MarkdownLiveStyler.styleSyntaxToken(in: storage, range: openRange, isActiveLine: showTokens, theme: theme, dimFactor: dimFactor)
-            MarkdownLiveStyler.styleSyntaxToken(in: storage, range: closeRange, isActiveLine: showTokens, theme: theme, dimFactor: dimFactor)
+        if lineSub.contains("\\url") {
+            latexUrlRegex.enumerateMatches(in: string, options: [], range: effectiveRange) { match, _, _ in
+                guard let match = match, !isProtected(match.range) else { return }
+                let openRange = match.range(at: 1)
+                let urlRange = match.range(at: 2)
+                let closeRange = match.range(at: 3)
+                storage.addAttribute(MKey.noSpellCheck, value: true, range: match.range)
+                storage.addAttributes([
+                    .font: theme.codeFont(size: fontSize * 0.90),
+                    .foregroundColor: theme.linkNSColor.withAlphaComponent(dimFactor),
+                    .underlineStyle: NSUnderlineStyle.single.rawValue
+                ], range: urlRange)
+                MarkdownLiveStyler.styleSyntaxToken(in: storage, range: openRange, isActiveLine: showTokens, theme: theme, dimFactor: dimFactor)
+                MarkdownLiveStyler.styleSyntaxToken(in: storage, range: closeRange, isActiveLine: showTokens, theme: theme, dimFactor: dimFactor)
+            }
         }
 
         // \textbf{...}, \textit{...}, \emph{...}, \underline{...}, \texttt{...}, \textsc{...}, \footnote{...}
-        latexStyleCmdRegex.enumerateMatches(in: string, options: [], range: effectiveRange) { match, _, _ in
-            guard let match = match, !isProtected(match.range) else { return }
-            let openRange = match.range(at: 1)
-            let cmd = nsString.substring(with: match.range(at: 2))
-            let innerRange = match.range(at: 3)
-            let closeRange = match.range(at: 4)
-            storage.addAttribute(MKey.noSpellCheck, value: true, range: openRange)
+        if lineSub.contains("\\text") || lineSub.contains("\\emph") || lineSub.contains("\\underline") || lineSub.contains("\\footnote") {
+            latexStyleCmdRegex.enumerateMatches(in: string, options: [], range: effectiveRange) { match, _, _ in
+                guard let match = match, !isProtected(match.range) else { return }
+                let openRange = match.range(at: 1)
+                let cmd = nsString.substring(with: match.range(at: 2))
+                let innerRange = match.range(at: 3)
+                let closeRange = match.range(at: 4)
+                storage.addAttribute(MKey.noSpellCheck, value: true, range: openRange)
 
-            switch cmd {
-            case "textbf":
-                MarkdownLiveStyler.applyFontTraitToVisibleCharacters(
-                    in: storage, range: innerRange, trait: .boldFontMask, fallbackFont: baseFont
-                )
-            case "textit", "emph":
-                MarkdownLiveStyler.applyFontTraitToVisibleCharacters(
-                    in: storage, range: innerRange, trait: .italicFontMask, fallbackFont: baseFont
-                )
-            case "underline":
-                MarkdownLiveStyler.applyAttributesToVisibleCharacters(
-                    in: storage,
-                    range: innerRange,
-                    attributes: [.underlineStyle: NSUnderlineStyle.single.rawValue]
-                )
-            case "texttt":
-                let codeFontSize = fontSize * 0.88
-                let codeFont = theme.codeFont(size: codeFontSize)
-                storage.addAttributes([
-                    .font: codeFont,
-                    .foregroundColor: theme.inlineCodeNSColor.withAlphaComponent(dimFactor),
-                    MarkdownLiveStyler.inlineCodeFontAttributeKey: true,
-                    MKey.noSpellCheck: true
-                ], range: innerRange)
-                decorations.append(LineDecoration(
-                    lineRange: innerRange,
-                    kind: .inlineCode(range: innerRange, fontSize: codeFontSize, dimFactor: dimFactor)
-                ))
-            case "textsc":
-                MarkdownLiveStyler.applyAttributesToVisibleCharacters(
-                    in: storage,
-                    range: innerRange,
-                    attributes: [
-                        .font: theme.bodyFont(size: fontSize * 0.90, semibold: true),
-                        .kern: 0.6
-                    ]
-                )
-            case "footnote":
-                MarkdownLiveStyler.applyAttributesToVisibleCharacters(
-                    in: storage,
-                    range: innerRange,
-                    attributes: [
-                        .font: theme.bodyFont(size: fontSize * 0.86, italic: true),
-                        .foregroundColor: theme.secondaryTextNSColor.withAlphaComponent(dimFactor)
-                    ]
-                )
-            default:
-                break
+                switch cmd {
+                case "textbf":
+                    MarkdownLiveStyler.applyFontTraitToVisibleCharacters(
+                        in: storage, range: innerRange, trait: .boldFontMask, fallbackFont: baseFont
+                    )
+                case "textit", "emph":
+                    MarkdownLiveStyler.applyFontTraitToVisibleCharacters(
+                        in: storage, range: innerRange, trait: .italicFontMask, fallbackFont: baseFont
+                    )
+                case "underline":
+                    MarkdownLiveStyler.applyAttributesToVisibleCharacters(
+                        in: storage,
+                        range: innerRange,
+                        attributes: [.underlineStyle: NSUnderlineStyle.single.rawValue]
+                    )
+                case "texttt":
+                    let codeFontSize = fontSize * 0.88
+                    let codeFont = theme.codeFont(size: codeFontSize)
+                    storage.addAttributes([
+                        .font: codeFont,
+                        .foregroundColor: theme.inlineCodeNSColor.withAlphaComponent(dimFactor),
+                        MarkdownLiveStyler.inlineCodeFontAttributeKey: true,
+                        MKey.noSpellCheck: true
+                    ], range: innerRange)
+                    decorations.append(LineDecoration(
+                        lineRange: innerRange,
+                        kind: .inlineCode(range: innerRange, fontSize: codeFontSize, dimFactor: dimFactor)
+                    ))
+                case "textsc":
+                    MarkdownLiveStyler.applyAttributesToVisibleCharacters(
+                        in: storage,
+                        range: innerRange,
+                        attributes: [
+                            .font: theme.bodyFont(size: fontSize * 0.90, semibold: true),
+                            .kern: 0.6
+                        ]
+                    )
+                case "footnote":
+                    MarkdownLiveStyler.applyAttributesToVisibleCharacters(
+                        in: storage,
+                        range: innerRange,
+                        attributes: [
+                            .font: theme.bodyFont(size: fontSize * 0.86, italic: true),
+                            .foregroundColor: theme.secondaryTextNSColor.withAlphaComponent(dimFactor)
+                        ]
+                    )
+                default:
+                    break
+                }
+
+                MarkdownLiveStyler.styleSyntaxToken(in: storage, range: openRange, isActiveLine: showTokens, theme: theme, dimFactor: dimFactor)
+                MarkdownLiveStyler.styleSyntaxToken(in: storage, range: closeRange, isActiveLine: showTokens, theme: theme, dimFactor: dimFactor)
             }
-
-            MarkdownLiveStyler.styleSyntaxToken(in: storage, range: openRange, isActiveLine: showTokens, theme: theme, dimFactor: dimFactor)
-            MarkdownLiveStyler.styleSyntaxToken(in: storage, range: closeRange, isActiveLine: showTokens, theme: theme, dimFactor: dimFactor)
         }
 
         // \LaTeX{}, \TeX{}, \today
-        latexLogoCmdRegex.enumerateMatches(in: string, options: [], range: effectiveRange) { match, _, _ in
-            guard let match = match, !isProtected(match.range) else { return }
-            storage.addAttribute(MKey.noSpellCheck, value: true, range: match.range)
-            let slashRange = NSRange(location: match.range.location, length: 1)
-            MarkdownLiveStyler.styleSyntaxToken(in: storage, range: slashRange, isActiveLine: showTokens, theme: theme, dimFactor: dimFactor)
-            let bracesRange = match.range(at: 2)
-            if bracesRange.location != NSNotFound && bracesRange.length > 0 {
-                MarkdownLiveStyler.styleSyntaxToken(in: storage, range: bracesRange, isActiveLine: showTokens, theme: theme, dimFactor: dimFactor)
+        if lineSub.contains("TeX") || lineSub.contains("\\today") {
+            latexLogoCmdRegex.enumerateMatches(in: string, options: [], range: effectiveRange) { match, _, _ in
+                guard let match = match, !isProtected(match.range) else { return }
+                storage.addAttribute(MKey.noSpellCheck, value: true, range: match.range)
+                let slashRange = NSRange(location: match.range.location, length: 1)
+                MarkdownLiveStyler.styleSyntaxToken(in: storage, range: slashRange, isActiveLine: showTokens, theme: theme, dimFactor: dimFactor)
+                let bracesRange = match.range(at: 2)
+                if bracesRange.location != NSNotFound && bracesRange.length > 0 {
+                    MarkdownLiveStyler.styleSyntaxToken(in: storage, range: bracesRange, isActiveLine: showTokens, theme: theme, dimFactor: dimFactor)
+                }
             }
         }
 
         // \textbackslash (e.g. inside \texttt{\textbackslash usepackage})
-        latexTextBackslashRegex.enumerateMatches(in: string, options: [], range: effectiveRange) { match, _, _ in
-            guard let match = match, !isProtected(match.range) else { return }
-            storage.addAttribute(MKey.noSpellCheck, value: true, range: match.range)
-            let wordRange = match.range(at: 1)
-            if wordRange.location != NSNotFound && wordRange.length > 0 {
-                MarkdownLiveStyler.styleSyntaxToken(in: storage, range: wordRange, isActiveLine: showTokens, theme: theme, dimFactor: dimFactor)
+        if lineSub.contains("\\textbackslash") {
+            latexTextBackslashRegex.enumerateMatches(in: string, options: [], range: effectiveRange) { match, _, _ in
+                guard let match = match, !isProtected(match.range) else { return }
+                storage.addAttribute(MKey.noSpellCheck, value: true, range: match.range)
+                let wordRange = match.range(at: 1)
+                if wordRange.location != NSNotFound && wordRange.length > 0 {
+                    MarkdownLiveStyler.styleSyntaxToken(in: storage, range: wordRange, isActiveLine: showTokens, theme: theme, dimFactor: dimFactor)
+                }
             }
         }
 

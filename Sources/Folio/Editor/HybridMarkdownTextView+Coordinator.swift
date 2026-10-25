@@ -18,6 +18,7 @@ extension HybridMarkdownEditorRepresentable {
         var lastTextAlignment: EditorTextAlignment?
         var lastFileURL: URL?
         var lastFocusMode: Bool?
+        var lastSpellCheckEnabled: Bool?
         var lastActiveLineRange: NSRange?
         var lastKnownTextHash: Int?
         var lastContentWidth: CGFloat = 0
@@ -87,28 +88,35 @@ extension HybridMarkdownEditorRepresentable {
 
             let horizontalPad = max(44.0, floor((viewportWidth - maxWrite) / 2.0))
             let proseWidth = max(200.0, viewportWidth - horizontalPad * 2.0)
+            var geometryChanged = false
             if textView.textContainerInset.height != 42.0 {
                 textView.textContainerInset = NSSize(width: 44.0, height: 42.0)
+                geometryChanged = true
             }
             if textView.horizontalColumnInset != horizontalPad {
                 textView.horizontalColumnInset = horizontalPad
             }
             if abs(textView.proseColumnWidth - proseWidth) > 0.5 {
                 textView.proseColumnWidth = proseWidth
+                geometryChanged = true
             }
 
             // The canvas is exactly the viewport; tables wider than the column are laid out by
             // WideBlockTextContainer instead of widening the canvas.
             if abs(textView.frame.size.width - viewportWidth) > 0.5 {
                 textView.frame.size.width = viewportWidth
+                geometryChanged = true
             }
             if let tc = textView.textContainer {
                 let targetContainerSize = NSSize(width: proseWidth, height: CGFloat.greatestFiniteMagnitude)
                 if abs(tc.containerSize.width - targetContainerSize.width) > 0.5 {
                     tc.containerSize = targetContainerSize
+                    geometryChanged = true
                 }
             }
-            textView.refreshWideTableLayout()
+            if geometryChanged {
+                textView.refreshWideTableLayout()
+            }
             if !hasPerformedInitialScroll && scrollView.bounds.height > 0 {
                 hasPerformedInitialScroll = true
                 if viewModel.currentSelectedRange.location == 0 {
@@ -267,7 +275,9 @@ extension HybridMarkdownEditorRepresentable {
             if let lm = textView.layoutManager {
                 let fullRange = NSRange(location: 0, length: (storage.string as NSString).length)
                 if !viewModel.spellCheckEnabled {
-                    lm.removeTemporaryAttribute(.spellingState, forCharacterRange: fullRange)
+                    if lastSpellCheckEnabled != false {
+                        lm.removeTemporaryAttribute(.spellingState, forCharacterRange: fullRange)
+                    }
                 } else {
                     for dec in analysis.decorations {
                         lm.removeTemporaryAttribute(.spellingState, forCharacterRange: dec.lineRange)
@@ -282,6 +292,7 @@ extension HybridMarkdownEditorRepresentable {
                         }
                     }
                 }
+                lastSpellCheckEnabled = viewModel.spellCheckEnabled
             }
 
             if let scrollView = textView.enclosingScrollView {

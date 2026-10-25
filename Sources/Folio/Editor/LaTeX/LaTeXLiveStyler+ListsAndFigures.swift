@@ -174,7 +174,10 @@ extension LaTeXLiveStyler {
         }
 
         // 2. \hline, \toprule, \midrule, \bottomrule
-        if tableRuleRegex.firstMatch(in: lineText, range: localFull) != nil {
+        if (trimmedLine.hasPrefix("\\hline") || trimmedLine.hasPrefix("\\toprule")
+            || trimmedLine.hasPrefix("\\midrule") || trimmedLine.hasPrefix("\\bottomrule")
+            || trimmedLine.hasPrefix("\\cline")),
+           tableRuleRegex.firstMatch(in: lineText, range: localFull) != nil {
             storage.addAttribute(MKey.noSpellCheck, value: true, range: lineRange)
             if !isActiveLine && prettyMode {
                 MarkdownLiveStyler.collapseWhitespaceRange(in: storage, range: contentRange)
@@ -186,7 +189,8 @@ extension LaTeXLiveStyler {
         }
 
         // 3. \item or \item[...]
-        if let im = itemCommandRegex.firstMatch(in: lineText, range: localFull) {
+        if trimmedLine.hasPrefix("\\item"),
+           let im = itemCommandRegex.firstMatch(in: lineText, range: localFull) {
             let itemTokenRange = NSRange(location: contentRange.location + im.range(at: 2).location, length: im.range(at: 2).length)
             let optLabelLocal = im.range(at: 3)
             let spaceRange = NSRange(location: contentRange.location + im.range(at: 4).location, length: im.range(at: 4).length)
@@ -247,7 +251,8 @@ extension LaTeXLiveStyler {
         }
 
         // 4. \includegraphics[...]{path}
-        if let gm = includeGraphicsRegex.firstMatch(in: lineText, range: localFull) {
+        if trimmedLine.hasPrefix("\\includegraphics"),
+           let gm = includeGraphicsRegex.firstMatch(in: lineText, range: localFull) {
             let imgPath = (lineText as NSString).substring(with: gm.range(at: 3))
             storage.addAttribute(MKey.noSpellCheck, value: true, range: lineRange)
             if !isActiveLine && prettyMode {
@@ -288,7 +293,8 @@ extension LaTeXLiveStyler {
         }
 
         // 5. \caption{...}
-        if let cm = captionCommandRegex.firstMatch(in: lineText, range: localFull) {
+        if trimmedLine.hasPrefix("\\caption"),
+           let cm = captionCommandRegex.firstMatch(in: lineText, range: localFull) {
             let openRange = NSRange(location: contentRange.location + cm.range(at: 2).location, length: cm.range(at: 2).length)
             let innerRange = NSRange(location: contentRange.location + cm.range(at: 3).location, length: cm.range(at: 3).length)
             let closeRange = NSRange(location: contentRange.location + cm.range(at: 4).location, length: cm.range(at: 4).length)

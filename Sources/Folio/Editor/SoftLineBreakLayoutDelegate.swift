@@ -93,15 +93,17 @@ final class SoftLineBreakLayoutDelegate: NSObject, NSLayoutManagerDelegate {
         guard charIndex > 0,
               let storage = layoutManager.textStorage,
               charIndex <= storage.length else { return true }
+        var effectiveSpanRange = NSRange(location: 0, length: 0)
         if let prevInfo = storage.attribute(
             MarkdownLiveStyler.inlineMathSpanAttributeKey,
             at: charIndex - 1,
-            effectiveRange: nil
+            effectiveRange: &effectiveSpanRange
         ) as? MarkdownLiveStyler.InlineMathLayoutInfo {
-            if charIndex < NSMaxRange(prevInfo.range) {
+            let spanEnd = effectiveSpanRange.location + prevInfo.range.length
+            if charIndex < spanEnd {
                 return false
             }
-            if charIndex == NSMaxRange(prevInfo.range), charIndex < storage.length {
+            if charIndex == spanEnd, charIndex < storage.length {
                 let ch = (storage.string as NSString).character(at: charIndex)
                 if isAttachedTrailingPunctuation(ch) {
                     return false
