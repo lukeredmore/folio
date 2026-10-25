@@ -77,7 +77,10 @@ public enum LaTeXLiveStyler {
             ? theme.codeFont(size: effectiveBaseSize)
             : theme.bodyFont(size: effectiveBaseSize)
 
-        let baseAttributes: [NSAttributedString.Key: Any] = [
+        let wasSourceMode = storage.attribute(LaTeXBlockStyleCache.sourceModePassAttributeKey, at: 0, effectiveRange: nil) != nil
+        let kind = documentKind(for: string, fileURL: fileURL)
+
+        var baseAttributes: [NSAttributedString.Key: Any] = [
             .font: baseFont,
             .foregroundColor: theme.textNSColor,
             .paragraphStyle: defaultParagraphStyle,
@@ -85,12 +88,16 @@ public enum LaTeXLiveStyler {
             .backgroundColor: NSColor.clear,
             .underlineStyle: 0,
             .strikethroughStyle: 0,
-            .baselineOffset: 0.0,
-            LaTeXBlockStyleCache.styledPassAttributeKey: true
+            .baselineOffset: 0.0
         ]
+        if sourceCodeMode {
+            baseAttributes[LaTeXBlockStyleCache.sourceModePassAttributeKey] = true
+        } else if kind == .latex {
+            baseAttributes[LaTeXBlockStyleCache.styledPassAttributeKey] = true
+        }
 
-        let kind = documentKind(for: string, fileURL: fileURL)
         if kind == .bibtex {
+            LaTeXBlockStyleCache.invalidate()
             storage.beginEditing()
             storage.setAttributes(baseAttributes, range: fullRange)
             let bibResult = applyBibTeXStyles(
@@ -104,6 +111,9 @@ public enum LaTeXLiveStyler {
                 fileURL: fileURL
             )
             storage.endEditing()
+            if wasSourceMode != sourceCodeMode {
+                LaTeXBlockStyleCache.invalidateLayoutManagers(for: storage, fullRange: fullRange)
+            }
             return bibResult
         }
 
@@ -116,6 +126,7 @@ public enum LaTeXLiveStyler {
         LaTeXMathRenderer.setDocumentMacros(docMacros)
 
         if sourceCodeMode {
+            LaTeXBlockStyleCache.invalidate()
             let headings = extractLaTeXOutlineHeadings(docIndex: docIndex)
             let codeFont = theme.codeFont(size: effectiveBaseSize * 0.94)
             storage.beginEditing()
@@ -123,7 +134,12 @@ public enum LaTeXLiveStyler {
             storage.addAttribute(.font, value: codeFont, range: fullRange)
             MarkdownLiveStyler.highlightLaTeXSource(in: storage, range: fullRange, theme: theme, dimFactor: 1.0)
             storage.endEditing()
+            LaTeXBlockStyleCache.invalidateLayoutManagers(for: storage, fullRange: fullRange)
             return MarkdownDocumentAnalysis(headings: headings, decorations: [])
+        }
+
+        if wasSourceMode {
+            LaTeXBlockStyleCache.invalidate()
         }
 
         let safeCursorLoc = min(selectedRange.location, fullLength)
@@ -182,6 +198,9 @@ public enum LaTeXLiveStyler {
         )
 
         storage.endEditing()
+        if session == nil || wasSourceMode {
+            LaTeXBlockStyleCache.invalidateLayoutManagers(for: storage, fullRange: fullRange)
+        }
         LaTeXBlockStyleCache.saveSession(
             for: storage,
             config: styleConfig,

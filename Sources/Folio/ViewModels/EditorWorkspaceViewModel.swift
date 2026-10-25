@@ -3,27 +3,6 @@ import Combine
 import Foundation
 import SwiftUI
 
-public enum SidebarTab: String, CaseIterable, Identifiable {
-    case files = "Files"
-    case outline = "Outline"
-    case search = "Search"
-
-    public var id: String { rawValue }
-
-    public var systemImage: String {
-        switch self {
-        case .files: return "folder"
-        case .outline: return "list.bullet.indent"
-        case .search: return "magnifyingglass"
-        }
-    }
-}
-
-public enum FileDisplayStyle: String, CaseIterable {
-    case tree = "Tree"
-    case list = "List"
-}
-
 @MainActor
 public final class EditorWorkspaceViewModel: ObservableObject {
 
@@ -189,6 +168,22 @@ public final class EditorWorkspaceViewModel: ObservableObject {
         didSet {
             guard !isRestoringState else { return }
             userDefaults.set(printPaperSize.rawValue, forKey: Self.printPaperSizeDefaultsKey)
+        }
+    }
+    /// Page orientation used by Print (unless overridden in the document).
+    @Published public var printOrientation: PrintOrientation = .portrait {
+        didSet {
+            guard !isRestoringState else { return }
+            userDefaults.set(printOrientation.rawValue, forKey: Self.printOrientationDefaultsKey)
+        }
+    }
+    /// Page margins used by Print (unless overridden in the document).
+    @Published public var printMargins: PrintPageMargins = .default {
+        didSet {
+            guard !isRestoringState else { return }
+            if let encoded = try? JSONEncoder().encode(printMargins) {
+                userDefaults.set(encoded, forKey: Self.printMarginsDefaultsKey)
+            }
         }
     }
     /// Custom `curl` command prefix used to fetch remote media URLs (e.g. `curl -b "session=..."`).

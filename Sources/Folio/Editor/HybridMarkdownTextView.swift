@@ -7,6 +7,7 @@ public final class HybridMarkdownTextView: NSTextView {
 
     public weak var workspaceViewModel: EditorWorkspaceViewModel?
     weak var editorCoordinator: HybridMarkdownEditorRepresentable.Coordinator?
+    let softLineBreakLayoutDelegate = SoftLineBreakLayoutDelegate()
 
     public var currentTheme: EditorTheme = .daylight {
         didSet {
