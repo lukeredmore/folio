@@ -41,8 +41,8 @@ extension LaTeXLiveStyler {
         let isTheoremOrProof = !isAbstract && !isQuote
         let isItalicBody = italicTheoremEnvironments.contains(envName)
         let bodyFont = isItalicBody
-            ? theme.bodyFont(size: effectiveBaseSize, italic: true)
-            : (isAbstract ? theme.bodyFont(size: effectiveBaseSize * 0.95) : baseFont)
+            ? docIndex.bodyFont(size: effectiveBaseSize, italic: true, fallbackTheme: theme)
+            : (isAbstract ? docIndex.bodyFont(size: effectiveBaseSize * 0.95, fallbackTheme: theme) : baseFont)
         let indent: CGFloat = isAbstract ? 28.0 : (isQuote ? 20.0 : 18.0)
 
         for (i, el) in envLines.enumerated() {
@@ -70,8 +70,8 @@ extension LaTeXLiveStyler {
 
             let pStyle = NSMutableParagraphStyle()
             pStyle.alignment = textAlignment
-            pStyle.lineHeightMultiple = typography.lineHeightMultiple
-            pStyle.lineSpacing = max(2.0, typography.lineSpacing * 0.85)
+            pStyle.lineHeightMultiple = docIndex.effectiveLineHeightMultiple(fallback: typography)
+            pStyle.lineSpacing = docIndex.effectiveLineSpacing(fallback: typography)
             pStyle.paragraphSpacing = max(3.0, typography.paragraphSpacing * 0.5)
             pStyle.firstLineHeadIndent = indent
             pStyle.headIndent = indent
@@ -199,8 +199,8 @@ extension LaTeXLiveStyler {
             let baseIndent: CGFloat = 14.0
             let textIndent: CGFloat = 28.0
             let pStyle = NSMutableParagraphStyle()
-            pStyle.lineHeightMultiple = typography.lineHeightMultiple
-            pStyle.lineSpacing = typography.lineSpacing
+            pStyle.lineHeightMultiple = docIndex.effectiveLineHeightMultiple(fallback: typography)
+            pStyle.lineSpacing = docIndex.effectiveLineSpacing(fallback: typography)
             pStyle.paragraphSpacing = max(3.0, typography.paragraphSpacing * 0.45)
             pStyle.firstLineHeadIndent = baseIndent
             pStyle.headIndent = textIndent
@@ -213,7 +213,7 @@ extension LaTeXLiveStyler {
                     length: optLabelLocal.length + 2
                 )
                 MarkdownLiveStyler.styleSyntaxToken(in: storage, range: itemTokenRange, isActiveLine: isActiveLine, theme: theme, dimFactor: dimFactor)
-                storage.addAttribute(.font, value: theme.bodyFont(size: effectiveBaseSize, bold: true), range: bracketFull)
+                storage.addAttribute(.font, value: docIndex.bodyFont(size: effectiveBaseSize, bold: true, fallbackTheme: theme), range: bracketFull)
             } else if !isActiveLine && prettyMode {
                 let prefixRange = NSRange(
                     location: contentRange.location,
@@ -298,7 +298,7 @@ extension LaTeXLiveStyler {
             let openRange = NSRange(location: contentRange.location + cm.range(at: 2).location, length: cm.range(at: 2).length)
             let innerRange = NSRange(location: contentRange.location + cm.range(at: 3).location, length: cm.range(at: 3).length)
             let closeRange = NSRange(location: contentRange.location + cm.range(at: 4).location, length: cm.range(at: 4).length)
-            let captionFont = theme.bodyFont(size: effectiveBaseSize * 0.90, italic: true)
+            let captionFont = docIndex.bodyFont(size: effectiveBaseSize * 0.90, italic: true, fallbackTheme: theme)
             let pStyle = NSMutableParagraphStyle()
             pStyle.alignment = .center
             pStyle.paragraphSpacingBefore = 4.0

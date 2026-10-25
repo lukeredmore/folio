@@ -279,7 +279,12 @@ extension LaTeXLiveStyler {
             lineNumber: lineNumber
         ))
 
-        let headingFont = theme.headingFont(level: level, scale: typography.fontSizeScale)
+        let headingFont = docIndex.headingFont(
+            level: level,
+            scale: typography.fontSizeScale,
+            baseSize: effectiveBaseSize,
+            fallbackTheme: theme
+        )
         let innerLocal = match.range(at: 3)
         let innerRange = NSRange(location: contentRange.location + innerLocal.location, length: innerLocal.length)
         let openSyntaxRange = NSRange(location: contentRange.location, length: innerLocal.location)

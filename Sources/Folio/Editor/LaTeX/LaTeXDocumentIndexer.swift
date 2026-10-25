@@ -81,6 +81,7 @@ public struct LaTeXDocumentIndex {
     public var blockTableNumbers: [Int: String] = [:]
     public var bibEntries: [String: BibTeXEntry] = [:]
     public var extraMacros: [String: LaTeXMacroDefinition] = [:]
+    public var documentStyle = LaTeXDocumentStyle()
 
     public var preambleSummaryTitle: String {
         let opt = documentClassOptions.isEmpty ? "" : " (\(documentClassOptions))"
@@ -99,7 +100,7 @@ enum LaTeXDocumentIndexer {
         pattern: #"\\documentclass(?:\[([^\]]*)\])?\{([^}]+)\}"#
     )
     static let usepackageRegex = try! NSRegularExpression(
-        pattern: #"\\usepackage(?:\[[^\]]*\])?\{([^}]+)\}"#
+        pattern: #"\\usepackage(?:\[([^\]]*)\])?\{([^}]+)\}"#
     )
     static let sectionRegex = try! NSRegularExpression(
         pattern: #"^\s*\\(part|chapter|section|sectiontitle|subsection|subsubsection|paragraph|subparagraph)(\*?)(?:\[[^\]]*\])?\{((?:[^{}]|\{[^{}]*\})*)\}"#
@@ -159,6 +160,7 @@ enum LaTeXDocumentIndexer {
                 if let m = docClassRegex.firstMatch(in: line, range: NSRange(location: 0, length: (line as NSString).length)) {
                     if m.range(at: 1).location != NSNotFound {
                         idx.documentClassOptions = (line as NSString).substring(with: m.range(at: 1))
+                        parseDocumentClassOptions(idx.documentClassOptions, into: &idx.documentStyle)
                     }
                     idx.documentClass = (line as NSString).substring(with: m.range(at: 2))
                 }
@@ -177,12 +179,18 @@ enum LaTeXDocumentIndexer {
                 if line.contains("\\usepackage") {
                     usepackageRegex.enumerateMatches(in: line, range: NSRange(location: 0, length: (line as NSString).length)) { m, _, _ in
                         guard let m = m else { return }
-                        let raw = (line as NSString).substring(with: m.range(at: 1))
+                        let pkgOpts = m.range(at: 1).location != NSNotFound
+                            ? (line as NSString).substring(with: m.range(at: 1))
+                            : nil
+                        let raw = (line as NSString).substring(with: m.range(at: 2))
                         for pkg in raw.split(separator: ",") {
-                            idx.packageNames.append(pkg.trimmingCharacters(in: .whitespaces))
+                            let pkgName = pkg.trimmingCharacters(in: .whitespaces)
+                            idx.packageNames.append(pkgName)
+                            applyPackageStyleDefaults(packageName: pkgName, options: pkgOpts, into: &idx.documentStyle)
                         }
                     }
                 }
+                parsePreambleStyleDirectives(in: line, trimmed: trimmed, into: &idx.documentStyle)
                 if trimmed.hasPrefix("\\newcommand") || trimmed.hasPrefix("\\renewcommand")
                     || trimmed.hasPrefix("\\DeclareMathOperator") || trimmed.hasPrefix("\\def\\")
                     || trimmed.hasPrefix("\\providecommand") {

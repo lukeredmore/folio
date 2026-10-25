@@ -71,13 +71,18 @@ extension LaTeXLiveStyler {
         let color: NSColor
         switch cmd {
         case "title":
-            font = theme.headingFont(level: 1, scale: typography.fontSizeScale * 1.05)
+            font = docIndex.headingFont(
+                level: 1,
+                scale: typography.fontSizeScale * 1.05,
+                baseSize: effectiveBaseSize * 1.05,
+                fallbackTheme: theme
+            )
             color = theme.headingNSColor
         case "author":
-            font = theme.bodyFont(size: effectiveBaseSize * 1.06, semibold: true)
+            font = docIndex.bodyFont(size: effectiveBaseSize * 1.06, semibold: true, fallbackTheme: theme)
             color = theme.textNSColor
         default:
-            font = theme.bodyFont(size: effectiveBaseSize * 0.94)
+            font = docIndex.bodyFont(size: effectiveBaseSize * 0.94, fallbackTheme: theme)
             color = theme.secondaryTextNSColor
         }
 
@@ -241,8 +246,8 @@ extension LaTeXLiveStyler {
                 }
                 let pStyle = NSMutableParagraphStyle()
                 pStyle.alignment = .center
-                pStyle.lineHeightMultiple = typography.lineHeightMultiple
-                pStyle.lineSpacing = max(2.0, typography.lineSpacing * 0.85)
+                pStyle.lineHeightMultiple = docIndex.effectiveLineHeightMultiple(fallback: typography)
+                pStyle.lineSpacing = docIndex.effectiveLineSpacing(fallback: typography)
                 pStyle.paragraphSpacing = max(3.0, typography.paragraphSpacing * 0.5)
                 pStyle.tailIndent = effectiveContainerWidth
                 storage.addAttributes([

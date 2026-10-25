@@ -63,7 +63,7 @@ extension LaTeXLiveStyler {
             ).trimmingCharacters(in: .whitespaces).isEmpty
 
             if isActiveLine || !prettyMode {
-                let commentFont = theme.bodyFont(size: fontSize * 0.92, italic: true)
+                let commentFont = docIndex.bodyFont(size: fontSize * 0.92, italic: true, fallbackTheme: theme)
                 storage.addAttributes([
                     .font: commentFont,
                     .foregroundColor: theme.secondaryTextNSColor.withAlphaComponent(0.75 * dimFactor)
@@ -283,6 +283,7 @@ extension LaTeXLiveStyler {
             fontSize: fontSize,
             isActiveLine: isActiveLine,
             prettyMode: prettyMode,
+            docIndex: docIndex,
             theme: theme,
             dimFactor: dimFactor,
             isProtected: isProtected,
