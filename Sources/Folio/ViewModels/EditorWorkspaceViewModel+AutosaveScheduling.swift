@@ -44,7 +44,10 @@ extension EditorWorkspaceViewModel {
             return
         }
         if currentFileURL != nil {
-            isDirty = markdownText != lastSavedDiskContent
+            let dirty = markdownText != lastSavedDiskContent
+            if isDirty != dirty {
+                isDirty = dirty
+            }
         }
         let workItem = DispatchWorkItem { [weak self] in
             MainActor.assumeIsolated {
@@ -59,10 +62,14 @@ extension EditorWorkspaceViewModel {
 
     /// Runs a scheduled autosave now. Called before switching files, saving, and quitting.
     public func flushPendingAutoSave() {
-        guard let workItem = pendingAutoSaveWorkItem else { return }
-        workItem.cancel()
-        pendingAutoSaveWorkItem = nil
-        autoSaveOrStageCurrentDocument()
+        if let workItem = pendingAutoSaveWorkItem {
+            workItem.cancel()
+            pendingAutoSaveWorkItem = nil
+            autoSaveOrStageCurrentDocument()
+        }
+        if hasUnpersistedUndoChanges {
+            persistUndoTimelines()
+        }
     }
 
     var hasPendingAutoSave: Bool { pendingAutoSaveWorkItem != nil }
@@ -186,6 +193,10 @@ extension EditorWorkspaceViewModel {
         guard !isRestoringState else { return }
         userDefaults.set(true, forKey: Self.hasSavedDocumentSessionDefaultsKey)
         userDefaults.set(isDirty, forKey: Self.unsavedBufferIsDirtyDefaultsKey)
+        userDefaults.set(currentSelectedRange.location, forKey: Self.selectedCursorLocationDefaultsKey)
+        if hasUnpersistedUndoChanges {
+            persistUndoTimelines()
+        }
         if let fileURL = currentFileURL {
             userDefaults.set(fileURL.path, forKey: Self.currentFilePathDefaultsKey)
             if isDirty {

@@ -39,7 +39,7 @@ extension HybridMarkdownTextView {
                     width: drawW,
                     height: drawH
                 )
-                img.draw(in: drawRect, from: .zero, operation: .sourceOver, fraction: dimFactor, respectFlipped: true, hints: nil)
+                DiagramImageRenderer.drawCached(img, in: drawRect, fraction: dimFactor)
             } else {
                 drawDiagramPlaceholder(in: innerRect, key: diagramKey, dimFactor: dimFactor)
             }
@@ -83,7 +83,7 @@ extension HybridMarkdownTextView {
                     width: drawW,
                     height: drawH
                 )
-                img.draw(in: drawRect, from: .zero, operation: .sourceOver, fraction: dimFactor, respectFlipped: true, hints: nil)
+                DiagramImageRenderer.drawCached(img, in: drawRect, fraction: dimFactor)
             } else {
                 drawDiagramPlaceholder(in: innerRect, key: diagramKey, dimFactor: dimFactor)
             }
@@ -146,7 +146,7 @@ extension HybridMarkdownTextView {
                     height: drawH
                 )
                 updateInlineVideoFrameIfActive(for: url, fullRange: fullRange, drawRect: drawRect)
-                img.draw(in: drawRect, from: .zero, operation: .sourceOver, fraction: dimFactor, respectFlipped: true, hints: nil)
+                DiagramImageRenderer.drawCached(img, in: drawRect, fraction: dimFactor)
 
                 if isVideo {
                     let circleRadius: CGFloat = 20.0

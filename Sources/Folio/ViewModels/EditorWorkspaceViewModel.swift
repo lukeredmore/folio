@@ -57,7 +57,7 @@ public final class EditorWorkspaceViewModel: ObservableObject {
                     headings = analysis.headings
                 }
                 scheduleAutoSave()
-            } else {
+            } else if !isApplyingInternalStateChange {
                 persistDocumentSessionState()
             }
         }
@@ -72,7 +72,7 @@ public final class EditorWorkspaceViewModel: ObservableObject {
     }
     @Published public var isDirty: Bool = false {
         didSet {
-            guard !isRestoringState else { return }
+            guard !isRestoringState, isDirty != oldValue else { return }
             persistDocumentSessionState()
         }
     }
@@ -90,6 +90,7 @@ public final class EditorWorkspaceViewModel: ObservableObject {
     @Published public var showConflictResolverModal: Bool = false
 
     var perFileUndoTimelines: [String: DocumentUndoTimeline] = [:]
+    var hasUnpersistedUndoChanges: Bool = false
     public var currentSelectedRange: NSRange = NSRange(location: 0, length: 0)
     var isApplyingInternalStateChange: Bool = false
     var pendingEditOrigin: UndoEntryOrigin = .userTyping

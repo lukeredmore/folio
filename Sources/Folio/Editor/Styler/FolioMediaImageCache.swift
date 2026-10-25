@@ -37,7 +37,9 @@ public final class FolioMediaImageCache: @unchecked Sendable {
         }
 
         let svg = MarkdownLiveStyler.renderMermaidSVG(source, isDark: isDark)
-        let img = svg.data(using: .utf8).flatMap { NSImage(data: $0) }
+        let img = svg.data(using: .utf8)
+            .flatMap { NSImage(data: $0) }
+            .map { DiagramImageRenderer.rasterizeVectorImage($0) }
         lock.lock()
         svgStringCache[key] = svg
         if let img = img {
@@ -59,7 +61,9 @@ public final class FolioMediaImageCache: @unchecked Sendable {
         }
 
         let normalized = MarkdownLiveStyler.normalizeSVG(rawSVG)
-        let img = normalized.data(using: .utf8).flatMap { NSImage(data: $0) }
+        let img = normalized.data(using: .utf8)
+            .flatMap { NSImage(data: $0) }
+            .map { DiagramImageRenderer.rasterizeVectorImage($0) }
         lock.lock()
         svgStringCache[key] = normalized
         if let img = img {

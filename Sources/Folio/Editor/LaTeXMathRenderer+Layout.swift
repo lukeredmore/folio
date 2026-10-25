@@ -1,32 +1,52 @@
 import AppKit
 import Foundation
 
+private struct MathFontCacheKey: Hashable {
+    let style: MathFontStyle
+    let quantizedSize: Int
+}
+
 extension LaTeXMathRenderer {
+    private static let fontCacheLock = NSLock()
+    nonisolated(unsafe) private static var fontCache: [MathFontCacheKey: NSFont] = [:]
 
     // MARK: - 2D Box Layout Engine (Flipped NSView coordinates: +y is downward)
     static func font(for style: MathFontStyle, size: CGFloat) -> NSFont {
+        let key = MathFontCacheKey(style: style, quantizedSize: Int((size * 100.0).rounded()))
+        fontCacheLock.lock()
+        if let cached = fontCache[key] {
+            fontCacheLock.unlock()
+            return cached
+        }
+        fontCacheLock.unlock()
+
+        let resolved: NSFont
         switch style {
         case .italicVariable:
-            return NSFont(name: "Times New Roman Italic", size: size)
+            resolved = NSFont(name: "Times New Roman Italic", size: size)
                 ?? NSFont(name: "Georgia Italic", size: size)
                 ?? NSFontManager.shared.convert(NSFont.systemFont(ofSize: size), toHaveTrait: .italicFontMask)
         case .romanUpright, .calligraphic, .blackboardBold:
-            return NSFont(name: "Times New Roman", size: size)
+            resolved = NSFont(name: "Times New Roman", size: size)
                 ?? NSFont(name: "Georgia", size: size)
                 ?? NSFont.systemFont(ofSize: size, weight: .regular)
         case .boldUpright:
-            return NSFont(name: "Times New Roman Bold", size: size)
+            resolved = NSFont(name: "Times New Roman Bold", size: size)
                 ?? NSFont(name: "Georgia Bold", size: size)
                 ?? NSFont.systemFont(ofSize: size, weight: .bold)
         case .monospace:
-            return NSFont.monospacedSystemFont(ofSize: size * 0.9, weight: .regular)
+            resolved = NSFont.monospacedSystemFont(ofSize: size * 0.9, weight: .regular)
         case .operatorSymbol:
-            return NSFont(name: "Times New Roman", size: size)
+            resolved = NSFont(name: "Times New Roman", size: size)
                 ?? NSFont.systemFont(ofSize: size, weight: .regular)
         case .bigOperator:
-            return NSFont(name: "Times New Roman", size: size * 1.45)
+            resolved = NSFont(name: "Times New Roman", size: size * 1.45)
                 ?? NSFont.systemFont(ofSize: size * 1.45, weight: .light)
         }
+        fontCacheLock.lock()
+        fontCache[key] = resolved
+        fontCacheLock.unlock()
+        return resolved
     }
 
     static func layoutNode(
