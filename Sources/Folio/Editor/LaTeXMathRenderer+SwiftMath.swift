@@ -86,7 +86,43 @@ extension LaTeXMathRenderer {
             return cached
         }
 
-        guard let mathList = buildMathListUnlocked(from: expanded),
+        let box: MathLayoutBox
+        if expanded.contains("\\boxed"),
+           let boxedComposite = layoutBoxedSwiftMathUnlocked(
+               expanded,
+               sizeTenths: sizeTenths,
+               baseFontSize: baseFontSize,
+               isDisplayStyle: isDisplayStyle,
+               tag: tag
+           ) {
+            box = boxedComposite
+        } else if let single = layoutSingleSwiftMathUnlocked(
+            expanded,
+            sizeTenths: sizeTenths,
+            baseFontSize: baseFontSize,
+            isDisplayStyle: isDisplayStyle,
+            tag: tag
+        ) {
+            box = single
+        } else {
+            return nil
+        }
+
+        if layoutCache.count >= 512 {
+            layoutCache.removeAll(keepingCapacity: true)
+        }
+        layoutCache[cacheKey] = box
+        return box
+    }
+
+    private static func layoutSingleSwiftMathUnlocked(
+        _ latex: String,
+        sizeTenths: Int,
+        baseFontSize: CGFloat,
+        isDisplayStyle: Bool,
+        tag: String?
+    ) -> MathLayoutBox? {
+        guard let mathList = buildMathListUnlocked(from: latex),
               let mtFont = mtFontUnlocked(sizeTenths: sizeTenths),
               let displayList = mathList.folioTypeset(
                   font: mtFont,
@@ -99,7 +135,7 @@ extension LaTeXMathRenderer {
         let ascent = max(baseFontSize * 0.68, ceil(displayList.ascent))
         let descent = max(baseFontSize * 0.20, ceil(displayList.descent))
 
-        let box = MathLayoutBox(
+        return MathLayoutBox(
             width: width,
             ascent: ascent,
             descent: descent,
@@ -120,12 +156,92 @@ extension LaTeXMathRenderer {
             }
             cgContext.restoreGState()
         }
+    }
 
-        if layoutCache.count >= 512 {
-            layoutCache.removeAll(keepingCapacity: true)
+    private static func layoutBoxedSwiftMathUnlocked(
+        _ expanded: String,
+        sizeTenths: Int,
+        baseFontSize: CGFloat,
+        isDisplayStyle: Bool,
+        tag: String?
+    ) -> MathLayoutBox? {
+        let chars = Array(expanded)
+        var segments: [(text: String, isBoxed: Bool)] = []
+        var current = ""
+        var i = 0
+        var foundBoxed = false
+        while i < chars.count {
+            if chars[i] == "\\",
+               String(chars[i...]).hasPrefix("\\boxed") {
+                var j = i + 6
+                while j < chars.count && chars[j].isWhitespace { j += 1 }
+                if j < chars.count && chars[j] == "{" {
+                    var depth = 1
+                    var k = j + 1
+                    while k < chars.count && depth > 0 {
+                        if chars[k] == "\\" { k += 2; continue }
+                        if chars[k] == "{" { depth += 1 }
+                        else if chars[k] == "}" { depth -= 1 }
+                        k += 1
+                    }
+                    if depth == 0 {
+                        let trimmedCur = current.trimmingCharacters(in: .whitespaces)
+                        if !trimmedCur.isEmpty { segments.append((trimmedCur, false)) }
+                        current = ""
+                        let inner = String(chars[(j + 1)..<(k - 1)])
+                        segments.append((inner, true))
+                        foundBoxed = true
+                        i = k
+                        continue
+                    }
+                }
+            }
+            current.append(chars[i])
+            i += 1
         }
-        layoutCache[cacheKey] = box
-        return box
+        let trailing = current.trimmingCharacters(in: .whitespaces)
+        if !trailing.isEmpty { segments.append((trailing, false)) }
+        guard foundBoxed, !segments.isEmpty else { return nil }
+
+        var boxes: [(box: MathLayoutBox, isPunct: Bool)] = []
+        for seg in segments {
+            guard let rawBox = layoutSingleSwiftMathUnlocked(
+                seg.text,
+                sizeTenths: sizeTenths,
+                baseFontSize: baseFontSize,
+                isDisplayStyle: isDisplayStyle,
+                tag: nil
+            ) else {
+                return nil
+            }
+            let finalBox = seg.isBoxed ? wrapInBoxedFrame(rawBox) : rawBox
+            let isPunct = !seg.isBoxed && (seg.text == "." || seg.text == "," || seg.text == ";")
+            boxes.append((finalBox, isPunct))
+        }
+
+        var totalW: CGFloat = 0
+        var maxAsc: CGFloat = baseFontSize * 0.68
+        var maxDesc: CGFloat = baseFontSize * 0.20
+        for (idx, item) in boxes.enumerated() {
+            if idx > 0 { totalW += item.isPunct ? 1.5 : 4.0 }
+            totalW += item.box.width
+            maxAsc = max(maxAsc, item.box.ascent)
+            maxDesc = max(maxDesc, item.box.descent)
+        }
+        return MathLayoutBox(
+            width: totalW,
+            ascent: maxAsc,
+            descent: maxDesc,
+            tag: tag,
+            usesNativeOpenTypeMath: true
+        ) { x, baselineY, color in
+            var curX = x
+            for (idx, item) in boxes.enumerated() {
+                if idx > 0 { curX += item.isPunct ? 1.5 : 4.0 }
+                item.box.drawBox(curX, baselineY, color)
+                curX += item.box.width
+            }
+        }
     }
 
     private static func mtFontUnlocked(sizeTenths: Int) -> MTFont? {
@@ -186,87 +302,42 @@ extension LaTeXMathRenderer {
         didRegisterSymbols = true
 
         let largeOps: [(String, String, Bool)] = [
-            ("iint", "\u{222C}", false),
-            ("iiint", "\u{222D}", false),
-            ("iiiint", "\u{2A0C}", false),
-            ("oiint", "\u{222F}", false),
-            ("oiiint", "\u{2230}", false),
-            ("argmin", "arg min", true),
-            ("argmax", "arg max", true),
-            ("Tr", "Tr", false),
-            ("tr", "tr", false),
-            ("rank", "rank", false),
-            ("diag", "diag", false),
-            ("sgn", "sgn", false),
-            ("cov", "cov", false),
-            ("Var", "Var", false),
-            ("erf", "erf", false),
-            ("erfc", "erfc", false),
-            ("sech", "sech", false),
-            ("csch", "csch", false),
+            ("iint", "\u{222C}", false), ("iiint", "\u{222D}", false), ("iiiint", "\u{2A0C}", false),
+            ("oiint", "\u{222F}", false), ("oiiint", "\u{2230}", false), ("argmin", "arg min", true),
+            ("argmax", "arg max", true), ("Tr", "Tr", false), ("tr", "tr", false),
+            ("rank", "rank", false), ("diag", "diag", false), ("sgn", "sgn", false),
+            ("cov", "cov", false), ("Var", "Var", false), ("erf", "erf", false),
+            ("erfc", "erfc", false), ("sech", "sech", false), ("csch", "csch", false),
         ]
         for (name, val, limits) in largeOps {
             MTMathAtomFactory.add(latexSymbol: name, value: MTMathAtomFactory.operatorWithName(val, limits: limits))
         }
 
         let relations: [(String, String)] = [
-            ("implies", "\u{27F9}"),
-            ("impliedby", "\u{27F8}"),
-            ("longmapsto", "\u{27FC}"),
-            ("hookrightarrow", "\u{21AA}"),
-            ("hookleftarrow", "\u{21A9}"),
-            ("rightharpoonup", "\u{21C0}"),
-            ("rightharpoondown", "\u{21C1}"),
-            ("leftharpoonup", "\u{21BC}"),
-            ("leftharpoondown", "\u{21BD}"),
-            ("rightleftharpoons", "\u{21CC}"),
-            ("coloneqq", "\u{2254}"),
-            ("coloneq", "\u{2254}"),
-            ("eqqcolon", "\u{2255}"),
-            ("eqcolon", "\u{2255}"),
-            ("triangleq", "\u{225C}"),
-            ("lesssim", "\u{2272}"),
-            ("gtrsim", "\u{2273}"),
-            ("leqslant", "\u{2A7D}"),
-            ("geqslant", "\u{2A7E}"),
-            ("subsetneq", "\u{228A}"),
-            ("supsetneq", "\u{228B}"),
-            ("nleq", "\u{2270}"),
-            ("ngeq", "\u{2271}"),
-            ("vDash", "\u{22A8}"),
-            ("vdash", "\u{22A2}"),
-            ("dashv", "\u{22A3}"),
-            ("nvdash", "\u{22AC}"),
-            ("nvDash", "\u{22AD}"),
-            ("bowtie", "\u{22C8}"),
+            ("implies", "\u{27F9}"), ("impliedby", "\u{27F8}"), ("longmapsto", "\u{27FC}"),
+            ("hookrightarrow", "\u{21AA}"), ("hookleftarrow", "\u{21A9}"), ("rightharpoonup", "\u{21C0}"),
+            ("rightharpoondown", "\u{21C1}"), ("leftharpoonup", "\u{21BC}"), ("leftharpoondown", "\u{21BD}"),
+            ("rightleftharpoons", "\u{21CC}"), ("coloneqq", "\u{2254}"), ("coloneq", "\u{2254}"),
+            ("eqqcolon", "\u{2255}"), ("eqcolon", "\u{2255}"), ("triangleq", "\u{225C}"),
+            ("lesssim", "\u{2272}"), ("gtrsim", "\u{2273}"), ("leqslant", "\u{2A7D}"),
+            ("geqslant", "\u{2A7E}"), ("subsetneq", "\u{228A}"), ("supsetneq", "\u{228B}"),
+            ("nleq", "\u{2270}"), ("ngeq", "\u{2271}"), ("vDash", "\u{22A8}"),
+            ("vdash", "\u{22A2}"), ("dashv", "\u{22A3}"), ("nvdash", "\u{22AC}"),
+            ("nvDash", "\u{22AD}"), ("bowtie", "\u{22C8}"),
         ]
         for (name, val) in relations {
             MTMathAtomFactory.folioAddSymbol(name, type: .relation, value: val)
         }
 
         let ordinaries: [(String, MTMathAtomType, String)] = [
-            ("varnothing", .ordinary, "\u{2205}"),
-            ("nexists", .ordinary, "\u{2204}"),
-            ("complement", .ordinary, "\u{2201}"),
-            ("checkmark", .ordinary, "\u{2713}"),
-            ("Box", .ordinary, "\u{25A1}"),
-            ("blacksquare", .ordinary, "\u{25A0}"),
-            ("qed", .ordinary, "\u{25A0}"),
-            ("dots", .ordinary, "\u{2026}"),
-            ("dotsc", .ordinary, "\u{2026}"),
-            ("dotsb", .ordinary, "\u{22EF}"),
-            ("dotsm", .ordinary, "\u{22EF}"),
-            ("dotsi", .ordinary, "\u{22EF}"),
-            ("dotso", .ordinary, "\u{2026}"),
-            ("lvert", .open, "|"),
-            ("rvert", .close, "|"),
-            ("lVert", .open, "\u{2016}"),
-            ("rVert", .close, "\u{2016}"),
-            ("llbracket", .open, "\u{27E6}"),
-            ("rrbracket", .close, "\u{27E7}"),
-            ("diamond", .binaryOperator, "\u{22C4}"),
-            ("triangleleft", .binaryOperator, "\u{25C3}"),
-            ("triangleright", .binaryOperator, "\u{25B9}"),
+            ("varnothing", .ordinary, "\u{2205}"), ("nexists", .ordinary, "\u{2204}"), ("complement", .ordinary, "\u{2201}"),
+            ("checkmark", .ordinary, "\u{2713}"), ("Box", .ordinary, "\u{25A1}"), ("blacksquare", .ordinary, "\u{25A0}"),
+            ("qed", .ordinary, "\u{25A0}"), ("dots", .ordinary, "\u{2026}"), ("dotsc", .ordinary, "\u{2026}"),
+            ("dotsb", .ordinary, "\u{22EF}"), ("dotsm", .ordinary, "\u{22EF}"), ("dotsi", .ordinary, "\u{22EF}"),
+            ("dotso", .ordinary, "\u{2026}"), ("lvert", .open, "|"), ("rvert", .close, "|"),
+            ("lVert", .open, "\u{2016}"), ("rVert", .close, "\u{2016}"), ("llbracket", .open, "\u{27E6}"),
+            ("rrbracket", .close, "\u{27E7}"), ("diamond", .binaryOperator, "\u{22C4}"),
+            ("triangleleft", .binaryOperator, "\u{25C3}"), ("triangleright", .binaryOperator, "\u{25B9}"),
         ]
         for (name, kind, val) in ordinaries {
             MTMathAtomFactory.folioAddSymbol(name, type: kind, value: val)

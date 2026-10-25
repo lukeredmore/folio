@@ -5,8 +5,26 @@ extension LaTeXLiveStyler {
 
     static let foldOnlyWrapperEnvironments: Set<String> = [
         "itemize", "enumerate", "description",
-        "figure", "figure*", "table", "table*", "center"
+        "figure", "figure*", "table", "table*"
     ]
+
+    static func isFoldableLayoutBoundaryLine(_ trimmed: String) -> Bool {
+        if trimmed == "\\begin{document}" || trimmed == "\\end{document}" || trimmed == "}" {
+            return true
+        }
+        if trimmed == "\\vfill" || trimmed == "\\newpage" || trimmed == "\\clearpage"
+            || trimmed == "\\ifanswers" || trimmed == "\\else" || trimmed == "\\fi"
+            || trimmed == "\\answersfalse" || trimmed == "\\answerstrue" {
+            return true
+        }
+        if trimmed.hasPrefix("\\workspace") && trimmed.hasSuffix("{") {
+            return true
+        }
+        if trimmed.hasPrefix("\\vspace") && trimmed.hasSuffix("}") && !trimmed.dropFirst(7).contains("\\") {
+            return true
+        }
+        return false
+    }
 
     static let codeBlockEnvironments: Set<String> = [
         "verbatim", "lstlisting", "minted"
@@ -197,7 +215,60 @@ extension LaTeXLiveStyler {
             return (scanIndex, scanLineCount)
         }
 
-        // Abstract, Theorem-like, Proof, or Quote environments
+        // Abstract, Center, Theorem-like, Proof, or Quote environments
+        if envName == "center" {
+            if fullBlockRange.length > lineRange.length {
+                LaTeXBlockStyleCache.resetAttributes(
+                    in: storage,
+                    range: NSRange(location: NSMaxRange(lineRange), length: fullBlockRange.length - lineRange.length)
+                )
+            }
+            for (i, el) in envLines.enumerated() {
+                let isBoundary = (i == 0 || (i == envLines.count - 1 && envLines.count > 1))
+                if isBoundary {
+                    styleDocumentBoundaryLineHelper(
+                        in: storage,
+                        lineRange: el.lineRange,
+                        contentRange: el.contentRange,
+                        isActive: el.isActive,
+                        prettyMode: prettyMode,
+                        theme: theme,
+                        effectiveBaseSize: effectiveBaseSize,
+                        effectiveContainerWidth: effectiveContainerWidth,
+                        dimFactor: blockDim
+                    )
+                    continue
+                }
+                let pStyle = NSMutableParagraphStyle()
+                pStyle.alignment = .center
+                pStyle.lineHeightMultiple = typography.lineHeightMultiple
+                pStyle.lineSpacing = max(2.0, typography.lineSpacing * 0.85)
+                pStyle.paragraphSpacing = max(3.0, typography.paragraphSpacing * 0.5)
+                pStyle.tailIndent = effectiveContainerWidth
+                storage.addAttributes([
+                    .font: baseFont,
+                    .foregroundColor: theme.textNSColor.withAlphaComponent(blockDim),
+                    .paragraphStyle: pStyle
+                ], range: el.lineRange)
+                styleLaTeXInlineContent(
+                    in: storage,
+                    string: string,
+                    nsString: nsString,
+                    range: el.contentRange,
+                    lineRange: el.lineRange,
+                    baseFont: baseFont,
+                    isActiveLine: el.isActive,
+                    docIndex: docIndex,
+                    theme: theme,
+                    dimFactor: blockDim,
+                    prettyMode: prettyMode,
+                    baseDirectoryURL: baseDirectoryURL,
+                    decorations: &decorations
+                )
+            }
+            return (scanIndex, scanLineCount)
+        }
+
         if envName == "abstract" || envName == "quote" || envName == "quotation"
             || LaTeXDocumentIndexer.theoremEnvironments[envName] != nil || envName == "proof" {
             if fullBlockRange.length > lineRange.length {

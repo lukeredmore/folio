@@ -36,6 +36,7 @@ public indirect enum MathNode: Equatable {
     case scripts(base: MathNode, sub: MathNode?, sup: MathNode?)
     case delimited(left: String, body: MathNode, right: String)
     case accent(base: MathNode, mark: String)
+    case boxed(MathNode)
 }
 
 public struct MathLayoutBox {
@@ -259,6 +260,8 @@ public final class LaTeXMathRenderer {
             return "\(l)\(flattenToText(body))\(r)"
         case .accent(let base, let mark):
             return "\(flattenToText(base))\(mark)"
+        case .boxed(let inner):
+            return "[\(flattenToText(inner))]"
         }
     }
 }

@@ -13,7 +13,7 @@ extension LaTeXLiveStyler {
         pattern: #"\\(eqref|autoref|cref|Cref|ref|pageref)\{([^}]+)\}"#
     )
     static let latexHiddenMetaCmdRegex = try! NSRegularExpression(
-        pattern: #"\\(?:label|bibliography|bibliographystyle|addbibresource|nocite)\{[^}]*\}|\\(?:centering|noindent|newpage|clearpage|tableofcontents)\b[ \t]*"#
+        pattern: #"\\(?:label|bibliography|bibliographystyle|addbibresource|nocite)\{[^}]*\}|\\(?:centering|noindent|newpage|clearpage|tableofcontents)\b[ \t]*|\\\\(?:\[[^\]]*\])?"#
     )
     static let latexHrefRegex = try! NSRegularExpression(
         pattern: #"(\\href\{([^}]*)\}\{)([^{}]*(?:\{[^{}]*\}[^{}]*)*)(\})"#
@@ -241,10 +241,11 @@ extension LaTeXLiveStyler {
             }
         }
 
-        // 5. Hidden metadata commands (\label{...}, \bibliography{...}, \centering, \noindent)
+        // 5. Hidden metadata commands (\label{...}, \bibliography{...}, \centering, \noindent, \\[4pt])
         if lineSub.contains("\\label") || lineSub.contains("\\bib") || lineSub.contains("\\addbib")
             || lineSub.contains("\\nocite") || lineSub.contains("\\centering") || lineSub.contains("\\noindent")
-            || lineSub.contains("\\newpage") || lineSub.contains("\\clearpage") || lineSub.contains("\\tableofcontents") {
+            || lineSub.contains("\\newpage") || lineSub.contains("\\clearpage") || lineSub.contains("\\tableofcontents")
+            || lineSub.contains("\\\\") {
             latexHiddenMetaCmdRegex.enumerateMatches(in: string, options: [], range: effectiveRange) { match, _, _ in
                 guard let match = match, !isProtected(match.range) else { return }
                 MarkdownLiveStyler.insertSortedRange(match.range, into: &protectedRanges)

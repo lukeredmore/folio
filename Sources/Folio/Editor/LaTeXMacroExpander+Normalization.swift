@@ -121,13 +121,36 @@ extension LaTeXMacroExpander {
         while i < chars.count {
             if chars[i] == "\\" {
                 let (cmd, afterCmd) = readControlWord(chars, at: i)
-                if cmd == "\\dfrac" || cmd == "\\cfrac" {
-                    out.append("\\displaystyle\\frac")
+                if cmd == "\\frac" || cmd == "\\dfrac" || cmd == "\\cfrac" || cmd == "\\tfrac" {
+                    let prefix = (cmd == "\\dfrac" || cmd == "\\cfrac")
+                        ? "\\displaystyle\\frac"
+                        : (cmd == "\\tfrac" ? "\\textstyle\\frac" : "\\frac")
+                    let idx1 = skipSpaces(chars, from: afterCmd)
+                    if let (arg1, after1) = readMacroArgument(chars, at: idx1),
+                       let (arg2, after2) = readMacroArgument(chars, at: skipSpaces(chars, from: after1)) {
+                        let norm1 = normalizeEnvironmentsAndCommands(arg1)
+                        let norm2 = normalizeEnvironmentsAndCommands(arg2)
+                        out.append("\(prefix){\(norm1)}{\(norm2)}")
+                        i = after2
+                        continue
+                    }
+                    out.append(prefix)
                     i = afterCmd
                     continue
-                } else if cmd == "\\tfrac" {
-                    out.append("\\textstyle\\frac")
-                    i = afterCmd
+                } else if cmd == "\\sqrt" {
+                    var idx = skipSpaces(chars, from: afterCmd)
+                    var optPart = ""
+                    if let (deg, afterDeg) = readBracketGroup(chars, at: idx) {
+                        optPart = "[\(normalizeEnvironmentsAndCommands(deg))]"
+                        idx = skipSpaces(chars, from: afterDeg)
+                    }
+                    if let (rad, afterRad) = readMacroArgument(chars, at: idx) {
+                        out.append("\\sqrt\(optPart){\(normalizeEnvironmentsAndCommands(rad))}")
+                        i = afterRad
+                        continue
+                    }
+                    out.append("\\sqrt\(optPart)")
+                    i = idx
                     continue
                 } else if cmd == "\\dbinom" {
                     out.append("\\displaystyle\\binom")
