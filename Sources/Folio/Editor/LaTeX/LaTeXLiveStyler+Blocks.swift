@@ -186,8 +186,8 @@ extension LaTeXLiveStyler {
             )
             let dimFactor: CGFloat = (focusMode && !isActive) ? 0.30 : 1.0
 
-            // \begin{document} / \end{document}
-            if trimmed == "\\begin{document}" || trimmed == "\\end{document}" {
+            // \begin{document} / \end{document} and standalone layout/conditional wrapper lines
+            if isFoldableLayoutBoundaryLine(trimmed) {
                 styleDocumentBoundaryLine(
                     in: storage,
                     lineRange: lineRange,

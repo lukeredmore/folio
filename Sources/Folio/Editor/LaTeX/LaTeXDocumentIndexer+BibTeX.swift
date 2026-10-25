@@ -67,7 +67,7 @@ extension LaTeXDocumentIndexer {
 
     static func sectionLevel(for cmd: String) -> Int {
         switch cmd {
-        case "part", "chapter", "section": return 1
+        case "part", "chapter", "section", "sectiontitle": return 1
         case "subsection": return 2
         case "subsubsection": return 3
         case "paragraph": return 4

@@ -274,4 +274,49 @@ final class SwiftMathAndMacroRenderingTests: XCTestCase {
             )
         }
     }
+
+    func testBoxedMathAndPracticeTestConstructs() {
+        let boxedEquations = [
+            #"\frac{126}{189}=\frac{42}{63}=\frac{14}{21}=\boxed{\frac23}."#,
+            #"\boxed{\text{infinitely many solutions}}."#,
+            #"3\left(\frac52\right)=\boxed{\frac{15}{2}=7\frac12\text{ cups}}."#,
+            #"|4-9|-2|-3|=5-2(3)=\boxed{-1}."#,
+        ]
+        for eq in boxedEquations {
+            let box = LaTeXMathRenderer.layoutLatex(eq, baseFontSize: 16, isDisplayStyle: true)
+            XCTAssertTrue(box.usesNativeOpenTypeMath, "Expected SwiftMath native layout for \(eq)")
+            XCTAssertGreaterThan(box.width, 30)
+        }
+
+        let tex = #"""
+        \documentclass[11pt]{article}
+        \begin{document}
+        \begin{center}
+        {\Large\textbf{MAT 121 Practice Test}}\\[4pt]
+        \end{center}
+        \sectiontitle{Rational Numbers (Section 1.2)}
+        \workspace[0.75in]{
+        {\color{answercolor}\textbf{Solution.}}
+        \[
+        \frac{126}{189}=\boxed{\frac23}.
+        \]
+        }
+        Active line
+        \end{document}
+        """#
+        let storage = NSTextStorage(string: tex)
+        let activeLoc = (tex as NSString).range(of: "Active line").location
+        let analysis = LaTeXLiveStyler.applyStyles(
+            to: storage,
+            theme: .daylight,
+            sourceCodeMode: false,
+            focusMode: false,
+            selectedRange: NSRange(location: activeLoc, length: 0),
+            containerWidth: 680
+        )
+        XCTAssertTrue(analysis.headings.contains { $0.title == "Rational Numbers (Section 1.2)" })
+        let titleLoc = (tex as NSString).range(of: "MAT 121 Practice Test").location
+        let pStyle = storage.attribute(.paragraphStyle, at: titleLoc, effectiveRange: nil) as? NSParagraphStyle
+        XCTAssertEqual(pStyle?.alignment, .center)
+    }
 }

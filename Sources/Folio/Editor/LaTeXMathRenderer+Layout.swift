@@ -254,6 +254,33 @@ extension LaTeXMathRenderer {
                     withAttributes: [.font: f, .foregroundColor: color]
                 )
             }
+
+        case .boxed(let inner):
+            return wrapInBoxedFrame(layoutNode(inner, fontSize: fontSize, isDisplay: isDisplay))
+        }
+    }
+
+    static func wrapInBoxedFrame(_ inner: MathLayoutBox, tag: String? = nil) -> MathLayoutBox {
+        let padX: CGFloat = 5.5
+        let padY: CGFloat = 3.5
+        let boxWidth = inner.width + padX * 2.0
+        let boxAscent = inner.ascent + padY
+        let boxDescent = inner.descent + padY
+        return MathLayoutBox(
+            width: boxWidth,
+            ascent: boxAscent,
+            descent: boxDescent,
+            tag: tag ?? inner.tag,
+            usesNativeOpenTypeMath: inner.usesNativeOpenTypeMath
+        ) { originX, baselineY, color in
+            inner.drawBox(originX + padX, baselineY, color)
+            let isFlipped = NSGraphicsContext.current?.isFlipped ?? true
+            let rectY = isFlipped ? (baselineY - boxAscent + 0.5) : (baselineY - boxDescent + 0.5)
+            let rect = NSRect(x: originX + 0.5, y: rectY, width: max(2.0, boxWidth - 1.0), height: max(2.0, boxAscent + boxDescent - 1.0))
+            let path = NSBezierPath(roundedRect: rect, xRadius: 2.0, yRadius: 2.0)
+            path.lineWidth = 1.15
+            color.withAlphaComponent(max(0.4, color.alphaComponent * 0.88)).setStroke()
+            path.stroke()
         }
     }
 

@@ -24,6 +24,12 @@ extension LaTeXLiveStyler {
     }
 
     nonisolated(unsafe) private static let tinyAtomicFont = NSFont.monospacedSystemFont(ofSize: 0.01, weight: .regular)
+    static let latexSizeGroupRegex = try! NSRegularExpression(
+        pattern: #"(\{\\(Huge|huge|LARGE|Large|large|normalsize|small|footnotesize|scriptsize|tiny)\b[ \t]*)([^{}]*(?:\{[^{}]*\}[^{}]*)*)(\})"#
+    )
+    static let latexColorGroupRegex = try! NSRegularExpression(
+        pattern: #"(\{\\color\{[^}]+\}[ \t]*)([^{}]*(?:\{[^{}]*\}[^{}]*)*)(\})"#
+    )
 
     static func reserveAtomicInlineSpan(
         in storage: NSTextStorage,
@@ -110,6 +116,53 @@ extension LaTeXLiveStyler {
                     .foregroundColor: theme.linkNSColor.withAlphaComponent(dimFactor),
                     .underlineStyle: NSUnderlineStyle.single.rawValue
                 ], range: urlRange)
+                MarkdownLiveStyler.styleSyntaxToken(in: storage, range: openRange, isActiveLine: showTokens, theme: theme, dimFactor: dimFactor)
+                MarkdownLiveStyler.styleSyntaxToken(in: storage, range: closeRange, isActiveLine: showTokens, theme: theme, dimFactor: dimFactor)
+            }
+        }
+
+        // {\Large ...}, {\large ...}, {\small ...}
+        if lineSub.contains("{\\") {
+            latexSizeGroupRegex.enumerateMatches(in: string, options: [], range: effectiveRange) { match, _, _ in
+                guard let match = match, !isProtected(match.range) else { return }
+                let openRange = match.range(at: 1)
+                let sizeCmd = nsString.substring(with: match.range(at: 2))
+                let innerRange = match.range(at: 3)
+                let closeRange = match.range(at: 4)
+                let scale: CGFloat
+                switch sizeCmd {
+                case "Huge": scale = 1.65
+                case "huge": scale = 1.48
+                case "LARGE": scale = 1.38
+                case "Large": scale = 1.28
+                case "large": scale = 1.14
+                case "small": scale = 0.90
+                case "footnotesize", "scriptsize", "tiny": scale = 0.82
+                default: scale = 1.0
+                }
+                let sizedFont = theme.bodyFont(size: fontSize * scale, semibold: scale >= 1.25)
+                MarkdownLiveStyler.applyAttributesToVisibleCharacters(
+                    in: storage,
+                    range: innerRange,
+                    attributes: [.font: sizedFont]
+                )
+                MarkdownLiveStyler.styleSyntaxToken(in: storage, range: openRange, isActiveLine: showTokens, theme: theme, dimFactor: dimFactor)
+                MarkdownLiveStyler.styleSyntaxToken(in: storage, range: closeRange, isActiveLine: showTokens, theme: theme, dimFactor: dimFactor)
+            }
+        }
+
+        // {\color{...}...}
+        if lineSub.contains("\\color{") {
+            latexColorGroupRegex.enumerateMatches(in: string, options: [], range: effectiveRange) { match, _, _ in
+                guard let match = match, !isProtected(match.range) else { return }
+                let openRange = match.range(at: 1)
+                let innerRange = match.range(at: 2)
+                let closeRange = match.range(at: 3)
+                MarkdownLiveStyler.applyAttributesToVisibleCharacters(
+                    in: storage,
+                    range: innerRange,
+                    attributes: [.foregroundColor: theme.linkNSColor.withAlphaComponent(dimFactor)]
+                )
                 MarkdownLiveStyler.styleSyntaxToken(in: storage, range: openRange, isActiveLine: showTokens, theme: theme, dimFactor: dimFactor)
                 MarkdownLiveStyler.styleSyntaxToken(in: storage, range: closeRange, isActiveLine: showTokens, theme: theme, dimFactor: dimFactor)
             }

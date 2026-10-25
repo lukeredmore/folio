@@ -102,7 +102,7 @@ enum LaTeXDocumentIndexer {
         pattern: #"\\usepackage(?:\[[^\]]*\])?\{([^}]+)\}"#
     )
     static let sectionRegex = try! NSRegularExpression(
-        pattern: #"^\s*\\(part|chapter|section|subsection|subsubsection|paragraph|subparagraph)(\*?)(?:\[[^\]]*\])?\{((?:[^{}]|\{[^{}]*\})*)\}"#
+        pattern: #"^\s*\\(part|chapter|section|sectiontitle|subsection|subsubsection|paragraph|subparagraph)(\*?)(?:\[[^\]]*\])?\{((?:[^{}]|\{[^{}]*\})*)\}"#
     )
     static let labelRegex = try! NSRegularExpression(
         pattern: #"\\label\{([^}]+)\}"#
@@ -215,7 +215,7 @@ enum LaTeXDocumentIndexer {
             if trimmed.hasPrefix("\\"),
                let sm = sectionRegex.firstMatch(in: line, range: NSRange(location: 0, length: (line as NSString).length)) {
                 let cmd = (line as NSString).substring(with: sm.range(at: 1))
-                let starred = !((line as NSString).substring(with: sm.range(at: 2))).isEmpty
+                let starred = cmd == "sectiontitle" || !((line as NSString).substring(with: sm.range(at: 2))).isEmpty
                 let rawTitle = cleanTeXInlineText((line as NSString).substring(with: sm.range(at: 3)))
                 let level = sectionLevel(for: cmd)
                 var numStr = ""

@@ -121,6 +121,10 @@ extension LaTeXMathRenderer {
                 index += 1 // consume '}'
             }
             return inside
+        } else if chars[index].isNumber {
+            let digit = chars[index]
+            index += 1
+            return .text(String(digit), .romanUpright)
         } else {
             return parseAtom(chars, index: &index, depth: depth + 1) ?? .text("", .italicVariable)
         }
@@ -239,6 +243,8 @@ extension LaTeXMathRenderer {
                 return .accent(base: parseBracedGroup(chars, index: &index, depth: depth + 1), mark: "̇")
             case "ddot":
                 return .accent(base: parseBracedGroup(chars, index: &index, depth: depth + 1), mark: "̈")
+            case "boxed":
+                return .boxed(parseBracedGroup(chars, index: &index, depth: depth + 1))
 
             case "quad":
                 return .space(12.0)
