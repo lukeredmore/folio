@@ -18,6 +18,7 @@ extension EditorWorkspaceViewModel {
         lastSavedDiskContent = "# Untitled\n\n"
         isDirty = false
         currentSelectedRange = NSRange(location: 0, length: 0)
+        pendingScrollToCharacterLocation = nil
         isApplyingInternalStateChange = false
         userDefaults.set(0, forKey: Self.selectedCursorLocationDefaultsKey)
         stats = DocumentStats.compute(for: markdownText)
@@ -86,6 +87,7 @@ extension EditorWorkspaceViewModel {
             lastSavedDiskContent = content
             isDirty = false
             currentSelectedRange = NSRange(location: 0, length: 0)
+            pendingScrollToCharacterLocation = nil
             isApplyingInternalStateChange = false
             userDefaults.set(0, forKey: Self.selectedCursorLocationDefaultsKey)
             stats = DocumentStats.compute(for: content)

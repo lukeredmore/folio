@@ -252,7 +252,11 @@ final class FolioUILagProfileTests: XCTestCase {
 
     @MainActor
     func testNativeSidebarAndBottomBarHeightAlignment() throws {
-        let vm = EditorWorkspaceViewModel()
+        let suiteName = "com.folio.tests.alignment.\(UUID().uuidString)"
+        let testDefaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+        defer { testDefaults.removePersistentDomain(forName: suiteName) }
+
+        let vm = EditorWorkspaceViewModel(userDefaults: testDefaults)
         vm.showSidebar = true
         let hostingView = NSHostingView(rootView: MainWindowView(viewModel: vm))
         let window = NSWindow(
@@ -261,6 +265,8 @@ final class FolioUILagProfileTests: XCTestCase {
             backing: .buffered,
             defer: false
         )
+        window.appearance = NSAppearance(named: .aqua)
+        window.toolbarStyle = .unified
         window.contentView = hostingView
         window.makeKeyAndOrderFront(nil)
         defer { window.orderOut(nil) }
@@ -274,21 +280,32 @@ final class FolioUILagProfileTests: XCTestCase {
         let footerHeight = footerHosting.fittingSize.height
         let statusHeight = statusHosting.fittingSize.height
 
-        let scrollView = try XCTUnwrap(vm.activeTextView?.enclosingScrollView)
+        let tv = try XCTUnwrap(vm.activeTextView)
+        let scrollView = try XCTUnwrap(tv.enclosingScrollView)
         let scrollWindowRect = scrollView.convert(scrollView.bounds, to: nil)
         let editorScrollMinY = scrollWindowRect.minY
         XCTAssertEqual(footerHeight, 30.0, accuracy: 0.5, "Sidebar footer bar height must be 30pt")
         XCTAssertEqual(statusHeight, 30.0, accuracy: 0.5, "StatusBarView height must be 30pt")
         XCTAssertEqual(footerHeight, editorScrollMinY, accuracy: 0.5, "Sidebar footer top edge must align with StatusBarView top edge")
         XCTAssertEqual(scrollWindowRect.maxY, hostingView.bounds.height, accuracy: 1.0, "Editor scroll view canvas must extend all the way to the top edge of the window")
+        XCTAssertEqual(scrollView.contentInsets.top, 0.0, accuracy: 0.1, "Editor scroll view must not have automatic top content insets")
+        XCTAssertFalse(
+            scrollView.subviews.contains(where: { String(describing: type(of: $0)).contains("ScrollPocket") }),
+            "Editor scroll view must not contain an opaque NSScrollPocket top bar"
+        )
+        XCTAssertEqual(tv.visibleRect.minY, 0.0, accuracy: 1.0, "Editor document must start scrolled to the top")
 
         if let root = window.contentView?.superview {
+            if let splitView = findSubview(of: NSSplitView.self, in: root) {
+                let titlebarBackgrounds = splitView.subviews.filter {
+                    String(describing: type(of: $0)).contains("TitlebarBackgroundView")
+                }
+                for bg in titlebarBackgrounds {
+                    XCTAssertTrue(bg.isHidden, "NSTitlebarBackgroundView must remain hidden so no top bar overlays the editor")
+                }
+            }
             let searchField = try XCTUnwrap(findSubview(of: NSSearchField.self, in: root))
-            let modeSegmented = try XCTUnwrap(findSubview(of: NSSegmentedControl.self, in: root))
-            let searchRect = searchField.convert(searchField.bounds, to: nil)
-            let modeRect = modeSegmented.convert(modeSegmented.bounds, to: nil)
-            XCTAssertLessThan(modeRect.maxX, 265.0, "Sidebar mode picker must reside inside the sidebar titlebar column")
-            XCTAssertFalse(searchRect.intersects(modeRect), "Sidebar search field and mode switcher must never overlap")
+            _ = searchField
         }
 
         for tab in SidebarTab.allCases {

@@ -92,8 +92,16 @@ public struct SidebarView: View {
             }
             .toolbar {
                 if viewModel.showSidebar {
-                    ToolbarItem(placement: .automatic) {
-                        sidebarModePicker
+                    ToolbarItemGroup(placement: .automatic) {
+                        ForEach(SidebarTab.allCases) { tab in
+                            Button {
+                                viewModel.activeSidebarTab = tab
+                            } label: {
+                                Label(tab.rawValue, systemImage: tab.systemImage)
+                            }
+                            .foregroundStyle(viewModel.activeSidebarTab == tab ? Color.accentColor : Color.primary)
+                            .help(tab.rawValue)
+                        }
                     }
                 }
             }

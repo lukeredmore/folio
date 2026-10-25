@@ -169,8 +169,17 @@ struct WindowStatePersistenceAccessor: NSViewRepresentable {
     }
 
     func updateNSView(_ nsView: PassThroughAccessorNSView, context: Context) {
-        if let window = nsView.window, context.coordinator.attachedWindow !== window {
-            context.coordinator.attach(to: window)
+        if let window = nsView.window {
+            if context.coordinator.attachedWindow !== window {
+                context.coordinator.attach(to: window)
+            } else {
+                if window.titleVisibility != .hidden {
+                    window.titleVisibility = .hidden
+                }
+                if !window.titlebarAppearsTransparent {
+                    window.titlebarAppearsTransparent = true
+                }
+            }
         }
     }
 
@@ -195,6 +204,7 @@ struct WindowStatePersistenceAccessor: NSViewRepresentable {
             }
             attachedWindow = window
             window.titleVisibility = .hidden
+            window.titlebarAppearsTransparent = true
 
             window.setFrameAutosaveName("FolioMainWindow")
             if let savedFrameString = userDefaults.string(forKey: WindowStatePersistenceAccessor.windowFrameDefaultsKey) {
