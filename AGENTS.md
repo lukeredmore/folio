@@ -1,6 +1,6 @@
 # AGENTS.md — Folio Monorepo Agent & Worktree Guide
 
-This document provides critical architecture and workflow instructions for AI coding agents working in the **Folio** monorepo, particularly when operating inside isolated Git worktrees (e.g. `~/.gemini/antigravity/worktrees/Folio/<worktree_name>`).
+This document provides critical architecture and workflow instructions for AI coding agents working in the **Folio** monorepo, particularly when operating inside isolated Git worktrees
 
 ---
 
@@ -17,21 +17,9 @@ Do **not** modify files in `${MAIN_REPO_ROOT}` (`main`) or copy uncommitted chan
 
 ---
 
-## 2. Zed Extension Architecture (`zed/folio_zed_extension`)
+## 2. Building & Testing in a Worktree
 
-Folio integrates with Zed as a standalone WASI Preview 2 extension (`zed/folio_zed_extension`) targeting the Zed `v0.8.0` Extension Editor API (`lukeredmore/zed`), with zero Folio patches or dependencies inside Zed:
-
-- **Host library & test suite (`zed/folio_zed_extension`)**:
-  - Workspace member crate tested via `cargo test --workspace` and `bazel test //zed/folio_zed_extension/...`.
-  - Contains `FolioZedExtension`, `FolioZedModSession`, cursor-aware syntax folding, $\text{LaTeX}$ math canvas primitives, and `v0.8.0` `EditorHighlights` / `EditorDecorations` builders.
-- **WASI Preview 2 component (`zed/folio_zed_extension/wasm`)**:
-  - Built and installed into Zed via `./zed/install_extension.sh`.
-
----
-
-## 3. Building & Testing in a Worktree
-
-All targets in the monorepo (`//core/folio_engine/...`, `//:FolioApp`, `//:FolioTests`, `//zed/folio_zed_extension/...`) are self-contained and build directly inside any worktree via Bazel or Cargo:
+All targets in the monorepo are self-contained and build directly inside any worktree via Bazel or Cargo:
 
 - **Bazel builds & tests** (always run with your worktree as `Cwd`):
   ```bash
@@ -49,7 +37,7 @@ All targets in the monorepo (`//core/folio_engine/...`, `//:FolioApp`, `//:Folio
 
 ---
 
-## 4. Anti-Slop Module Hygiene, File Size Limits & `tst/` Testing Rules
+## 3. Anti-Slop Module Hygiene, File Size Limits & `tst/` Testing Rules
 
 To prevent monolithic files and duplicated test logic across the Zed extension and Standalone Folio, all contributions must pass `./scripts/audit_slop.sh`:
 
@@ -67,17 +55,6 @@ To prevent monolithic files and duplicated test logic across the Zed extension a
 
 ---
 
-## 5. Always Include Local Run Commands in Your Final Response
+## 4. Final Responses
 
-Whenever you finish a task in **Folio**, always include the full, copy-pasteable commands to run it locally in your final response (including the `cd` into the active worktree or repository directory), for example:
-- **Standalone macOS App**:
-  ```bash
-  cd <worktree_or_repo_path>
-  bazel run //:FolioApp
-  ```
-- **Zed WASI Extension**:
-  ```bash
-  cd <worktree_or_repo_path>
-  ./zed/install_extension.sh
-  ```
-
+Whenever you finish a task in **Folio** that results in a material change to one or more elements/applications (i.e. Zed extension, standalone app, CLI, Zed fork, etc.), always include at least one copy-pasteable command to demonstrate it. If rendered content may be affected, ensure your command opens an example file that is filled with relevant content.
