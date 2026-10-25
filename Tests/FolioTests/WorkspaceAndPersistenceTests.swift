@@ -185,4 +185,124 @@ final class WorkspaceAndPersistenceTests: XCTestCase {
         let appDelegate = FolioAppDelegate()
         XCTAssertTrue(appDelegate.applicationShouldTerminateAfterLastWindowClosed(NSApplication.shared))
     }
+
+    @MainActor
+    func testMainWindowMouseClickPlacesCursorAndTogglesSidebarThroughEventQueue() throws {
+        let suiteName = "com.folio.tests.windowMouse.\(UUID().uuidString)"
+        let testDefaults = UserDefaults(suiteName: suiteName)!
+        defer { testDefaults.removePersistentDomain(forName: suiteName) }
+
+        let vm = EditorWorkspaceViewModel(userDefaults: testDefaults)
+        vm.autoSaveDelay = 0
+        vm.markdownText = "# Heading Line\n\nSecond paragraph with clickable text.\n\nThird paragraph at bottom.\n"
+        vm.showSidebar = true
+
+        let hostingView = NSHostingView(rootView: MainWindowView(viewModel: vm))
+        let window = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 1000, height: 700),
+            styleMask: [.titled, .closable, .resizable],
+            backing: .buffered,
+            defer: false
+        )
+        window.contentView = hostingView
+        window.makeKeyAndOrderFront(nil)
+        defer { window.orderOut(nil) }
+
+        hostingView.layoutSubtreeIfNeeded()
+        RunLoop.current.run(until: Date().addingTimeInterval(0.05))
+        hostingView.layoutSubtreeIfNeeded()
+
+        let textView = try XCTUnwrap(vm.activeTextView, "MainWindowView should attach an active HybridMarkdownTextView")
+        textView.setSelectedRange(NSRange(location: 0, length: 0))
+        XCTAssertEqual(textView.selectedRange().location, 0)
+
+        // Compute window coordinates for the start of "Third paragraph at bottom." inside HybridMarkdownTextView
+        let nsText = textView.string as NSString
+        let thirdParaRange = nsText.range(of: "Third paragraph")
+        XCTAssertNotEqual(thirdParaRange.location, NSNotFound)
+        let layoutManager = try XCTUnwrap(textView.layoutManager)
+        let textContainer = try XCTUnwrap(textView.textContainer)
+        layoutManager.ensureLayout(for: textContainer)
+        let glyphRange = layoutManager.glyphRange(forCharacterRange: NSRange(location: thirdParaRange.location, length: 1), actualCharacterRange: nil)
+        let glyphRectInContainer = layoutManager.boundingRect(forGlyphRange: glyphRange, in: textContainer)
+        let pointInTextView = NSPoint(
+            x: textView.textContainerInset.width + glyphRectInContainer.midX,
+            y: textView.textContainerInset.height + glyphRectInContainer.midY
+        )
+        let pointInWindow = textView.convert(pointInTextView, to: nil)
+
+        // 1. Verify hitTest at the target editor point resolves to HybridMarkdownTextView (not a background NSView)
+        let hitView = hostingView.hitTest(pointInWindow)
+        XCTAssertTrue(
+            hitView === textView,
+            "Expected hitTest at editor paragraph to return HybridMarkdownTextView, got \(String(describing: hitView))"
+        )
+
+        // Helper that posts a real mouse click through NSApp's event queue (running all local NSEvent monitors)
+        // and dispatches it to the window. Note: NSTextView.mouseDown runs an internal tracking loop waiting
+        // for .leftMouseUp, so .leftMouseUp must be queued BEFORE calling window.sendEvent(down).
+        var nextEventNumber = 100
+        func sendLeftClick(at point: NSPoint) throws {
+            while NSApp.nextEvent(matching: .any, until: nil, inMode: .default, dequeue: true) != nil {}
+            nextEventNumber += 1
+            let down = try XCTUnwrap(NSEvent.mouseEvent(
+                with: .leftMouseDown, location: point, modifierFlags: [],
+                timestamp: ProcessInfo.processInfo.systemUptime,
+                windowNumber: window.windowNumber, context: nil,
+                eventNumber: nextEventNumber, clickCount: 1, pressure: 1.0
+            ))
+            nextEventNumber += 1
+            let up = try XCTUnwrap(NSEvent.mouseEvent(
+                with: .leftMouseUp, location: point, modifierFlags: [],
+                timestamp: ProcessInfo.processInfo.systemUptime + 0.01,
+                windowNumber: window.windowNumber, context: nil,
+                eventNumber: nextEventNumber, clickCount: 1, pressure: 0.0
+            ))
+            NSApp.postEvent(up, atStart: true)
+            NSApp.postEvent(down, atStart: true)
+            let dequeuedDown = try XCTUnwrap(
+                NSApp.nextEvent(matching: .leftMouseDown, until: Date().addingTimeInterval(0.05), inMode: .default, dequeue: true),
+                "Left mouse down must survive local NSEvent monitors without throwing or being swallowed"
+            )
+            let hitTarget = try XCTUnwrap(window.contentView?.superview?.hitTest(dequeuedDown.locationInWindow))
+            NSApp.sendEvent(dequeuedDown)
+            if !NSApp.isActive && !hitTarget.acceptsFirstMouse(for: dequeuedDown) {
+                if hitTarget.acceptsFirstResponder {
+                    _ = window.makeFirstResponder(hitTarget)
+                }
+                hitTarget.mouseDown(with: dequeuedDown)
+            }
+            if let remainingUp = NSApp.nextEvent(matching: .leftMouseUp, until: nil, inMode: .default, dequeue: true) {
+                NSApp.sendEvent(remainingUp)
+            }
+        }
+
+        // 2. Verify right-click and left-click in editor survive local NSEvent monitors and move the insertion cursor
+        let rightDown = try XCTUnwrap(NSEvent.mouseEvent(
+            with: .rightMouseDown, location: pointInWindow, modifierFlags: [],
+            timestamp: ProcessInfo.processInfo.systemUptime,
+            windowNumber: 0, context: nil,
+            eventNumber: 99, clickCount: 1, pressure: 1.0
+        ))
+        NSApp.sendEvent(rightDown)
+
+        try sendLeftClick(at: pointInWindow)
+        XCTAssertGreaterThanOrEqual(
+            textView.selectedRange().location,
+            thirdParaRange.location,
+            "Mouse click inside HybridMarkdownTextView must move the insertion cursor to the clicked paragraph"
+        )
+
+        // 3. Click the StatusBarView sidebar toggle button ("sidebar.left") via NSApp event queue + window.sendEvent
+        XCTAssertTrue(vm.showSidebar)
+        try sendLeftClick(at: NSPoint(x: 272, y: 14))
+        RunLoop.current.run(until: Date().addingTimeInterval(0.25))
+        hostingView.layoutSubtreeIfNeeded()
+        XCTAssertFalse(vm.showSidebar, "Clicking the StatusBar sidebar button must hide the sidebar")
+
+        try sendLeftClick(at: NSPoint(x: 26, y: 14))
+        RunLoop.current.run(until: Date().addingTimeInterval(0.25))
+        hostingView.layoutSubtreeIfNeeded()
+        XCTAssertTrue(vm.showSidebar, "Clicking the StatusBar sidebar button again must re-open the sidebar")
+    }
 }
