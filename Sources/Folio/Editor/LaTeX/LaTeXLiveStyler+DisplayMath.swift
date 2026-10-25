@@ -273,21 +273,21 @@ extension LaTeXLiveStyler {
         let blockDim: CGFloat = (focusMode && !isBlockActive) ? 0.30 : 1.0
 
         if !isBlockActive && prettyMode {
-            let perLineH = max(0.25, min(2.0, 4.0 / CGFloat(max(1, commentLines.count))))
             let pStyle = NSMutableParagraphStyle()
-            pStyle.minimumLineHeight = perLineH
-            pStyle.maximumLineHeight = perLineH
+            pStyle.minimumLineHeight = 0.5
+            pStyle.maximumLineHeight = 0.5
             pStyle.lineSpacing = 0
             pStyle.paragraphSpacing = 0
             pStyle.paragraphSpacingBefore = 0
             pStyle.lineBreakMode = .byClipping
             pStyle.tailIndent = effectiveContainerWidth
             storage.addAttributes([
-                .font: NSFont.systemFont(ofSize: 1.0),
+                .font: NSFont.systemFont(ofSize: 0.1),
                 .foregroundColor: NSColor.clear,
                 .paragraphStyle: pStyle,
                 .kern: 0.0
             ], range: fullBlockRange)
+            LaTeXBlockStyleCache.collapseInternalNewlines(in: storage, nsString: nsString, range: fullBlockRange)
         } else {
             let commentFont = theme.bodyFont(size: effectiveBaseSize * 0.92, italic: true)
             for cl in commentLines where cl.contentRange.length > 0 {
@@ -297,7 +297,7 @@ extension LaTeXLiveStyler {
                 ], range: cl.contentRange)
             }
         }
-
+        LaTeXBlockStyleCache.pendingGlyphInvalidationRanges.append(fullBlockRange)
         return (endChar, commentLines.count)
     }
 }

@@ -35,23 +35,22 @@ extension LaTeXLiveStyler {
         headings: inout [OutlineHeading],
         decorations: inout [LineDecoration]
     ) -> (nextIndex: Int, lineDelta: Int)? {
+        if trimmedLine.isEmpty {
+            return styleLaTeXBlankLineBlock(
+                in: storage, nsString: nsString, fullLength: fullLength, lineRange: lineRange,
+                isActiveLine: isActiveLine, activeLineRange: activeLineRange, selectedRange: selectedRange,
+                docIndex: docIndex, typography: typography, effectiveBaseSize: effectiveBaseSize,
+                effectiveContainerWidth: effectiveContainerWidth, prettyMode: prettyMode
+            )
+        }
         guard trimmedLine.hasPrefix("\\") || trimmedLine.hasPrefix("$$") || trimmedLine.hasPrefix("%") else { return nil }
 
         if trimmedLine.hasPrefix("%") {
             return styleLaTeXCommentBlock(
-                in: storage,
-                nsString: nsString,
-                fullLength: fullLength,
-                lineRange: lineRange,
-                contentRange: contentRange,
-                isActiveLine: isActiveLine,
-                activeLineRange: activeLineRange,
-                selectedRange: selectedRange,
-                theme: theme,
-                effectiveBaseSize: effectiveBaseSize,
-                effectiveContainerWidth: effectiveContainerWidth,
-                prettyMode: prettyMode,
-                focusMode: focusMode
+                in: storage, nsString: nsString, fullLength: fullLength, lineRange: lineRange,
+                contentRange: contentRange, isActiveLine: isActiveLine, activeLineRange: activeLineRange,
+                selectedRange: selectedRange, theme: theme, effectiveBaseSize: effectiveBaseSize,
+                effectiveContainerWidth: effectiveContainerWidth, prettyMode: prettyMode, focusMode: focusMode
             )
         }
 

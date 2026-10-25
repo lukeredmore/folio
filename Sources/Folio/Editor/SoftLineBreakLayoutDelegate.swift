@@ -24,6 +24,9 @@ final class SoftLineBreakLayoutDelegate: NSObject, NSLayoutManagerDelegate {
               let storage = layoutManager.textStorage else {
             return NSRect(origin: glyphPosition, size: .zero)
         }
+        if storage.attribute(MarkdownLiveStyler.collapsedTokenAttributeKey, at: charIndex, effectiveRange: nil) != nil {
+            return NSRect(origin: glyphPosition, size: .zero)
+        }
         let font = (storage.attribute(.font, at: charIndex, effectiveRange: nil) as? NSFont)
             ?? NSFont.systemFont(ofSize: NSFont.systemFontSize)
         let spaceWidth = (" " as NSString).size(withAttributes: [.font: font]).width
@@ -58,24 +61,24 @@ final class SoftLineBreakLayoutDelegate: NSObject, NSLayoutManagerDelegate {
         let clampedLen = max(0, min(charRange.length, storage.length - clampedLoc))
         guard clampedLen > 0 else { return false }
 
-        var maxMathAscent: CGFloat = 0.0
-        var maxMathDescent: CGFloat = 0.0
+        var maxNeededAscent: CGFloat = 0.0
+        var maxNeededDescent: CGFloat = 0.0
         storage.enumerateAttribute(
             MarkdownLiveStyler.inlineMathSpanAttributeKey,
             in: NSRange(location: clampedLoc, length: clampedLen),
             options: []
         ) { value, _, _ in
             guard let info = value as? MarkdownLiveStyler.InlineMathLayoutInfo else { return }
-            maxMathAscent = max(maxMathAscent, info.ascent)
-            maxMathDescent = max(maxMathDescent, info.descent)
+            maxNeededAscent = max(maxNeededAscent, info.ascent + info.padding)
+            maxNeededDescent = max(maxNeededDescent, info.descent + info.padding)
         }
-        guard maxMathAscent > 0.0 || maxMathDescent > 0.0 else { return false }
+        guard maxNeededAscent > 0.0 || maxNeededDescent > 0.0 else { return false }
 
         let currentBaseline = baselineOffset.pointee
         let currentHeight = lineFragmentRect.pointee.height
         let currentDescent = max(0.0, currentHeight - currentBaseline)
-        let neededAscent = ceil(maxMathAscent + 3.0)
-        let neededDescent = ceil(maxMathDescent + 3.0)
+        let neededAscent = ceil(maxNeededAscent)
+        let neededDescent = ceil(maxNeededDescent)
         let extraTop = max(0.0, neededAscent - currentBaseline)
         let extraBottom = max(0.0, neededDescent - currentDescent)
         guard extraTop > 0.5 || extraBottom > 0.5 else { return false }

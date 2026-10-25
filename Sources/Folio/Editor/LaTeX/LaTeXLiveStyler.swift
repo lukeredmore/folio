@@ -127,7 +127,7 @@ public enum LaTeXLiveStyler {
             : docIndex.effectiveLineSpacing(fallback: typography)
         defaultParagraphStyle.paragraphSpacing = sourceCodeMode
             ? max(4.0, typography.paragraphSpacing * 0.65)
-            : docIndex.effectiveParagraphSpacing(baseSize: effectiveBaseSize, fallback: typography)
+            : 0.0
         defaultParagraphStyle.paragraphSpacingBefore = 0.0
         defaultParagraphStyle.firstLineHeadIndent = sourceCodeMode
             ? 0.0
@@ -193,6 +193,7 @@ public enum LaTeXLiveStyler {
             baseDirectoryURL: baseDirectoryURL
         )
         LaTeXBlockStyleCache.activeBaseAttributes = baseAttributes
+        LaTeXBlockStyleCache.pendingGlyphInvalidationRanges.removeAll(keepingCapacity: true)
         let session = LaTeXBlockStyleCache.prepareIncrementalSession(
             for: storage,
             config: styleConfig,
@@ -233,6 +234,10 @@ public enum LaTeXLiveStyler {
         storage.endEditing()
         if session == nil || wasSourceMode {
             LaTeXBlockStyleCache.invalidateLayoutManagers(for: storage, fullRange: fullRange)
+        } else {
+            for r in LaTeXBlockStyleCache.pendingGlyphInvalidationRanges {
+                LaTeXBlockStyleCache.invalidateLayoutManagers(for: storage, fullRange: r)
+            }
         }
         LaTeXBlockStyleCache.saveSession(
             for: storage,

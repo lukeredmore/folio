@@ -17,12 +17,28 @@ public final class MarkdownLiveStyler {
         public let width: CGFloat
         public let ascent: CGFloat
         public let descent: CGFloat
+        public let padding: CGFloat
+
+        public init(
+            range: NSRange,
+            width: CGFloat,
+            ascent: CGFloat,
+            descent: CGFloat,
+            padding: CGFloat = 3.0
+        ) {
+            self.range = range
+            self.width = width
+            self.ascent = ascent
+            self.descent = descent
+            self.padding = padding
+        }
 
         public static func == (lhs: InlineMathLayoutInfo, rhs: InlineMathLayoutInfo) -> Bool {
             lhs.range.length == rhs.range.length
                 && lhs.width == rhs.width
                 && lhs.ascent == rhs.ascent
                 && lhs.descent == rhs.descent
+                && lhs.padding == rhs.padding
         }
 
         public func hash(into hasher: inout Hasher) {
@@ -30,6 +46,7 @@ public final class MarkdownLiveStyler {
             hasher.combine(width)
             hasher.combine(ascent)
             hasher.combine(descent)
+            hasher.combine(padding)
         }
     }
 
