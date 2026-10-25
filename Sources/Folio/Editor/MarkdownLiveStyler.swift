@@ -17,6 +17,20 @@ public final class MarkdownLiveStyler {
         public let width: CGFloat
         public let ascent: CGFloat
         public let descent: CGFloat
+
+        public static func == (lhs: InlineMathLayoutInfo, rhs: InlineMathLayoutInfo) -> Bool {
+            lhs.range.length == rhs.range.length
+                && lhs.width == rhs.width
+                && lhs.ascent == rhs.ascent
+                && lhs.descent == rhs.descent
+        }
+
+        public func hash(into hasher: inout Hasher) {
+            hasher.combine(range.length)
+            hasher.combine(width)
+            hasher.combine(ascent)
+            hasher.combine(descent)
+        }
     }
 
     static let headingRegex = try! NSRegularExpression(pattern: #"^( {0,3})(#{1,6})(?:([ \t]+)(.*?))?(?:(?<![ \t])[ \t]+#+[ \t]*)?$"#)

@@ -78,7 +78,7 @@ extension EditorWorkspaceViewModel {
             }
             scheduleAutoSave()
         }
-        if !isRestoringState && autoSaveDelay <= 0 {
+        if !isRestoringState && (!isLiveKeystrokeInProgress || autoSaveDelay <= 0) {
             userDefaults.set(selectedRange.location, forKey: Self.selectedCursorLocationDefaultsKey)
         }
         let updatedStats = DocumentStats.compute(for: markdownText, selectedRange: selectedRange)
@@ -92,10 +92,10 @@ extension EditorWorkspaceViewModel {
             canCoalesceLiveTyping = false
         }
         currentSelectedRange = selectedRange
-        if !isRestoringState && autoSaveDelay <= 0 {
+        if !isRestoringState && (!isLiveKeystrokeInProgress || autoSaveDelay <= 0) {
             userDefaults.set(selectedRange.location, forKey: Self.selectedCursorLocationDefaultsKey)
         }
-        if selectedRange.length == 0 && stats.selectedCharacters == 0 {
+        if selectedRange.length == 0 && stats.selectedWords == 0 && stats.selectedCharacters == 0 {
             return
         }
         let updatedStats = DocumentStats.compute(for: markdownText, selectedRange: selectedRange)

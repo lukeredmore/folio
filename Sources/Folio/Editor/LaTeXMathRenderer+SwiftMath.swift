@@ -3,8 +3,8 @@ import Foundation
 import SwiftMath
 
 private struct SwiftMathCacheKey: Hashable {
-    let expandedLatex: String
-    let tag: String?
+    let latex: String
+    let macrosVersion: UInt64
     let fontSizeTenths: Int
     let isDisplayStyle: Bool
 }
@@ -15,10 +15,16 @@ extension LaTeXMathRenderer {
     nonisolated(unsafe) private static var fontCache: [Int: MTFont] = [:]
     nonisolated(unsafe) private static var layoutCache: [SwiftMathCacheKey: MathLayoutBox] = [:]
     nonisolated(unsafe) private static var activeDocumentMacros: [String: LaTeXMacroDefinition] = [:]
+    nonisolated(unsafe) private static var activeMacrosVersion: UInt64 = 1
 
     public static func setDocumentMacros(_ macros: [String: LaTeXMacroDefinition]) {
         swiftMathLock.lock()
-        activeDocumentMacros = macros
+        if activeDocumentMacros != macros {
+            activeDocumentMacros = macros
+            activeMacrosVersion &+= 1
+            registerExtraSymbolsUnlocked()
+            LaTeXMacroExpander.registerCustomOperators(from: macros)
+        }
         swiftMathLock.unlock()
     }
 
@@ -38,9 +44,25 @@ extension LaTeXMathRenderer {
         defer { swiftMathLock.unlock() }
 
         registerExtraSymbolsUnlocked()
+        let effectiveSize = isDisplayStyle ? baseFontSize * 1.18 : baseFontSize * 1.04
+        let sizeTenths = Int((effectiveSize * 10.0).rounded())
+
+        if macros == nil {
+            let rawKey = SwiftMathCacheKey(
+                latex: latex,
+                macrosVersion: activeMacrosVersion,
+                fontSizeTenths: sizeTenths,
+                isDisplayStyle: isDisplayStyle
+            )
+            if let cached = layoutCache[rawKey] {
+                return cached
+            }
+        }
+
         var effectiveMacros = activeDocumentMacros
         if let macros {
             for (k, v) in macros { effectiveMacros[k] = v }
+            LaTeXMacroExpander.registerCustomOperators(from: effectiveMacros)
         }
 
         let (expanded, tag) = LaTeXMacroExpander.expandAndNormalize(latex, macros: effectiveMacros)
@@ -54,15 +76,13 @@ extension LaTeXMathRenderer {
             ) { _, _, _ in }
         }
 
-        let effectiveSize = isDisplayStyle ? baseFontSize * 1.18 : baseFontSize * 1.04
-        let sizeTenths = Int((effectiveSize * 10.0).rounded())
         let cacheKey = SwiftMathCacheKey(
-            expandedLatex: expanded,
-            tag: tag,
+            latex: macros == nil ? latex : expanded,
+            macrosVersion: macros == nil ? activeMacrosVersion : 0,
             fontSizeTenths: sizeTenths,
             isDisplayStyle: isDisplayStyle
         )
-        if let cached = layoutCache[cacheKey] {
+        if macros != nil, let cached = layoutCache[cacheKey] {
             return cached
         }
 

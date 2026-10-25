@@ -167,6 +167,12 @@ extension LaTeXLiveStyler {
 
         // Code block environments (verbatim / lstlisting / minted)
         if codeBlockEnvironments.contains(envName) {
+            if fullBlockRange.length > lineRange.length {
+                LaTeXBlockStyleCache.resetAttributes(
+                    in: storage,
+                    range: NSRange(location: NSMaxRange(lineRange), length: fullBlockRange.length - lineRange.length)
+                )
+            }
             storage.addAttribute(MKey.noSpellCheck, value: true, range: fullBlockRange)
             let monoFont = theme.codeFont(size: effectiveBaseSize * 0.90)
             for (i, el) in envLines.enumerated() {
@@ -194,6 +200,12 @@ extension LaTeXLiveStyler {
         // Abstract, Theorem-like, Proof, or Quote environments
         if envName == "abstract" || envName == "quote" || envName == "quotation"
             || LaTeXDocumentIndexer.theoremEnvironments[envName] != nil || envName == "proof" {
+            if fullBlockRange.length > lineRange.length {
+                LaTeXBlockStyleCache.resetAttributes(
+                    in: storage,
+                    range: NSRange(location: NSMaxRange(lineRange), length: fullBlockRange.length - lineRange.length)
+                )
+            }
             styleStructuredEnvironmentLines(
                 envName: envName,
                 envLines: envLines,

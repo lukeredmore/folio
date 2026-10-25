@@ -156,14 +156,16 @@ enum LaTeXDocumentIndexer {
             let line = nsString.substring(with: lineRange)
             let trimmed = line.trimmingCharacters(in: .whitespacesAndNewlines)
 
-            if trimmed.hasPrefix("\\documentclass") && preambleStart == nil {
-                preambleStart = lineRange.location
-            }
-            if let m = docClassRegex.firstMatch(in: line, range: NSRange(location: 0, length: (line as NSString).length)) {
-                if m.range(at: 1).location != NSNotFound {
-                    idx.documentClassOptions = (line as NSString).substring(with: m.range(at: 1))
+            if trimmed.hasPrefix("\\documentclass") {
+                if preambleStart == nil {
+                    preambleStart = lineRange.location
                 }
-                idx.documentClass = (line as NSString).substring(with: m.range(at: 2))
+                if let m = docClassRegex.firstMatch(in: line, range: NSRange(location: 0, length: (line as NSString).length)) {
+                    if m.range(at: 1).location != NSNotFound {
+                        idx.documentClassOptions = (line as NSString).substring(with: m.range(at: 1))
+                    }
+                    idx.documentClass = (line as NSString).substring(with: m.range(at: 2))
+                }
             }
             if trimmed.hasPrefix("\\begin{document}") {
                 idx.beginDocumentLineRange = lineRange
@@ -176,11 +178,13 @@ enum LaTeXDocumentIndexer {
             }
 
             if inPreamble {
-                usepackageRegex.enumerateMatches(in: line, range: NSRange(location: 0, length: (line as NSString).length)) { m, _, _ in
-                    guard let m = m else { return }
-                    let raw = (line as NSString).substring(with: m.range(at: 1))
-                    for pkg in raw.split(separator: ",") {
-                        idx.packageNames.append(pkg.trimmingCharacters(in: .whitespaces))
+                if line.contains("\\usepackage") {
+                    usepackageRegex.enumerateMatches(in: line, range: NSRange(location: 0, length: (line as NSString).length)) { m, _, _ in
+                        guard let m = m else { return }
+                        let raw = (line as NSString).substring(with: m.range(at: 1))
+                        for pkg in raw.split(separator: ",") {
+                            idx.packageNames.append(pkg.trimmingCharacters(in: .whitespaces))
+                        }
                     }
                 }
                 if trimmed.hasPrefix("\\newcommand") || trimmed.hasPrefix("\\renewcommand")
@@ -188,18 +192,19 @@ enum LaTeXDocumentIndexer {
                     || trimmed.hasPrefix("\\providecommand") {
                     idx.macroCount += 1
                 }
-                if let im = inputRegex.firstMatch(in: line, range: NSRange(location: 0, length: (line as NSString).length)),
+                if (trimmed.hasPrefix("\\input") || trimmed.hasPrefix("\\include")),
+                   let im = inputRegex.firstMatch(in: line, range: NSRange(location: 0, length: (line as NSString).length)),
                    let baseDir = baseDirectoryURL {
                     let relPath = (line as NSString).substring(with: im.range(at: 2))
-                    if let inputURL = resolveTeXFileURL(path: relPath, baseDirectoryURL: baseDir),
-                       let inputText = try? String(contentsOf: inputURL, encoding: .utf8) {
-                        let imported = LaTeXMacroExpander.extractDocumentMacros(from: inputText)
+                    if let inputURL = resolveTeXFileURL(path: relPath, baseDirectoryURL: baseDir) {
+                        let imported = loadInputMacros(from: inputURL)
                         idx.extraMacros.merge(imported) { _, new in new }
                     }
                 }
             }
 
-            if let fm = frontmatterCmdRegex.firstMatch(in: line, range: NSRange(location: 0, length: (line as NSString).length)) {
+            if (trimmed.hasPrefix("\\title") || trimmed.hasPrefix("\\author") || trimmed.hasPrefix("\\date")),
+               let fm = frontmatterCmdRegex.firstMatch(in: line, range: NSRange(location: 0, length: (line as NSString).length)) {
                 let cmd = (line as NSString).substring(with: fm.range(at: 1))
                 let val = cleanTeXInlineText((line as NSString).substring(with: fm.range(at: 2)))
                 if cmd == "title" { idx.title = val }
@@ -207,7 +212,8 @@ enum LaTeXDocumentIndexer {
                 else if cmd == "date" { idx.date = val == "\\today" ? formattedToday() : val }
             }
 
-            if let sm = sectionRegex.firstMatch(in: line, range: NSRange(location: 0, length: (line as NSString).length)) {
+            if trimmed.hasPrefix("\\"),
+               let sm = sectionRegex.firstMatch(in: line, range: NSRange(location: 0, length: (line as NSString).length)) {
                 let cmd = (line as NSString).substring(with: sm.range(at: 1))
                 let starred = !((line as NSString).substring(with: sm.range(at: 2))).isEmpty
                 let rawTitle = cleanTeXInlineText((line as NSString).substring(with: sm.range(at: 3)))
@@ -258,23 +264,27 @@ enum LaTeXDocumentIndexer {
                 }
             }
 
-            labelRegex.enumerateMatches(in: line, range: NSRange(location: 0, length: (line as NSString).length)) { m, _, _ in
-                guard let m = m else { return }
-                let key = (line as NSString).substring(with: m.range(at: 1)).trimmingCharacters(in: .whitespaces)
-                idx.labels[key] = LaTeXLabelTarget(
-                    key: key,
-                    kind: currentContext.kind,
-                    number: currentContext.number,
-                    title: currentContext.title,
-                    characterLocation: currentContext.loc
-                )
+            if line.contains("\\label{") {
+                labelRegex.enumerateMatches(in: line, range: NSRange(location: 0, length: (line as NSString).length)) { m, _, _ in
+                    guard let m = m else { return }
+                    let key = (line as NSString).substring(with: m.range(at: 1)).trimmingCharacters(in: .whitespaces)
+                    idx.labels[key] = LaTeXLabelTarget(
+                        key: key,
+                        kind: currentContext.kind,
+                        number: currentContext.number,
+                        title: currentContext.title,
+                        characterLocation: currentContext.loc
+                    )
+                }
             }
 
-            bibResourceRegex.enumerateMatches(in: line, range: NSRange(location: 0, length: (line as NSString).length)) { m, _, _ in
-                guard let m = m else { return }
-                let raw = (line as NSString).substring(with: m.range(at: 1))
-                for part in raw.split(separator: ",") {
-                    bibFiles.append(part.trimmingCharacters(in: .whitespaces))
+            if line.contains("\\bibliography{") || line.contains("\\addbibresource{") {
+                bibResourceRegex.enumerateMatches(in: line, range: NSRange(location: 0, length: (line as NSString).length)) { m, _, _ in
+                    guard let m = m else { return }
+                    let raw = (line as NSString).substring(with: m.range(at: 1))
+                    for part in raw.split(separator: ",") {
+                        bibFiles.append(part.trimmingCharacters(in: .whitespaces))
+                    }
                 }
             }
 

@@ -10,17 +10,13 @@ public final class HybridMarkdownTextView: NSTextView {
 
     public var currentTheme: EditorTheme = .daylight {
         didSet {
-            if currentTheme != oldValue {
-                needsDisplay = true
-            }
+            if currentTheme != oldValue { needsDisplay = true }
         }
     }
 
     public var typographySettings: EditorTypographySettings = .default {
         didSet {
-            if typographySettings != oldValue {
-                needsDisplay = true
-            }
+            if typographySettings != oldValue { needsDisplay = true }
         }
     }
 
@@ -58,22 +54,19 @@ public final class HybridMarkdownTextView: NSTextView {
 
     public var externalUpdateHighlightRanges: [NSRange] = [] {
         didSet {
-            if externalUpdateHighlightRanges != oldValue {
-                needsDisplay = true
-            }
+            if externalUpdateHighlightRanges != oldValue { needsDisplay = true }
         }
     }
 
     public var proseColumnWidth: CGFloat = 0 {
         didSet {
-            if abs(proseColumnWidth - oldValue) > 0.5 {
-                needsDisplay = true
-            }
+            if abs(proseColumnWidth - oldValue) > 0.5 { needsDisplay = true }
         }
     }
 
     public var isTypewriterMode: Bool = false
     public var isSourceCodeMode: Bool = false
+    var activeHoveredPillRange: NSRange?
 
     public var onToggleCheckboxAtCharacterIndex: ((Int) -> Void)?
     var mediaHoverTrackingArea: NSTrackingArea?

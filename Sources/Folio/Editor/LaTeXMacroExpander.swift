@@ -50,14 +50,19 @@ public enum LaTeXMacroExpander {
         macros: [String: LaTeXMacroDefinition] = [:]
     ) -> (expandedLatex: String, tag: String?) {
         var localMacros = macros
+        let prevCount = localMacros.count
         var working = stripComments(from: latex)
         working = consumeDefinitions(in: working, into: &localMacros)
-        registerCustomOperators(from: localMacros)
+        if localMacros.count != prevCount {
+            registerCustomOperators(from: localMacros)
+        }
 
-        for _ in 0..<16 {
-            let next = expandMacrosOnce(in: working, macros: localMacros)
-            if next == working { break }
-            working = next
+        if !localMacros.isEmpty && working.contains("\\") {
+            for _ in 0..<16 {
+                let next = expandMacrosOnce(in: working, macros: localMacros)
+                if next == working { break }
+                working = next
+            }
         }
 
         let (withoutTag, extractedTag) = extractTag(from: working)
@@ -65,7 +70,7 @@ public enum LaTeXMacroExpander {
         return (normalized.trimmingCharacters(in: .whitespacesAndNewlines), extractedTag)
     }
 
-    private static func registerCustomOperators(from macros: [String: LaTeXMacroDefinition]) {
+    static func registerCustomOperators(from macros: [String: LaTeXMacroDefinition]) {
         for definition in macros.values {
             guard let opText = definition.operatorText else { continue }
             let symbolName = definition.name.hasPrefix("\\")
@@ -80,6 +85,7 @@ public enum LaTeXMacroExpander {
     }
 
     private static func stripComments(from text: String) -> String {
+        guard text.contains("%") else { return text }
         let lines = text.split(separator: "\n", omittingEmptySubsequences: false)
         return lines.map { line -> String in
             let chars = Array(line)
@@ -106,6 +112,13 @@ public enum LaTeXMacroExpander {
         in text: String,
         into macros: inout [String: LaTeXMacroDefinition]
     ) -> String {
+        guard text.contains("\\newcommand")
+            || text.contains("\\renewcommand")
+            || text.contains("\\providecommand")
+            || text.contains("\\DeclareMathOperator")
+            || text.contains("\\def") else {
+            return text
+        }
         let chars = Array(text)
         var out = ""
         var i = 0

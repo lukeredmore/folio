@@ -85,14 +85,14 @@ public enum LaTeXLiveStyler {
             .backgroundColor: NSColor.clear,
             .underlineStyle: 0,
             .strikethroughStyle: 0,
-            .baselineOffset: 0.0
+            .baselineOffset: 0.0,
+            LaTeXBlockStyleCache.styledPassAttributeKey: true
         ]
-
-        storage.beginEditing()
-        storage.setAttributes(baseAttributes, range: fullRange)
 
         let kind = documentKind(for: string, fileURL: fileURL)
         if kind == .bibtex {
+            storage.beginEditing()
+            storage.setAttributes(baseAttributes, range: fullRange)
             let bibResult = applyBibTeXStyles(
                 to: storage,
                 string: string,
@@ -107,23 +107,19 @@ public enum LaTeXLiveStyler {
             return bibResult
         }
 
-        var docMacros = (!sourceCodeMode && string.contains("\\"))
-            ? LaTeXMacroExpander.extractDocumentMacros(from: string)
-            : [:]
-
-        let docIndex = LaTeXDocumentIndexer.buildIndex(
+        let (docIndex, docMacros) = LaTeXDocumentIndexer.cachedIndexAndMacros(
             string: string,
             nsString: nsString,
-            baseDirectoryURL: baseDirectoryURL
+            baseDirectoryURL: baseDirectoryURL,
+            sourceCodeMode: sourceCodeMode
         )
-        if !docIndex.extraMacros.isEmpty {
-            docMacros.merge(docIndex.extraMacros) { current, _ in current }
-        }
         LaTeXMathRenderer.setDocumentMacros(docMacros)
 
         if sourceCodeMode {
             let headings = extractLaTeXOutlineHeadings(docIndex: docIndex)
             let codeFont = theme.codeFont(size: effectiveBaseSize * 0.94)
+            storage.beginEditing()
+            storage.setAttributes(baseAttributes, range: fullRange)
             storage.addAttribute(.font, value: codeFont, range: fullRange)
             MarkdownLiveStyler.highlightLaTeXSource(in: storage, range: fullRange, theme: theme, dimFactor: 1.0)
             storage.endEditing()
@@ -135,6 +131,32 @@ public enum LaTeXLiveStyler {
 
         var headings: [OutlineHeading] = []
         var decorations: [LineDecoration] = []
+        var recordedBlocks: [LaTeXBlockStyleCache.CachedBlock] = []
+
+        let styleConfig = LaTeXBlockStyleCache.StyleConfig(
+            theme: theme,
+            typography: typography,
+            textAlignment: textAlignment,
+            sourceCodeMode: sourceCodeMode,
+            prettyMode: prettyMode,
+            focusMode: focusMode,
+            effectiveContainerWidth: effectiveContainerWidth,
+            baseDirectoryURL: baseDirectoryURL
+        )
+        LaTeXBlockStyleCache.activeBaseAttributes = baseAttributes
+        let session = LaTeXBlockStyleCache.prepareIncrementalSession(
+            for: storage,
+            config: styleConfig,
+            string: string,
+            nsString: nsString,
+            docIndex: docIndex,
+            docMacros: docMacros
+        )
+
+        storage.beginEditing()
+        if session == nil {
+            storage.setAttributes(baseAttributes, range: fullRange)
+        }
 
         styleLaTeXDocumentBody(
             in: storage,
@@ -153,11 +175,22 @@ public enum LaTeXLiveStyler {
             prettyMode: prettyMode,
             focusMode: focusMode,
             baseDirectoryURL: baseDirectoryURL,
+            session: session,
             headings: &headings,
-            decorations: &decorations
+            decorations: &decorations,
+            recordedBlocks: &recordedBlocks
         )
 
         storage.endEditing()
+        LaTeXBlockStyleCache.saveSession(
+            for: storage,
+            config: styleConfig,
+            string: string,
+            nsString: nsString,
+            docIndex: docIndex,
+            docMacros: docMacros,
+            blocks: recordedBlocks
+        )
         return MarkdownDocumentAnalysis(headings: headings, decorations: decorations)
     }
 

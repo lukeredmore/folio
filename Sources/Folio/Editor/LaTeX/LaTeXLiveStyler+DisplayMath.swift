@@ -62,6 +62,12 @@ extension LaTeXLiveStyler {
         }
 
         let fullBlockRange = NSRange(location: lineRange.location, length: scanIndex - lineRange.location)
+        if fullBlockRange.length > lineRange.length {
+            LaTeXBlockStyleCache.resetAttributes(
+                in: storage,
+                range: NSRange(location: NSMaxRange(lineRange), length: fullBlockRange.length - lineRange.length)
+            )
+        }
         storage.addAttribute(MKey.noSpellCheck, value: true, range: fullBlockRange)
 
         let isMathBlockActive = mathLines.contains(where: { $0.isActive }) ||

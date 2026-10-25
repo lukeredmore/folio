@@ -10,8 +10,13 @@ extension HybridMarkdownTextView {
         let origin = self.textContainerOrigin
         let fullContentWidth = self.bounds.width - origin.x * 2
         let contentWidth = proseColumnWidth > 0 ? proseColumnWidth : fullContentWidth
+        let probeRect = NSRect(x: point.x - 16, y: point.y - 16, width: 32, height: 32)
+        let visibleCharRange = visibleDecorationCharacterRange(for: probeRect, margin: 64)
 
-        for dec in lineDecorations {
+        for (decIdx, dec) in lineDecorations.enumerated() {
+            if let visible = visibleCharRange, !Self.decorationSpan(decorationSpan(at: decIdx), touches: visible) {
+                continue
+            }
             switch dec.kind {
             case let .latexInlinePill(label, tooltip, _, _, pillRange, fontSize, _, _):
                 if let rect = computeLaTeXInlinePillRect(
@@ -55,8 +60,13 @@ extension HybridMarkdownTextView {
         let origin = self.textContainerOrigin
         let fullContentWidth = self.bounds.width - origin.x * 2
         let contentWidth = proseColumnWidth > 0 ? proseColumnWidth : fullContentWidth
+        let probeRect = NSRect(x: point.x - 16, y: point.y - 16, width: 32, height: 32)
+        let visibleCharRange = visibleDecorationCharacterRange(for: probeRect, margin: 64)
 
-        for dec in lineDecorations {
+        for (decIdx, dec) in lineDecorations.enumerated() {
+            if let visible = visibleCharRange, !Self.decorationSpan(decorationSpan(at: decIdx), touches: visible) {
+                continue
+            }
             switch dec.kind {
             case let .latexPreambleCard(_, _, fullBlockRange, _):
                 let bg = layoutManager.glyphRange(forCharacterRange: fullBlockRange, actualCharacterRange: nil)

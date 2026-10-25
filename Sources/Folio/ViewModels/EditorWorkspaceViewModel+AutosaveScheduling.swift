@@ -53,6 +53,7 @@ extension EditorWorkspaceViewModel {
             MainActor.assumeIsolated {
                 guard let self else { return }
                 self.pendingAutoSaveWorkItem = nil
+                self.persistUndoTimelines()
                 self.autoSaveOrStageCurrentDocument()
             }
         }

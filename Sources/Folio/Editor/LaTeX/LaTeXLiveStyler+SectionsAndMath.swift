@@ -35,6 +35,7 @@ extension LaTeXLiveStyler {
         headings: inout [OutlineHeading],
         decorations: inout [LineDecoration]
     ) -> (nextIndex: Int, lineDelta: Int)? {
+        guard trimmedLine.hasPrefix("\\") || trimmedLine.hasPrefix("$$") else { return nil }
 
         // 1. Sectioning commands (\section{...}, \subsection{...}, etc.)
         if let secInfo = docIndex.lineSectionNumbers[lineRange.location],
@@ -77,10 +78,11 @@ extension LaTeXLiveStyler {
             }
             return (NSMaxRange(lineRange), 1)
         }
-        if let fm = LaTeXDocumentIndexer.frontmatterCmdRegex.firstMatch(
-            in: lineText,
-            range: NSRange(location: 0, length: (lineText as NSString).length)
-        ) {
+        if (trimmedLine.hasPrefix("\\title") || trimmedLine.hasPrefix("\\author") || trimmedLine.hasPrefix("\\date")),
+           let fm = LaTeXDocumentIndexer.frontmatterCmdRegex.firstMatch(
+               in: lineText,
+               range: NSRange(location: 0, length: (lineText as NSString).length)
+           ) {
             styleFrontmatterLine(
                 in: storage,
                 string: string,
@@ -103,10 +105,11 @@ extension LaTeXLiveStyler {
         }
 
         // 3. \input{...} and \include{...}
-        if let im = LaTeXDocumentIndexer.inputRegex.firstMatch(
-            in: lineText,
-            range: NSRange(location: 0, length: (lineText as NSString).length)
-        ) {
+        if (trimmedLine.hasPrefix("\\input") || trimmedLine.hasPrefix("\\include")),
+           let im = LaTeXDocumentIndexer.inputRegex.firstMatch(
+               in: lineText,
+               range: NSRange(location: 0, length: (lineText as NSString).length)
+           ) {
             let relPath = (lineText as NSString).substring(with: im.range(at: 2))
             let resolvedURL = LaTeXDocumentIndexer.resolveTeXFileURL(path: relPath, baseDirectoryURL: baseDirectoryURL)
             storage.addAttribute(MKey.noSpellCheck, value: true, range: lineRange)
