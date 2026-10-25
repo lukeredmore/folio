@@ -33,23 +33,11 @@ final class FolioUILagProfileTests: XCTestCase {
 
         let archSVG = """
         <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 160" width="640" height="160">
-          <defs>
-            <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
-              <stop offset="0%" stop-color="#0f172a"/>
-              <stop offset="100%" stop-color="#1e293b"/>
-            </linearGradient>
-            <linearGradient id="accent" x1="0%" y1="0%" x2="100%" y2="0%">
-              <stop offset="0%" stop-color="#3b82f6"/>
-              <stop offset="100%" stop-color="#8b5cf6"/>
-            </linearGradient>
-          </defs>
-          <rect width="640" height="160" rx="14" fill="url(#bg)"/>
+          <rect width="640" height="160" rx="14" fill="#0f172a"/>
           <rect x="24" y="28" width="168" height="104" rx="10" fill="#1e293b" stroke="#3b82f6" stroke-width="2"/>
-          <text x="108" y="72" text-anchor="middle" fill="#f8fafc" font-family="-apple-system, sans-serif" font-size="15" font-weight="700">folio_engine</text>
+          <text x="108" y="72" text-anchor="middle" fill="#f8fafc" font-size="15" font-weight="700">folio_engine</text>
           <rect x="240" y="28" width="168" height="104" rx="10" fill="#1e293b" stroke="#6366f1" stroke-width="2"/>
-          <text x="324" y="72" text-anchor="middle" fill="#f8fafc" font-family="-apple-system, sans-serif" font-size="15" font-weight="700">FolioApp (macOS)</text>
-          <rect x="456" y="28" width="160" height="104" rx="10" fill="#1e293b" stroke="#8b5cf6" stroke-width="2"/>
-          <text x="536" y="72" text-anchor="middle" fill="#f8fafc" font-family="-apple-system, sans-serif" font-size="15" font-weight="700">folio_zed_mod</text>
+          <text x="324" y="72" text-anchor="middle" fill="#f8fafc" font-size="15" font-weight="700">FolioApp (macOS)</text>
         </svg>
         """
         try archSVG.write(to: assetsDir.appendingPathComponent("folio_architecture.svg"), atomically: true, encoding: .utf8)
@@ -313,10 +301,46 @@ final class FolioUILagProfileTests: XCTestCase {
             hostingView.layoutSubtreeIfNeeded()
         }
 
-        // When sidebar closes, bottom status bar auto-hides so editor canvas bleeds full bottom & top
-        vm.showSidebar = false
+        if let textView = vm.activeTextView {
+            window.makeFirstResponder(textView)
+        }
+        RunLoop.current.run(until: Date().addingTimeInterval(0.1))
+        hostingView.layoutSubtreeIfNeeded()
+        if let toolbar = window.toolbar,
+           let item = toolbar.items.first(where: { $0.itemIdentifier.rawValue == "com.apple.SwiftUI.navigationSplitView.toggleSidebar" }),
+           let v = item.view {
+            let wf = v.convert(v.bounds, to: nil)
+            let center = NSPoint(x: wf.midX, y: wf.midY)
+            if let down = NSEvent.mouseEvent(with: .leftMouseDown, location: center, modifierFlags: [], timestamp: ProcessInfo.processInfo.systemUptime, windowNumber: window.windowNumber, context: nil, eventNumber: 1, clickCount: 1, pressure: 1.0),
+               let up = NSEvent.mouseEvent(with: .leftMouseUp, location: center, modifierFlags: [], timestamp: ProcessInfo.processInfo.systemUptime + 0.01, windowNumber: window.windowNumber, context: nil, eventNumber: 2, clickCount: 1, pressure: 0.0) {
+                window.sendEvent(down)
+                window.sendEvent(up)
+            }
+        }
         RunLoop.current.run(until: Date().addingTimeInterval(0.35))
         hostingView.layoutSubtreeIfNeeded()
+        XCTAssertFalse(vm.showSidebar, "First click on sidebar toolbar button must immediately collapse sidebar")
+        if let root = window.contentView?.superview,
+           let splitView = findSubview(of: NSSplitView.self, in: root),
+           let svc = splitView.delegate as? NSSplitViewController {
+            XCTAssertNil(splitView.autosaveName, "NSSplitView autosaveName must be cleared to prevent conflicting subview frame restoration")
+            XCTAssertTrue(svc.splitViewItems.first?.isCollapsed ?? false, "NSSplitViewItem must be collapsed after first click")
+        }
+
+        if let screen = window.screen ?? NSScreen.main {
+            XCTAssertFalse(
+                WindowStatePersistenceAccessor.Coordinator.isRestorableWindowFrame(screen.frame, for: window),
+                "Full-screen rect must not be saved or restored onto a windowed NSWindow"
+            )
+            XCTAssertTrue(
+                WindowStatePersistenceAccessor.Coordinator.isRestorableWindowFrame(
+                    NSRect(x: 100, y: 100, width: 960, height: 640),
+                    for: window
+                )
+            )
+        }
+
+        // When sidebar closes, bottom status bar auto-hides so editor canvas bleeds full bottom & top
         let closedScrollRect = scrollView.convert(scrollView.bounds, to: nil)
         XCTAssertEqual(closedScrollRect.minY, 0.0, accuracy: 1.0, "Editor scroll view must extend to bottom edge when sidebar is closed")
         XCTAssertEqual(closedScrollRect.maxY, hostingView.bounds.height, accuracy: 1.0, "Editor scroll view must extend to top edge when sidebar is closed")
