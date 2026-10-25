@@ -12,7 +12,7 @@ public final class MarkdownLiveStyler {
     /// Marks ranges (math, code, syntax tokens) where spellcheck squiggles must be suppressed.
     public static let noSpellCheckAttributeKey = NSAttributedString.Key("FolioNoSpellCheck")
 
-    public struct InlineMathLayoutInfo: Equatable, Sendable {
+    public struct InlineMathLayoutInfo: Hashable, Sendable {
         public let range: NSRange
         public let width: CGFloat
         public let ascent: CGFloat
