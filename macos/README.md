@@ -48,25 +48,45 @@ The standalone macOS app (`//:FolioApp`) provides a dedicated writing window wit
 
 ---
 
-## Building & Packaging Locally
+## Building, Running & CLI Usage
 
-### 1. Run Directly via Bazel (Dev Build)
+### 1. Run Directly via Bazel with CLI Arguments (Dev Build)
+Both `//:FolioApp` and `//:folio` accept the same CLI flags and `[path[:line[:column]] ...]` arguments, resolving relative paths against the caller's working directory (`BUILD_WORKING_DIRECTORY`):
 ```bash
-bazel run //:FolioApp
+# Launch FolioApp and open README.md at line 20, column 1
+bazel run //:FolioApp -- README.md:20:1
+
+# Open a workspace folder or print CLI help/version
+bazel run //:FolioApp -- .
+bazel run //:FolioApp -- --help
+bazel run //:folio -- README.md:20:1
 ```
 Dev builds launched via Bazel display the **DEV**-badged app icon in the macOS Dock.
 
-### 2. Build Stamped `./Folio.app` Bundle
+### 2. Bundled `folio` CLI in `Folio.app` & `Folio.dmg`
+Every `Folio.app` bundle (including inside `Folio.dmg`) embeds the executable `folio` CLI launcher at `Folio.app/Contents/Resources/bin/folio`:
+- **Automatic Setup:** On first launch, `Folio.app` links `~/.local/bin/folio` to its bundled `Contents/Resources/bin/folio` launcher if `folio` is not already in `$PATH`.
+- **Manual / `/usr/local/bin` Setup:** Choose **Folio → Install 'folio' Command in PATH…** from the menu bar (or **Settings (`Cmd + ,`) → General → Command Line Tool**) to symlink `/usr/local/bin/folio -> /Applications/Folio.app/Contents/Resources/bin/folio`.
+- **Supported CLI Arguments:**
+  ```bash
+  folio note.md                # Open or create note.md in the running Folio instance
+  folio note.md:42:5           # Open note.md and jump cursor to line 42, column 5
+  folio ~/notes .              # Set workspace folder and open files
+  folio --foreground note.md   # Run Folio attached to the terminal
+  folio --help / --version
+  ```
+
+### 3. Build Stamped `./Folio.app` Bundle
 ```bash
 ./build_app.sh
 open Folio.app
 ```
 
-### 3. Package Distributable `Folio.dmg`
+### 4. Package Distributable `Folio.dmg`
 ```bash
 ./scripts/package_dmg.sh
 ```
-Produces `./Folio.dmg` (compressed `UDZO` disk image containing `Folio.app` and an `/Applications` drag-and-drop shortcut).
+Produces `./Folio.dmg` (compressed `UDZO` disk image containing `Folio.app` with `Contents/Resources/bin/folio` and an `/Applications` drag-and-drop shortcut).
 
 ---
 

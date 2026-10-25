@@ -21,11 +21,14 @@ Do **not** modify files in `${MAIN_REPO_ROOT}` (`main`) or copy uncommitted chan
 
 All targets in the monorepo are self-contained and build directly inside any worktree via Bazel or Cargo:
 
-- **Bazel builds & tests** (always run with your worktree as `Cwd`):
+- **Bazel builds, tests & CLI launches** (always run with your worktree as `Cwd`):
   ```bash
   bazel test //...
   bazel build //:FolioApp
+  bazel run //:FolioApp -- path/to/file.md:10:1
+  bazel run //:folio -- path/to/file.md:10:1
   ```
+  Both `bazel run //:FolioApp -- <args>` and `bazel run //:folio -- <args>` accept the full `folio` CLI interface (`[path[:line[:column]] ...]`, directories, `.`, `~`, `file://`, `--help`, `--version`) and resolve relative paths against your shell's working directory (`BUILD_WORKING_DIRECTORY`).
 - **Rust core & extension unit tests**:
   ```bash
   cargo test --workspace
@@ -58,3 +61,8 @@ To prevent monolithic files and duplicated test logic across the Zed extension a
 ## 4. Final Responses
 
 Whenever you finish a task in **Folio** that results in a material change to one or more elements/applications (i.e. Zed extension, standalone app, CLI, Zed fork, etc.), always include at least one copy-pasteable command to demonstrate it. If rendered content may be affected, ensure your command opens an example file that is filled with relevant content.
+
+For changes affecting the standalone macOS app or CLI, prefer launching the worktree build directly via Bazel with CLI arguments pointing to the relevant file (and optional `:line[:column]`):
+```bash
+bazel run //:FolioApp -- path/to/example.md:1:1
+```
