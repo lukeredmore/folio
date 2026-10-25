@@ -156,4 +156,48 @@ final class SwiftMathAndMacroRenderingTests: XCTestCase {
         }
         XCTAssertNotNil(image.tiffRepresentation)
     }
+
+    func testShowcaseEquationsRenderWithNativeOpenTypeMath() {
+        let preamble = #"""
+        \newcommand{\R}{\mathbb{R}}
+        \newcommand{\C}{\mathbb{C}}
+        \newcommand{\N}{\mathbb{N}}
+        \newcommand{\E}{\mathbb{E}}
+        \newcommand{\Prob}{\mathbb{P}}
+        \newcommand{\calL}{\mathcal{L}}
+        \newcommand{\calN}{\mathcal{N}}
+        \newcommand{\norm}[1]{\left\lVert #1 \right\rVert}
+        \newcommand{\abs}[1]{\left\lvert #1 \right\rvert}
+        \newcommand{\ip}[2]{\left\langle #1, #2 \right\rangle}
+        \newcommand{\pdv}[3][1]{\frac{\partial^{#1} #2}{\partial #3^{#1}}}
+        \newcommand{\KL}[2]{D_{\mathrm{KL}}\left(#1 \,\middle\|\, #2\right)}
+        \DeclareMathOperator*{\argmin}{arg\,min}
+        \DeclareMathOperator*{\argmax}{arg\,max}
+        \DeclareMathOperator{\Tr}{Tr}
+        \DeclareMathOperator{\Cov}{Cov}
+        """#
+        let macros = LaTeXMacroExpander.extractDocumentMacros(from: preamble)
+
+        let equations: [String] = [
+            #"\abs{\ip{u}{v}} \le \norm{u}_2 \norm{v}_2"#,
+            #"\norm{A}_F = \sqrt{\Tr(A^* A)}"#,
+            #"\pdv{u}{t} + \pdv[2]{u}{x} + \pdv[2]{u}{y} = 0"#,
+            #"\theta^* = \argmin_{\theta \in \R^d} \left\{ \frac{1}{2n} \norm{X\theta - y}_2^2 + \frac{\lambda}{2} \norm{\theta}_2^2 \right\} \tag{1}"#,
+            #"""
+            \begin{align}
+            \log p_\theta(x) &= \E_{q_\phi(z \mid x)}\left[ \log \frac{p_\theta(x, z)}{q_\phi(z \mid x)} \right] + \KL{q_\phi(z \mid x)}{p_\theta(z \mid x)} \\
+            &\ge \E_{q_\phi(z \mid x)}\left[ \log p_\theta(x \mid z) \right] - D_{\mathrm{KL}}\left( q_\phi(z \mid x) \parallel p(z) \right) \\
+            &\equiv \calL_{\mathrm{ELBO}}(\theta, \phi; x)
+            \end{align} \tag{2}
+            """#,
+            #"\zeta(s) = \sum_{n=1}^{\infty} \frac{1}{n^s} = \prod_{\substack{p \in \N \\ p \text{ prime}}} \frac{1}{1 - p^{-s}} \tag{6}"#,
+            #"i\hbar \pdv{}{t}\ket{\Psi(t)} = \left( -\frac{\hbar^2}{2m}\nabla^2 + V(\hat{\mathbf{r}}, t) \right)\ket{\Psi(t)} \tag{9}"#,
+        ]
+
+        for eq in equations {
+            let box = LaTeXMathRenderer.layoutLatex(eq, baseFontSize: 16, isDisplayStyle: true, macros: macros)
+            XCTAssertTrue(box.usesNativeOpenTypeMath, "Expected native OpenType math for: \(eq)")
+            XCTAssertGreaterThan(box.width, 20)
+        }
+    }
 }
