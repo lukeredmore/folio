@@ -199,6 +199,10 @@ final class LaTeXDocumentStylingAndMathCrashTests: XCTestCase {
                     \\vspace{#1}
                 \\fi
             }
+            \\newcommand{\\sectiontitle}[1]{%
+                \\newpage
+                \\section*{#1}
+            }
             \\begin{document}
             \\begin{center}
             {\\LARGE\\bfseries Simplifying Expressions}\\\\[4pt]
@@ -208,6 +212,7 @@ final class LaTeXDocumentStylingAndMathCrashTests: XCTestCase {
             {\\normalsize Practice Version}
             \\fi
             \\end{center}
+            \\sectiontitle{Part II -- Exponents}
             \\workspace[0.75in]{
             Group by matching variable parts:
             \\[
@@ -237,12 +242,22 @@ final class LaTeXDocumentStylingAndMathCrashTests: XCTestCase {
         let keyColor = (trueStorage.attribute(.foregroundColor, at: answerKeyLoc, effectiveRange: nil) as? NSColor)?.usingColorSpace(.sRGB)
         XCTAssertEqual(Double(keyColor?.blueComponent ?? 0), 180.0 / 255.0, accuracy: 0.02)
 
+        let secTitleLoc = trueNS.range(of: "Part II").location
+        let secTitleFont = trueStorage.attribute(.font, at: secTitleLoc, effectiveRange: nil) as? NSFont
+        XCTAssertGreaterThan(secTitleFont?.pointSize ?? 0, 14.0)
+        XCTAssertTrue(trueAnalysis.decorations.contains(where: {
+            if case .headingUnderline(let level) = $0.kind { return level == 1 }
+            return false
+        }))
+
         let groupByLoc = trueNS.range(of: "Group by matching").location
         let mathOpenLoc = trueNS.range(of: "(-4 + 9 - 2)").location
         let wsColor = (trueStorage.attribute(MarkdownLiveStyler.customColorAttributeKey, at: groupByLoc, effectiveRange: nil) as? NSColor)?.usingColorSpace(.sRGB)
         let mathColor = (trueStorage.attribute(MarkdownLiveStyler.customColorAttributeKey, at: mathOpenLoc, effectiveRange: nil) as? NSColor)?.usingColorSpace(.sRGB)
         XCTAssertEqual(Double(wsColor?.blueComponent ?? 0), 180.0 / 255.0, accuracy: 0.02)
         XCTAssertEqual(Double(mathColor?.blueComponent ?? 0), 180.0 / 255.0, accuracy: 0.02)
+        let mathFg = trueStorage.attribute(.foregroundColor, at: mathOpenLoc, effectiveRange: nil) as? NSColor
+        XCTAssertEqual(mathFg, NSColor.clear, "Inactive display math lines inside \\workspace must stay NSColor.clear")
         XCTAssertTrue(trueAnalysis.decorations.contains(where: {
             if case .latexInlineText(let text, _, _, _) = $0.kind {
                 return text == "Solution:"
