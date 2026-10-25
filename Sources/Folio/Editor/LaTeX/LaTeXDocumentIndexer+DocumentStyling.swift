@@ -92,10 +92,10 @@ extension LaTeXDocumentIndex {
         guard let docPt = documentStyle.documentFontSizePt, docPt > 0 else {
             return base
         }
-        // When printing (baseFontSize == 12pt), honor the exact LaTeX document point size;
-        // on screen, scale proportionally relative to standard 11pt LaTeX articles.
-        if abs(theme.baseFontSize - 12.0) < 0.01 {
-            return docPt * typography.fontSizeScale
+        // When printing (or when fontSizeScale already normalized base to docPt), honor the exact
+        // LaTeX document point size; on screen, scale proportionally relative to 11pt LaTeX articles.
+        if abs(base - docPt) < 0.05 || abs(theme.baseFontSize - 12.0) < 0.01 {
+            return base
         }
         let ratio = min(1.30, max(0.85, docPt / 11.0))
         return round(base * ratio * 10.0) / 10.0
@@ -226,5 +226,117 @@ extension LaTeXDocumentIndex {
         default:
             return fallbackTheme.linkNSColor
         }
+    }
+
+    func isBlankBlockRedundant(range: NSRange, in nsString: NSString, fullLength: Int) -> Bool {
+        let bodyStart = preambleRange.map { NSMaxRange($0) } ?? 0
+        if range.location <= bodyStart || NSMaxRange(range) >= fullLength {
+            return true
+        }
+        // Check following line
+        let nextLR = nsString.lineRange(for: NSRange(location: NSMaxRange(range), length: 0))
+        let nextCR = MarkdownLiveStyler.strippedLineContentRange(nsString: nsString, lineRange: nextLR)
+        let nextTrimmed = nsString.substring(with: nextCR).trimmingCharacters(in: .whitespaces)
+        if Self.isVerticalGlueOrSectionLine(nextTrimmed) || nextTrimmed.hasPrefix("%") {
+            return true
+        }
+        // Check preceding line(s), skipping back over comment/blank blocks to see if at start of body
+        var prevPos = range.location
+        var checkedImmediatePrev = false
+        while prevPos > bodyStart {
+            let prevLR = nsString.lineRange(for: NSRange(location: prevPos - 1, length: 0))
+            let prevCR = MarkdownLiveStyler.strippedLineContentRange(nsString: nsString, lineRange: prevLR)
+            let prevTrimmed = nsString.substring(with: prevCR).trimmingCharacters(in: .whitespaces)
+            if !checkedImmediatePrev {
+                checkedImmediatePrev = true
+                if Self.isVerticalGlueOrSectionLine(prevTrimmed) {
+                    return true
+                }
+            }
+            if prevTrimmed.isEmpty || prevTrimmed.hasPrefix("%") || prevTrimmed == "\\begin{document}" {
+                prevPos = prevLR.location
+                continue
+            }
+            return false
+        }
+        return true
+    }
+
+    private static func isVerticalGlueOrSectionLine(_ trimmed: String) -> Bool {
+        if trimmed.hasPrefix("\\vspace") || trimmed == "\\vfill"
+            || trimmed == "\\newpage" || trimmed == "\\clearpage"
+            || trimmed == "\\begin{document}" || trimmed == "\\end{document}"
+            || trimmed == "\\begin{center}" || trimmed == "\\end{center}"
+            || trimmed == "\\begin{itemize}" || trimmed == "\\end{itemize}"
+            || trimmed == "\\begin{enumerate}" || trimmed == "\\end{enumerate}" {
+            return true
+        }
+        if trimmed.hasPrefix("\\section") || trimmed.hasPrefix("\\subsection")
+            || trimmed.hasPrefix("\\subsubsection") || trimmed.hasPrefix("\\chapter")
+            || trimmed.hasPrefix("\\part") || trimmed.hasPrefix("\\sectiontitle") {
+            return true
+        }
+        return false
+    }
+}
+
+extension LaTeXLiveStyler {
+    static func styleLaTeXBlankLineBlock(
+        in storage: NSTextStorage,
+        nsString: NSString,
+        fullLength: Int,
+        lineRange: NSRange,
+        isActiveLine: Bool,
+        activeLineRange: NSRange,
+        selectedRange: NSRange,
+        docIndex: LaTeXDocumentIndex,
+        typography: EditorTypographySettings,
+        effectiveBaseSize: CGFloat,
+        effectiveContainerWidth: CGFloat,
+        prettyMode: Bool
+    ) -> (nextIndex: Int, lineDelta: Int) {
+        var blankRanges: [NSRange] = [lineRange]
+        var anyActive = isActiveLine
+        var scanIndex = NSMaxRange(lineRange)
+        while scanIndex < fullLength {
+            let nextLR = nsString.lineRange(for: NSRange(location: scanIndex, length: 0))
+            let nextCR = MarkdownLiveStyler.strippedLineContentRange(nsString: nsString, lineRange: nextLR)
+            let nextTrimmed = nsString.substring(with: nextCR).trimmingCharacters(in: .whitespaces)
+            guard nextTrimmed.isEmpty else { break }
+            if MarkdownLiveStyler.isLineActive(lineRange: nextLR, activeLineRange: activeLineRange, selectedRange: selectedRange) {
+                anyActive = true
+            }
+            blankRanges.append(nextLR)
+            scanIndex = NSMaxRange(nextLR)
+        }
+        let fullBlockRange = NSRange(location: lineRange.location, length: scanIndex - lineRange.location)
+        if fullBlockRange.length > lineRange.length {
+            LaTeXBlockStyleCache.resetAttributes(
+                in: storage,
+                range: NSRange(location: NSMaxRange(lineRange), length: fullBlockRange.length - lineRange.length)
+            )
+        }
+        let isBlockActive = anyActive || NSIntersectionRange(fullBlockRange, selectedRange).length > 0
+        let redundant = docIndex.isBlankBlockRedundant(range: fullBlockRange, in: nsString, fullLength: fullLength)
+        let parskip = max(2.0, docIndex.effectiveParagraphSpacing(baseSize: effectiveBaseSize, fallback: typography))
+        let lineH: CGFloat = (!isBlockActive && prettyMode)
+            ? (redundant ? 0.5 : parskip)
+            : max(parskip, round(effectiveBaseSize * 1.05))
+        let pStyle = NSMutableParagraphStyle()
+        pStyle.minimumLineHeight = lineH
+        pStyle.maximumLineHeight = lineH
+        pStyle.lineSpacing = 0
+        pStyle.paragraphSpacing = 0
+        pStyle.paragraphSpacingBefore = 0
+        pStyle.tailIndent = effectiveContainerWidth
+        storage.addAttributes([
+            .font: NSFont.systemFont(ofSize: max(0.1, min(effectiveBaseSize, lineH * 0.7))),
+            .paragraphStyle: pStyle
+        ], range: fullBlockRange)
+        if !isBlockActive && prettyMode && blankRanges.count > 1 {
+            LaTeXBlockStyleCache.collapseInternalNewlines(in: storage, nsString: nsString, range: fullBlockRange)
+        }
+        LaTeXBlockStyleCache.pendingGlyphInvalidationRanges.append(fullBlockRange)
+        return (scanIndex, blankRanges.count)
     }
 }

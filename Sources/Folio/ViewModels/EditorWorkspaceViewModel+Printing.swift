@@ -175,12 +175,15 @@ extension EditorWorkspaceViewModel {
             .foregroundColor: NSColor.clear,
             .paragraphStyle: collapsedPara
         ]
+        let nsString = storage.string as NSString
         storage.beginEditing()
         for rawRange in rangesToCollapse {
             let safeLoc = max(0, min(rawRange.location, storage.length))
             let safeLen = max(0, min(rawRange.length, storage.length - safeLoc))
             guard safeLen > 0 else { continue }
-            storage.addAttributes(attrs, range: NSRange(location: safeLoc, length: safeLen))
+            let clamped = NSRange(location: safeLoc, length: safeLen)
+            storage.addAttributes(attrs, range: clamped)
+            LaTeXBlockStyleCache.collapseInternalNewlines(in: storage, nsString: nsString, range: clamped)
         }
         storage.endEditing()
     }

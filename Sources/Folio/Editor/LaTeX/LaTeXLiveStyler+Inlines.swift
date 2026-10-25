@@ -130,7 +130,8 @@ extension LaTeXLiveStyler {
                         fullRange: fullRange,
                         width: targetWidth,
                         ascent: mathBox.ascent,
-                        descent: mathBox.descent
+                        descent: mathBox.descent,
+                        verticalPadding: 3.0
                     )
                     decorations.append(LineDecoration(
                         lineRange: fullRange,
@@ -262,6 +263,19 @@ extension LaTeXLiveStyler {
             latexHiddenMetaCmdRegex.enumerateMatches(in: string, options: [], range: effectiveRange) { match, _, _ in
                 guard let match = match, !isProtected(match.range) else { return }
                 MarkdownLiveStyler.insertSortedRange(match.range, into: &protectedRanges)
+                if !isActiveLine && prettyMode, match.range.length > 2 {
+                    let token = nsString.substring(with: match.range)
+                    if token.hasPrefix("\\\\["), token.hasSuffix("]"),
+                       let len = LaTeXLength.parse(String(token.dropFirst(3).dropLast())) {
+                        let extraPt = max(0.0, len.resolvedPoints(baseSize: fontSize))
+                        if extraPt > 0,
+                           let existing = storage.attribute(.paragraphStyle, at: lineRange.location, effectiveRange: nil) as? NSParagraphStyle,
+                           let mutable = existing.mutableCopy() as? NSMutableParagraphStyle {
+                            mutable.paragraphSpacing = extraPt
+                            storage.addAttribute(.paragraphStyle, value: mutable, range: lineRange)
+                        }
+                    }
+                }
                 MarkdownLiveStyler.styleSyntaxToken(
                     in: storage,
                     range: match.range,

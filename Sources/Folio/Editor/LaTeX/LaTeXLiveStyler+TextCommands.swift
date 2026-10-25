@@ -43,7 +43,8 @@ extension LaTeXLiveStyler {
         fullRange: NSRange,
         width: CGFloat,
         ascent: CGFloat,
-        descent: CGFloat
+        descent: CGFloat,
+        verticalPadding: CGFloat = 0.0
     ) {
         guard fullRange.length > 0 else { return }
         _ = nsString
@@ -53,7 +54,8 @@ extension LaTeXLiveStyler {
             range: fullRange,
             width: width,
             ascent: ascent,
-            descent: descent
+            descent: descent,
+            padding: verticalPadding
         )
         storage.addAttributes([
             .font: tinyAtomicFont,
@@ -287,7 +289,7 @@ extension LaTeXLiveStyler {
                     guard !displayText.isEmpty else { return }
                     let currentFont = (storage.attribute(.font, at: match.range.location, effectiveRange: nil) as? NSFont) ?? baseFont
                     let maxW = parts.map { ceil(($0 as NSString).size(withAttributes: [.font: currentFont]).width) }.max() ?? 4.0
-                    let lineStep = ceil((currentFont.ascender - currentFont.descender) * 1.25)
+                    let lineStep = ceil((currentFont.ascender - currentFont.descender) * 1.10)
                     let extraDescent = CGFloat(max(0, parts.count - 1)) * lineStep
                     reserveAtomicInlineSpan(
                         in: storage,

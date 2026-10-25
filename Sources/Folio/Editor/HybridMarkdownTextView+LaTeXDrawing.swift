@@ -254,7 +254,7 @@ extension HybridMarkdownTextView {
                 .foregroundColor: currentTheme.textNSColor.withAlphaComponent(dimFactor)
             ]
             let lines = text.components(separatedBy: "\n")
-            let lineStep = ceil((font.ascender - font.descender) * 1.25)
+            let lineStep = ceil((font.ascender - font.descender) * 1.10)
             for (idx, line) in lines.enumerated() {
                 (line as NSString).draw(
                     at: NSPoint(x: drawX, y: drawY + CGFloat(idx) * lineStep),

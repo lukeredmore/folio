@@ -32,6 +32,7 @@ final class LaTeXDocumentStylingAndMathCrashTests: XCTestCase {
         \\begin{document}
         \\section*{Section Header}
         Body paragraph text in Times New Roman.
+
         {\\color{AnswerColor}\\textbf{Solution:} Worked step.}
         \\end{document}
         """
@@ -65,8 +66,12 @@ final class LaTeXDocumentStylingAndMathCrashTests: XCTestCase {
         XCTAssertNotNil(pStyle)
         XCTAssertEqual(Double(pStyle?.lineHeightMultiple ?? 0), 1.08, accuracy: 0.01)
         XCTAssertEqual(Double(pStyle?.firstLineHeadIndent ?? -1), 0.0, accuracy: 0.01)
+        XCTAssertEqual(Double(pStyle?.paragraphSpacing ?? -1), 0.0, accuracy: 0.01)
+
+        let bodyLineRange = ns.lineRange(for: bodyRange)
+        let blankLineStyle = storage.attribute(.paragraphStyle, at: NSMaxRange(bodyLineRange), effectiveRange: nil) as? NSParagraphStyle
         let expectedBaseSize = round(customTheme.baseFontSize * (12.0 / 11.0) * 10.0) / 10.0
-        XCTAssertEqual(Double(pStyle?.paragraphSpacing ?? 0), Double(expectedBaseSize * 0.75), accuracy: 0.5)
+        XCTAssertEqual(Double(blankLineStyle?.minimumLineHeight ?? 0), Double(expectedBaseSize * 0.75), accuracy: 0.5)
 
         let solRange = ns.range(of: "Worked step.")
         XCTAssertNotEqual(solRange.location, NSNotFound)
@@ -119,5 +124,61 @@ final class LaTeXDocumentStylingAndMathCrashTests: XCTestCase {
             )
             XCTAssertFalse(analysis.decorations.isEmpty, "Expected decorations for \(path)")
         }
+    }
+
+    @MainActor
+    func testLaTeXPrintViewCollapsesPreambleAndCommentsAndRespectsSingleSpacedAddressBlocks() throws {
+        var commentBlock = ""
+        for i in 1...110 {
+            commentBlock += "% Comment line \(i)\n"
+        }
+        let letterTeX = """
+        \\documentclass[12pt]{article}
+        \\usepackage[margin=1in]{geometry}
+        \\usepackage{setspace}
+        \\setstretch{1.05}
+        \\setlength{\\parindent}{0pt}
+        \\setlength{\\parskip}{0.75em}
+        \\newcommand{\\letterdate}{August 21, 2026}
+        \\newcommand{\\sendername}{Luke Redmore}
+        \\newcommand{\\senderaddress}{1109 N. Clayton St.\\\\Wilmington, DE 19806}
+        \\newcommand{\\senderemail}{lukeredmore@gmail.com}
+        \\begin{document}
+
+        \(commentBlock)
+        \\letterdate
+
+        \\vspace{1em}
+        \\sendername\\\\
+        \\senderaddress\\\\
+        \\senderemail
+
+        \\vspace{1em}
+        Delaware Department of Transportation\\\\
+        Toll Operations / E-ZPass Customer Service Center\\\\
+        P.O. Box 52598\\\\
+        New Castle, DE 19720
+        \\end{document}
+        """
+
+        let vm = EditorWorkspaceViewModel()
+        vm.markdownText = letterTeX
+        let printView = vm.makePrintView()
+        guard let lm = printView.layoutManager else {
+            XCTFail("Expected layoutManager on printView")
+            return
+        }
+        let ns = printView.string as NSString
+        let dateLoc = ns.range(of: "\\letterdate").location
+        XCTAssertNotEqual(dateLoc, NSNotFound)
+        let dateGlyph = lm.glyphIndexForCharacter(at: dateLoc)
+        let dateRect = lm.lineFragmentRect(forGlyphAt: dateGlyph, effectiveRange: nil)
+        XCTAssertLessThan(dateRect.minY, 8.0, "Expected \\letterdate near top of Page 1, got y=\(dateRect.minY)")
+
+        let recipientLine1 = ns.range(of: "Delaware Department of Transportation").location
+        let recipientLine2 = ns.range(of: "Toll Operations").location
+        let r1Rect = lm.lineFragmentRect(forGlyphAt: lm.glyphIndexForCharacter(at: recipientLine1), effectiveRange: nil)
+        let r2Rect = lm.lineFragmentRect(forGlyphAt: lm.glyphIndexForCharacter(at: recipientLine2), effectiveRange: nil)
+        XCTAssertLessThan(r2Rect.minY - r1Rect.minY, 19.0, "Expected single-spaced address lines, got delta=\(r2Rect.minY - r1Rect.minY)")
     }
 }

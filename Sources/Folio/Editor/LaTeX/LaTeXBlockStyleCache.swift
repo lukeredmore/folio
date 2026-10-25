@@ -48,9 +48,26 @@ enum LaTeXBlockStyleCache {
 
     nonisolated(unsafe) private static var lastEntry: StorageEntry?
     nonisolated(unsafe) static var activeBaseAttributes: [NSAttributedString.Key: Any] = [:]
+    nonisolated(unsafe) static var pendingGlyphInvalidationRanges: [NSRange] = []
 
     static func invalidate() {
         lastEntry = nil
+    }
+
+    static func collapseInternalNewlines(in storage: NSTextStorage, nsString: NSString, range: NSRange) {
+        let end = min(NSMaxRange(range), nsString.length) - 1
+        guard range.location < end else { return }
+        var idx = range.location
+        while idx < end {
+            if nsString.character(at: idx) == 0x0A {
+                let nlRange = NSRange(location: idx, length: 1)
+                storage.addAttributes([
+                    MarkdownLiveStyler.softLineBreakAttributeKey: true,
+                    MarkdownLiveStyler.collapsedTokenAttributeKey: true
+                ], range: nlRange)
+            }
+            idx += 1
+        }
     }
 
     static func invalidateLayoutManagers(for storage: NSTextStorage, fullRange: NSRange) {
