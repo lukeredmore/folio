@@ -7,12 +7,14 @@ public struct QuickOpenPathCandidate: Equatable {
     public let isDirectory: Bool
     public let exists: Bool
     public let lineNumber: Int?
+    public let columnNumber: Int?
 
-    public init(url: URL, isDirectory: Bool, exists: Bool, lineNumber: Int? = nil) {
+    public init(url: URL, isDirectory: Bool, exists: Bool, lineNumber: Int? = nil, columnNumber: Int? = nil) {
         self.url = url
         self.isDirectory = isDirectory
         self.exists = exists
         self.lineNumber = lineNumber
+        self.columnNumber = columnNumber
     }
 }
 
@@ -63,7 +65,10 @@ extension EditorWorkspaceViewModel {
         }
     }
 
-    public func resolveQuickOpenPathCandidate(for rawQuery: String) -> QuickOpenPathCandidate? {
+    public func resolveQuickOpenPathCandidate(
+        for rawQuery: String,
+        preferWorkingDirectory: Bool = false
+    ) -> QuickOpenPathCandidate? {
         let trimmed = rawQuery.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return nil }
 
@@ -77,8 +82,9 @@ extension EditorWorkspaceViewModel {
             }
         }
 
-        let (pathPart, parsedLine) = Self.splitOptionalLineSuffix(from: cleaned)
+        let (pathPart, parsedLine, parsedCol, _) = FolioCLIManager.splitPathAndLineColumnSuffix(cleaned)
         let candidatePaths = [pathPart, pathPart.replacingOccurrences(of: "\\ ", with: " ")]
+        let cwdURL = URL(fileURLWithPath: FolioCLIManager.effectiveWorkingDirectoryPath())
 
         for candidatePath in candidatePaths {
             let expanded = (candidatePath as NSString).expandingTildeInPath
@@ -92,15 +98,14 @@ extension EditorWorkspaceViewModel {
                         url: url,
                         isDirectory: isDir.boolValue,
                         exists: true,
-                        lineNumber: parsedLine
+                        lineNumber: parsedLine,
+                        columnNumber: parsedCol
                     )
                 }
             } else {
-                let baseDirs: [URL] = [
-                    workspaceFolderURL,
-                    currentFileURL?.deletingLastPathComponent(),
-                    URL(fileURLWithPath: FileManager.default.currentDirectoryPath)
-                ].compactMap { $0 }
+                let baseDirs: [URL] = preferWorkingDirectory
+                    ? [cwdURL, workspaceFolderURL, currentFileURL?.deletingLastPathComponent()].compactMap { $0 }
+                    : [workspaceFolderURL, currentFileURL?.deletingLastPathComponent(), cwdURL].compactMap { $0 }
 
                 for base in baseDirs {
                     let url = base.appendingPathComponent(expanded).standardizedFileURL
@@ -110,7 +115,8 @@ extension EditorWorkspaceViewModel {
                             url: url,
                             isDirectory: isDir.boolValue,
                             exists: true,
-                            lineNumber: parsedLine
+                            lineNumber: parsedLine,
+                            columnNumber: parsedCol
                         )
                     }
                 }
@@ -124,9 +130,9 @@ extension EditorWorkspaceViewModel {
             if expanded.hasPrefix("/") {
                 url = URL(fileURLWithPath: expanded).standardizedFileURL
             } else {
-                let base = workspaceFolderURL
-                    ?? currentFileURL?.deletingLastPathComponent()
-                    ?? URL(fileURLWithPath: FileManager.default.currentDirectoryPath)
+                let base = preferWorkingDirectory
+                    ? cwdURL
+                    : (workspaceFolderURL ?? currentFileURL?.deletingLastPathComponent() ?? cwdURL)
                 url = base.appendingPathComponent(expanded).standardizedFileURL
             }
             if url.path != "/" {
@@ -134,7 +140,8 @@ extension EditorWorkspaceViewModel {
                     url: url,
                     isDirectory: false,
                     exists: false,
-                    lineNumber: parsedLine
+                    lineNumber: parsedLine,
+                    columnNumber: parsedCol
                 )
             }
         }
@@ -203,8 +210,8 @@ extension EditorWorkspaceViewModel {
         }
 
         openFile(at: targetURL)
-        if let line = candidate.lineNumber, line > 1 {
-            navigateToLineNumber(line)
+        if let line = candidate.lineNumber, line >= 1 {
+            navigateToLineNumber(line, columnNumber: candidate.columnNumber)
         }
         closeQuickOpen()
     }
@@ -212,23 +219,32 @@ extension EditorWorkspaceViewModel {
     // MARK: - CLI Path Opening (`folio <path>`)
 
     public func openPathsFromCLI(_ paths: [String]) {
-        for rawPath in paths {
+        for rawPath in FolioCLIManager.deduplicateCommandLinePaths(paths) {
             openPathFromCLI(rawPath)
         }
     }
 
     public func openPathFromCLI(_ rawPath: String) {
-        guard let candidate = resolveQuickOpenPathCandidate(for: rawPath) ?? {
+        guard let candidate = resolveQuickOpenPathCandidate(for: rawPath, preferWorkingDirectory: true) ?? {
             let trimmed = rawPath.trimmingCharacters(in: .whitespacesAndNewlines)
             guard !trimmed.isEmpty else { return nil }
-            let expanded = (trimmed as NSString).expandingTildeInPath
+            let unquoted = Self.stripSurroundingQuotes(from: trimmed)
+            let (pathPart, parsedLine, parsedCol, _) = FolioCLIManager.splitPathAndLineColumnSuffix(unquoted)
+            let expanded = (pathPart as NSString).expandingTildeInPath
+            let cwd = FolioCLIManager.effectiveWorkingDirectoryPath()
             let url = expanded.hasPrefix("/")
                 ? URL(fileURLWithPath: expanded).standardizedFileURL
-                : URL(fileURLWithPath: FileManager.default.currentDirectoryPath)
+                : URL(fileURLWithPath: cwd)
                     .appendingPathComponent(expanded).standardizedFileURL
             var isDir: ObjCBool = false
             let exists = FileManager.default.fileExists(atPath: url.path, isDirectory: &isDir)
-            return QuickOpenPathCandidate(url: url, isDirectory: isDir.boolValue, exists: exists)
+            return QuickOpenPathCandidate(
+                url: url,
+                isDirectory: isDir.boolValue,
+                exists: exists,
+                lineNumber: parsedLine,
+                columnNumber: parsedCol
+            )
         }() else {
             return
         }
@@ -254,8 +270,8 @@ extension EditorWorkspaceViewModel {
             loadWorkspaceFolder(parentFolder)
         }
         openFile(at: candidate.url)
-        if let line = candidate.lineNumber, line > 1 {
-            navigateToLineNumber(line)
+        if let line = candidate.lineNumber, line >= 1 {
+            navigateToLineNumber(line, columnNumber: candidate.columnNumber)
         }
     }
 
@@ -280,30 +296,16 @@ extension EditorWorkspaceViewModel {
             unquoted.hasPrefix("file://")
     }
 
-    private static func splitOptionalLineSuffix(from path: String) -> (String, Int?) {
-        let parts = path.split(separator: ":", omittingEmptySubsequences: false)
-        guard parts.count >= 2 else { return (path, nil) }
-        if let lastNum = Int(parts[parts.count - 1]) {
-            if parts.count >= 3, let secondLastNum = Int(parts[parts.count - 2]) {
-                let basePath = parts.dropLast(2).joined(separator: ":")
-                if !basePath.isEmpty {
-                    return (basePath, secondLastNum)
-                }
-            }
-            let basePath = parts.dropLast(1).joined(separator: ":")
-            if !basePath.isEmpty {
-                return (basePath, lastNum)
-            }
-        }
-        return (path, nil)
-    }
-
-    private func navigateToLineNumber(_ lineNumber: Int) {
+    private func navigateToLineNumber(_ lineNumber: Int, columnNumber: Int? = nil) {
         let lines = markdownText.components(separatedBy: "\n")
         let targetIdx = max(0, min(lineNumber - 1, lines.count - 1))
         var charOffset = 0
         for idx in 0..<targetIdx {
             charOffset += (lines[idx] as NSString).length + 1
+        }
+        if let col = columnNumber, col > 1, targetIdx < lines.count {
+            let lineLen = (lines[targetIdx] as NSString).length
+            charOffset += min(col - 1, lineLen)
         }
         let clampedOffset = min(charOffset, (markdownText as NSString).length)
         let range = NSRange(location: clampedOffset, length: 0)

@@ -234,7 +234,7 @@ extension EditorWorkspaceViewModel {
     }
 
     static func defaultFallbackWorkspaceFolderURL() -> URL {
-        let cwdPath = FileManager.default.currentDirectoryPath
+        let cwdPath = FolioCLIManager.effectiveWorkingDirectoryPath()
         if cwdPath == "/" || cwdPath.isEmpty {
             let bundleURL = Bundle.main.bundleURL
             if bundleURL.pathExtension == "app" {

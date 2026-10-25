@@ -236,6 +236,7 @@ public struct FolioApp: App {
     @ObservedObject var updateManager = AppUpdateManager.shared
 
     public init() {
+        FolioCLIManager.handleImmediateCLIFlagsIfNeeded()
         NSApplication.shared.setActivationPolicy(.regular)
         NSApplication.shared.applicationIconImage = FolioBrandIcon.makeCurrentAppIconImage(pixelSize: 512)
     }
@@ -251,9 +252,10 @@ public struct FolioApp: App {
                     let cliArgs = FolioCLIManager.extractCommandLinePaths(from: ProcessInfo.processInfo.arguments)
                     let queuedPaths = FolioCLIManager.drainPendingOpenRequests()
                     let delegatePaths = appDelegate.drainPendingOpenPaths()
-                    viewModel.openPathsFromCLI(cliArgs + queuedPaths + delegatePaths)
+                    let initialPaths = FolioCLIManager.deduplicateCommandLinePaths(cliArgs + queuedPaths + delegatePaths)
+                    viewModel.openPathsFromCLI(initialPaths)
                     FolioCLIManager.shared.startListeningForCLIOpenSignal { paths in
-                        viewModel.openPathsFromCLI(paths)
+                        viewModel.openPathsFromCLI(FolioCLIManager.deduplicateCommandLinePaths(paths))
                         NSApplication.shared.activate(ignoringOtherApps: true)
                     }
                     updateManager.checkForUpdatesOnLaunchIfNeeded()

@@ -8,6 +8,7 @@ exports_files([
     "AppIcon-Dev.icns",
     "AppIcon-Zed.icns",
     "Info.plist",
+    "folio",
 ])
 
 swift_library(
@@ -25,6 +26,9 @@ swift_library(
 
 macos_application(
     name = "FolioApp",
+    additional_contents = {
+        ":folio": "Resources/bin",
+    },
     bundle_id = "app.folio.macos",
     bundle_name = "Folio",
     infoplists = ["Info.plist"],

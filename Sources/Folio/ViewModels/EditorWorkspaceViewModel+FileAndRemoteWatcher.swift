@@ -21,7 +21,9 @@ extension EditorWorkspaceViewModel {
         isApplyingInternalStateChange = false
         userDefaults.set(0, forKey: Self.selectedCursorLocationDefaultsKey)
         stats = DocumentStats.compute(for: markdownText)
-        if activeTextView == nil {
+        if let tv = activeTextView {
+            tv.applyProgrammaticDocumentText(markdownText, selectedRange: NSRange(location: 0, length: 0))
+        } else {
             let analysis = MarkdownLiveStyler.applyStyles(
                 to: NSTextStorage(string: markdownText),
                 theme: theme,
@@ -89,7 +91,9 @@ extension EditorWorkspaceViewModel {
             isApplyingInternalStateChange = false
             userDefaults.set(0, forKey: Self.selectedCursorLocationDefaultsKey)
             stats = DocumentStats.compute(for: content)
-            if activeTextView == nil {
+            if let tv = activeTextView {
+                tv.applyProgrammaticDocumentText(content, selectedRange: NSRange(location: 0, length: 0))
+            } else {
                 let analysis = MarkdownLiveStyler.applyStyles(
                     to: NSTextStorage(string: content),
                     theme: theme,

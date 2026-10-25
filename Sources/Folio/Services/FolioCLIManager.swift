@@ -30,95 +30,21 @@ public final class FolioCLIManager {
         ]
     }
 
+    public static func bundledCLILauncherURL(in appBundleURL: URL = Bundle.main.bundleURL) -> URL {
+        appBundleURL
+            .appendingPathComponent("Contents", isDirectory: true)
+            .appendingPathComponent("Resources", isDirectory: true)
+            .appendingPathComponent("bin", isDirectory: true)
+            .appendingPathComponent("folio")
+    }
+
     public static func resolveAppBundlePath(explicitBundleURL: URL? = nil) -> String {
         if let explicit = explicitBundleURL { return explicit.path }
         let mainBundle = Bundle.main.bundleURL
         if mainBundle.pathExtension == "app" { return mainBundle.path }
-        let cwdApp = URL(fileURLWithPath: FileManager.default.currentDirectoryPath).appendingPathComponent("Folio.app")
+        let cwdApp = URL(fileURLWithPath: effectiveWorkingDirectoryPath()).appendingPathComponent("Folio.app")
         if FileManager.default.fileExists(atPath: cwdApp.path) { return cwdApp.path }
         return "/Applications/Folio.app"
-    }
-
-    /// Generates the executable `folio` shell script (similar to Zed's `zed` CLI launcher).
-    public static func generateCLIScript(
-        fallbackAppBundlePath: String,
-        queueFilePath: String = defaultQueueFileURL.path
-    ) -> String {
-        """
-        #!/usr/bin/env bash
-        # Folio CLI launcher — opens Markdown files and folders in Folio.app
-        set -euo pipefail
-        QUEUE_FILE="\(queueFilePath)"
-        FALLBACK_APP="\(fallbackAppBundlePath)"
-
-        if [[ "${1:-}" == "-h" || "${1:-}" == "--help" ]]; then
-            echo "Usage: folio [path ...]"
-            echo "Open files or folders in Folio."
-            exit 0
-        fi
-        if [[ "${1:-}" == "-v" || "${1:-}" == "--version" ]]; then
-            echo "folio 1.0.0"
-            exit 0
-        fi
-
-        resolve_app_bundle() {
-            for candidate in "${FOLIO_APP_PATH:-}" "/Applications/Folio.app" "$HOME/Applications/Folio.app" "${FALLBACK_APP}"; do
-                if [[ -n "${candidate}" && -d "${candidate}" ]]; then
-                    echo "${candidate}"
-                    return 0
-                fi
-            done
-            local found
-            found="$(mdfind "kMDItemCFBundleIdentifier == 'app.folio.macos'" 2>/dev/null | head -n 1 || true)"
-            if [[ -n "${found}" && -d "${found}" ]]; then
-                echo "${found}"
-                return 0
-            fi
-            return 1
-        }
-
-        ABS_PATHS=()
-        for arg in "$@"; do
-            [[ "${arg}" == -* ]] && continue
-            if [[ -d "${arg}" ]]; then
-                ABS_PATHS+=("$(cd "${arg}" && pwd -P)")
-            else
-                if [[ ! -e "${arg}" ]]; then
-                    mkdir -p "$(dirname "${arg}")"
-                    touch "${arg}"
-                fi
-                dir_part="$(cd "$(dirname "${arg}")" && pwd -P)"
-                ABS_PATHS+=("${dir_part}/$(basename "${arg}")")
-            fi
-        done
-
-        if (( ${#ABS_PATHS[@]} > 0 )); then
-            mkdir -p "$(dirname "${QUEUE_FILE}")"
-            for p in "${ABS_PATHS[@]}"; do
-                printf '%s\\n' "${p}" >> "${QUEUE_FILE}"
-            done
-        fi
-
-        RUNNING_PIDS="$(pgrep -x "Folio" 2>/dev/null || pgrep -x "FolioApp" 2>/dev/null || true)"
-        if [[ -n "${RUNNING_PIDS}" ]]; then
-            for pid in ${RUNNING_PIDS}; do
-                kill -USR1 "${pid}" 2>/dev/null || true
-            done
-            osascript -e 'tell application "System Events" to set frontmost of every process whose name is "Folio" or name is "FolioApp" to true' >/dev/null 2>&1 || true
-            exit 0
-        fi
-
-        if APP_BUNDLE="$(resolve_app_bundle)"; then
-            if (( ${#ABS_PATHS[@]} > 0 )); then
-                open -a "${APP_BUNDLE}" --args "${ABS_PATHS[@]}"
-            else
-                open -a "${APP_BUNDLE}"
-            fi
-        else
-            echo "folio: could not locate Folio.app. Move Folio.app to /Applications or set FOLIO_APP_PATH." >&2
-            exit 1
-        fi
-        """
     }
 
     @discardableResult
@@ -131,7 +57,9 @@ public final class FolioCLIManager {
         let alreadyInstalled = userDefaults.bool(forKey: Self.cliInstalledDefaultsKey)
         if alreadyInstalled,
            let existingPath = userDefaults.string(forKey: Self.cliInstalledPathDefaultsKey),
-           FileManager.default.isExecutableFile(atPath: existingPath) {
+           FileManager.default.isExecutableFile(atPath: existingPath),
+           let content = try? String(contentsOfFile: existingPath, encoding: .utf8),
+           content.contains("resolve_self_app_bundle") {
             return URL(fileURLWithPath: existingPath)
         }
         return installCLI(
@@ -166,6 +94,10 @@ public final class FolioCLIManager {
             guard fm.isWritableFile(atPath: dirURL.path) else { continue }
             let targetURL = dirURL.appendingPathComponent("folio")
             do {
+                if let attrs = try? fm.attributesOfItem(atPath: targetURL.path),
+                   attrs[.type] as? FileAttributeType == .typeSymbolicLink {
+                    try? fm.removeItem(at: targetURL)
+                }
                 try Data(scriptContent.utf8).write(to: targetURL, options: .atomic)
                 try fm.setAttributes([.posixPermissions: 0o755], ofItemAtPath: targetURL.path)
                 if primaryInstalledURL == nil {
@@ -208,30 +140,6 @@ public final class FolioCLIManager {
             .components(separatedBy: .newlines)
             .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
             .filter { !$0.isEmpty }
-    }
-
-    public static func extractCommandLinePaths(
-        from arguments: [String],
-        currentDirectoryPath: String = FileManager.default.currentDirectoryPath
-    ) -> [String] {
-        guard arguments.count > 1 else { return [] }
-        var paths: [String] = []
-        var skipNext = false
-        for arg in arguments.dropFirst() {
-            if skipNext { skipNext = false; continue }
-            if arg.hasPrefix("-NS") || arg.hasPrefix("-Apple") || arg.hasPrefix("-psn_") || arg == "-XCTest" {
-                if arg == "-NSDocumentRevisionsDebugMode" || arg == "-ApplePersistenceIgnoreState" || arg == "-XCTest" {
-                    skipNext = true
-                }
-                continue
-            }
-            if arg.hasPrefix("-") || arg.hasSuffix(".xctest") { continue }
-            let resolvedURL = arg.hasPrefix("/")
-                ? URL(fileURLWithPath: arg).standardizedFileURL
-                : URL(fileURLWithPath: currentDirectoryPath).appendingPathComponent(arg).standardizedFileURL
-            paths.append(resolvedURL.path)
-        }
-        return paths
     }
 
     public func startListeningForCLIOpenSignal(
