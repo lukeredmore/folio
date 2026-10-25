@@ -54,6 +54,7 @@ extension EditorWorkspaceViewModel {
 
     func persistUndoTimelines() {
         guard !isRestoringState else { return }
+        hasUnpersistedUndoChanges = false
         var boundedTimelines: [String: DocumentUndoTimeline] = [:]
         boundedTimelines.reserveCapacity(perFileUndoTimelines.count)
         for (key, timeline) in perFileUndoTimelines {
@@ -66,6 +67,15 @@ extension EditorWorkspaceViewModel {
         }
         if let encoded = try? JSONEncoder().encode(boundedTimelines) {
             userDefaults.set(encoded, forKey: Self.undoTimelinesDefaultsKey)
+        }
+    }
+
+    func schedulePersistUndoTimelines() {
+        guard !isRestoringState else { return }
+        if autoSaveDelay <= 0 {
+            persistUndoTimelines()
+        } else {
+            hasUnpersistedUndoChanges = true
         }
     }
 
@@ -165,7 +175,7 @@ extension EditorWorkspaceViewModel {
 
         perFileUndoTimelines[key] = timeline
         refreshUndoRedoAvailability()
-        persistUndoTimelines()
+        schedulePersistUndoTimelines()
     }
 
     func updateTopUndoNewSelection(_ selection: NSRange) {
@@ -178,7 +188,7 @@ extension EditorWorkspaceViewModel {
             last.newSelectedLength = max(0, selection.length)
             timeline.undoStack[timeline.undoStack.count - 1] = last
             perFileUndoTimelines[key] = timeline
-            persistUndoTimelines()
+            schedulePersistUndoTimelines()
         }
     }
 

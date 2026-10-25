@@ -161,6 +161,107 @@ public final class DiagramImageRenderer: @unchecked Sendable {
               image.size.width > 0, image.size.height > 0 else {
             return nil
         }
-        return image
+        return rasterizeVectorImage(image)
+    }
+
+    /// Pre-rasterizes an `_NSSVGImageRep`-backed `NSImage` into a 2x Retina bitmap `NSImage`
+    /// so `drawBackground(in:)` blits a cached texture instead of re-evaluating the CoreSVG tree on every frame.
+    public static func rasterizeVectorImage(_ vectorImage: NSImage, scale: CGFloat = 2.0) -> NSImage {
+        let logicalSize = vectorImage.size
+        let pixelWidth = Int(ceil(logicalSize.width * scale))
+        let pixelHeight = Int(ceil(logicalSize.height * scale))
+        return rasterizeImage(vectorImage, targetLogicalSize: logicalSize, pixelWidth: pixelWidth, pixelHeight: pixelHeight)
+    }
+
+    private struct ScaledBitmapKey: Hashable {
+        let imageID: ObjectIdentifier
+        let pixelWidth: Int
+        let pixelHeight: Int
+    }
+
+    private struct ScaledBitmapEntry {
+        let source: NSImage
+        let scaled: NSImage
+    }
+
+    private static let scaledCacheLock = NSLock()
+    nonisolated(unsafe) private static var scaledCache: [ScaledBitmapKey: ScaledBitmapEntry] = [:]
+
+    /// Draws `image` into `rawRect` using a device-pixel-exact pre-scaled bitmap cache so repeated
+    /// frames during scrolling, typing, cursor moves, and split-view resizing perform a 1:1 aligned blit.
+    public static func drawCached(_ image: NSImage, in rawRect: NSRect, fraction: CGFloat) {
+        let drawRect = NSRect(
+            x: round(rawRect.origin.x),
+            y: round(rawRect.origin.y),
+            width: max(1.0, round(rawRect.size.width)),
+            height: max(1.0, round(rawRect.size.height))
+        )
+        let cgCtx = NSGraphicsContext.current?.cgContext
+        let deviceSize = cgCtx?.convertToDeviceSpace(drawRect.size)
+            ?? NSSize(width: drawRect.width * 2.0, height: drawRect.height * 2.0)
+        let pixelW = max(1, Int(abs(round(deviceSize.width))))
+        let pixelH = max(1, Int(abs(round(deviceSize.height))))
+        guard pixelW <= 4096, pixelH <= 4096 else {
+            image.draw(in: drawRect, from: .zero, operation: .sourceOver, fraction: fraction, respectFlipped: true, hints: nil)
+            return
+        }
+
+        let key = ScaledBitmapKey(imageID: ObjectIdentifier(image), pixelWidth: pixelW, pixelHeight: pixelH)
+        scaledCacheLock.lock()
+        if let entry = scaledCache[key], entry.source === image {
+            scaledCacheLock.unlock()
+            entry.scaled.draw(in: drawRect, from: .zero, operation: .sourceOver, fraction: fraction, respectFlipped: true, hints: nil)
+            return
+        }
+        scaledCacheLock.unlock()
+
+        let scaled = rasterizeImage(image, targetLogicalSize: drawRect.size, pixelWidth: pixelW, pixelHeight: pixelH)
+        scaledCacheLock.lock()
+        if scaledCache.count >= 128 {
+            scaledCache.removeAll(keepingCapacity: true)
+        }
+        scaledCache[key] = ScaledBitmapEntry(source: image, scaled: scaled)
+        scaledCacheLock.unlock()
+        scaled.draw(in: drawRect, from: .zero, operation: .sourceOver, fraction: fraction, respectFlipped: true, hints: nil)
+    }
+
+    private static func rasterizeImage(
+        _ sourceImage: NSImage,
+        targetLogicalSize: NSSize,
+        pixelWidth: Int,
+        pixelHeight: Int
+    ) -> NSImage {
+        guard pixelWidth > 0, pixelHeight > 0,
+              pixelWidth <= 4096, pixelHeight <= 4096,
+              let bitmapRep = NSBitmapImageRep(
+                  bitmapDataPlanes: nil,
+                  pixelsWide: pixelWidth,
+                  pixelsHigh: pixelHeight,
+                  bitsPerSample: 8,
+                  samplesPerPixel: 4,
+                  hasAlpha: true,
+                  isPlanar: false,
+                  colorSpaceName: .deviceRGB,
+                  bytesPerRow: 0,
+                  bitsPerPixel: 0
+              ) else {
+            return sourceImage
+        }
+        bitmapRep.size = targetLogicalSize
+        NSGraphicsContext.saveGraphicsState()
+        if let ctx = NSGraphicsContext(bitmapImageRep: bitmapRep) {
+            NSGraphicsContext.current = ctx
+            ctx.imageInterpolation = .high
+            sourceImage.draw(
+                in: NSRect(origin: .zero, size: targetLogicalSize),
+                from: .zero,
+                operation: .sourceOver,
+                fraction: 1.0
+            )
+        }
+        NSGraphicsContext.restoreGraphicsState()
+        let rasterized = NSImage(size: targetLogicalSize)
+        rasterized.addRepresentation(bitmapRep)
+        return rasterized
     }
 }

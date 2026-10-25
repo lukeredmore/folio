@@ -61,7 +61,6 @@ extension EditorWorkspaceViewModel {
             )
             pendingEditOrigin = .userTyping
             pendingEditSummary = nil
-            updateTopUndoNewSelection(selectedRange)
 
             if activeTextView == nil {
                 let analysis = MarkdownLiveStyler.applyStyles(
@@ -76,7 +75,7 @@ extension EditorWorkspaceViewModel {
             }
             scheduleAutoSave()
         }
-        if !isRestoringState {
+        if !isRestoringState && autoSaveDelay <= 0 {
             userDefaults.set(selectedRange.location, forKey: Self.selectedCursorLocationDefaultsKey)
         }
         let updatedStats = DocumentStats.compute(for: markdownText, selectedRange: selectedRange)
@@ -90,7 +89,7 @@ extension EditorWorkspaceViewModel {
             canCoalesceLiveTyping = false
         }
         currentSelectedRange = selectedRange
-        if !isRestoringState {
+        if !isRestoringState && autoSaveDelay <= 0 {
             userDefaults.set(selectedRange.location, forKey: Self.selectedCursorLocationDefaultsKey)
         }
         if selectedRange.length == 0 && stats.selectedCharacters == 0 {

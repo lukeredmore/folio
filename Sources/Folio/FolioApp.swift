@@ -195,7 +195,7 @@ struct WindowStatePersistenceAccessor: NSViewRepresentable {
     }
 
     func updateNSView(_ nsView: PassThroughAccessorNSView, context: Context) {
-        if let window = nsView.window {
+        if let window = nsView.window, context.coordinator.attachedWindow !== window {
             context.coordinator.attach(to: window)
         }
     }

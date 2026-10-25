@@ -149,9 +149,13 @@ extension HybridMarkdownEditorRepresentable {
         }
 
         public func textViewDidChangeSelection(_ notification: Notification) {
-            guard !isProgrammaticUpdate, !isRestyling, let tv = textView else { return }
+            guard !isProgrammaticUpdate, !isRestyling, !isUpdatingFromTextView, let tv = textView else { return }
+            let currentText = tv.string
+            if let lastHash = lastKnownTextHash, currentText.hashValue != lastHash {
+                return
+            }
             let sel = tv.selectedRange()
-            let nsStr = tv.string as NSString
+            let nsStr = currentText as NSString
             let safeLoc = min(sel.location, nsStr.length)
             let activeLine = nsStr.lineRange(for: NSRange(location: safeLoc, length: 0))
 
@@ -271,6 +275,8 @@ extension HybridMarkdownEditorRepresentable {
 
             textView.lineDecorations = analysis.decorations
             textView.needsDisplay = true
+            let nsStr = storage.string as NSString
+            lastActiveLineRange = nsStr.lineRange(for: NSRange(location: min(sel.location, nsStr.length), length: 0))
             lastTheme = viewModel.theme
             lastTypography = viewModel.typography
             lastSourceMode = viewModel.sourceCodeMode
@@ -281,18 +287,24 @@ extension HybridMarkdownEditorRepresentable {
             lastContentWidth = contentWidth
 
             let currentHeadings = analysis.headings
-            if viewModel.headings != currentHeadings {
-                DispatchQueue.main.async { [weak self] in
-                    self?.viewModel.headings = currentHeadings
-                }
-            }
-
-            // Update active heading in outline based on cursor position
             let cursorLoc = sel.location
-            let activeHeading = currentHeadings.last(where: { $0.characterLocation <= cursorLoc })
-            if viewModel.activeHeadingID != activeHeading?.id {
-                DispatchQueue.main.async { [weak self] in
-                    self?.viewModel.activeHeadingID = activeHeading?.id
+            let activeHeadingID = currentHeadings.last(where: { $0.characterLocation <= cursorLoc })?.id
+            let headingsChanged = viewModel.headings != currentHeadings
+            let activeHeadingChanged = viewModel.activeHeadingID != activeHeadingID
+            if headingsChanged || activeHeadingChanged {
+                if isUpdatingFromTextView {
+                    if headingsChanged { viewModel.headings = currentHeadings }
+                    if activeHeadingChanged { viewModel.activeHeadingID = activeHeadingID }
+                } else {
+                    DispatchQueue.main.async { [weak self] in
+                        guard let self else { return }
+                        if self.viewModel.headings != currentHeadings {
+                            self.viewModel.headings = currentHeadings
+                        }
+                        if self.viewModel.activeHeadingID != activeHeadingID {
+                            self.viewModel.activeHeadingID = activeHeadingID
+                        }
+                    }
                 }
             }
 

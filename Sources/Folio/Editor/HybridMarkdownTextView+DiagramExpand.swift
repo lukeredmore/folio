@@ -8,6 +8,13 @@ public struct ExpandedDiagram: Identifiable {
 }
 
 extension HybridMarkdownTextView {
+    private static let expandIconLock = NSLock()
+    nonisolated(unsafe) private static var cachedExpandSymbol: NSImage? = {
+        let configuration = NSImage.SymbolConfiguration(pointSize: 10, weight: .semibold)
+        return NSImage(systemSymbolName: "arrow.up.left.and.arrow.down.right", accessibilityDescription: "Expand diagram")?
+            .withSymbolConfiguration(configuration)
+    }()
+    nonisolated(unsafe) private static var cachedTintedExpandIcons: [Int: NSImage] = [:]
 
     /// Card rect of a rendered Mermaid block, in view coordinates (matches the card drawing).
     func diagramCardRect(for fullBlockRange: NSRange) -> NSRect? {
@@ -30,17 +37,35 @@ extension HybridMarkdownTextView {
 
     func drawDiagramExpandButton(in card: NSRect, dimFactor: CGFloat) {
         let button = Self.diagramExpandButtonRect(in: card)
+        let fgColor = currentTheme.secondaryTextNSColor.withAlphaComponent(0.9 * dimFactor)
         currentTheme.secondaryTextNSColor.withAlphaComponent(0.10 * dimFactor).setFill()
         NSBezierPath(roundedRect: button, xRadius: 4, yRadius: 4).fill()
-        let configuration = NSImage.SymbolConfiguration(pointSize: 10, weight: .semibold)
-        if let symbol = NSImage(systemSymbolName: "arrow.up.left.and.arrow.down.right", accessibilityDescription: "Expand diagram")?
-            .withSymbolConfiguration(configuration) {
-            let tinted = NSImage(size: symbol.size, flipped: false) { rect in
-                symbol.draw(in: rect)
-                self.currentTheme.secondaryTextNSColor.withAlphaComponent(0.9 * dimFactor).set()
-                rect.fill(using: .sourceAtop)
-                return true
+
+        guard let symbol = Self.cachedExpandSymbol else { return }
+        let colorKey = fgColor.hashValue
+        Self.expandIconLock.lock()
+        var tinted = Self.cachedTintedExpandIcons[colorKey]
+        Self.expandIconLock.unlock()
+
+        if tinted == nil {
+            let rendered = DiagramImageRenderer.rasterizeVectorImage(
+                NSImage(size: symbol.size, flipped: false) { rect in
+                    symbol.draw(in: rect)
+                    fgColor.set()
+                    rect.fill(using: .sourceAtop)
+                    return true
+                }
+            )
+            Self.expandIconLock.lock()
+            if Self.cachedTintedExpandIcons.count > 16 {
+                Self.cachedTintedExpandIcons.removeAll(keepingCapacity: true)
             }
+            Self.cachedTintedExpandIcons[colorKey] = rendered
+            Self.expandIconLock.unlock()
+            tinted = rendered
+        }
+
+        if let tinted {
             let size = tinted.size
             tinted.draw(
                 in: NSRect(x: button.midX - size.width / 2, y: button.midY - size.height / 2, width: size.width, height: size.height),
