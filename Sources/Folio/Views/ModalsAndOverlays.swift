@@ -83,7 +83,7 @@ public struct QuickOpenModalView: View {
                                 viewModel.closeQuickOpen()
                             } label: {
                                 HStack(spacing: 10) {
-                                    Image(systemName: node.isRemote ? "network" : (node.isMarkdownFile ? "doc.text.fill" : "doc"))
+                                    Image(systemName: node.iconSystemName)
                                         .font(.system(size: 14))
                                         .foregroundColor(viewModel.theme.linkColor)
                                     VStack(alignment: .leading, spacing: 2) {

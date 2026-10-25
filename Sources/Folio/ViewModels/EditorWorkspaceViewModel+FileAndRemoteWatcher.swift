@@ -102,7 +102,9 @@ extension EditorWorkspaceViewModel {
                     typography: typography,
                     sourceCodeMode: sourceCodeMode,
                     focusMode: focusMode,
-                    selectedRange: NSRange(location: 0, length: 0)
+                    selectedRange: NSRange(location: 0, length: 0),
+                    baseDirectoryURL: url.deletingLastPathComponent(),
+                    fileURL: url
                 )
                 headings = analysis.headings
             }

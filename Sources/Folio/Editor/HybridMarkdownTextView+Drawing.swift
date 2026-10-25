@@ -325,7 +325,7 @@ extension HybridMarkdownTextView {
                 borderPath.lineWidth = 1.0
                 borderPath.stroke()
 
-            case .mermaidBlockRendered, .svgBlockRendered, .imageRendered, .listBullet, .horizontalRule, .tableRow:
+            case .mermaidBlockRendered, .svgBlockRendered, .imageRendered, .listBullet, .horizontalRule, .tableRow, .latexPreambleCard, .latexTheoremCard, .latexAbstractCard, .latexInputCard, .latexEquationNumber, .latexSectionBadge, .latexInlinePill:
                 drawMediaAndBlockDecoration(
                     dec,
                     glyphRange: glyphRange,

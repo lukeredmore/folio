@@ -99,7 +99,7 @@ extension HybridMarkdownTextView {
 
     public override func mouseMoved(with event: NSEvent) {
         let point = convert(event.locationInWindow, from: nil)
-        let tip = imageAltTooltip(at: point)
+        let tip = imageAltTooltip(at: point) ?? latexDecorationTooltip(at: point)
         if self.toolTip != tip {
             self.toolTip = tip
         }
@@ -117,6 +117,11 @@ extension HybridMarkdownTextView {
 
         // 0b. Click on a rendered video starts/toggles inline playback without unfolding the line
         if handleVideoClickIfNeeded(at: point) {
+            return
+        }
+
+        // 0c. Click on a LaTeX preamble banner, \input card, or citation/reference pill
+        if handleLaTeXDecorationClick(at: point, event: event) {
             return
         }
 
@@ -171,6 +176,9 @@ extension HybridMarkdownTextView {
     }
 
     public override func insertNewline(_ sender: Any?) {
+        if tryContinueLaTeXItemOnNewline() {
+            return
+        }
         let sel = self.selectedRange()
         let nsStr = self.string as NSString
         guard sel.location <= nsStr.length else {

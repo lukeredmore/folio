@@ -60,7 +60,7 @@ extension EditorWorkspaceViewModel {
                     syncStatus: remoteWorkspaceManager.fileSyncStatuses[fileURL.standardizedFileURL] ?? .synced
                 )
                 combinedRoots.append(fileNode)
-                if fileNode.isMarkdownFile {
+                if fileNode.isSupportedDocumentFile {
                     flatList.append(fileNode)
                 }
             }
@@ -130,7 +130,7 @@ extension EditorWorkspaceViewModel {
                     remoteMountID: remoteMountID,
                     syncStatus: syncStat
                 )
-                if node.isMarkdownFile {
+                if node.isSupportedDocumentFile {
                     nodes.append(node)
                     flatAccumulator.append(node)
                 }

@@ -43,10 +43,15 @@ struct FolioAppCommands: Commands {
     private var fileCommandGroups: some Commands {
         // MARK: - File Menu
         CommandGroup(replacing: .newItem) {
-            Button("New") {
+            Button("New Markdown Document") {
                 viewModel.newDocument()
             }
             .keyboardShortcut("n", modifiers: [.command])
+
+            Button("New LaTeX Document (.tex)") {
+                viewModel.newLaTeXDocument()
+            }
+            .keyboardShortcut("n", modifiers: [.command, .shift])
 
             Button("Open...") {
                 viewModel.openDocumentPanel()

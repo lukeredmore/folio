@@ -65,6 +65,49 @@ public enum BlockDecorationKind: Equatable {
         tableWidth: CGFloat,
         columnDividers: [CGFloat]
     )
+    case latexPreambleCard(
+        title: String,
+        subtitle: String,
+        fullBlockRange: NSRange,
+        dimFactor: CGFloat
+    )
+    case latexTheoremCard(
+        header: String,
+        isProof: Bool,
+        fullBlockRange: NSRange,
+        dimFactor: CGFloat
+    )
+    case latexAbstractCard(
+        fullBlockRange: NSRange,
+        dimFactor: CGFloat
+    )
+    case latexInputCard(
+        path: String,
+        resolvedURL: URL?,
+        lineRange: NSRange,
+        dimFactor: CGFloat
+    )
+    case latexEquationNumber(
+        number: String,
+        fullBlockRange: NSRange,
+        dimFactor: CGFloat
+    )
+    case latexSectionBadge(
+        number: String,
+        level: Int,
+        lineRange: NSRange,
+        dimFactor: CGFloat
+    )
+    case latexInlinePill(
+        label: String,
+        tooltip: String?,
+        targetLocation: Int?,
+        targetURL: URL?,
+        range: NSRange,
+        fontSize: CGFloat,
+        isCitation: Bool,
+        dimFactor: CGFloat
+    )
 }
 
 public struct LineDecoration: Equatable {

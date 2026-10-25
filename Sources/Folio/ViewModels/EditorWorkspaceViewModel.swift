@@ -52,7 +52,9 @@ public final class EditorWorkspaceViewModel: ObservableObject {
                         typography: typography,
                         sourceCodeMode: sourceCodeMode,
                         focusMode: focusMode,
-                        selectedRange: currentSelectedRange
+                        selectedRange: currentSelectedRange,
+                        baseDirectoryURL: currentFileURL?.deletingLastPathComponent() ?? workspaceFolderURL,
+                        fileURL: currentFileURL
                     )
                     headings = analysis.headings
                 }

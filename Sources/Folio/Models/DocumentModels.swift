@@ -98,10 +98,38 @@ public struct WorkspaceFileNode: Identifiable, Hashable, Sendable {
 
     public var isRemote: Bool { remoteMountID != nil }
 
+    public static let markdownExtensions: Set<String> = ["md", "markdown", "mdown", "mkd", "txt", "textbundle"]
+    public static let latexExtensions: Set<String> = ["tex", "sty", "cls", "ltx"]
+    public static let bibtexExtensions: Set<String> = ["bib"]
+
     public var isMarkdownFile: Bool {
-        let ext = url.pathExtension.lowercased()
-        return ["md", "markdown", "mdown", "mkd", "txt", "textbundle"].contains(ext)
+        Self.markdownExtensions.contains(url.pathExtension.lowercased())
     }
+
+    public var isLaTeXFile: Bool {
+        Self.latexExtensions.contains(url.pathExtension.lowercased())
+    }
+
+    public var isBibTeXFile: Bool {
+        Self.bibtexExtensions.contains(url.pathExtension.lowercased())
+    }
+
+    public var isSupportedDocumentFile: Bool {
+        isMarkdownFile || isLaTeXFile || isBibTeXFile
+    }
+
+    public var iconSystemName: String {
+        if isRemoteRoot { return "network" }
+        if isLaTeXFile { return "function" }
+        if isBibTeXFile { return "book.closed.fill" }
+        return isMarkdownFile ? "doc.text.fill" : "doc"
+    }
+}
+
+public enum FolioDocumentKind: String, Equatable, Sendable {
+    case markdown
+    case latex
+    case bibtex
 }
 
 public enum FileSortOrder: String, CaseIterable, Identifiable, Sendable {
