@@ -21,6 +21,9 @@ public struct StatusBarView: View {
                 Image(systemName: "sidebar.left")
                     .font(.system(size: 12.5))
                     .foregroundColor(viewModel.showSidebar ? viewModel.theme.linkColor : viewModel.theme.secondaryTextColor)
+                    .padding(.vertical, 4)
+                    .padding(.horizontal, 4)
+                    .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
             .help("Toggle Sidebar (Cmd+Shift+L)")

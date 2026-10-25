@@ -144,7 +144,7 @@ extension FolioAppCommands {
     // MARK: - View Menu
     @CommandsBuilder
     var viewCommandGroup: some Commands {
-        CommandGroup(after: .sidebar) {
+        CommandGroup(replacing: .sidebar) {
             Button(viewModel.showSidebar ? "Hide Sidebar" : "Show Sidebar") {
                 viewModel.showSidebar.toggle()
             }

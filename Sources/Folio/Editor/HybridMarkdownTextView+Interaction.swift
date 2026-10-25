@@ -240,6 +240,10 @@ extension HybridMarkdownTextView {
         scrollView.reflectScrolledClipView(scrollView.contentView)
     }
 
+    @objc public func toggleSidebar(_ sender: Any?) {
+        workspaceViewModel?.showSidebar.toggle()
+    }
+
     public override func printView(_ sender: Any?) {
         if let vm = workspaceViewModel {
             vm.printDocument()

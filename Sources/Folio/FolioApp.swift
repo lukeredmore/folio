@@ -42,7 +42,7 @@ public struct MainWindowView: View {
                 Color.black.opacity(0.18)
                     .ignoresSafeArea()
                     .onTapGesture {
-                        viewModel.showQuickOpen = false
+                        viewModel.closeQuickOpen()
                     }
 
                 VStack {
@@ -55,8 +55,28 @@ public struct MainWindowView: View {
         }
         .preferredColorScheme(viewModel.theme.colorScheme)
         .navigationTitle(viewModel.documentTitle + (viewModel.activeConflict != nil ? " — Conflict" : ""))
-        .background(WindowStatePersistenceAccessor(userDefaults: viewModel.userDefaults))
-        .background(DoubleShiftEventMonitorAccessor(viewModel: viewModel))
+        .toolbar {
+            ToolbarItem(placement: .navigation) {
+                Button {
+                    withAnimation(.easeInOut(duration: 0.16)) {
+                        viewModel.showSidebar.toggle()
+                    }
+                } label: {
+                    Image(systemName: "sidebar.left")
+                }
+                .help(viewModel.showSidebar ? "Hide Sidebar (Cmd+Shift+L)" : "Show Sidebar (Cmd+Shift+L)")
+            }
+        }
+        .background(
+            WindowStatePersistenceAccessor(userDefaults: viewModel.userDefaults)
+                .frame(width: 0, height: 0)
+                .allowsHitTesting(false)
+        )
+        .background(
+            DoubleShiftEventMonitorAccessor(viewModel: viewModel)
+                .frame(width: 0, height: 0)
+                .allowsHitTesting(false)
+        )
         .sheet(isPresented: $viewModel.showInsertTableSheet) {
             InsertTableModalView(viewModel: viewModel)
         }
@@ -78,6 +98,25 @@ public struct MainWindowView: View {
     }
 }
 
+final class PassThroughAccessorNSView: NSView {
+    var onMoveToWindow: ((NSWindow) -> Void)?
+
+    override func hitTest(_ point: NSPoint) -> NSView? {
+        nil
+    }
+
+    override var acceptsFirstResponder: Bool {
+        false
+    }
+
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        if let window = self.window {
+            onMoveToWindow?(window)
+        }
+    }
+}
+
 struct WindowStatePersistenceAccessor: NSViewRepresentable {
     let userDefaults: UserDefaults
     static let windowFrameDefaultsKey = "Folio.MainWindowFrame.v1"
@@ -86,21 +125,18 @@ struct WindowStatePersistenceAccessor: NSViewRepresentable {
         Coordinator(userDefaults: userDefaults)
     }
 
-    func makeNSView(context: Context) -> NSView {
-        let view = NSView(frame: .zero)
-        DispatchQueue.main.async {
-            if let window = view.window {
-                context.coordinator.attach(to: window)
-            }
+    func makeNSView(context: Context) -> PassThroughAccessorNSView {
+        let view = PassThroughAccessorNSView(frame: .zero)
+        let coordinator = context.coordinator
+        view.onMoveToWindow = { [weak coordinator] window in
+            coordinator?.attach(to: window)
         }
         return view
     }
 
-    func updateNSView(_ nsView: NSView, context: Context) {
-        DispatchQueue.main.async {
-            if let window = nsView.window {
-                context.coordinator.attach(to: window)
-            }
+    func updateNSView(_ nsView: PassThroughAccessorNSView, context: Context) {
+        if let window = nsView.window {
+            context.coordinator.attach(to: window)
         }
     }
 

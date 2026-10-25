@@ -1,5 +1,6 @@
 import AppKit
 import Foundation
+import SwiftUI
 import XCTest
 @testable import Folio
 
@@ -274,5 +275,49 @@ final class ShortcutsAndCLITests: XCTestCase {
         XCTAssertTrue(vm.submitQuickOpen())
         XCTAssertTrue(FileManager.default.fileExists(atPath: newPath.path))
         XCTAssertEqual(vm.currentFileURL?.resolvingSymlinksInPath(), newPath.resolvingSymlinksInPath())
+    }
+
+    // MARK: - Window Hit-Testing & Sidebar Toggle Regression
+
+    func testMainWindowHitTestingAndSidebarToggleRegression() {
+        let suiteName = "FolioTests.WindowHitTest.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suiteName)!
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+
+        let vm = EditorWorkspaceViewModel(userDefaults: defaults)
+        vm.markdownText = "# Title\n\nFirst paragraph line.\n\nSecond paragraph line.\n"
+        vm.showSidebar = true
+
+        let hostingView = NSHostingView(rootView: MainWindowView(viewModel: vm))
+        let window = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 1000, height: 700),
+            styleMask: [.titled, .closable, .resizable],
+            backing: .buffered,
+            defer: false
+        )
+        window.contentView = hostingView
+        hostingView.layoutSubtreeIfNeeded()
+        RunLoop.current.run(until: Date().addingTimeInterval(0.05))
+        hostingView.layoutSubtreeIfNeeded()
+
+        // Background NSViewRepresentable accessors must NEVER swallow mouse clicks in the window
+        let editorHit = hostingView.hitTest(NSPoint(x: 600, y: 400))
+        XCTAssertNotNil(editorHit)
+        XCTAssertFalse(editorHit is PassThroughAccessorNSView)
+        XCTAssertTrue(
+            editorHit is HybridMarkdownTextView || editorHit?.enclosingScrollView?.documentView is HybridMarkdownTextView,
+            "Expected mouse click at editor center to hit HybridMarkdownTextView, got \(String(describing: editorHit))"
+        )
+
+        let statusBarHit = hostingView.hitTest(NSPoint(x: 260, y: 15))
+        XCTAssertNotNil(statusBarHit)
+        XCTAssertFalse(statusBarHit is PassThroughAccessorNSView)
+
+        // Toggling sidebar via textView responder action and viewModel works cleanly
+        XCTAssertNotNil(vm.activeTextView)
+        vm.activeTextView?.toggleSidebar(nil)
+        XCTAssertFalse(vm.showSidebar)
+        vm.activeTextView?.toggleSidebar(nil)
+        XCTAssertTrue(vm.showSidebar)
     }
 }
