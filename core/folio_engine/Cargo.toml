@@ -32,5 +32,9 @@ path = "tst/reflow_tests.rs"
 name = "behavior_suite"
 path = "tst/behavior_suite.rs"
 
+[[test]]
+name = "latex_scan_tests"
+path = "tst/latex_scan_tests.rs"
+
 [lints]
 workspace = true

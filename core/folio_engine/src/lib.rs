@@ -2,12 +2,20 @@
 
 #[cfg(not(target_arch = "wasm32"))]
 pub mod ffi;
+pub mod latex;
 pub mod markdown;
 pub mod math;
 pub mod mermaid;
 pub mod reflow;
 pub mod stats;
 pub mod theme;
+
+pub use latex::{
+    analyze_macro_template, classify_latex_line, normalize_display_math, parse_bibtex_entries,
+    scan_latex_directives, scan_latex_inlines, BibEntryData, LatexDirectiveItem,
+    LatexDirectiveKind, LatexInlineSpan, LatexInlineSpanKind, LatexLineClassification,
+    LatexLineKind, MacroTemplateAnalysis, NormalizedDisplayMath,
+};
 
 pub use markdown::{
     analyze_markdown_document, analyze_markdown_document_with_options, apply_newline_at_cursor,

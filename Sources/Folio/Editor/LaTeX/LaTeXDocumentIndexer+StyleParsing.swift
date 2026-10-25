@@ -1,71 +1,142 @@
 import AppKit
+import FolioEngineFFI
 import Foundation
 
 extension LaTeXDocumentIndexer {
 
-    static let setFontCmdRegex = try! NSRegularExpression(
-        pattern: #"\\(setmainfont|setsansfont|setmonofont)(?:\[[^\]]*\])?\{([^}]+)\}"#
-    )
-    static let setStretchCmdRegex = try! NSRegularExpression(
-        pattern: #"\\(setstretch|linespread)\{([^}]+)\}"#
-    )
-    static let setLengthCmdRegex = try! NSRegularExpression(
-        pattern: #"\\setlength\{\\?(parindent|parskip)\}\{([^}]+)\}"#
-    )
-    static let defineColorCmdRegex = try! NSRegularExpression(
-        pattern: #"\\definecolor\{([^}]+)\}\{([^}]+)\}\{([^}]+)\}"#
-    )
-    static let familyDefaultCmdRegex = try! NSRegularExpression(
-        pattern: #"\\renewcommand\{\\familydefault\}\{\\(sfdefault|rmdefault|ttdefault)\}"#
-    )
-    static let newifCmdRegex = try! NSRegularExpression(
-        pattern: #"\\newif\s*\\if([A-Za-z@]+)"#
-    )
-    static let toggleIfCmdRegex = try! NSRegularExpression(
-        pattern: #"\\([A-Za-z@]+)(true|false)\b"#
-    )
+    static func applyScannedDirectives(
+        in line: String,
+        lineLocation: Int,
+        inPreamble: Bool,
+        baseDirectoryURL: URL?,
+        secCounters: inout [Int],
+        currentContext: inout (kind: String, number: String, title: String, loc: Int),
+        bibFiles: inout [String],
+        into idx: inout LaTeXDocumentIndex
+    ) {
+        line.withCString { cStr in
+            guard let resPtr = ot_engine_scan_latex_directives(cStr, inPreamble) else { return }
+            defer { ot_engine_free_latex_directives(resPtr) }
+            let count = Int(resPtr.pointee.count)
+            guard count > 0, let items = resPtr.pointee.items else { return }
 
-    static func parseConditionalDirectives(in line: String, into style: inout LaTeXDocumentStyle) {
-        let uncommented = stripUnescapedPercentComment(in: line)
-        guard uncommented.contains("\\") else { return }
-        let nsLine = uncommented as NSString
-        let fullRange = NSRange(location: 0, length: nsLine.length)
-        if uncommented.contains("\\newif") {
-            newifCmdRegex.enumerateMatches(in: uncommented, range: fullRange) { m, _, _ in
-                guard let m = m else { return }
-                let condName = nsLine.substring(with: m.range(at: 1))
-                if style.conditionals[condName] == nil {
-                    style.conditionals[condName] = false
+            for i in 0..<count {
+                let d = items[i]
+                let cmd = d.cmd.map { String(cString: $0) } ?? ""
+                let optArg = d.opt_arg.map { String(cString: $0) } ?? ""
+                let arg1 = d.arg1.map { String(cString: $0) } ?? ""
+                let arg2 = d.arg2.map { String(cString: $0) } ?? ""
+                let arg3 = d.arg3.map { String(cString: $0) } ?? ""
+
+                switch d.kind {
+                case 1: // DocumentClass
+                    if !optArg.isEmpty {
+                        idx.documentClassOptions = optArg
+                        parseDocumentClassOptions(optArg, into: &idx.documentStyle)
+                    }
+                    idx.documentClass = arg1
+                case 2: // UsePackage
+                    let pkgOpts = optArg.isEmpty ? nil : optArg
+                    for pkg in arg1.split(separator: ",") {
+                        let pkgName = pkg.trimmingCharacters(in: .whitespaces)
+                        idx.packageNames.append(pkgName)
+                        applyPackageStyleDefaults(packageName: pkgName, options: pkgOpts, into: &idx.documentStyle)
+                    }
+                case 3: // Section
+                    let level = sectionLevel(for: cmd)
+                    var numStr = ""
+                    if !d.starred && level <= 4 {
+                        let cIdx = max(0, level - 1)
+                        secCounters[cIdx] += 1
+                        for j in (cIdx + 1)..<secCounters.count { secCounters[j] = 0 }
+                        numStr = secCounters[0...cIdx].map(String.init).joined(separator: ".")
+                        currentContext = ("Section", numStr, arg1, lineLocation)
+                    }
+                    idx.lineSectionNumbers[lineLocation] = (level, numStr, arg1, d.starred)
+                case 4: // Label
+                    if !arg1.isEmpty {
+                        idx.labels[arg1] = LaTeXLabelTarget(
+                            key: arg1,
+                            kind: currentContext.kind,
+                            number: currentContext.number,
+                            title: currentContext.title,
+                            characterLocation: currentContext.loc
+                        )
+                    }
+                case 5: // BibResource
+                    for part in arg1.split(separator: ",") {
+                        bibFiles.append(part.trimmingCharacters(in: .whitespaces))
+                    }
+                case 6: // InputFile
+                    if let baseDir = baseDirectoryURL,
+                       let inputURL = resolveTeXFileURL(path: arg1, baseDirectoryURL: baseDir) {
+                        let imported = loadInputMacros(from: inputURL)
+                        idx.extraMacros.merge(imported) { _, new in new }
+                    }
+                case 7: // Frontmatter
+                    if cmd == "title" { idx.title = arg1 }
+                    else if cmd == "author" { idx.author = arg1 }
+                    else if cmd == "date" { idx.date = arg1 == "\\today" ? formattedToday() : arg1 }
+                default:
+                    applyStyleOrConditionalDirective(
+                        kind: d.kind,
+                        cmd: cmd,
+                        arg1: arg1,
+                        arg2: arg2,
+                        arg3: arg3,
+                        into: &idx.documentStyle
+                    )
                 }
             }
-        }
-        toggleIfCmdRegex.enumerateMatches(in: uncommented, range: fullRange) { m, _, _ in
-            guard let m = m else { return }
-            let condName = nsLine.substring(with: m.range(at: 1))
-            let stateStr = nsLine.substring(with: m.range(at: 2))
-            guard condName != "if", style.conditionals[condName] != nil else { return }
-            style.conditionals[condName] = (stateStr == "true")
         }
     }
 
-    private static func stripUnescapedPercentComment(in line: String) -> String {
-        let chars = Array(line)
-        var i = 0
-        while i < chars.count {
-            if chars[i] == "%" {
-                var backslashes = 0
-                var j = i - 1
-                while j >= 0 && chars[j] == "\\" {
-                    backslashes += 1
-                    j -= 1
-                }
-                if backslashes % 2 == 0 {
-                    return String(chars[0..<i])
-                }
+    private static func applyStyleOrConditionalDirective(
+        kind: UInt32,
+        cmd: String,
+        arg1: String,
+        arg2: String,
+        arg3: String,
+        into style: inout LaTeXDocumentStyle
+    ) {
+        switch kind {
+        case 8: // SetFont
+            guard !arg1.isEmpty else { return }
+            switch cmd {
+            case "setmainfont": style.mainFontFamily = arg1
+            case "setsansfont": style.sansFontFamily = arg1
+            case "setmonofont": style.monoFontFamily = arg1
+            default: break
             }
-            i += 1
+        case 9: // FamilyDefault
+            style.defaultFamilyIsSans = (arg1 == "sfdefault")
+            if arg1 == "sfdefault" && style.sansFontFamily == nil {
+                style.sansFontFamily = "Helvetica Neue"
+            }
+        case 10: // SetStretch
+            if let val = Double(arg1), val >= 0.7, val <= 3.5 {
+                style.lineStretch = CGFloat(val)
+            }
+        case 11: // SetLength
+            if let parsed = LaTeXLength.parse(arg2) {
+                if arg1 == "parindent" { style.parindent = parsed }
+                else if arg1 == "parskip" { style.parskip = parsed }
+            }
+        case 12: // DefineColor
+            if let color = parseDefinedColor(model: arg2, spec: arg3) {
+                style.customColors[arg1] = color
+            }
+        case 13: // NewIf
+            if style.conditionals[arg1] == nil {
+                style.conditionals[arg1] = false
+            }
+        case 14: // ToggleIf
+            if arg1 != "if", style.conditionals[arg1] != nil {
+                style.conditionals[arg1] = (arg2 == "true")
+            }
+        default:
+            break
         }
-        return line
     }
 
     static func parseDocumentClassOptions(_ rawOptions: String, into style: inout LaTeXDocumentStyle) {
@@ -81,40 +152,22 @@ extension LaTeXDocumentIndexer {
         let pkg = packageName.lowercased()
         switch pkg {
         case "times", "mathptmx", "newtxtext", "tgtermes", "txfonts":
-            if style.mainFontFamily == nil {
-                style.mainFontFamily = "Times New Roman"
-            }
+            if style.mainFontFamily == nil { style.mainFontFamily = "Times New Roman" }
         case "palatino", "mathpazo", "newpxtext", "tgpagella", "pxfonts":
-            if style.mainFontFamily == nil {
-                style.mainFontFamily = "Palatino"
-            }
+            if style.mainFontFamily == nil { style.mainFontFamily = "Palatino" }
         case "charter", "bch":
-            if style.mainFontFamily == nil {
-                style.mainFontFamily = "Charter"
-            }
+            if style.mainFontFamily == nil { style.mainFontFamily = "Charter" }
         case "bookman", "tgbonum":
-            if style.mainFontFamily == nil {
-                style.mainFontFamily = "Georgia"
-            }
+            if style.mainFontFamily == nil { style.mainFontFamily = "Georgia" }
         case "baskervillef", "kpfonts":
-            if style.mainFontFamily == nil {
-                style.mainFontFamily = "Baskerville"
-            }
-        case "helvet", "tgheros", "arev", "FiraSans":
-            if style.sansFontFamily == nil {
-                style.sansFontFamily = "Helvetica Neue"
-            }
+            if style.mainFontFamily == nil { style.mainFontFamily = "Baskerville" }
+        case "helvet", "tgheros", "arev", "firasans":
+            if style.sansFontFamily == nil { style.sansFontFamily = "Helvetica Neue" }
         case "courier", "tgcursor", "inconsolata":
-            if style.monoFontFamily == nil {
-                style.monoFontFamily = "Menlo"
-            }
+            if style.monoFontFamily == nil { style.monoFontFamily = "Menlo" }
         case "parskip":
-            if style.parindent == nil {
-                style.parindent = .points(0.0)
-            }
-            if style.parskip == nil {
-                style.parskip = .em(0.6)
-            }
+            if style.parindent == nil { style.parindent = .points(0.0) }
+            if style.parskip == nil { style.parskip = .em(0.6) }
         case "setspace":
             if let opts = options?.lowercased() {
                 if opts.contains("doublespacing") && style.lineStretch == nil {
@@ -125,77 +178,6 @@ extension LaTeXDocumentIndexer {
             }
         default:
             break
-        }
-    }
-
-    static func parsePreambleStyleDirectives(in line: String, trimmed: String, into style: inout LaTeXDocumentStyle) {
-        let nsLine = line as NSString
-        let fullRange = NSRange(location: 0, length: nsLine.length)
-
-        if line.contains("\\setmainfont") || line.contains("\\setsansfont") || line.contains("\\setmonofont") {
-            setFontCmdRegex.enumerateMatches(in: line, range: fullRange) { m, _, _ in
-                guard let m = m else { return }
-                let cmd = nsLine.substring(with: m.range(at: 1))
-                let fontName = nsLine.substring(with: m.range(at: 2)).trimmingCharacters(in: .whitespacesAndNewlines)
-                guard !fontName.isEmpty else { return }
-                switch cmd {
-                case "setmainfont": style.mainFontFamily = fontName
-                case "setsansfont": style.sansFontFamily = fontName
-                case "setmonofont": style.monoFontFamily = fontName
-                default: break
-                }
-            }
-        }
-
-        if line.contains("\\familydefault"),
-           let fm = familyDefaultCmdRegex.firstMatch(in: line, range: fullRange) {
-            let target = nsLine.substring(with: fm.range(at: 1))
-            style.defaultFamilyIsSans = (target == "sfdefault")
-            if target == "sfdefault" && style.sansFontFamily == nil {
-                style.sansFontFamily = "Helvetica Neue"
-            }
-        }
-
-        if line.contains("\\setstretch") || line.contains("\\linespread") {
-            setStretchCmdRegex.enumerateMatches(in: line, range: fullRange) { m, _, _ in
-                guard let m = m else { return }
-                let rawVal = nsLine.substring(with: m.range(at: 2)).trimmingCharacters(in: .whitespacesAndNewlines)
-                if let val = Double(rawVal), val >= 0.7, val <= 3.5 {
-                    style.lineStretch = CGFloat(val)
-                }
-            }
-        } else if trimmed == "\\onehalfspacing" {
-            style.lineStretch = 1.25
-        } else if trimmed == "\\doublespacing" {
-            style.lineStretch = 1.65
-        } else if trimmed == "\\singlespacing" {
-            style.lineStretch = 1.0
-        }
-
-        if line.contains("\\setlength") {
-            setLengthCmdRegex.enumerateMatches(in: line, range: fullRange) { m, _, _ in
-                guard let m = m else { return }
-                let param = nsLine.substring(with: m.range(at: 1))
-                let rawLen = nsLine.substring(with: m.range(at: 2))
-                guard let parsed = LaTeXLength.parse(rawLen) else { return }
-                if param == "parindent" {
-                    style.parindent = parsed
-                } else if param == "parskip" {
-                    style.parskip = parsed
-                }
-            }
-        }
-
-        if line.contains("\\definecolor") {
-            defineColorCmdRegex.enumerateMatches(in: line, range: fullRange) { m, _, _ in
-                guard let m = m else { return }
-                let name = nsLine.substring(with: m.range(at: 1)).trimmingCharacters(in: .whitespacesAndNewlines)
-                let model = nsLine.substring(with: m.range(at: 2)).trimmingCharacters(in: .whitespacesAndNewlines)
-                let spec = nsLine.substring(with: m.range(at: 3)).trimmingCharacters(in: .whitespacesAndNewlines)
-                if let color = parseDefinedColor(model: model, spec: spec) {
-                    style.customColors[name] = color
-                }
-            }
         }
     }
 

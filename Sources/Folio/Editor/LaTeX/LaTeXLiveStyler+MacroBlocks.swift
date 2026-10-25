@@ -1,23 +1,8 @@
 import AppKit
+import FolioEngineFFI
 import Foundation
 
 extension LaTeXLiveStyler {
-
-    private static let macroBlockOpenRegex = try! NSRegularExpression(
-        pattern: #"^\s*\\([A-Za-z]+)(?:\[([^\]]*)\])?\s*\{"#
-    )
-    private static let macroColorRegex = try! NSRegularExpression(
-        pattern: #"\\(?:text)?color\{([^}]+)\}"#
-    )
-    private static let macroBoldPrefixRegex = try! NSRegularExpression(
-        pattern: #"\\textbf\{([^}]+)\}"#
-    )
-    private static let macroVspaceRegex = try! NSRegularExpression(
-        pattern: #"\\vspace\*?\{([^}]+)\}"#
-    )
-    private static let macroSectionRegex = try! NSRegularExpression(
-        pattern: #"\\(part|chapter|section|subsection|subsubsection)\*?\s*\{"#
-    )
 
     private static let reservedMacroBlockNames: Set<String> = [
         "begin", "end", "section", "subsection", "subsubsection", "chapter", "part",
@@ -45,34 +30,34 @@ extension LaTeXLiveStyler {
             active = active.replacingOccurrences(of: "#1", with: optArg ?? (def.defaultFirstArg ?? ""))
         }
         let bodyPlaceholder = "#\(def.argCount)"
-        let showsBody = active.contains(bodyPlaceholder)
-        let nsActive = active as NSString
-        let fullRange = NSRange(location: 0, length: nsActive.length)
-
-        var resolvedColor: NSColor?
-        if let cm = macroColorRegex.firstMatch(in: active, range: fullRange) {
-            resolvedColor = docIndex.resolveColor(named: nsActive.substring(with: cm.range(at: 1)), fallbackTheme: theme)
-        }
-        var prefixLabel: String?
-        if showsBody, let bm = macroBoldPrefixRegex.firstMatch(in: active, range: fullRange),
-           bm.range.location < nsActive.range(of: bodyPlaceholder).location {
-            prefixLabel = nsActive.substring(with: bm.range(at: 1))
-        }
-        var vspacePt: CGFloat?
-        macroVspaceRegex.enumerateMatches(in: active, range: fullRange) { m, _, _ in
-            guard let m = m else { return }
-            let rawLen = nsActive.substring(with: m.range(at: 1))
-            if let parsed = LaTeXLength.parse(rawLen)?.resolvedPoints(baseSize: effectiveBaseSize) {
-                vspacePt = max(vspacePt ?? 0.0, parsed)
+        let analysis = active.withCString { activePtr in
+            bodyPlaceholder.withCString { phPtr in
+                ot_engine_analyze_macro_template(activePtr, phPtr)
             }
         }
-        var headingLevel: Int?
-        if showsBody, let sm = macroSectionRegex.firstMatch(in: active, range: fullRange) {
-            let secCmd = nsActive.substring(with: sm.range(at: 1))
-            headingLevel = LaTeXDocumentIndexer.sectionLevel(for: secCmd)
+        defer { ot_engine_free_macro_template_analysis(analysis) }
+
+        let colorName = analysis.color_name.map { String(cString: $0) } ?? ""
+        let resolvedColor: NSColor? = colorName.isEmpty
+            ? nil
+            : docIndex.resolveColor(named: colorName, fallbackTheme: theme)
+
+        let rawPrefix = analysis.prefix_label.map { String(cString: $0) } ?? ""
+        let prefixLabel: String? = rawPrefix.isEmpty ? nil : rawPrefix
+
+        let vspaceArgs = analysis.vspace_args.map { String(cString: $0) } ?? ""
+        var vspacePt: CGFloat?
+        if !vspaceArgs.isEmpty {
+            for rawLen in vspaceArgs.split(separator: ",") {
+                if let parsed = LaTeXLength.parse(String(rawLen))?.resolvedPoints(baseSize: effectiveBaseSize) {
+                    vspacePt = max(vspacePt ?? 0.0, parsed)
+                }
+            }
         }
+        let headingLevel: Int? = analysis.heading_level > 0 ? Int(analysis.heading_level) : nil
+
         return ResolvedMacroTemplate(
-            showsBody: showsBody, color: resolvedColor, prefixLabel: prefixLabel,
+            showsBody: analysis.shows_body, color: resolvedColor, prefixLabel: prefixLabel,
             vspacePoints: vspacePt, headingLevel: headingLevel
         )
     }
@@ -106,16 +91,16 @@ extension LaTeXLiveStyler {
         prettyMode: Bool, focusMode: Bool, baseDirectoryURL: URL?,
         decorations: inout [LineDecoration]
     ) -> (nextIndex: Int, lineDelta: Int)? {
-        let nsLine = lineText as NSString
-        guard let openMatch = macroBlockOpenRegex.firstMatch(in: lineText, range: NSRange(location: 0, length: nsLine.length)) else {
-            return nil
-        }
-        let cmdName = nsLine.substring(with: openMatch.range(at: 1))
+        guard trimmedLine.hasPrefix("\\") else { return nil }
+        let cls = lineText.withCString { ot_engine_classify_latex_line($0) }
+        defer { ot_engine_free_latex_line_classification(cls) }
+        guard cls.kind == 5 else { return nil }
+        let cmdName = cls.cmd.map { String(cString: $0) } ?? ""
         guard !reservedMacroBlockNames.contains(cmdName) else { return nil }
         let docMacros = LaTeXMathRenderer.currentDocumentMacros()
         guard let def = docMacros["\\\(cmdName)"], def.argCount >= 1, def.operatorText == nil else { return nil }
-        let optArg = openMatch.range(at: 2).location != NSNotFound ? nsLine.substring(with: openMatch.range(at: 2)) : nil
-        let openBraceLoc = contentRange.location + NSMaxRange(openMatch.range) - 1
+        let optArg: String? = cls.has_opt_arg ? (cls.opt_arg.map { String(cString: $0) }) : nil
+        let openBraceLoc = contentRange.location + Int(cls.open_len) - 1
         guard let closeBraceLoc = findMatchingCloseBrace(in: nsString, openBraceLocation: openBraceLoc, fullLength: fullLength) else {
             return nil
         }

@@ -173,7 +173,7 @@
           "@@//Cargo.toml": "6a41442a984b383e563a45d9223f4b3541f0b929037c49e48d62900f8ef20874",
           "@@//zed/folio_zed_extension/Cargo.toml": "804c0b58aa5296c8336f42d74da604fd4d82788039d219a07fc175554e987272",
           "@@//Cargo.lock": "cbd93edc6acdab2c0c687e5dfa33e70607dc9b7102bcaf297bb1287537bfa8c6",
-          "@@//core/folio_engine/Cargo.toml": "ff27212e944a0b84eca733003476d8dac90752835b2f7f2234d16b2c5d21e00b",
+          "@@//core/folio_engine/Cargo.toml": "6893c00b9e3230dd5bf631cfb91cba86e44b2a963244714ae8228da513364bea",
           "@@//MODULE.bazel": "ec7b3fdf24f401ffb2bf9e725e54c1fe1bcdb6e9310872e8b83cb78d9efeb65f",
           "@@rules_rust~~rust_host_tools~rust_host_tools//rust_host_tools": "ENOENT"
         },

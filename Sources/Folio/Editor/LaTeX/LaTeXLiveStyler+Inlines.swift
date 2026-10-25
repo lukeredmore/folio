@@ -1,38 +1,8 @@
 import AppKit
+import FolioEngineFFI
 import Foundation
 
 extension LaTeXLiveStyler {
-
-    static let latexInlineMathRegex = try! NSRegularExpression(
-        pattern: #"(?<!\\|\$)(\$)(?!\$)([^\$\n]+?)(?<!\\|\$)(\$)(?!\$)|(\\\()(.+?)(\\\))"#
-    )
-    static let latexCiteRegex = try! NSRegularExpression(
-        pattern: #"\\(cite[pt]?|parencite|textcite|autocite)\*?(?:\[[^\]]*\])*\{([^}]+)\}"#
-    )
-    static let latexRefRegex = try! NSRegularExpression(
-        pattern: #"\\(eqref|autoref|cref|Cref|ref|pageref)\{([^}]+)\}"#
-    )
-    static let latexHiddenMetaCmdRegex = try! NSRegularExpression(
-        pattern: #"\\(?:label|bibliography|bibliographystyle|addbibresource|nocite)\{[^}]*\}|\\(?:centering|noindent|newpage|clearpage|tableofcontents)\b[ \t]*|\\\\(?:\[[^\]]*\])?"#
-    )
-    static let latexHrefRegex = try! NSRegularExpression(
-        pattern: #"(\\href\{([^}]*)\}\{)([^{}]*(?:\{[^{}]*\}[^{}]*)*)(\})"#
-    )
-    static let latexUrlRegex = try! NSRegularExpression(
-        pattern: #"(\\url\{)([^}]*)(\})"#
-    )
-    static let latexStyleCmdRegex = try! NSRegularExpression(
-        pattern: #"(\\(textbf|textit|emph|underline|texttt|textsc|footnote|textrm|textsf)\{)([^{}]*(?:\{[^{}]*\}[^{}]*)*)(\})"#
-    )
-    static let latexLogoCmdRegex = try! NSRegularExpression(
-        pattern: #"\\(LaTeX|TeX|today)(\{\})?"#
-    )
-    static let latexTextBackslashRegex = try! NSRegularExpression(
-        pattern: #"\\(textbackslash(?:[ \t]+|\{\})?)"#
-    )
-    static let latexEscapedCharRegex = try! NSRegularExpression(
-        pattern: #"\\([&%$#_{}])"#
-    )
 
     static func styleLaTeXInlineContent(
         in storage: NSTextStorage,
@@ -50,6 +20,7 @@ extension LaTeXLiveStyler {
         decorations: inout [LineDecoration]
     ) {
         guard range.length > 0 else { return }
+        _ = string
         _ = baseDirectoryURL
         let fontSize = baseFont.pointSize
 
@@ -92,207 +63,19 @@ extension LaTeXLiveStyler {
         let hasTeXQuotes = lineSub.contains("``") || lineSub.contains("''")
         guard hasBackslash || hasDollar || hasTeXQuotes else { return }
 
-        var protectedRanges: [NSRange] = []
-        let isProtected: (NSRange) -> Bool = { r in
-            MarkdownLiveStyler.sortedRangesOverlap(protectedRanges, r)
-        }
+        guard let scanRes = lineSub.withCString({ ot_engine_scan_latex_inlines($0) }) else { return }
+        defer { ot_engine_free_latex_inlines(scanRes) }
+        let count = Int(scanRes.pointee.span_count)
+        guard count > 0, let spansPtr = scanRes.pointee.spans else { return }
+        let spans = UnsafeBufferPointer(start: spansPtr, count: count)
+        let baseLoc = effectiveRange.location
 
-        // 2. Inline Math: $...$ and \(...\)
-        if hasDollar || lineSub.contains("\\(") {
-            latexInlineMathRegex.enumerateMatches(in: string, options: [], range: effectiveRange) { match, _, _ in
-                guard let match = match else { return }
-                let fullRange = match.range(at: 0)
-                if isProtected(fullRange) { return }
-                MarkdownLiveStyler.insertSortedRange(fullRange, into: &protectedRanges)
-                storage.addAttribute(MKey.noSpellCheck, value: true, range: fullRange)
-
-                let openRange = match.range(at: 1).location != NSNotFound ? match.range(at: 1) : match.range(at: 4)
-                let innerRange = match.range(at: 2).location != NSNotFound ? match.range(at: 2) : match.range(at: 5)
-                let closeRange = match.range(at: 3).location != NSNotFound ? match.range(at: 3) : match.range(at: 6)
-                let latexStr = nsString.substring(with: innerRange)
-
-                if isActiveLine || !prettyMode {
-                    let mathMono = theme.codeFont(size: fontSize * 0.90)
-                    storage.addAttributes([
-                        .font: mathMono,
-                        .foregroundColor: theme.textNSColor.withAlphaComponent(dimFactor),
-                        .backgroundColor: theme.codeBackgroundNSColor.withAlphaComponent(0.55 * dimFactor)
-                    ], range: innerRange)
-                    MarkdownLiveStyler.highlightLaTeXSource(in: storage, range: innerRange, theme: theme, dimFactor: dimFactor)
-                    MarkdownLiveStyler.styleSyntaxToken(in: storage, range: openRange, isActiveLine: true, theme: theme, dimFactor: dimFactor)
-                    MarkdownLiveStyler.styleSyntaxToken(in: storage, range: closeRange, isActiveLine: true, theme: theme, dimFactor: dimFactor)
-                } else {
-                    let mathBox = LaTeXMathRenderer.layoutLatex(latexStr, baseFontSize: fontSize, isDisplayStyle: false)
-                    let targetWidth = max(4.0, mathBox.width + 2.0)
-                    reserveAtomicInlineSpan(
-                        in: storage,
-                        nsString: nsString,
-                        fullRange: fullRange,
-                        width: targetWidth,
-                        ascent: mathBox.ascent,
-                        descent: mathBox.descent,
-                        verticalPadding: 3.0
-                    )
-                    decorations.append(LineDecoration(
-                        lineRange: fullRange,
-                        kind: .inlineMathRendered(latex: latexStr, range: fullRange, fontSize: fontSize, dimFactor: dimFactor)
-                    ))
-                }
-            }
-        }
-
-        guard hasBackslash || hasTeXQuotes else { return }
-
-        // 3. Citations (\cite{...}, \citep{...}, \citet{...})
-        if lineSub.contains("cite") {
-            latexCiteRegex.enumerateMatches(in: string, options: [], range: effectiveRange) { match, _, _ in
-                guard let match = match, !isProtected(match.range) else { return }
-                let fullRange = match.range
-                MarkdownLiveStyler.insertSortedRange(fullRange, into: &protectedRanges)
-                storage.addAttribute(MKey.noSpellCheck, value: true, range: fullRange)
-
-                let rawKeys = nsString.substring(with: match.range(at: 2))
-                    .split(separator: ",")
-                    .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
-                    .filter { !$0.isEmpty }
-
-                if isActiveLine || !prettyMode {
-                    MarkdownLiveStyler.highlightLaTeXSource(in: storage, range: fullRange, theme: theme, dimFactor: dimFactor)
-                } else {
-                    var labels: [String] = []
-                    var tooltips: [String] = []
-                    var firstLoc: Int?
-                    var firstURL: URL?
-                    for k in rawKeys {
-                        if let entry = docIndex.bibEntries[k] {
-                            labels.append(entry.shortCitation)
-                            let t = entry.title.isEmpty ? entry.key : "\(entry.author) (\(entry.year)) — \(entry.title)"
-                            tooltips.append(t)
-                            if firstLoc == nil { firstLoc = entry.characterLocation; firstURL = entry.fileURL }
-                        } else {
-                            labels.append(k)
-                            tooltips.append("Citation key: \(k)")
-                        }
-                    }
-                    let pillLabel = "[\(labels.joined(separator: "; "))]"
-                    let pillFont = NSFont.systemFont(ofSize: max(10.5, fontSize * 0.82), weight: .medium)
-                    let labelW = ceil((pillLabel as NSString).size(withAttributes: [.font: pillFont]).width) + 12.0
-                    reserveAtomicInlineSpan(
-                        in: storage,
-                        nsString: nsString,
-                        fullRange: fullRange,
-                        width: labelW,
-                        ascent: baseFont.ascender,
-                        descent: -baseFont.descender
-                    )
-                    decorations.append(LineDecoration(
-                        lineRange: fullRange,
-                        kind: .latexInlinePill(
-                            label: pillLabel,
-                            tooltip: tooltips.joined(separator: "\n"),
-                            targetLocation: firstLoc,
-                            targetURL: firstURL,
-                            range: fullRange,
-                            fontSize: fontSize,
-                            isCitation: true,
-                            dimFactor: dimFactor
-                        )
-                    ))
-                }
-            }
-        }
-
-        // 4. Cross-references (\ref{...}, \eqref{...}, \autoref{...}, \cref{...})
-        if lineSub.contains("ref") {
-            latexRefRegex.enumerateMatches(in: string, options: [], range: effectiveRange) { match, _, _ in
-                guard let match = match, !isProtected(match.range) else { return }
-                let fullRange = match.range
-                MarkdownLiveStyler.insertSortedRange(fullRange, into: &protectedRanges)
-                storage.addAttribute(MKey.noSpellCheck, value: true, range: fullRange)
-
-                let cmd = nsString.substring(with: match.range(at: 1))
-                let key = nsString.substring(with: match.range(at: 2)).trimmingCharacters(in: .whitespacesAndNewlines)
-
-                if isActiveLine || !prettyMode {
-                    MarkdownLiveStyler.highlightLaTeXSource(in: storage, range: fullRange, theme: theme, dimFactor: dimFactor)
-                } else {
-                    let info = docIndex.labels[key]
-                    let num = info?.number ?? key
-                    let pillLabel: String
-                    switch cmd {
-                    case "eqref":
-                        pillLabel = "(\(num))"
-                    case "autoref", "cref", "Cref":
-                        pillLabel = "\(info?.kind ?? "Ref.") \(num)"
-                    default:
-                        pillLabel = num
-                    }
-                    let tooltip = info.map { "\($0.kind) \($0.number): \($0.title)" } ?? "Label: \(key)"
-                    let pillFont = NSFont.systemFont(ofSize: max(10.5, fontSize * 0.82), weight: .medium)
-                    let labelW = ceil((pillLabel as NSString).size(withAttributes: [.font: pillFont]).width) + 12.0
-                    reserveAtomicInlineSpan(
-                        in: storage,
-                        nsString: nsString,
-                        fullRange: fullRange,
-                        width: labelW,
-                        ascent: baseFont.ascender,
-                        descent: -baseFont.descender
-                    )
-                    decorations.append(LineDecoration(
-                        lineRange: fullRange,
-                        kind: .latexInlinePill(
-                            label: pillLabel,
-                            tooltip: tooltip,
-                            targetLocation: info?.characterLocation,
-                            targetURL: nil,
-                            range: fullRange,
-                            fontSize: fontSize,
-                            isCitation: false,
-                            dimFactor: dimFactor
-                        )
-                    ))
-                }
-            }
-        }
-
-        // 5. Hidden metadata commands (\label{...}, \bibliography{...}, \centering, \noindent, \\[4pt])
-        if lineSub.contains("\\label") || lineSub.contains("\\bib") || lineSub.contains("\\addbib")
-            || lineSub.contains("\\nocite") || lineSub.contains("\\centering") || lineSub.contains("\\noindent")
-            || lineSub.contains("\\newpage") || lineSub.contains("\\clearpage") || lineSub.contains("\\tableofcontents")
-            || lineSub.contains("\\\\") {
-            latexHiddenMetaCmdRegex.enumerateMatches(in: string, options: [], range: effectiveRange) { match, _, _ in
-                guard let match = match, !isProtected(match.range) else { return }
-                MarkdownLiveStyler.insertSortedRange(match.range, into: &protectedRanges)
-                if !isActiveLine && prettyMode, match.range.length > 2 {
-                    let token = nsString.substring(with: match.range)
-                    if token.hasPrefix("\\\\["), token.hasSuffix("]"),
-                       let len = LaTeXLength.parse(String(token.dropFirst(3).dropLast())) {
-                        let extraPt = max(0.0, len.resolvedPoints(baseSize: fontSize))
-                        if extraPt > 0,
-                           let existing = storage.attribute(.paragraphStyle, at: lineRange.location, effectiveRange: nil) as? NSParagraphStyle,
-                           let mutable = existing.mutableCopy() as? NSMutableParagraphStyle {
-                            mutable.paragraphSpacing = extraPt
-                            storage.addAttribute(.paragraphStyle, value: mutable, range: lineRange)
-                        }
-                    }
-                }
-                MarkdownLiveStyler.styleSyntaxToken(
-                    in: storage,
-                    range: match.range,
-                    isActiveLine: isActiveLine || !prettyMode,
-                    theme: theme,
-                    dimFactor: dimFactor
-                )
-            }
-        }
-
-        // 6. Links (\href{url}{text}, \url{...}) and Text Formatting (\textbf, \textit, \emph, \texttt, etc.)
-        styleLaTeXLinksAndTextCommands(
+        // Pass 1: Container & text-formatting spans in pre-order (Href, Url, SizeGroup, ColorGroup, StyleCmd)
+        styleLaTeXContainerSpans(
+            spans: spans,
+            baseLoc: baseLoc,
             in: storage,
-            string: string,
             nsString: nsString,
-            lineSub: lineSub,
-            effectiveRange: effectiveRange,
             baseFont: baseFont,
             fontSize: fontSize,
             isActiveLine: isActiveLine,
@@ -300,9 +83,218 @@ extension LaTeXLiveStyler {
             docIndex: docIndex,
             theme: theme,
             dimFactor: dimFactor,
-            isProtected: isProtected,
             decorations: &decorations
         )
-        _ = lineRange
+
+        // Pass 2: Leaf spans (InlineMath, Cite, Ref, HiddenMeta, LogoCmd, TextBackslash, ProseMacro, TexQuote, EscapedChar)
+        for idx in 0..<count {
+            let sp = spans[idx]
+            let fullRange = NSRange(location: baseLoc + Int(sp.full_loc), length: Int(sp.full_len))
+            let openRange = NSRange(location: baseLoc + Int(sp.open_loc), length: Int(sp.open_len))
+            let innerRange = NSRange(location: baseLoc + Int(sp.inner_loc), length: Int(sp.inner_len))
+            let closeRange = NSRange(location: baseLoc + Int(sp.close_loc), length: Int(sp.close_len))
+            let cmd = sp.cmd.map { String(cString: $0) } ?? ""
+            let arg = sp.arg.map { String(cString: $0) } ?? ""
+
+            switch sp.kind {
+            case 1: // InlineMath
+                styleInlineMathSpan(
+                    in: storage, nsString: nsString, fullRange: fullRange, openRange: openRange,
+                    innerRange: innerRange, closeRange: closeRange, latexStr: arg, fontSize: fontSize,
+                    isActiveLine: isActiveLine, prettyMode: prettyMode, theme: theme,
+                    dimFactor: dimFactor, decorations: &decorations
+                )
+            case 2: // Cite
+                styleCiteSpan(
+                    in: storage, nsString: nsString, fullRange: fullRange, rawKeysStr: arg,
+                    baseFont: baseFont, fontSize: fontSize, isActiveLine: isActiveLine,
+                    prettyMode: prettyMode, docIndex: docIndex, theme: theme,
+                    dimFactor: dimFactor, decorations: &decorations
+                )
+            case 3: // Ref
+                styleRefSpan(
+                    in: storage, nsString: nsString, fullRange: fullRange, cmd: cmd,
+                    rawKey: arg, baseFont: baseFont, fontSize: fontSize,
+                    isActiveLine: isActiveLine, prettyMode: prettyMode, docIndex: docIndex,
+                    theme: theme, dimFactor: dimFactor, decorations: &decorations
+                )
+            case 4: // HiddenMeta
+                if !isActiveLine && prettyMode && cmd == "\\\\" && !arg.isEmpty,
+                   let len = LaTeXLength.parse(arg) {
+                    let extraPt = max(0.0, len.resolvedPoints(baseSize: fontSize))
+                    if extraPt > 0,
+                       let existing = storage.attribute(.paragraphStyle, at: lineRange.location, effectiveRange: nil) as? NSParagraphStyle,
+                       let mutable = existing.mutableCopy() as? NSMutableParagraphStyle {
+                        mutable.paragraphSpacing = extraPt
+                        storage.addAttribute(.paragraphStyle, value: mutable, range: lineRange)
+                    }
+                }
+                MarkdownLiveStyler.styleSyntaxToken(
+                    in: storage,
+                    range: fullRange,
+                    isActiveLine: isActiveLine || !prettyMode,
+                    theme: theme,
+                    dimFactor: dimFactor
+                )
+            case 10, 11, 12, 13, 14:
+                styleLaTeXLeafSymbolOrMacroSpan(
+                    kind: sp.kind, cmd: cmd, fullRange: fullRange, openRange: openRange,
+                    closeRange: closeRange, in: storage, nsString: nsString, baseFont: baseFont,
+                    isActiveLine: isActiveLine, prettyMode: prettyMode, theme: theme,
+                    dimFactor: dimFactor, decorations: &decorations
+                )
+            default:
+                break
+            }
+        }
+    }
+
+    private static func styleInlineMathSpan(
+        in storage: NSTextStorage,
+        nsString: NSString,
+        fullRange: NSRange,
+        openRange: NSRange,
+        innerRange: NSRange,
+        closeRange: NSRange,
+        latexStr: String,
+        fontSize: CGFloat,
+        isActiveLine: Bool,
+        prettyMode: Bool,
+        theme: EditorTheme,
+        dimFactor: CGFloat,
+        decorations: inout [LineDecoration]
+    ) {
+        storage.addAttribute(MKey.noSpellCheck, value: true, range: fullRange)
+        if isActiveLine || !prettyMode {
+            let mathMono = theme.codeFont(size: fontSize * 0.90)
+            storage.addAttributes([
+                .font: mathMono,
+                .foregroundColor: theme.textNSColor.withAlphaComponent(dimFactor),
+                .backgroundColor: theme.codeBackgroundNSColor.withAlphaComponent(0.55 * dimFactor)
+            ], range: innerRange)
+            MarkdownLiveStyler.highlightLaTeXSource(in: storage, range: innerRange, theme: theme, dimFactor: dimFactor)
+            MarkdownLiveStyler.styleSyntaxToken(in: storage, range: openRange, isActiveLine: true, theme: theme, dimFactor: dimFactor)
+            MarkdownLiveStyler.styleSyntaxToken(in: storage, range: closeRange, isActiveLine: true, theme: theme, dimFactor: dimFactor)
+        } else {
+            let mathBox = LaTeXMathRenderer.layoutLatex(latexStr, baseFontSize: fontSize, isDisplayStyle: false)
+            let targetWidth = max(4.0, mathBox.width + 2.0)
+            reserveAtomicInlineSpan(
+                in: storage,
+                nsString: nsString,
+                fullRange: fullRange,
+                width: targetWidth,
+                ascent: mathBox.ascent,
+                descent: mathBox.descent,
+                verticalPadding: 3.0
+            )
+            decorations.append(LineDecoration(
+                lineRange: fullRange,
+                kind: .inlineMathRendered(latex: latexStr, range: fullRange, fontSize: fontSize, dimFactor: dimFactor)
+            ))
+        }
+    }
+
+    private static func styleCiteSpan(
+        in storage: NSTextStorage,
+        nsString: NSString,
+        fullRange: NSRange,
+        rawKeysStr: String,
+        baseFont: NSFont,
+        fontSize: CGFloat,
+        isActiveLine: Bool,
+        prettyMode: Bool,
+        docIndex: LaTeXDocumentIndex,
+        theme: EditorTheme,
+        dimFactor: CGFloat,
+        decorations: inout [LineDecoration]
+    ) {
+        storage.addAttribute(MKey.noSpellCheck, value: true, range: fullRange)
+        if isActiveLine || !prettyMode {
+            MarkdownLiveStyler.highlightLaTeXSource(in: storage, range: fullRange, theme: theme, dimFactor: dimFactor)
+            return
+        }
+        let rawKeys = rawKeysStr
+            .split(separator: ",")
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+        var labels: [String] = []
+        var tooltips: [String] = []
+        var firstLoc: Int?
+        var firstURL: URL?
+        for k in rawKeys {
+            if let entry = docIndex.bibEntries[k] {
+                labels.append(entry.shortCitation)
+                let t = entry.title.isEmpty ? entry.key : "\(entry.author) (\(entry.year)) — \(entry.title)"
+                tooltips.append(t)
+                if firstLoc == nil { firstLoc = entry.characterLocation; firstURL = entry.fileURL }
+            } else {
+                labels.append(k)
+                tooltips.append("Citation key: \(k)")
+            }
+        }
+        let pillLabel = "[\(labels.joined(separator: "; "))]"
+        let pillFont = NSFont.systemFont(ofSize: max(10.5, fontSize * 0.82), weight: .medium)
+        let labelW = ceil((pillLabel as NSString).size(withAttributes: [.font: pillFont]).width) + 12.0
+        reserveAtomicInlineSpan(
+            in: storage, nsString: nsString, fullRange: fullRange, width: labelW,
+            ascent: baseFont.ascender, descent: -baseFont.descender
+        )
+        decorations.append(LineDecoration(
+            lineRange: fullRange,
+            kind: .latexInlinePill(
+                label: pillLabel, tooltip: tooltips.joined(separator: "\n"),
+                targetLocation: firstLoc, targetURL: firstURL, range: fullRange,
+                fontSize: fontSize, isCitation: true, dimFactor: dimFactor
+            )
+        ))
+    }
+
+    private static func styleRefSpan(
+        in storage: NSTextStorage,
+        nsString: NSString,
+        fullRange: NSRange,
+        cmd: String,
+        rawKey: String,
+        baseFont: NSFont,
+        fontSize: CGFloat,
+        isActiveLine: Bool,
+        prettyMode: Bool,
+        docIndex: LaTeXDocumentIndex,
+        theme: EditorTheme,
+        dimFactor: CGFloat,
+        decorations: inout [LineDecoration]
+    ) {
+        storage.addAttribute(MKey.noSpellCheck, value: true, range: fullRange)
+        if isActiveLine || !prettyMode {
+            MarkdownLiveStyler.highlightLaTeXSource(in: storage, range: fullRange, theme: theme, dimFactor: dimFactor)
+            return
+        }
+        let key = rawKey.trimmingCharacters(in: .whitespacesAndNewlines)
+        let info = docIndex.labels[key]
+        let num = info?.number ?? key
+        let pillLabel: String
+        switch cmd {
+        case "eqref":
+            pillLabel = "(\(num))"
+        case "autoref", "cref", "Cref":
+            pillLabel = "\(info?.kind ?? "Ref.") \(num)"
+        default:
+            pillLabel = num
+        }
+        let tooltip = info.map { "\($0.kind) \($0.number): \($0.title)" } ?? "Label: \(key)"
+        let pillFont = NSFont.systemFont(ofSize: max(10.5, fontSize * 0.82), weight: .medium)
+        let labelW = ceil((pillLabel as NSString).size(withAttributes: [.font: pillFont]).width) + 12.0
+        reserveAtomicInlineSpan(
+            in: storage, nsString: nsString, fullRange: fullRange, width: labelW,
+            ascent: baseFont.ascender, descent: -baseFont.descender
+        )
+        decorations.append(LineDecoration(
+            lineRange: fullRange,
+            kind: .latexInlinePill(
+                label: pillLabel, tooltip: tooltip, targetLocation: info?.characterLocation,
+                targetURL: nil, range: fullRange, fontSize: fontSize,
+                isCitation: false, dimFactor: dimFactor
+            )
+        ))
     }
 }

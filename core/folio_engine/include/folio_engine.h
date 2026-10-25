@@ -277,6 +277,113 @@ OTCursorEditResult ot_engine_toggle_task_checkbox_at_cursor(
 );
 void ot_engine_free_cursor_edit(OTCursorEditResult result);
 
+// ============================================================================
+// 9. LaTeX CST / Single-Pass Line & Inline Scanner
+// ============================================================================
+
+typedef struct OTLatexInlineSpan {
+    uint32_t kind;
+    size_t full_loc;
+    size_t full_len;
+    size_t open_loc;
+    size_t open_len;
+    size_t inner_loc;
+    size_t inner_len;
+    size_t close_loc;
+    size_t close_len;
+    char* cmd;
+    char* arg;
+} OTLatexInlineSpan;
+
+typedef struct OTLatexInlineScanResult {
+    OTLatexInlineSpan* spans;
+    size_t span_count;
+} OTLatexInlineScanResult;
+
+OTLatexInlineScanResult* ot_engine_scan_latex_inlines(const char* line_utf8);
+void ot_engine_free_latex_inlines(OTLatexInlineScanResult* res);
+
+typedef struct OTLatexDirectiveItem {
+    uint32_t kind;
+    bool starred;
+    char* cmd;
+    char* opt_arg;
+    char* arg1;
+    char* arg2;
+    char* arg3;
+} OTLatexDirectiveItem;
+
+typedef struct OTLatexDirectivesResult {
+    OTLatexDirectiveItem* items;
+    size_t count;
+} OTLatexDirectivesResult;
+
+OTLatexDirectivesResult* ot_engine_scan_latex_directives(const char* line_utf8, bool is_preamble);
+void ot_engine_free_latex_directives(OTLatexDirectivesResult* res);
+
+typedef struct OTLatexLineClassification {
+    uint32_t kind;
+    bool has_opt_arg;
+    size_t open_loc;
+    size_t open_len;
+    size_t opt_loc;
+    size_t opt_len;
+    size_t space_loc;
+    size_t space_len;
+    size_t body_loc;
+    size_t body_len;
+    size_t close_loc;
+    size_t close_len;
+    char* cmd;
+    char* opt_arg;
+    char* arg1;
+} OTLatexLineClassification;
+
+OTLatexLineClassification ot_engine_classify_latex_line(const char* line_utf8);
+void ot_engine_free_latex_line_classification(OTLatexLineClassification res);
+
+typedef struct OTMacroTemplateAnalysis {
+    bool shows_body;
+    uint32_t heading_level;
+    char* color_name;
+    char* prefix_label;
+    char* vspace_args;
+} OTMacroTemplateAnalysis;
+
+OTMacroTemplateAnalysis ot_engine_analyze_macro_template(
+    const char* active_utf8,
+    const char* placeholder_utf8
+);
+void ot_engine_free_macro_template_analysis(OTMacroTemplateAnalysis res);
+
+typedef struct OTNormalizedDisplayMath {
+    char* cleaned_latex;
+    char* explicit_tag;
+} OTNormalizedDisplayMath;
+
+OTNormalizedDisplayMath ot_engine_normalize_display_math(
+    const char* raw_utf8,
+    const char* env_utf8
+);
+void ot_engine_free_normalized_display_math(OTNormalizedDisplayMath res);
+
+typedef struct OTBibEntry {
+    char* key;
+    char* entry_type;
+    char* author;
+    char* year;
+    char* title;
+    size_t utf16_loc;
+} OTBibEntry;
+
+typedef struct OTBibParseResult {
+    OTBibEntry* entries;
+    size_t count;
+} OTBibParseResult;
+
+OTBibParseResult* ot_engine_parse_bibtex(const char* content_utf8);
+void ot_engine_free_bibtex(OTBibParseResult* res);
+
 #ifdef __cplusplus
 }
 #endif
