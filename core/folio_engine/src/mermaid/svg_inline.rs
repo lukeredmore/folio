@@ -74,7 +74,7 @@ fn rewrite_path_tag(tag: &str, class: &str, c: FolioMermaidColors) -> String {
         .iter()
         .any(|k| class.contains(k));
     if is_edge {
-        let mut t = strip_style_prop(tag, "stroke-dasharray");
+        let mut t = strip_style_props(tag, &["stroke-dasharray"]);
         t = set_attrs(&t, &[("fill", "none"), ("stroke", c.line), ("stroke-width", "1.5")]);
         if class.contains("dashed") || class.contains("dotted") {
             t = set_attr(&t, "stroke-dasharray", "5,4");
@@ -89,42 +89,27 @@ fn rewrite_line_tag(tag: &str, class: &str, c: FolioMermaidColors) -> String {
         return set_attrs(tag, &[("stroke", c.line), ("stroke-width", "1.5")]);
     }
     if class.contains("messageLine1") {
-        return set_attrs(
-            tag,
-            &[("stroke", c.line), ("stroke-width", "1.5"), ("stroke-dasharray", "5,4")],
-        );
+        return set_attrs(tag, &[("stroke", c.line), ("stroke-width", "1.5"), ("stroke-dasharray", "5,4")]);
     }
     if class.contains("actor-line") {
-        return set_attrs(
-            tag,
-            &[("stroke", c.subtle_text), ("stroke-width", "1.2"), ("stroke-dasharray", "4,4")],
-        );
+        return set_attrs(tag, &[("stroke", c.subtle_text), ("stroke-width", "1.2"), ("stroke-dasharray", "4,4")]);
     }
     tag.to_string()
 }
 
 fn rewrite_rect_tag(tag: &str, class: &str, style: &str, c: FolioMermaidColors) -> String {
     if class.contains("actor") || class.contains("label-container") || class.contains("entityBox") {
-        return set_attrs(
-            tag,
-            &[("fill", c.surface), ("stroke", c.border), ("stroke-width", "1.5"), ("rx", "6"), ("ry", "6")],
-        );
+        return set_attrs(tag, &[("fill", c.surface), ("stroke", c.border), ("stroke-width", "1.5"), ("rx", "6"), ("ry", "6")]);
     }
     if class.contains("activation") {
-        return set_attrs(
-            tag,
-            &[("fill", c.surface_alt), ("stroke", c.border), ("stroke-width", "1.2"), ("rx", "2"), ("ry", "2")],
-        );
+        return set_attrs(tag, &[("fill", c.surface_alt), ("stroke", c.border), ("stroke-width", "1.2"), ("rx", "2"), ("ry", "2")]);
     }
     if class.contains("attributeBoxOdd") || class.contains("attributeBoxEven") {
         let fill = if class.contains("Odd") { c.surface_alt } else { c.surface };
         return set_attrs(tag, &[("fill", fill), ("stroke", c.border), ("stroke-width", "1")]);
     }
     if class.contains("relationshipLabelBox") {
-        return set_attrs(
-            tag,
-            &[("fill", c.edge_label_bg), ("stroke", "none"), ("rx", "4"), ("ry", "4")],
-        );
+        return set_attrs(tag, &[("fill", c.edge_label_bg), ("stroke", "none"), ("rx", "4"), ("ry", "4")]);
     }
     if let Some(fill) = extract_style_prop(style, "fill") {
         let stroke = extract_style_prop(style, "stroke").unwrap_or(fill);
@@ -140,12 +125,7 @@ fn rewrite_polygon_tag(tag: &str, class: &str, c: FolioMermaidColors) -> String 
     if class.contains("label-container") {
         return set_attrs(
             tag,
-            &[
-                ("fill", c.surface_alt),
-                ("stroke", c.border),
-                ("stroke-width", "1.5"),
-                ("stroke-linejoin", "round"),
-            ],
+            &[("fill", c.surface_alt), ("stroke", c.border), ("stroke-width", "1.5"), ("stroke-linejoin", "round")],
         );
     }
     tag.to_string()
@@ -175,15 +155,27 @@ fn rewrite_text_tag(tag: &str, class: &str, style: &str, c: FolioMermaidColors) 
         }
     }
     if class.contains("pieTitleText") {
+        t = strip_style_props(&t, &["font-size", "font-weight"]);
         return set_attrs(&t, &[("fill", c.text), ("text-anchor", "middle"), ("font-size", "16"), ("font-weight", "600")]);
     }
     if class.contains("slice") {
+        t = strip_style_props(&t, &["font-size", "font-weight"]);
         return set_attrs(&t, &[("fill", "#FFFFFF"), ("text-anchor", "middle"), ("font-size", "12"), ("font-weight", "600")]);
     }
     if class.contains("messageText") {
-        return set_attrs(&t, &[("fill", c.text), ("font-size", "13")]);
+        t = strip_style_props(&t, &["font-size", "font-weight"]);
+        if extract_attr(&t, "dy").is_some_and(|d| d.ends_with("em")) {
+            if let Some(y_val) = extract_attr(&t, "y").and_then(|s| s.parse::<f64>().ok()) {
+                t = set_attr(&t, "y", &format!("{:.1}", y_val + 21.0));
+            }
+        }
+        return set_attrs(
+            &t,
+            &[("fill", c.text), ("font-size", "13"), ("dy", "0"), ("dominant-baseline", "auto"), ("alignment-baseline", "auto")],
+        );
     }
     if class.contains("actor") {
+        t = strip_style_props(&t, &["font-size", "font-weight"]);
         return set_attrs(&t, &[("fill", c.text), ("font-size", "14"), ("font-weight", "600")]);
     }
     if extract_attr(&t, "fill").is_none() {
@@ -211,11 +203,15 @@ fn extract_style_prop<'a>(style: &'a str, prop: &str) -> Option<&'a str> {
     })
 }
 
-fn strip_style_prop(tag: &str, prop: &str) -> String {
+fn strip_style_props(tag: &str, props: &[&str]) -> String {
     let Some(style) = extract_attr(tag, "style") else { return tag.to_string() };
     let kept: Vec<&str> = style
         .split(';')
-        .filter(|p| p.split_once(':').map(|(k, _)| !k.trim().eq_ignore_ascii_case(prop)).unwrap_or(true))
+        .filter(|p| {
+            p.split_once(':')
+                .map(|(k, _)| !props.iter().any(|pr| k.trim().eq_ignore_ascii_case(pr)))
+                .unwrap_or(true)
+        })
         .collect();
     set_attr(tag, "style", &kept.join(";"))
 }

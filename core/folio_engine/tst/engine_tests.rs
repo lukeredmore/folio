@@ -116,6 +116,7 @@ fn test_sequence_diagram_to_svg() {
     assert!(res.svg.contains("Alice"));
     assert!(res.svg.contains("Bob"));
     assert!(res.svg.contains("Hello Bob"));
+    assert!(!res.svg.contains(r#"dy="1em""#));
 }
 
 #[test]
