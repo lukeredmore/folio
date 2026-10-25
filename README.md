@@ -65,8 +65,11 @@ To automatically open `.md` files directly in the Folio WYSIWYG preview view by 
 Requires `bazel` / `bazelisk` (`brew install bazelisk`):
 
 ```bash
-# Run the standalone macOS app
-bazel run //:FolioApp
+# Run the standalone macOS app (accepts any `folio` CLI arguments: files, folders, :line:col, --help, --version)
+bazel run //:FolioApp -- README.md:20:1
+
+# Or invoke the bundled `folio` CLI launcher directly via Bazel
+bazel run //:folio -- README.md:20:1
 
 # Build and install the Folio WASI extension into Zed
 ./zed/install_extension.sh
@@ -89,5 +92,5 @@ cargo test --workspace
 | Package | Targets | Documentation |
 | :--- | :--- | :--- |
 | **`core/folio_engine`** | `//core/folio_engine`, `//core/folio_engine:folio_engine_ffi` | [Core Engine README](core/folio_engine/README.md) — Shared Rust Markdown AST/span scanner, active-line token folding, native $\text{LaTeX}$ box layout, paragraph reflow, and C-ABI FFI. |
-| **`macos/` & `Sources/Folio/`** | `//:FolioApp`, `//:FolioTests` | [macOS App README](macos/README.md) — Standalone macOS app features, keyboard shortcuts, typography themes, `.dmg` packaging, and GitHub Release auto-updates. |
+| **`macos/` & `Sources/Folio/`** | `//:FolioApp`, `//:folio`, `//:FolioTests` | [macOS App README](macos/README.md) — Standalone macOS app features, bundled `folio` CLI (`Contents/Resources/bin/folio`), keyboard shortcuts, typography themes, `.dmg` packaging, and GitHub Release auto-updates. |
 | **`zed/folio_zed_extension/`** | `//zed/folio_zed_extension/...` | [Zed Extension README](zed/README.md) — Standalone WASI Preview 2 Zed extension (`v0.8.0` Extension Editor API), installation, independent auto-updates, and default preview view settings. |
