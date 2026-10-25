@@ -12,89 +12,69 @@ final class PassThroughAccessorNSView: NSView {
 }
 
 struct WindowStatePersistenceAccessor: NSViewRepresentable {
-    let viewModel: EditorWorkspaceViewModel
-    let showSidebar: Bool
-    @Binding var columnVisibility: NavigationSplitViewVisibility
+    let userDefaults: UserDefaults
     static let windowFrameDefaultsKey = "Folio.MainWindowFrame.v1"
 
     func makeCoordinator() -> Coordinator {
-        Coordinator(viewModel: viewModel, columnVisibility: $columnVisibility)
+        Coordinator(userDefaults: userDefaults)
     }
 
     func makeNSView(context: Context) -> PassThroughAccessorNSView {
         let view = PassThroughAccessorNSView(frame: .zero)
         let coordinator = context.coordinator
-        view.onMoveToWindow = { [weak coordinator] window in
-            coordinator?.attach(to: window)
-        }
+        view.onMoveToWindow = { [weak coordinator] window in coordinator?.attach(to: window) }
         return view
     }
 
     func updateNSView(_ nsView: PassThroughAccessorNSView, context: Context) {
-        context.coordinator.viewModel = viewModel
-        context.coordinator.columnVisibility = $columnVisibility
-        if let window = nsView.window {
-            if context.coordinator.attachedWindow !== window {
-                context.coordinator.attach(to: window)
-            } else {
-                context.coordinator.configureWindowAppearance(window)
-                context.coordinator.bindSplitViewIfNeeded(in: window)
-                context.coordinator.applySidebarVisibilityIfNeeded(showSidebar)
-            }
+        guard let window = nsView.window else { return }
+        if context.coordinator.attachedWindow !== window {
+            context.coordinator.attach(to: window)
+        } else {
+            context.coordinator.configureWindowAppearance(window)
         }
     }
 
     @MainActor
     final class Coordinator: NSObject {
-        weak var viewModel: EditorWorkspaceViewModel?
-        var columnVisibility: Binding<NavigationSplitViewVisibility>
         let userDefaults: UserDefaults
         weak var attachedWindow: NSWindow?
-        weak var observedSplitView: NSSplitView?
-        var sidebarCollapsedObservation: NSKeyValueObservation?
-        var lastAppliedShowSidebar: Bool?
+        nonisolated(unsafe) var mouseMonitor: Any?
+        weak var forwardedToolbarMouseWindow: NSWindow?
 
-        init(viewModel: EditorWorkspaceViewModel, columnVisibility: Binding<NavigationSplitViewVisibility>) {
-            self.viewModel = viewModel
-            self.columnVisibility = columnVisibility
-            self.userDefaults = viewModel.userDefaults
+        init(userDefaults: UserDefaults) {
+            self.userDefaults = userDefaults
         }
 
         deinit {
-            sidebarCollapsedObservation?.invalidate()
+            if let monitor = mouseMonitor { NSEvent.removeMonitor(monitor) }
             NotificationCenter.default.removeObserver(self)
         }
 
         func configureWindowAppearance(_ window: NSWindow) {
-            if window.titleVisibility != .hidden {
-                window.titleVisibility = .hidden
-            }
-            if !window.titlebarAppearsTransparent {
-                window.titlebarAppearsTransparent = true
-            }
+            if !window.titlebarAppearsTransparent { window.titlebarAppearsTransparent = true }
+            if window.titleVisibility != .hidden { window.titleVisibility = .hidden }
         }
 
         static func isRestorableWindowFrame(_ rect: NSRect, for window: NSWindow) -> Bool {
             guard rect.width >= 720, rect.height >= 480 else { return false }
-            if let screen = window.screen ?? NSScreen.main {
-                if rect.width >= screen.frame.width && rect.height >= screen.visibleFrame.height {
-                    return false
-                }
-            }
+            if let screen = window.screen ?? NSScreen.main,
+               rect.width >= screen.frame.width && rect.height >= screen.visibleFrame.height { return false }
             return true
         }
 
         func attach(to window: NSWindow) {
             guard attachedWindow !== window else { return }
+            let nc = NotificationCenter.default
             if let oldWindow = attachedWindow {
-                NotificationCenter.default.removeObserver(self, name: NSWindow.didResizeNotification, object: oldWindow)
-                NotificationCenter.default.removeObserver(self, name: NSWindow.didMoveNotification, object: oldWindow)
-                NotificationCenter.default.removeObserver(self, name: NSWindow.didEnterFullScreenNotification, object: oldWindow)
-                NotificationCenter.default.removeObserver(self, name: NSWindow.didExitFullScreenNotification, object: oldWindow)
+                for name in [NSWindow.didResizeNotification, NSWindow.didMoveNotification,
+                             NSWindow.didEnterFullScreenNotification, NSWindow.didExitFullScreenNotification] {
+                    nc.removeObserver(self, name: name, object: oldWindow)
+                }
             }
             attachedWindow = window
             configureWindowAppearance(window)
-
+            installFullScreenToolbarMouseMonitorIfNeeded()
             if !window.styleMask.contains(.fullScreen),
                let savedFrameString = userDefaults.string(forKey: WindowStatePersistenceAccessor.windowFrameDefaultsKey) {
                 let rect = NSRectFromString(savedFrameString)
@@ -104,138 +84,90 @@ struct WindowStatePersistenceAccessor: NSViewRepresentable {
                     userDefaults.removeObject(forKey: WindowStatePersistenceAccessor.windowFrameDefaultsKey)
                 }
             }
-
-            NotificationCenter.default.addObserver(
-                self,
-                selector: #selector(windowDidChangeFrame(_:)),
-                name: NSWindow.didResizeNotification,
-                object: window
-            )
-            NotificationCenter.default.addObserver(
-                self,
-                selector: #selector(windowDidChangeFrame(_:)),
-                name: NSWindow.didMoveNotification,
-                object: window
-            )
-            NotificationCenter.default.addObserver(
-                self,
-                selector: #selector(windowDidTransitionFullScreen(_:)),
-                name: NSWindow.didEnterFullScreenNotification,
-                object: window
-            )
-            NotificationCenter.default.addObserver(
-                self,
-                selector: #selector(windowDidTransitionFullScreen(_:)),
-                name: NSWindow.didExitFullScreenNotification,
-                object: window
-            )
-
-            bindSplitViewIfNeeded(in: window)
-            DispatchQueue.main.async { [weak self, weak window] in
-                guard let self, let window else { return }
-                self.bindSplitViewIfNeeded(in: window)
-                self.reconcileSidebarWithModel(in: window)
-            }
-        }
-
-        func bindSplitViewIfNeeded(in window: NSWindow) {
-            guard let splitView = Self.findSplitView(in: window.contentView?.superview),
-                  let svc = splitView.delegate as? NSSplitViewController,
-                  let sidebarItem = svc.splitViewItems.first else {
-                return
-            }
-            if splitView.autosaveName != nil {
+            nc.addObserver(self, selector: #selector(windowDidChangeFrame(_:)), name: NSWindow.didResizeNotification, object: window)
+            nc.addObserver(self, selector: #selector(windowDidChangeFrame(_:)), name: NSWindow.didMoveNotification, object: window)
+            nc.addObserver(self, selector: #selector(windowDidTransitionFullScreen(_:)), name: NSWindow.didEnterFullScreenNotification, object: window)
+            nc.addObserver(self, selector: #selector(windowDidTransitionFullScreen(_:)), name: NSWindow.didExitFullScreenNotification, object: window)
+            DispatchQueue.main.async { [weak window] in
+                guard let window,
+                      let splitView = Self.findSplitView(in: window.contentView?.superview),
+                      splitView.autosaveName != nil else { return }
                 splitView.autosaveName = nil
             }
-            guard observedSplitView !== splitView else { return }
-            observedSplitView = splitView
-            reconcileSidebarWithModel(in: window)
+        }
 
-            sidebarCollapsedObservation?.invalidate()
-            sidebarCollapsedObservation = sidebarItem.observe(\.isCollapsed, options: [.new]) { [weak self] item, _ in
-                let isCollapsed = item.isCollapsed
-                MainActor.assumeIsolated {
-                    guard let self else { return }
-                    self.syncModelAndVisibility(isSidebarVisible: !isCollapsed)
+        private func installFullScreenToolbarMouseMonitorIfNeeded() {
+            guard mouseMonitor == nil else { return }
+            mouseMonitor = NSEvent.addLocalMonitorForEvents(matching: [.leftMouseDown, .leftMouseDragged, .leftMouseUp]) { [weak self] event in
+                self?.handleFullScreenToolbarMouseEvent(event) ?? event
+            }
+        }
+
+        func handleFullScreenToolbarMouseEvent(_ event: NSEvent) -> NSEvent? {
+            guard let mainWindow = attachedWindow, mainWindow.styleMask.contains(.fullScreen) else {
+                forwardedToolbarMouseWindow = nil
+                return event
+            }
+            guard event.window === mainWindow else {
+                if event.type == .leftMouseUp { forwardedToolbarMouseWindow = nil }
+                return event
+            }
+            let screenPt = mainWindow.convertPoint(toScreen: event.locationInWindow)
+            if event.type == .leftMouseDown {
+                forwardedToolbarMouseWindow = nil
+                guard let childWindows = mainWindow.childWindows else { return event }
+                for child in childWindows where String(describing: type(of: child)).contains("ToolbarFullScreenWindow") {
+                    let ptInChild = child.convertPoint(fromScreen: screenPt)
+                    if let childHit = child.contentView?.superview?.hitTest(ptInChild),
+                       Self.isDescendantOfToolbarItem(childHit),
+                       Self.forwardMouseEvent(event, to: child, locationInTarget: ptInChild) {
+                        forwardedToolbarMouseWindow = child
+                        return nil
+                    }
                 }
+            } else if let child = forwardedToolbarMouseWindow {
+                let ptInChild = child.convertPoint(fromScreen: screenPt)
+                if event.type == .leftMouseUp { forwardedToolbarMouseWindow = nil }
+                if Self.forwardMouseEvent(event, to: child, locationInTarget: ptInChild) { return nil }
             }
+            return event
         }
 
-        func reconcileSidebarWithModel(in window: NSWindow) {
-            guard let splitView = Self.findSplitView(in: window.contentView?.superview),
-                  let svc = splitView.delegate as? NSSplitViewController,
-                  let sidebarItem = svc.splitViewItems.first,
-                  let vm = viewModel else {
-                return
-            }
-            lastAppliedShowSidebar = vm.showSidebar
-            if sidebarItem.isCollapsed != !vm.showSidebar {
-                sidebarItem.isCollapsed = !vm.showSidebar
-            }
-            let targetVisibility: NavigationSplitViewVisibility = vm.showSidebar ? .all : .detailOnly
-            if columnVisibility.wrappedValue != targetVisibility {
-                columnVisibility.wrappedValue = targetVisibility
-            }
+        static func forwardMouseEvent(_ event: NSEvent, to targetWindow: NSWindow, locationInTarget: NSPoint) -> Bool {
+            guard let forwarded = NSEvent.mouseEvent(
+                with: event.type, location: locationInTarget, modifierFlags: event.modifierFlags,
+                timestamp: event.timestamp, windowNumber: targetWindow.windowNumber, context: nil,
+                eventNumber: event.eventNumber, clickCount: event.clickCount, pressure: event.pressure
+            ) else { return false }
+            targetWindow.sendEvent(forwarded)
+            return true
         }
 
-        func syncModelAndVisibility(isSidebarVisible: Bool) {
-            lastAppliedShowSidebar = isSidebarVisible
-            if let vm = viewModel, vm.showSidebar != isSidebarVisible {
-                vm.showSidebar = isSidebarVisible
+        static func isDescendantOfToolbarItem(_ view: NSView?) -> Bool {
+            var current = view
+            while let v = current {
+                if String(describing: type(of: v)).contains("ToolbarItem") { return true }
+                current = v.superview
             }
-            if isSidebarVisible {
-                if columnVisibility.wrappedValue == .detailOnly {
-                    columnVisibility.wrappedValue = .all
-                }
-            } else if columnVisibility.wrappedValue != .detailOnly {
-                columnVisibility.wrappedValue = .detailOnly
-            }
-        }
-
-        func applySidebarVisibilityIfNeeded(_ shouldShow: Bool) {
-            guard lastAppliedShowSidebar != shouldShow else { return }
-            lastAppliedShowSidebar = shouldShow
-            guard let window = attachedWindow,
-                  let splitView = Self.findSplitView(in: window.contentView?.superview),
-                  let svc = splitView.delegate as? NSSplitViewController,
-                  let sidebarItem = svc.splitViewItems.first else {
-                return
-            }
-            if sidebarItem.isCollapsed != !shouldShow {
-                sidebarItem.animator().isCollapsed = !shouldShow
-            }
+            return false
         }
 
         @objc func windowDidTransitionFullScreen(_ notification: Notification) {
             guard let window = attachedWindow else { return }
             configureWindowAppearance(window)
-            bindSplitViewIfNeeded(in: window)
-            if let splitView = Self.findSplitView(in: window.contentView?.superview),
-               let svc = splitView.delegate as? NSSplitViewController,
-               let sidebarItem = svc.splitViewItems.first {
-                syncModelAndVisibility(isSidebarVisible: !sidebarItem.isCollapsed)
-            }
         }
 
         @objc func windowDidChangeFrame(_ notification: Notification) {
-            guard let window = attachedWindow,
-                  !window.styleMask.contains(.fullScreen),
-                  Self.isRestorableWindowFrame(window.frame, for: window) else {
-                return
-            }
-            let frameString = NSStringFromRect(window.frame)
-            userDefaults.set(frameString, forKey: WindowStatePersistenceAccessor.windowFrameDefaultsKey)
+            guard let window = attachedWindow, !window.styleMask.contains(.fullScreen),
+                  Self.isRestorableWindowFrame(window.frame, for: window) else { return }
+            userDefaults.set(NSStringFromRect(window.frame), forKey: WindowStatePersistenceAccessor.windowFrameDefaultsKey)
         }
 
         static func findSplitView(in root: NSView?) -> NSSplitView? {
             guard let root else { return nil }
-            if let split = root as? NSSplitView {
-                return split
-            }
+            if let split = root as? NSSplitView { return split }
             for subview in root.subviews {
-                if let found = findSplitView(in: subview) {
-                    return found
-                }
+                if let found = findSplitView(in: subview) { return found }
             }
             return nil
         }

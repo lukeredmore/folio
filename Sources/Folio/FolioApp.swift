@@ -105,13 +105,9 @@ public struct MainWindowView: View {
             }
         }
         .background(
-            WindowStatePersistenceAccessor(
-                viewModel: viewModel,
-                showSidebar: viewModel.showSidebar,
-                columnVisibility: $columnVisibility
-            )
-            .frame(width: 0, height: 0)
-            .allowsHitTesting(false)
+            WindowStatePersistenceAccessor(userDefaults: viewModel.userDefaults)
+                .frame(width: 0, height: 0)
+                .allowsHitTesting(false)
         )
         .background(
             DoubleShiftEventMonitorAccessor(viewModel: viewModel)

@@ -309,6 +309,7 @@ final class FolioUILagProfileTests: XCTestCase {
         if let toolbar = window.toolbar,
            let item = toolbar.items.first(where: { $0.itemIdentifier.rawValue == "com.apple.SwiftUI.navigationSplitView.toggleSidebar" }),
            let v = item.view {
+            XCTAssertTrue(WindowStatePersistenceAccessor.Coordinator.isDescendantOfToolbarItem(v))
             let wf = v.convert(v.bounds, to: nil)
             let center = NSPoint(x: wf.midX, y: wf.midY)
             if let down = NSEvent.mouseEvent(with: .leftMouseDown, location: center, modifierFlags: [], timestamp: ProcessInfo.processInfo.systemUptime, windowNumber: window.windowNumber, context: nil, eventNumber: 1, clickCount: 1, pressure: 1.0),
