@@ -129,6 +129,24 @@ public struct StatusBarView: View {
                     WordCountPopoverView(viewModel: viewModel)
                 }
                 .help("Word Count & Document Statistics")
+
+                if !viewModel.selectionComments.isEmpty {
+                    Button {
+                        withAnimation(.easeInOut(duration: 0.16)) {
+                            viewModel.showCommentsSidebar.toggle()
+                        }
+                    } label: {
+                        HStack(spacing: 4) {
+                            Image(systemName: "text.bubble.fill")
+                                .font(.system(size: 10.5))
+                            Text("\(viewModel.selectionComments.count)")
+                                .font(.system(size: 11, weight: .semibold, design: .monospaced))
+                        }
+                        .foregroundStyle(viewModel.showCommentsSidebar ? viewModel.theme.linkColor : .secondary)
+                    }
+                    .buttonStyle(.borderless)
+                    .help("Toggle Comments Sidebar")
+                }
             }
 
             // Center: Current file name

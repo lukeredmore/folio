@@ -91,6 +91,9 @@ extension EditorWorkspaceViewModel {
             isDirty = false
 
             if currentFileURL?.standardizedFileURL == url.standardizedFileURL {
+                if !selectionComments.isEmpty {
+                    saveCompanionCommentsToDisk(for: url)
+                }
                 let newInode = Self.fileInode(for: url)
                 if watchedFileInode == 0 || newInode != watchedFileInode {
                     watchFileDescriptorOnly(url)

@@ -87,11 +87,18 @@ public struct HybridMarkdownEditorRepresentable: NSViewRepresentable {
         )
         NotificationCenter.default.addObserver(
             context.coordinator,
+            selector: #selector(Coordinator.clipViewBoundsDidChange(_:)),
+            name: NSView.boundsDidChangeNotification,
+            object: scrollView.contentView
+        )
+        NotificationCenter.default.addObserver(
+            context.coordinator,
             selector: #selector(Coordinator.mediaImageDidLoad(_:)),
             name: FolioMediaImageCache.imageDidLoadNotification,
             object: nil
         )
         scrollView.postsFrameChangedNotifications = true
+        scrollView.contentView.postsBoundsChangedNotifications = true
 
         return scrollView
     }

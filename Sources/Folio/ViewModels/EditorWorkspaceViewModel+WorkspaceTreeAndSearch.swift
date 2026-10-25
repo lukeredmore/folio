@@ -36,7 +36,7 @@ extension EditorWorkspaceViewModel {
         var flatList: [WorkspaceFileNode] = []
         var combinedRoots: [WorkspaceFileNode] = []
 
-        if let folderURL = workspaceFolderURL {
+        if let folderURL = workspaceFolderURL, !Self.isSystemTemporaryRootDirectory(folderURL) {
             combinedRoots.append(contentsOf: scanDirectory(at: folderURL, depth: 0, remoteMountID: nil, flatAccumulator: &flatList))
         }
 

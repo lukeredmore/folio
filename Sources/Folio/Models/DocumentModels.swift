@@ -103,7 +103,11 @@ public struct WorkspaceFileNode: Identifiable, Hashable, Sendable {
     public static let bibtexExtensions: Set<String> = ["bib"]
 
     public var isMarkdownFile: Bool {
-        Self.markdownExtensions.contains(url.pathExtension.lowercased())
+        let lowerName = url.lastPathComponent.lowercased()
+        if lowerName.hasSuffix(".comments.folio.md") {
+            return false
+        }
+        return Self.markdownExtensions.contains(url.pathExtension.lowercased())
     }
 
     public var isLaTeXFile: Bool {

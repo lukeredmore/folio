@@ -70,6 +70,8 @@ public final class HybridMarkdownTextView: NSTextView {
     var activeHoveredPillRange: NSRange?
 
     public var onToggleCheckboxAtCharacterIndex: ((Int) -> Void)?
+    public var mouseSelectionAnchorCharIndex: Int?
+    public var detectedSelectionDirection: SelectionDirection = .forward
     var mediaHoverTrackingArea: NSTrackingArea?
     var gifAnimationTimer: Timer?
     var activeInlineVideoContainer: NSView?

@@ -200,7 +200,7 @@ extension EditorWorkspaceViewModel {
             pathKey: Self.workspaceFolderPathDefaultsKey,
             bookmarkKey: Self.workspaceFolderBookmarkDefaultsKey,
             requireDirectory: true
-        ) {
+        ), !Self.isSystemTemporaryRootDirectory(savedWorkspaceURL) {
             initialWorkspaceURL = savedWorkspaceURL
         } else {
             initialWorkspaceURL = Self.defaultFallbackWorkspaceFolderURL()
@@ -227,6 +227,7 @@ extension EditorWorkspaceViewModel {
         self.workspaceFolderURL = initialWorkspaceURL
         self.reloadWorkspaceTree()
         if let fileURL = initialFileURL {
+            self.loadCompanionComments(for: fileURL, documentText: initialContent)
             self.watchCurrentFile(fileURL)
         }
         self.refreshUndoRedoAvailability()

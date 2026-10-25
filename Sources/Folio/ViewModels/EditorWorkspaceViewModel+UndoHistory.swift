@@ -229,9 +229,12 @@ extension EditorWorkspaceViewModel {
         let clampedLen = max(0, min((targetText as NSString).length - clampedLoc, selectedRange.length))
         let clampedRange = NSRange(location: clampedLoc, length: clampedLen)
 
+        let previousText = markdownText
         isApplyingInternalStateChange = true
         markdownText = targetText
         currentSelectedRange = clampedRange
+        reconcileSelectionComments(from: previousText, to: targetText)
+        updateSelectionTooltipAnchor(for: clampedRange)
         userDefaults.set(clampedRange.location, forKey: Self.selectedCursorLocationDefaultsKey)
         stats = DocumentStats.compute(for: targetText, selectedRange: clampedRange)
 

@@ -12,6 +12,7 @@ extension EditorWorkspaceViewModel {
         stopWatchingCurrentFile()
         activeConflict = nil
         dismissExternalUpdateNotice()
+        clearAllSelectionComments(deleteCompanionFile: false)
         isApplyingInternalStateChange = true
         currentFileURL = nil
         markdownText = "# Untitled\n\n"
@@ -77,11 +78,17 @@ extension EditorWorkspaceViewModel {
     }
 
     public func openFile(at url: URL) {
-        flushPendingAutoSaveBeforeSwitchingFile()
+        if currentFileURL?.standardizedFileURL != url.standardizedFileURL {
+            flushPendingAutoSaveBeforeSwitchingFile()
+        } else {
+            pendingAutoSaveWorkItem?.cancel()
+            pendingAutoSaveWorkItem = nil
+        }
         do {
             let content = try String(contentsOf: url, encoding: .utf8)
             activeConflict = nil
             dismissExternalUpdateNotice()
+            clearAllSelectionComments(deleteCompanionFile: false)
             recentSelfWrites.removeAll()
             isApplyingInternalStateChange = true
             currentFileURL = url
@@ -91,6 +98,7 @@ extension EditorWorkspaceViewModel {
             currentSelectedRange = NSRange(location: 0, length: 0)
             pendingScrollToCharacterLocation = nil
             isApplyingInternalStateChange = false
+            loadCompanionComments(for: url, documentText: content)
             userDefaults.set(0, forKey: Self.selectedCursorLocationDefaultsKey)
             stats = DocumentStats.compute(for: content)
             if let tv = activeTextView {
@@ -170,6 +178,7 @@ extension EditorWorkspaceViewModel {
 
     func writeDocument(to url: URL) {
         performDiskWrite(markdownText, to: url)
+        saveCompanionCommentsToDisk(for: url)
         persistDocumentSessionState()
     }
 
@@ -230,6 +239,21 @@ extension EditorWorkspaceViewModel {
 
     // MARK: - POSIX DispatchSource File & Parent Directory Watcher
 
+    public nonisolated static func isSystemTemporaryRootDirectory(_ url: URL) -> Bool {
+        let stdPath = url.standardizedFileURL.path
+        let resolvedPath = url.resolvingSymlinksInPath().standardizedFileURL.path
+        let systemTempRoots: Set<String> = [
+            "/",
+            "/tmp",
+            "/private/tmp",
+            "/var/tmp",
+            "/private/var/tmp",
+            FileManager.default.temporaryDirectory.standardizedFileURL.path,
+            FileManager.default.temporaryDirectory.resolvingSymlinksInPath().standardizedFileURL.path
+        ]
+        return systemTempRoots.contains(stdPath) || systemTempRoots.contains(resolvedPath)
+    }
+
     nonisolated static func fileInode(for url: URL) -> UInt64 {
         var st = stat()
         if stat(url.path, &st) == 0 {
@@ -284,6 +308,8 @@ extension EditorWorkspaceViewModel {
         parentDirWatchSource?.cancel()
         parentDirWatchSource = nil
         parentDirWatchDescriptor = -1
+
+        guard !Self.isSystemTemporaryRootDirectory(parentURL) else { return }
 
         let dirFD = open(parentURL.path, O_EVTONLY)
         guard dirFD >= 0 else { return }

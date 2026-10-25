@@ -146,6 +146,32 @@ struct FolioAppCommands: Commands {
 
         // MARK: - Edit / Find Menu
         CommandGroup(replacing: .textEditing) {
+            Button("Add Comment on Selection…") {
+                viewModel.beginCommentOnCurrentSelection()
+            }
+            .keyboardShortcut("m", modifiers: [.command, .option])
+            .disabled(!viewModel.hasNonEmptySelectionForTooltip)
+
+            Button("Copy Formatted") {
+                viewModel.copySelectionFormatted()
+            }
+            .keyboardShortcut("c", modifiers: [.command, .option])
+            .disabled(!viewModel.hasNonEmptySelectionForTooltip)
+
+            Button("Copy Raw Markdown") {
+                viewModel.copySelectionRaw()
+            }
+            .keyboardShortcut("c", modifiers: [.command, .shift])
+            .disabled(!viewModel.hasNonEmptySelectionForTooltip)
+
+            Button("Copy All Selection Comments") {
+                viewModel.copyAllSelectionComments()
+            }
+            .keyboardShortcut("c", modifiers: [.command, .control])
+            .disabled(viewModel.selectionComments.isEmpty)
+
+            Divider()
+
             Button("Find...") {
                 viewModel.openDocumentFind(withReplace: false)
             }
