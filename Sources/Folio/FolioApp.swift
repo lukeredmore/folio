@@ -34,22 +34,23 @@ public struct MainWindowView: View {
                     .navigationSplitViewColumnWidth(min: 220, ideal: 265, max: 380)
             } detail: {
                 VStack(spacing: 0) {
-                    RemoteConnectionBannerView(viewModel: viewModel)
-
-                    DocumentConflictBannerView(viewModel: viewModel)
-
-                    ExternalUpdateBannerView(viewModel: viewModel)
-
-                    if viewModel.showFindReplaceBar {
-                        FindReplaceBannerView(viewModel: viewModel)
-                    }
-
                     HybridMarkdownEditorRepresentable(viewModel: viewModel)
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
+                        .ignoresSafeArea(.container, edges: .top)
 
                     StatusBarView(viewModel: viewModel)
                 }
-                .background(viewModel.theme.editorBackgroundColor)
+                .overlay(alignment: .top) {
+                    VStack(spacing: 0) {
+                        RemoteConnectionBannerView(viewModel: viewModel)
+                        DocumentConflictBannerView(viewModel: viewModel)
+                        ExternalUpdateBannerView(viewModel: viewModel)
+                        if viewModel.showFindReplaceBar {
+                            FindReplaceBannerView(viewModel: viewModel)
+                        }
+                    }
+                }
+                .background(viewModel.theme.editorBackgroundColor.ignoresSafeArea(.container, edges: .top))
                 .navigationTitle(viewModel.documentTitle)
                 .navigationSubtitle(navigationSubtitleText)
                 .toolbar {

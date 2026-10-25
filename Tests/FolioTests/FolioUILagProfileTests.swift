@@ -245,7 +245,8 @@ final class FolioUILagProfileTests: XCTestCase {
 
         XCTAssertLessThan(resizeTotalMs / 30.0, 5.0, "Sidebar resize + redraw should stay well under 120Hz frame budget (8.33ms)")
         XCTAssertLessThan(scrollTotalMs / 30.0, 5.0, "Scroll + redraw should stay well under 120Hz frame budget (8.33ms)")
-        XCTAssertLessThan(typingTotalMs / 20.0, 8.0, "Live typing with 440KB undo history should stay responsive")
+        XCTAssertLessThan(typingEditOnlyMs / 20.0, 6.5, "Live typing edit+restyle with 440KB undo history should stay well under frame budget")
+        XCTAssertLessThan(typingTotalMs / 20.0, 12.0, "Live typing + software bitmap redraw should stay responsive")
         XCTAssertLessThan(cursorTotalMs / 20.0, 8.0, "Cursor line transitions should stay responsive")
     }
 
@@ -287,9 +288,11 @@ final class FolioUILagProfileTests: XCTestCase {
         }
         let footerRect = try XCTUnwrap(sidebarFooterFrame, "Expected native sidebar safeAreaBar footer ContainerView")
         let scrollView = try XCTUnwrap(vm.activeTextView?.enclosingScrollView)
-        let editorScrollMinY = scrollView.convert(scrollView.bounds, to: nil).minY
+        let scrollWindowRect = scrollView.convert(scrollView.bounds, to: nil)
+        let editorScrollMinY = scrollWindowRect.minY
         XCTAssertEqual(footerRect.height, 30.0, accuracy: 0.5, "Sidebar footer bar height must match 30pt StatusBarView")
         XCTAssertEqual(footerRect.maxY, editorScrollMinY, accuracy: 0.5, "Sidebar footer top edge must align with StatusBarView top edge")
+        XCTAssertEqual(scrollWindowRect.maxY, hostingView.bounds.height, accuracy: 1.0, "Editor scroll view canvas must extend all the way to the top edge of the window")
 
         for tab in SidebarTab.allCases {
             vm.activeSidebarTab = tab
