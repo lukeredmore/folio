@@ -27,10 +27,7 @@ extension HybridMarkdownEditorRepresentable {
         var hasPerformedInitialScroll = false
         var pendingResizeRestyleWorkItem: DispatchWorkItem?
 
-        /// Strong owner of the layout manager delegate (the layout manager holds it weakly).
         let softLineBreakLayoutDelegate = SoftLineBreakLayoutDelegate()
-        /// Locations inside paragraphs the user edited. Each paragraph is rewrapped to the
-        /// source line width when the selection leaves it.
         var reflowAnchors: [Int] = []
         var isApplyingReflow = false
 
@@ -52,6 +49,11 @@ extension HybridMarkdownEditorRepresentable {
             if abs(newContentWidth - lastContentWidth) > 0.5 {
                 scheduleResizeRestyle(for: tv)
             }
+            viewModel.refreshTooltipAnchorOnViewportChangeIfNeeded()
+        }
+
+        @objc func clipViewBoundsDidChange(_ notification: Notification) {
+            viewModel.refreshTooltipAnchorOnViewportChangeIfNeeded()
         }
 
         func scheduleResizeRestyle(for textView: HybridMarkdownTextView) {
@@ -177,7 +179,7 @@ extension HybridMarkdownEditorRepresentable {
             let safeLoc = min(sel.location, nsStr.length)
             let activeLine = nsStr.lineRange(for: NSRange(location: safeLoc, length: 0))
 
-            viewModel.updateSelectionStats(selectedRange: sel)
+            viewModel.handleTextViewSelectionChange(in: tv, selectedRange: sel)
 
             if lastActiveLineRange != activeLine || viewModel.focusMode {
                 lastActiveLineRange = activeLine

@@ -62,6 +62,7 @@ extension EditorWorkspaceViewModel {
             )
             pendingEditOrigin = .userTyping
             pendingEditSummary = nil
+            reconcileSelectionComments(from: oldText, to: newText)
 
             if activeTextView == nil {
                 let analysis = MarkdownLiveStyler.applyStyles(
@@ -85,23 +86,7 @@ extension EditorWorkspaceViewModel {
         if stats != updatedStats {
             stats = updatedStats
         }
-    }
-
-    public func updateSelectionStats(selectedRange: NSRange) {
-        if selectedRange != currentSelectedRange && !isLiveKeystrokeInProgress {
-            canCoalesceLiveTyping = false
-        }
-        currentSelectedRange = selectedRange
-        if !isRestoringState && (!isLiveKeystrokeInProgress || autoSaveDelay <= 0) {
-            userDefaults.set(selectedRange.location, forKey: Self.selectedCursorLocationDefaultsKey)
-        }
-        if selectedRange.length == 0 && stats.selectedWords == 0 && stats.selectedCharacters == 0 {
-            return
-        }
-        let updatedStats = DocumentStats.compute(for: markdownText, selectedRange: selectedRange)
-        if stats != updatedStats {
-            stats = updatedStats
-        }
+        updateSelectionTooltipAnchor(for: selectedRange)
     }
 
     // MARK: - Task Checkbox Toggling

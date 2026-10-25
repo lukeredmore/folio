@@ -16,37 +16,13 @@ extension HybridMarkdownTextView {
         let contentWidth = proseColumnWidth > 0 ? proseColumnWidth : fullContentWidth
         var imageXOffsetByLineLocation: [Int: CGFloat] = [:]
 
-        // Draw visual highlights for lines recently updated externally on disk / remote sync
-        if !externalUpdateHighlightRanges.isEmpty {
-            let nsLen = (self.string as NSString).length
-            let highlightFill = currentTheme.isDark
-                ? NSColor.systemGreen.withAlphaComponent(0.14)
-                : NSColor.systemGreen.withAlphaComponent(0.10)
-            let highlightBar = currentTheme.isDark
-                ? NSColor.systemGreen.withAlphaComponent(0.85)
-                : NSColor.systemGreen.withAlphaComponent(0.75)
-
-            for rawRange in externalUpdateHighlightRanges {
-                let clampedLoc = max(0, min(rawRange.location, nsLen))
-                let clampedLen = max(0, min(rawRange.length, nsLen - clampedLoc))
-                let safeRange = NSRange(location: clampedLoc, length: clampedLen)
-                let glyphRange = layoutManager.glyphRange(forCharacterRange: safeRange, actualCharacterRange: nil)
-                guard glyphRange.location != NSNotFound else { continue }
-                var boxRect = layoutManager.boundingRect(forGlyphRange: glyphRange, in: textContainer)
-                boxRect.origin.x = origin.x - 10.0
-                boxRect.origin.y += origin.y
-                boxRect.size.width = contentWidth + 20.0
-                boxRect.size.height = max(20.0, boxRect.size.height)
-                guard boxRect.insetBy(dx: -20, dy: -30).intersects(rect) else { continue }
-
-                highlightFill.setFill()
-                NSBezierPath(roundedRect: boxRect, xRadius: 5.0, yRadius: 5.0).fill()
-
-                let barRect = NSRect(x: origin.x - 10.0, y: boxRect.minY + 1.0, width: 3.5, height: max(4.0, boxRect.height - 2.0))
-                highlightBar.setFill()
-                NSBezierPath(roundedRect: barRect, xRadius: 1.75, yRadius: 1.75).fill()
-            }
-        }
+        drawExternalUpdateAndCommentHighlights(
+            in: rect,
+            layoutManager: layoutManager,
+            textContainer: textContainer,
+            origin: origin,
+            contentWidth: contentWidth
+        )
 
         guard !isSourceCodeMode else {
             return

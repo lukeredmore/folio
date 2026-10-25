@@ -99,6 +99,14 @@ extension HybridMarkdownTextView {
 
     public override func mouseMoved(with event: NSEvent) {
         let point = convert(event.locationInWindow, from: nil)
+        if let hoveredComment = comment(at: point) {
+            let tip = hoveredComment.commentText
+            if self.toolTip != tip {
+                self.toolTip = tip
+            }
+            NSCursor.pointingHand.set()
+            return
+        }
         let tip = imageAltTooltip(at: point) ?? latexDecorationTooltip(at: point)
         if self.toolTip != tip {
             self.toolTip = tip
@@ -172,7 +180,28 @@ extension HybridMarkdownTextView {
             }
         }
 
+        let clickedCommentBeforeDrag = comment(at: point)
+
+        if event.modifierFlags.contains(.shift) {
+            let existingSel = self.selectedRange()
+            if mouseSelectionAnchorCharIndex == nil {
+                mouseSelectionAnchorCharIndex = existingSel.location
+            }
+        } else {
+            mouseSelectionAnchorCharIndex = charIndex
+        }
         super.mouseDown(with: event)
+        mouseSelectionAnchorCharIndex = nil
+
+        // 3. If the user clicked (without dragging a selection) on a commented highlight, link/focus that comment
+        if self.selectedRange().length == 0 {
+            if let clickedComment = clickedCommentBeforeDrag {
+                workspaceViewModel?.handleCommentHighlightClick(clickedComment)
+            } else if workspaceViewModel?.activeCommentID != nil {
+                workspaceViewModel?.activeCommentID = nil
+                self.needsDisplay = true
+            }
+        }
     }
 
     public override func insertNewline(_ sender: Any?) {

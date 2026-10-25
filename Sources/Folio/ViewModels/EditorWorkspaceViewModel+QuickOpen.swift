@@ -202,8 +202,11 @@ extension EditorWorkspaceViewModel {
             try? "".write(to: targetURL, atomically: true, encoding: .utf8)
         }
 
+        let parentFolder = targetURL.deletingLastPathComponent().standardizedFileURL
         if workspaceFolderURL == nil {
-            loadWorkspaceFolder(targetURL.deletingLastPathComponent().standardizedFileURL)
+            if !Self.isSystemTemporaryRootDirectory(parentFolder) {
+                loadWorkspaceFolder(parentFolder)
+            }
         } else if let currentFolder = workspaceFolderURL?.resolvingSymlinksInPath(),
                   targetURL.resolvingSymlinksInPath().path.hasPrefix(currentFolder.path + "/") {
             reloadWorkspaceTree()
@@ -266,7 +269,7 @@ extension EditorWorkspaceViewModel {
         if let currentFolder = workspaceFolderURL?.resolvingSymlinksInPath(),
            candidate.url.resolvingSymlinksInPath().path.hasPrefix(currentFolder.path + "/") {
             reloadWorkspaceTree()
-        } else {
+        } else if !Self.isSystemTemporaryRootDirectory(parentFolder) {
             loadWorkspaceFolder(parentFolder)
         }
         openFile(at: candidate.url)

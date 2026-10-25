@@ -54,6 +54,32 @@ struct WindowStatePersistenceAccessor: NSViewRepresentable {
         func configureWindowAppearance(_ window: NSWindow) {
             if !window.titlebarAppearsTransparent { window.titlebarAppearsTransparent = true }
             if window.titleVisibility != .hidden { window.titleVisibility = .hidden }
+            suppressSplitViewTitlebarPocketBackgrounds(in: window.contentView?.superview)
+        }
+
+        func suppressSplitViewTitlebarPocketBackgrounds(in root: NSView?) {
+            guard let root else { return }
+            let typeName = String(describing: type(of: root))
+            if typeName.contains("NSTitlebarBackgroundView") {
+                if !root.isHidden {
+                    root.isHidden = true
+                }
+                root.alphaValue = 0
+            }
+            if let split = root as? NSSplitView,
+               let svc = split.delegate as? NSSplitViewController {
+                for item in svc.splitViewItems {
+                    if !item.allowsFullHeightLayout {
+                        item.allowsFullHeightLayout = true
+                    }
+                    if item.titlebarSeparatorStyle != .none {
+                        item.titlebarSeparatorStyle = .none
+                    }
+                }
+            }
+            for subview in root.subviews {
+                suppressSplitViewTitlebarPocketBackgrounds(in: subview)
+            }
         }
 
         static func isRestorableWindowFrame(_ rect: NSRect, for window: NSWindow) -> Bool {
@@ -88,9 +114,10 @@ struct WindowStatePersistenceAccessor: NSViewRepresentable {
             nc.addObserver(self, selector: #selector(windowDidChangeFrame(_:)), name: NSWindow.didMoveNotification, object: window)
             nc.addObserver(self, selector: #selector(windowDidTransitionFullScreen(_:)), name: NSWindow.didEnterFullScreenNotification, object: window)
             nc.addObserver(self, selector: #selector(windowDidTransitionFullScreen(_:)), name: NSWindow.didExitFullScreenNotification, object: window)
-            DispatchQueue.main.async { [weak window] in
-                guard let window,
-                      let splitView = Self.findSplitView(in: window.contentView?.superview),
+            DispatchQueue.main.async { [weak self, weak window] in
+                guard let self, let window else { return }
+                self.suppressSplitViewTitlebarPocketBackgrounds(in: window.contentView?.superview)
+                guard let splitView = Self.findSplitView(in: window.contentView?.superview),
                       splitView.autosaveName != nil else { return }
                 splitView.autosaveName = nil
             }

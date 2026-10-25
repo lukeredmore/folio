@@ -23,6 +23,7 @@ public final class EditorWorkspaceViewModel: ObservableObject {
                 )
                 pendingEditOrigin = .userTyping
                 pendingEditSummary = nil
+                reconcileSelectionComments(from: oldValue, to: markdownText)
                 stats = DocumentStats.compute(for: markdownText, selectedRange: currentSelectedRange)
                 if activeTextView == nil {
                     let analysis = MarkdownLiveStyler.applyStyles(
@@ -123,52 +124,31 @@ public final class EditorWorkspaceViewModel: ObservableObject {
         }
     }
     @Published public var sourceCodeMode: Bool = false {
-        didSet {
-            guard !isRestoringState else { return }
-            userDefaults.set(sourceCodeMode, forKey: Self.sourceCodeModeDefaultsKey)
-        }
+        didSet { if !isRestoringState { userDefaults.set(sourceCodeMode, forKey: Self.sourceCodeModeDefaultsKey) } }
     }
     @Published public var prettyModeEnabled: Bool = true
     @Published public var focusMode: Bool = false {
-        didSet {
-            guard !isRestoringState else { return }
-            userDefaults.set(focusMode, forKey: Self.focusModeDefaultsKey)
-        }
+        didSet { if !isRestoringState { userDefaults.set(focusMode, forKey: Self.focusModeDefaultsKey) } }
     }
     @Published public var typewriterMode: Bool = false {
-        didSet {
-            guard !isRestoringState else { return }
-            userDefaults.set(typewriterMode, forKey: Self.typewriterModeDefaultsKey)
-        }
+        didSet { if !isRestoringState { userDefaults.set(typewriterMode, forKey: Self.typewriterModeDefaultsKey) } }
     }
     @Published public var spellCheckEnabled: Bool = false {
-        didSet {
-            guard !isRestoringState else { return }
-            userDefaults.set(spellCheckEnabled, forKey: Self.spellCheckEnabledDefaultsKey)
-        }
+        didSet { if !isRestoringState { userDefaults.set(spellCheckEnabled, forKey: Self.spellCheckEnabledDefaultsKey) } }
     }
     /// Column width that edited paragraphs are hard-wrapped to in the Markdown source (0 = off).
     @Published public var sourceLineWidth: Int = MarkdownSourceReflow.defaultWidth {
-        didSet {
-            guard !isRestoringState else { return }
-            userDefaults.set(sourceLineWidth, forKey: Self.sourceLineWidthDefaultsKey)
-        }
+        didSet { if !isRestoringState { userDefaults.set(sourceLineWidth, forKey: Self.sourceLineWidthDefaultsKey) } }
     }
     /// Editor-wide alignment for prose.
     @Published public var textAlignment: EditorTextAlignment = .left {
-        didSet {
-            guard !isRestoringState else { return }
-            userDefaults.set(textAlignment.rawValue, forKey: Self.textAlignmentDefaultsKey)
-        }
+        didSet { if !isRestoringState { userDefaults.set(textAlignment.rawValue, forKey: Self.textAlignmentDefaultsKey) } }
     }
     /// Mermaid diagram shown in the pan-and-zoom sheet.
     @Published public var expandedDiagram: ExpandedDiagram?
     /// Paper size used by Print.
     @Published public var printPaperSize: PrintPaperSize = .letter {
-        didSet {
-            guard !isRestoringState else { return }
-            userDefaults.set(printPaperSize.rawValue, forKey: Self.printPaperSizeDefaultsKey)
-        }
+        didSet { if !isRestoringState { userDefaults.set(printPaperSize.rawValue, forKey: Self.printPaperSizeDefaultsKey) } }
     }
     /// Page orientation used by Print (unless overridden in the document).
     @Published public var printOrientation: PrintOrientation = .portrait {
@@ -278,6 +258,15 @@ public final class EditorWorkspaceViewModel: ObservableObject {
     @Published public var activeHeadingID: String?
     @Published public var stats: DocumentStats = DocumentStats()
     @Published public var pendingScrollToCharacterLocation: Int?
+
+    // MARK: - Selection Tooltip & Companion Comments
+    @Published public var selectionComments: [SelectionComment] = []
+    @Published public var activeCommentID: UUID?
+    @Published public var showCommentsSidebar: Bool = true
+    @Published public var activeCommentDraftRange: NSRange?
+    @Published public var activeCommentDraftText: String = ""
+    @Published public var selectionTooltipAnchor: SelectionTooltipAnchor?
+    public var currentSelectionDirection: SelectionDirection = .forward
 
     // MARK: - Workspace Files & Search
     @Published public var workspaceFolderURL: URL? {
