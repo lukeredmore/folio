@@ -217,7 +217,10 @@ extension HybridMarkdownTextView {
                     baseFontSize: effectiveFontSize,
                     isDisplayStyle: true
                 )
-                let mathColor = currentTheme.headingNSColor.withAlphaComponent(dimFactor)
+                let customMathColor: NSColor? = (fullBlockRange.location != NSNotFound && fullBlockRange.location < (self.string as NSString).length)
+                    ? (self.textStorage?.attribute(MarkdownLiveStyler.customColorAttributeKey, at: fullBlockRange.location, effectiveRange: nil) as? NSColor)
+                    : nil
+                let mathColor = (customMathColor ?? currentTheme.headingNSColor).withAlphaComponent(dimFactor)
                 if mathBox.width == 0 && LaTeXMacroExpander.isStandaloneMacroDefinitionBlock(latex) {
                     let badgeText = "𝑓(x) LaTeX Macros" as NSString
                     let badgeAttrs: [NSAttributedString.Key: Any] = [
@@ -258,7 +261,8 @@ extension HybridMarkdownTextView {
                 )
                 let targetWidth = max(4.0, mathBox.width + 2.0)
                 let drawX = origin.x + lineFrag.minX + glyphLoc.x + max(0.5, (targetWidth - mathBox.width) * 0.5)
-                let mathColor = currentTheme.headingNSColor.withAlphaComponent(dimFactor)
+                let customInlineColor = self.textStorage?.attribute(MarkdownLiveStyler.customColorAttributeKey, at: mathRange.location, effectiveRange: nil) as? NSColor
+                let mathColor = (customInlineColor ?? currentTheme.headingNSColor).withAlphaComponent(dimFactor)
                 mathBox.drawBox(drawX, baselineY, mathColor)
 
             case let .inlineCode(codeRange, codeFontSize, dimFactor):

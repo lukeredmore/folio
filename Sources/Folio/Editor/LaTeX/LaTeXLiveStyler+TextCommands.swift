@@ -25,10 +25,10 @@ extension LaTeXLiveStyler {
 
     nonisolated(unsafe) private static let tinyAtomicFont = NSFont.monospacedSystemFont(ofSize: 0.01, weight: .regular)
     static let latexSizeGroupRegex = try! NSRegularExpression(
-        pattern: #"(\{\\(Huge|huge|LARGE|Large|large|normalsize|small|footnotesize|scriptsize|tiny)\b[ \t]*)([^{}]*(?:\{[^{}]*\}[^{}]*)*)(\})"#
+        pattern: #"(\{\\(Huge|huge|LARGE|Large|large|normalsize|small|footnotesize|scriptsize|tiny)\b[ \t]*(?:\\color\{([^}]+)\}[ \t]*)?)([^{}]*(?:\{[^{}]*\}[^{}]*)*)(\})"#
     )
     static let latexColorGroupRegex = try! NSRegularExpression(
-        pattern: #"(\{\\color\{([^}]+)\}[ \t]*|\\textcolor\{([^}]+)\}\{)([^{}]*(?:\{[^{}]*\}[^{}]*)*)(\})"#
+        pattern: #"(\{\\color\{([^}]+)\}[ \t]*(?:\\(?:Huge|huge|LARGE|Large|large|normalsize|small|footnotesize|scriptsize|tiny)\b[ \t]*)?|\\textcolor\{([^}]+)\}\{)([^{}]*(?:\{[^{}]*\}[^{}]*)*)(\})"#
     )
     static let latexProseMacroRegex = try! NSRegularExpression(
         pattern: #"\\([A-Za-z]+)(?:\{\}|\b(?![\{]))"#
@@ -92,11 +92,12 @@ extension LaTeXLiveStyler {
         // \href{url}{text}
         if lineSub.contains("\\href") {
             latexHrefRegex.enumerateMatches(in: string, options: [], range: effectiveRange) { match, _, _ in
-                guard let match = match, !isProtected(match.range) else { return }
+                guard let match = match else { return }
                 let openRange = match.range(at: 1)
                 let urlRange = match.range(at: 2)
                 let textRange = match.range(at: 3)
                 let closeRange = match.range(at: 4)
+                guard !isProtected(openRange) && !isProtected(closeRange) else { return }
                 storage.addAttribute(MKey.noSpellCheck, value: true, range: openRange)
                 storage.addAttribute(MKey.noSpellCheck, value: true, range: urlRange)
                 MarkdownLiveStyler.applyAttributesToVisibleCharacters(
@@ -130,31 +131,29 @@ extension LaTeXLiveStyler {
             }
         }
 
-        // {\Large ...}, {\large ...}, {\small ...}
+        // {\Large ...}, {\large ...}, {\small ...} (with optional \color{...})
         if lineSub.contains("{\\") {
             latexSizeGroupRegex.enumerateMatches(in: string, options: [], range: effectiveRange) { match, _, _ in
-                guard let match = match, !isProtected(match.range) else { return }
+                guard let match = match else { return }
                 let openRange = match.range(at: 1)
                 let sizeCmd = nsString.substring(with: match.range(at: 2))
-                let innerRange = match.range(at: 3)
-                let closeRange = match.range(at: 4)
-                let scale: CGFloat
-                switch sizeCmd {
-                case "Huge": scale = 1.65
-                case "huge": scale = 1.48
-                case "LARGE": scale = 1.38
-                case "Large": scale = 1.28
-                case "large": scale = 1.14
-                case "small": scale = 0.90
-                case "footnotesize", "scriptsize", "tiny": scale = 0.82
-                default: scale = 1.0
-                }
+                let colorRange = match.range(at: 3)
+                let innerRange = match.range(at: 4)
+                let closeRange = match.range(at: 5)
+                guard !isProtected(openRange) && !isProtected(closeRange) else { return }
+                let scaleMap: [String: CGFloat] = [
+                    "Huge": 1.65, "huge": 1.48, "LARGE": 1.38, "Large": 1.28, "large": 1.14,
+                    "small": 0.90, "footnotesize": 0.82, "scriptsize": 0.82, "tiny": 0.82
+                ]
+                let scale = scaleMap[sizeCmd] ?? 1.0
                 let sizedFont = docIndex.bodyFont(size: fontSize * scale, semibold: scale >= 1.25, fallbackTheme: theme)
-                MarkdownLiveStyler.applyAttributesToVisibleCharacters(
-                    in: storage,
-                    range: innerRange,
-                    attributes: [.font: sizedFont]
-                )
+                var attrs: [NSAttributedString.Key: Any] = [.font: sizedFont]
+                if colorRange.location != NSNotFound {
+                    let baseColor = docIndex.resolveColor(named: nsString.substring(with: colorRange), fallbackTheme: theme)
+                    storage.addAttribute(MKey.customColor, value: baseColor, range: innerRange)
+                    attrs[.foregroundColor] = baseColor.withAlphaComponent(dimFactor)
+                }
+                MarkdownLiveStyler.applyAttributesToVisibleCharacters(in: storage, range: innerRange, attributes: attrs)
                 MarkdownLiveStyler.styleSyntaxToken(in: storage, range: openRange, isActiveLine: showTokens, theme: theme, dimFactor: dimFactor)
                 MarkdownLiveStyler.styleSyntaxToken(in: storage, range: closeRange, isActiveLine: showTokens, theme: theme, dimFactor: dimFactor)
             }
@@ -163,13 +162,16 @@ extension LaTeXLiveStyler {
         // {\color{...}...} and \textcolor{...}{...}
         if lineSub.contains("\\color{") || lineSub.contains("\\textcolor{") {
             latexColorGroupRegex.enumerateMatches(in: string, options: [], range: effectiveRange) { match, _, _ in
-                guard let match = match, !isProtected(match.range) else { return }
+                guard let match = match else { return }
                 let openRange = match.range(at: 1)
                 let colorNameRange = match.range(at: 2).location != NSNotFound ? match.range(at: 2) : match.range(at: 3)
                 let colorName = colorNameRange.location != NSNotFound ? nsString.substring(with: colorNameRange) : ""
                 let innerRange = match.range(at: 4)
                 let closeRange = match.range(at: 5)
-                let resolvedColor = docIndex.resolveColor(named: colorName, fallbackTheme: theme).withAlphaComponent(dimFactor)
+                guard !isProtected(openRange) && !isProtected(closeRange) else { return }
+                let baseColor = docIndex.resolveColor(named: colorName, fallbackTheme: theme)
+                let resolvedColor = baseColor.withAlphaComponent(dimFactor)
+                storage.addAttribute(MKey.customColor, value: baseColor, range: innerRange)
                 MarkdownLiveStyler.applyAttributesToVisibleCharacters(
                     in: storage,
                     range: innerRange,
@@ -183,11 +185,12 @@ extension LaTeXLiveStyler {
         // \textbf{...}, \textit{...}, \emph{...}, \underline{...}, \texttt{...}, \textsc{...}, \footnote{...}
         if lineSub.contains("\\text") || lineSub.contains("\\emph") || lineSub.contains("\\underline") || lineSub.contains("\\footnote") {
             latexStyleCmdRegex.enumerateMatches(in: string, options: [], range: effectiveRange) { match, _, _ in
-                guard let match = match, !isProtected(match.range) else { return }
+                guard let match = match else { return }
                 let openRange = match.range(at: 1)
                 let cmd = nsString.substring(with: match.range(at: 2))
                 let innerRange = match.range(at: 3)
                 let closeRange = match.range(at: 4)
+                guard !isProtected(openRange) && !isProtected(closeRange) else { return }
                 storage.addAttribute(MKey.noSpellCheck, value: true, range: openRange)
 
                 switch cmd {

@@ -174,6 +174,7 @@ enum LaTeXDocumentIndexer {
             } else if trimmed.hasPrefix("\\end{document}") {
                 idx.endDocumentLineRange = lineRange
             }
+            parseConditionalDirectives(in: line, into: &idx.documentStyle)
 
             if inPreamble {
                 if line.contains("\\usepackage") {

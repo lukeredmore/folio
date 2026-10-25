@@ -181,4 +181,95 @@ final class LaTeXDocumentStylingAndMathCrashTests: XCTestCase {
         let r2Rect = lm.lineFragmentRect(forGlyphAt: lm.glyphIndexForCharacter(at: recipientLine2), effectiveRange: nil)
         XCTAssertLessThan(r2Rect.minY - r1Rect.minY, 19.0, "Expected single-spaced address lines, got delta=\(r2Rect.minY - r1Rect.minY)")
     }
+
+    func testLaTeXConditionalsAndWorkspaceMacroColoringAndCollapsing() {
+        func makeWorksheetTeX(answersTrue: Bool) -> String {
+            let toggle = answersTrue ? "\\answerstrue % <-- CHANGE THIS TO \\answersfalse" : "\\answersfalse"
+            return """
+            \\documentclass[11pt]{article}
+            \\definecolor{AnswerColor}{RGB}{0,90,180}
+            \\newif\\ifanswers
+            \(toggle)
+            \\newcommand{\\workspace}[2][1.05in]{%
+                \\ifanswers
+                    \\vspace{2pt}
+                    {\\color{AnswerColor}\\textbf{Solution:} #2}
+                    \\vspace{8pt}
+                \\else
+                    \\vspace{#1}
+                \\fi
+            }
+            \\begin{document}
+            \\begin{center}
+            {\\LARGE\\bfseries Simplifying Expressions}\\\\[4pt]
+            \\ifanswers
+            {\\normalsize\\color{AnswerColor}\\textbf{ANSWER KEY -- Worked Solutions}}
+            \\else
+            {\\normalsize Practice Version}
+            \\fi
+            \\end{center}
+            \\workspace[0.75in]{
+            Group by matching variable parts:
+            \\[
+            (-4 + 9 - 2)x^2y = \\boxed{3x^2y}
+            \\]
+            }
+            \\end{document}
+            """
+        }
+
+        let trueTeX = makeWorksheetTeX(answersTrue: true)
+        let trueStorage = NSTextStorage(string: trueTeX)
+        let trueAnalysis = LaTeXLiveStyler.applyStyles(
+            to: trueStorage,
+            theme: .daylight,
+            sourceCodeMode: false,
+            prettyMode: true,
+            focusMode: false,
+            selectedRange: NSRange(location: 0, length: 0),
+            containerWidth: 700
+        )
+        let trueNS = trueTeX as NSString
+        let answerKeyLoc = trueNS.range(of: "ANSWER KEY").location
+        let practiceLoc = trueNS.range(of: "Practice Version").location
+        XCTAssertNil(trueStorage.attribute(MarkdownLiveStyler.collapsedTokenAttributeKey, at: answerKeyLoc, effectiveRange: nil))
+        XCTAssertEqual(trueStorage.attribute(MarkdownLiveStyler.collapsedTokenAttributeKey, at: practiceLoc, effectiveRange: nil) as? Bool, true)
+        let keyColor = (trueStorage.attribute(.foregroundColor, at: answerKeyLoc, effectiveRange: nil) as? NSColor)?.usingColorSpace(.sRGB)
+        XCTAssertEqual(Double(keyColor?.blueComponent ?? 0), 180.0 / 255.0, accuracy: 0.02)
+
+        let groupByLoc = trueNS.range(of: "Group by matching").location
+        let mathOpenLoc = trueNS.range(of: "(-4 + 9 - 2)").location
+        let wsColor = (trueStorage.attribute(MarkdownLiveStyler.customColorAttributeKey, at: groupByLoc, effectiveRange: nil) as? NSColor)?.usingColorSpace(.sRGB)
+        let mathColor = (trueStorage.attribute(MarkdownLiveStyler.customColorAttributeKey, at: mathOpenLoc, effectiveRange: nil) as? NSColor)?.usingColorSpace(.sRGB)
+        XCTAssertEqual(Double(wsColor?.blueComponent ?? 0), 180.0 / 255.0, accuracy: 0.02)
+        XCTAssertEqual(Double(mathColor?.blueComponent ?? 0), 180.0 / 255.0, accuracy: 0.02)
+        XCTAssertTrue(trueAnalysis.decorations.contains(where: {
+            if case .latexInlineText(let text, _, _, _) = $0.kind {
+                return text == "Solution:"
+            }
+            return false
+        }))
+
+        let falseTeX = makeWorksheetTeX(answersTrue: false)
+        let falseStorage = NSTextStorage(string: falseTeX)
+        let falseAnalysis = LaTeXLiveStyler.applyStyles(
+            to: falseStorage,
+            theme: .daylight,
+            sourceCodeMode: false,
+            prettyMode: true,
+            focusMode: false,
+            selectedRange: NSRange(location: 0, length: 0),
+            containerWidth: 700
+        )
+        let falseNS = falseTeX as NSString
+        XCTAssertEqual(falseStorage.attribute(MarkdownLiveStyler.collapsedTokenAttributeKey, at: falseNS.range(of: "ANSWER KEY").location, effectiveRange: nil) as? Bool, true)
+        XCTAssertNil(falseStorage.attribute(MarkdownLiveStyler.collapsedTokenAttributeKey, at: falseNS.range(of: "Practice Version").location, effectiveRange: nil))
+        let wsOpenLoc = falseNS.range(of: "\\workspace[0.75in]{").location
+        let wsPStyle = falseStorage.attribute(.paragraphStyle, at: wsOpenLoc, effectiveRange: nil) as? NSParagraphStyle
+        XCTAssertEqual(Double(wsPStyle?.minimumLineHeight ?? 0), 54.0, accuracy: 0.5)
+        XCTAssertFalse(falseAnalysis.decorations.contains(where: {
+            if case .mathBlockRendered = $0.kind { return true }
+            return false
+        }))
+    }
 }

@@ -71,6 +71,7 @@ public struct LaTeXDocumentStyle: Equatable {
     public var parindent: LaTeXLength?
     public var parskip: LaTeXLength?
     public var customColors: [String: ThemeColorRGBA] = [:]
+    public var conditionals: [String: Bool] = ["true": true, "false": false]
 
     public init() {}
 

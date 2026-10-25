@@ -11,6 +11,8 @@ public final class MarkdownLiveStyler {
     public static let inlineMathSpanAttributeKey = NSAttributedString.Key("FolioInlineMathSpan")
     /// Marks ranges (math, code, syntax tokens) where spellcheck squiggles must be suppressed.
     public static let noSpellCheckAttributeKey = NSAttributedString.Key("FolioNoSpellCheck")
+    /// Stores a custom LaTeX foreground color (e.g. from `\color{...}` or colored macro blocks) so custom-drawn math and inline text inherit it.
+    public static let customColorAttributeKey = NSAttributedString.Key("FolioCustomForegroundColor")
 
     public struct InlineMathLayoutInfo: Hashable, Sendable {
         public let range: NSRange

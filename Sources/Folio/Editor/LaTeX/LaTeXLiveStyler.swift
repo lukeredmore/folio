@@ -320,5 +320,6 @@ public enum LaTeXLiveStyler {
         static let collapsed = MarkdownLiveStyler.collapsedTokenAttributeKey
         static let noSpellCheck = MarkdownLiveStyler.noSpellCheckAttributeKey
         static let inlineMathSpan = MarkdownLiveStyler.inlineMathSpanAttributeKey
+        static let customColor = MarkdownLiveStyler.customColorAttributeKey
     }
 }
