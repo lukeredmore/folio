@@ -32,6 +32,8 @@ ENGINE_SRCS = [
     "src/math/parser.rs",
     "src/math/symbols.rs",
     "src/mermaid/mod.rs",
+    "src/mermaid/svg_inline.rs",
+    "src/mermaid/svg_markers.rs",
     "src/mermaid/svg_norm.rs",
     "src/mermaid/theme.rs",
     "src/reflow/mod.rs",

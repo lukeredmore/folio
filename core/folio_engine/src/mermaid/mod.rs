@@ -1,9 +1,13 @@
+mod svg_inline;
+mod svg_markers;
 mod svg_norm;
 mod theme;
 
 use merman::{OperationControl, RenderOutput, RenderTarget};
+use svg_inline::inline_core_svg_styles;
+use svg_markers::materialize_svg_markers;
 pub use svg_norm::normalize_svg_markup;
-use theme::{fallback_text_color, folio_mermaid_renderer};
+use theme::{fallback_text_color, folio_mermaid_renderer, theme_colors};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum MermaidDiagramKind {
@@ -109,7 +113,10 @@ pub fn render_mermaid_to_svg(source: &str, is_dark: bool) -> MermaidRenderResult
             if let Ok(RenderOutput::Svg(Some(svg_output))) =
                 semantic.render(RenderTarget::Svg(folio_renderer.svg_request.clone()))
             {
-                if let Some((svg, raw_w, raw_h)) = normalize_svg_markup(svg_output.svg()) {
+                if let Some((normalized, raw_w, raw_h)) = normalize_svg_markup(svg_output.svg()) {
+                    let colors = theme_colors(is_dark);
+                    let inlined = inline_core_svg_styles(&normalized, colors);
+                    let svg = materialize_svg_markers(&inlined, colors);
                     let width = raw_w.max(120.0);
                     let height = raw_h.max(60.0);
                     let (node_count, edge_count) = count_svg_elements(&svg);
