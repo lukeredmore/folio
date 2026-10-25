@@ -1,4 +1,5 @@
 import AppKit
+import FolioEngineFFI
 import Foundation
 
 extension LaTeXLiveStyler {
@@ -171,32 +172,17 @@ extension LaTeXLiveStyler {
         return (scanIndex, scanLineCount)
     }
 
-    private static let tagRegex = try! NSRegularExpression(pattern: #"\\tag\*?\{([^}]+)\}"#)
-
     static func normalizeDisplayMathForSwiftMath(_ raw: String, envName: String?) -> (latex: String, explicitTag: String?) {
-        var explicitTag: String?
-        let ns = raw as NSString
-        if let tm = tagRegex.firstMatch(in: raw, range: NSRange(location: 0, length: ns.length)) {
-            explicitTag = ns.substring(with: tm.range(at: 1))
-        }
-
-        var s = raw
-            .replacingOccurrences(of: #"\\label\{[^}]*\}"#, with: "", options: .regularExpression)
-            .replacingOccurrences(of: #"\\tag\*?\{[^}]*\}"#, with: "", options: .regularExpression)
-            .replacingOccurrences(of: "\\nonumber", with: "")
-            .replacingOccurrences(of: "\\notag", with: "")
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-
-        if let env = envName?.replacingOccurrences(of: "*", with: "") {
-            if (env == "align" || env == "flalign" || env == "alignat")
-                && !s.contains("\\begin{aligned}") && (s.contains("&") || s.contains("\\\\")) {
-                s = "\\begin{aligned}\n\(s)\n\\end{aligned}"
-            } else if (env == "gather" || env == "multline")
-                && !s.contains("\\begin{gathered}") && s.contains("\\\\") {
-                s = "\\begin{gathered}\n\(s)\n\\end{gathered}"
+        let envStr = envName ?? ""
+        let res = raw.withCString { rawPtr in
+            envStr.withCString { envPtr in
+                ot_engine_normalize_display_math(rawPtr, envPtr)
             }
         }
-        return (s, explicitTag)
+        defer { ot_engine_free_normalized_display_math(res) }
+        let cleaned = res.cleaned_latex.map { String(cString: $0) } ?? ""
+        let rawTag = res.explicit_tag.map { String(cString: $0) } ?? ""
+        return (cleaned, rawTag.isEmpty ? nil : rawTag)
     }
 
     static func foldedBoundaryLineHeight(for trimmed: String, effectiveBaseSize: CGFloat) -> CGFloat {

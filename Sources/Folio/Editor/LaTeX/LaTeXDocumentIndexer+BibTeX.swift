@@ -1,3 +1,4 @@
+import FolioEngineFFI
 import Foundation
 
 extension LaTeXDocumentIndexer {
@@ -192,71 +193,27 @@ extension LaTeXDocumentIndexer {
         return map
     }
 
-    static let bibEntryHeaderRegex = try! NSRegularExpression(
-        pattern: #"@([A-Za-z]+)\s*\{\s*([^,\s]+)\s*,"#
-    )
-    static let bibFieldRegex = try! NSRegularExpression(
-        pattern: #"(?m)^\s*([A-Za-z_]+)\s*=\s*(?:\{((?:[^{}]|\{[^{}]*\})*)\}|"([^"]*)"|(\d+))"#
-    )
-
     public static func parseBibTeXEntries(from content: String, fileURL: URL? = nil) -> [BibTeXEntry] {
-        let ns = content as NSString
-        let matches = bibEntryHeaderRegex.matches(in: content, range: NSRange(location: 0, length: ns.length))
-        guard !matches.isEmpty else { return [] }
-
-        var results: [BibTeXEntry] = []
-        for (i, match) in matches.enumerated() {
-            let entryType = ns.substring(with: match.range(at: 1)).lowercased()
-            if entryType == "comment" || entryType == "preamble" || entryType == "string" {
-                continue
+        content.withCString { cStr in
+            guard let resPtr = ot_engine_parse_bibtex(cStr) else { return [] }
+            defer { ot_engine_free_bibtex(resPtr) }
+            let count = Int(resPtr.pointee.count)
+            guard count > 0, let entries = resPtr.pointee.entries else { return [] }
+            var results: [BibTeXEntry] = []
+            results.reserveCapacity(count)
+            for i in 0..<count {
+                let e = entries[i]
+                results.append(BibTeXEntry(
+                    key: e.key.map { String(cString: $0) } ?? "",
+                    entryType: e.entry_type.map { String(cString: $0) } ?? "",
+                    author: e.author.map { String(cString: $0) } ?? "",
+                    year: e.year.map { String(cString: $0) } ?? "",
+                    title: e.title.map { String(cString: $0) } ?? "",
+                    fileURL: fileURL,
+                    characterLocation: Int(e.utf16_loc)
+                ))
             }
-            let key = ns.substring(with: match.range(at: 2)).trimmingCharacters(in: .whitespacesAndNewlines)
-            let startLoc = match.range.location
-            let endLoc = (i + 1 < matches.count) ? matches[i + 1].range.location : ns.length
-            let blockRange = NSRange(location: startLoc, length: max(0, endLoc - startLoc))
-            let blockStr = ns.substring(with: blockRange)
-            let blockNS = blockStr as NSString
-
-            var author = ""
-            var year = ""
-            var title = ""
-
-            bibFieldRegex.enumerateMatches(in: blockStr, range: NSRange(location: 0, length: blockNS.length)) { fm, _, _ in
-                guard let fm = fm else { return }
-                let fieldName = blockNS.substring(with: fm.range(at: 1)).lowercased()
-                let valRange: NSRange
-                if fm.range(at: 2).location != NSNotFound {
-                    valRange = fm.range(at: 2)
-                } else if fm.range(at: 3).location != NSNotFound {
-                    valRange = fm.range(at: 3)
-                } else if fm.range(at: 4).location != NSNotFound {
-                    valRange = fm.range(at: 4)
-                } else {
-                    return
-                }
-                let val = cleanTeXInlineText(blockNS.substring(with: valRange))
-                switch fieldName {
-                case "author", "editor":
-                    if author.isEmpty || fieldName == "author" { author = val }
-                case "year", "date":
-                    if year.isEmpty { year = String(val.prefix(4)) }
-                case "title":
-                    title = val
-                default:
-                    break
-                }
-            }
-
-            results.append(BibTeXEntry(
-                key: key,
-                entryType: entryType,
-                author: author,
-                year: year,
-                title: title,
-                fileURL: fileURL,
-                characterLocation: startLoc
-            ))
+            return results
         }
-        return results
     }
 }

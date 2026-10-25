@@ -1,20 +1,8 @@
 import AppKit
+import FolioEngineFFI
 import Foundation
 
 extension LaTeXLiveStyler {
-
-    static let itemCommandRegex = try! NSRegularExpression(
-        pattern: #"^([ \t]*)(\\item)(?:\[([^\]]*)\])?([ \t]+|$)(.*)$"#
-    )
-    static let includeGraphicsRegex = try! NSRegularExpression(
-        pattern: #"^([ \t]*)\\includegraphics(?:\[([^\]]*)\])?\{([^}]+)\}[ \t]*$"#
-    )
-    static let captionCommandRegex = try! NSRegularExpression(
-        pattern: #"^([ \t]*)(\\caption\*?\{)(.*)(\})[ \t]*$"#
-    )
-    static let tableRuleRegex = try! NSRegularExpression(
-        pattern: #"^[ \t]*\\(?:hline|toprule|midrule|bottomrule|cline\{[^}]*\})[ \t]*$"#
-    )
 
     static func styleStructuredEnvironmentLines(
         envName: String,
@@ -153,9 +141,6 @@ extension LaTeXLiveStyler {
         baseDirectoryURL: URL?,
         decorations: inout [LineDecoration]
     ) -> (nextIndex: Int, lineDelta: Int)? {
-        let lineLen = (lineText as NSString).length
-        let localFull = NSRange(location: 0, length: lineLen)
-
         // 1. \end{itemize|enumerate|description|figure|table|center}
         if let endEnv = LaTeXDocumentIndexer.parseEndEnvironment(trimmedLine),
            foldOnlyWrapperEnvironments.contains(endEnv) {
@@ -173,11 +158,12 @@ extension LaTeXLiveStyler {
             return (NSMaxRange(lineRange), 1)
         }
 
-        // 2. \hline, \toprule, \midrule, \bottomrule
-        if (trimmedLine.hasPrefix("\\hline") || trimmedLine.hasPrefix("\\toprule")
-            || trimmedLine.hasPrefix("\\midrule") || trimmedLine.hasPrefix("\\bottomrule")
-            || trimmedLine.hasPrefix("\\cline")),
-           tableRuleRegex.firstMatch(in: lineText, range: localFull) != nil {
+        guard trimmedLine.hasPrefix("\\") else { return nil }
+        let cls = lineText.withCString { ot_engine_classify_latex_line($0) }
+        defer { ot_engine_free_latex_line_classification(cls) }
+
+        // 2. \hline, \toprule, \midrule, \bottomrule, \cline{...}
+        if cls.kind == 1 {
             storage.addAttribute(MKey.noSpellCheck, value: true, range: lineRange)
             if !isActiveLine && prettyMode {
                 MarkdownLiveStyler.collapseWhitespaceRange(in: storage, range: contentRange)
@@ -189,12 +175,10 @@ extension LaTeXLiveStyler {
         }
 
         // 3. \item or \item[...]
-        if trimmedLine.hasPrefix("\\item"),
-           let im = itemCommandRegex.firstMatch(in: lineText, range: localFull) {
-            let itemTokenRange = NSRange(location: contentRange.location + im.range(at: 2).location, length: im.range(at: 2).length)
-            let optLabelLocal = im.range(at: 3)
-            let spaceRange = NSRange(location: contentRange.location + im.range(at: 4).location, length: im.range(at: 4).length)
-            let bodyRange = NSRange(location: contentRange.location + im.range(at: 5).location, length: im.range(at: 5).length)
+        if cls.kind == 2 {
+            let itemTokenRange = NSRange(location: contentRange.location + Int(cls.open_loc), length: Int(cls.open_len))
+            let spaceRange = NSRange(location: contentRange.location + Int(cls.space_loc), length: Int(cls.space_len))
+            let bodyRange = NSRange(location: contentRange.location + Int(cls.body_loc), length: Int(cls.body_len))
 
             let baseIndent: CGFloat = 14.0
             let textIndent: CGFloat = 28.0
@@ -207,10 +191,10 @@ extension LaTeXLiveStyler {
             pStyle.tailIndent = effectiveContainerWidth
             storage.addAttribute(.paragraphStyle, value: pStyle, range: lineRange)
 
-            if optLabelLocal.location != NSNotFound {
+            if cls.has_opt_arg {
                 let bracketFull = NSRange(
-                    location: contentRange.location + optLabelLocal.location - 1,
-                    length: optLabelLocal.length + 2
+                    location: contentRange.location + Int(cls.opt_loc) - 1,
+                    length: Int(cls.opt_len) + 2
                 )
                 MarkdownLiveStyler.styleSyntaxToken(in: storage, range: itemTokenRange, isActiveLine: isActiveLine, theme: theme, dimFactor: dimFactor)
                 storage.addAttribute(.font, value: docIndex.bodyFont(size: effectiveBaseSize, bold: true, fallbackTheme: theme), range: bracketFull)
@@ -251,9 +235,8 @@ extension LaTeXLiveStyler {
         }
 
         // 4. \includegraphics[...]{path}
-        if trimmedLine.hasPrefix("\\includegraphics"),
-           let gm = includeGraphicsRegex.firstMatch(in: lineText, range: localFull) {
-            let imgPath = (lineText as NSString).substring(with: gm.range(at: 3))
+        if cls.kind == 3 {
+            let imgPath = cls.arg1.map { String(cString: $0) } ?? ""
             storage.addAttribute(MKey.noSpellCheck, value: true, range: lineRange)
             if !isActiveLine && prettyMode {
                 let maxW = max(200.0, effectiveContainerWidth - 40.0)
@@ -293,11 +276,10 @@ extension LaTeXLiveStyler {
         }
 
         // 5. \caption{...}
-        if trimmedLine.hasPrefix("\\caption"),
-           let cm = captionCommandRegex.firstMatch(in: lineText, range: localFull) {
-            let openRange = NSRange(location: contentRange.location + cm.range(at: 2).location, length: cm.range(at: 2).length)
-            let innerRange = NSRange(location: contentRange.location + cm.range(at: 3).location, length: cm.range(at: 3).length)
-            let closeRange = NSRange(location: contentRange.location + cm.range(at: 4).location, length: cm.range(at: 4).length)
+        if cls.kind == 4 {
+            let openRange = NSRange(location: contentRange.location + Int(cls.open_loc), length: Int(cls.open_len))
+            let innerRange = NSRange(location: contentRange.location + Int(cls.body_loc), length: Int(cls.body_len))
+            let closeRange = NSRange(location: contentRange.location + Int(cls.close_loc), length: Int(cls.close_len))
             let captionFont = docIndex.bodyFont(size: effectiveBaseSize * 0.90, italic: true, fallbackTheme: theme)
             let pStyle = NSMutableParagraphStyle()
             pStyle.alignment = .center

@@ -37,7 +37,8 @@ extension LaTeXLiveStyler {
         nsString: NSString,
         lineRange: NSRange,
         contentRange: NSRange,
-        match: NSTextCheckingResult,
+        cmd: String,
+        innerLocal: NSRange,
         isActiveLine: Bool,
         docIndex: LaTeXDocumentIndex,
         theme: EditorTheme,
@@ -49,10 +50,6 @@ extension LaTeXLiveStyler {
         baseDirectoryURL: URL?,
         decorations: inout [LineDecoration]
     ) {
-        let lineStr = storage.string as NSString
-        let cmdRange = NSRange(location: contentRange.location + match.range(at: 1).location, length: match.range(at: 1).length)
-        let cmd = lineStr.substring(with: cmdRange)
-        let innerLocal = match.range(at: 2)
         let innerRange = NSRange(location: contentRange.location + innerLocal.location, length: innerLocal.length)
         let openSyntaxRange = NSRange(location: contentRange.location, length: innerLocal.location)
         let closeStart = NSMaxRange(innerRange)

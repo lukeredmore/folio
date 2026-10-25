@@ -8,9 +8,20 @@ exports_files(["Cargo.toml"])
 
 ENGINE_SRCS = [
     "src/ffi/editing_ffi.rs",
+    "src/ffi/latex_block_ffi.rs",
+    "src/ffi/latex_ffi.rs",
     "src/ffi/markdown_ffi.rs",
     "src/ffi/math_ffi.rs",
     "src/ffi/mod.rs",
+    "src/latex/bibtex.rs",
+    "src/latex/directives.rs",
+    "src/latex/inline_scan.rs",
+    "src/latex/inline_scan_cmds.rs",
+    "src/latex/line_classify.rs",
+    "src/latex/macro_math.rs",
+    "src/latex/mod.rs",
+    "src/latex/scanner.rs",
+    "src/latex/types.rs",
     "src/lib.rs",
     "src/markdown/analyzer.rs",
     "src/markdown/block_handlers.rs",
@@ -122,6 +133,13 @@ rust_test(
     data = [
         "//tst/specs:all_behavior_specs",
     ],
+    edition = "2021",
+    deps = [":folio_engine"],
+)
+
+rust_test(
+    name = "latex_scan_test",
+    srcs = ["tst/latex_scan_tests.rs"],
     edition = "2021",
     deps = [":folio_engine"],
 )

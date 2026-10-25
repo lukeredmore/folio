@@ -6,8 +6,7 @@ import XCTest
 final class MathAndDiagramRenderingTests: XCTestCase {
 
     func testLaTeXMathRendererLayoutAndDecorations() {
-        let node = LaTeXMathRenderer.parse(#"\nabla \cdot \mathbf{E} = \frac{\rho}{\varepsilon_0}"#)
-        let box = LaTeXMathRenderer.layout(node: node, baseFontSize: 18, isDisplayStyle: true)
+        let box = LaTeXMathRenderer.layoutWithFallbackEngine(#"\nabla \cdot \mathbf{E} = \frac{\rho}{\varepsilon_0}"#, baseFontSize: 18, isDisplayStyle: true)
         XCTAssertGreaterThan(box.width, 60)
         XCTAssertGreaterThan(box.ascent, 12)
         XCTAssertGreaterThan(box.descent, 6)
@@ -174,11 +173,9 @@ final class MathAndDiagramRenderingTests: XCTestCase {
         let strayClosingBraces = "}}}}}}x + y}}}}}}"
         let leftWithRightArrow = #"\left( a \rightarrow b } c \right)"#
 
-        let node1 = LaTeXMathRenderer.parse(deepBraces)
-        let node2 = LaTeXMathRenderer.parse(deepSupers)
-        let node3 = LaTeXMathRenderer.parse(strayClosingBraces)
-        let node4 = LaTeXMathRenderer.parse(leftWithRightArrow)
-        let box1 = LaTeXMathRenderer.layout(node: node1, baseFontSize: 16, isDisplayStyle: true)
+        let box1 = LaTeXMathRenderer.layoutWithFallbackEngine(deepBraces, baseFontSize: 16, isDisplayStyle: true)
+        let box2 = LaTeXMathRenderer.layoutWithFallbackEngine(deepSupers, baseFontSize: 16, isDisplayStyle: true)
+        let box3 = LaTeXMathRenderer.layoutWithFallbackEngine(strayClosingBraces, baseFontSize: 16, isDisplayStyle: true)
         let box4 = LaTeXMathRenderer.layoutLatex(leftWithRightArrow, baseFontSize: 16, isDisplayStyle: true)
         let summary4 = LaTeXMathRenderer.plainTextSummary(of: leftWithRightArrow)
         assertNearLinearScaling("nested LaTeX layout", small: 125) { depth in
@@ -186,13 +183,13 @@ final class MathAndDiagramRenderingTests: XCTestCase {
             for _ in 0..<5 {
                 let braces = String(repeating: "{", count: depth) + "x+1" + String(repeating: "}", count: depth)
                 let supers = String(repeating: "x^", count: depth) + "2"
-                _ = LaTeXMathRenderer.layout(node: LaTeXMathRenderer.parse(braces), baseFontSize: 16, isDisplayStyle: true)
-                _ = LaTeXMathRenderer.layout(node: LaTeXMathRenderer.parse(supers), baseFontSize: 16, isDisplayStyle: true)
+                _ = LaTeXMathRenderer.layoutWithFallbackEngine(braces, baseFontSize: 16, isDisplayStyle: true)
+                _ = LaTeXMathRenderer.layoutWithFallbackEngine(supers, baseFontSize: 16, isDisplayStyle: true)
             }
         }
         XCTAssertGreaterThan(box1.width, 0)
         XCTAssertGreaterThan(box4.width, 0)
         XCTAssertTrue(summary4.contains("→"))
-        _ = (node2, node3, node4)
+        _ = (box2, box3)
     }
 }

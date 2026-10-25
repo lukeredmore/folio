@@ -1,4 +1,5 @@
 import AppKit
+import FolioEngineFFI
 import Foundation
 
 public struct BibTeXEntry: Equatable {
@@ -96,28 +97,6 @@ public struct LaTeXDocumentIndex {
 }
 
 enum LaTeXDocumentIndexer {
-    static let docClassRegex = try! NSRegularExpression(
-        pattern: #"\\documentclass(?:\[([^\]]*)\])?\{([^}]+)\}"#
-    )
-    static let usepackageRegex = try! NSRegularExpression(
-        pattern: #"\\usepackage(?:\[([^\]]*)\])?\{([^}]+)\}"#
-    )
-    static let sectionRegex = try! NSRegularExpression(
-        pattern: #"^\s*\\(part|chapter|section|sectiontitle|subsection|subsubsection|paragraph|subparagraph)(\*?)(?:\[[^\]]*\])?\{((?:[^{}]|\{[^{}]*\})*)\}"#
-    )
-    static let labelRegex = try! NSRegularExpression(
-        pattern: #"\\label\{([^}]+)\}"#
-    )
-    static let bibResourceRegex = try! NSRegularExpression(
-        pattern: #"\\(?:bibliography|addbibresource)\{([^}]+)\}"#
-    )
-    static let inputRegex = try! NSRegularExpression(
-        pattern: #"^\s*\\(input|include)\{([^}]+)\}"#
-    )
-    static let frontmatterCmdRegex = try! NSRegularExpression(
-        pattern: #"^\s*\\(title|author|date)(?:\[[^\]]*\])?\{((?:[^{}]|\{[^{}]*\})*)\}"#
-    )
-
     static let theoremEnvironments: [String: String] = [
         "theorem": "Theorem",
         "lemma": "Lemma",
@@ -156,15 +135,6 @@ enum LaTeXDocumentIndexer {
             let line = nsString.substring(with: lineRange)
             let trimmed = line.trimmingCharacters(in: .whitespacesAndNewlines)
 
-            if trimmed.hasPrefix("\\documentclass") {
-                if let m = docClassRegex.firstMatch(in: line, range: NSRange(location: 0, length: (line as NSString).length)) {
-                    if m.range(at: 1).location != NSNotFound {
-                        idx.documentClassOptions = (line as NSString).substring(with: m.range(at: 1))
-                        parseDocumentClassOptions(idx.documentClassOptions, into: &idx.documentStyle)
-                    }
-                    idx.documentClass = (line as NSString).substring(with: m.range(at: 2))
-                }
-            }
             if trimmed.hasPrefix("\\begin{document}") {
                 idx.beginDocumentLineRange = lineRange
                 if lineRange.location > 0 {
@@ -174,64 +144,11 @@ enum LaTeXDocumentIndexer {
             } else if trimmed.hasPrefix("\\end{document}") {
                 idx.endDocumentLineRange = lineRange
             }
-            parseConditionalDirectives(in: line, into: &idx.documentStyle)
 
-            if inPreamble {
-                if line.contains("\\usepackage") {
-                    usepackageRegex.enumerateMatches(in: line, range: NSRange(location: 0, length: (line as NSString).length)) { m, _, _ in
-                        guard let m = m else { return }
-                        let pkgOpts = m.range(at: 1).location != NSNotFound
-                            ? (line as NSString).substring(with: m.range(at: 1))
-                            : nil
-                        let raw = (line as NSString).substring(with: m.range(at: 2))
-                        for pkg in raw.split(separator: ",") {
-                            let pkgName = pkg.trimmingCharacters(in: .whitespaces)
-                            idx.packageNames.append(pkgName)
-                            applyPackageStyleDefaults(packageName: pkgName, options: pkgOpts, into: &idx.documentStyle)
-                        }
-                    }
-                }
-                parsePreambleStyleDirectives(in: line, trimmed: trimmed, into: &idx.documentStyle)
-                if trimmed.hasPrefix("\\newcommand") || trimmed.hasPrefix("\\renewcommand")
-                    || trimmed.hasPrefix("\\DeclareMathOperator") || trimmed.hasPrefix("\\def\\")
-                    || trimmed.hasPrefix("\\providecommand") {
-                    idx.macroCount += 1
-                }
-                if (trimmed.hasPrefix("\\input") || trimmed.hasPrefix("\\include")),
-                   let im = inputRegex.firstMatch(in: line, range: NSRange(location: 0, length: (line as NSString).length)),
-                   let baseDir = baseDirectoryURL {
-                    let relPath = (line as NSString).substring(with: im.range(at: 2))
-                    if let inputURL = resolveTeXFileURL(path: relPath, baseDirectoryURL: baseDir) {
-                        let imported = loadInputMacros(from: inputURL)
-                        idx.extraMacros.merge(imported) { _, new in new }
-                    }
-                }
-            }
-
-            if (trimmed.hasPrefix("\\title") || trimmed.hasPrefix("\\author") || trimmed.hasPrefix("\\date")),
-               let fm = frontmatterCmdRegex.firstMatch(in: line, range: NSRange(location: 0, length: (line as NSString).length)) {
-                let cmd = (line as NSString).substring(with: fm.range(at: 1))
-                let val = cleanTeXInlineText((line as NSString).substring(with: fm.range(at: 2)))
-                if cmd == "title" { idx.title = val }
-                else if cmd == "author" { idx.author = val }
-                else if cmd == "date" { idx.date = val == "\\today" ? formattedToday() : val }
-            }
-
-            if trimmed.hasPrefix("\\"),
-               let sm = sectionRegex.firstMatch(in: line, range: NSRange(location: 0, length: (line as NSString).length)) {
-                let cmd = (line as NSString).substring(with: sm.range(at: 1))
-                let starred = cmd == "sectiontitle" || !((line as NSString).substring(with: sm.range(at: 2))).isEmpty
-                let rawTitle = cleanTeXInlineText((line as NSString).substring(with: sm.range(at: 3)))
-                let level = sectionLevel(for: cmd)
-                var numStr = ""
-                if !starred && level <= 4 {
-                    let cIdx = max(0, level - 1)
-                    secCounters[cIdx] += 1
-                    for j in (cIdx + 1)..<secCounters.count { secCounters[j] = 0 }
-                    numStr = secCounters[0...cIdx].map(String.init).joined(separator: ".")
-                    currentContext = ("Section", numStr, rawTitle, lineRange.location)
-                }
-                idx.lineSectionNumbers[lineRange.location] = (level, numStr, rawTitle, starred)
+            if inPreamble && (trimmed.hasPrefix("\\newcommand") || trimmed.hasPrefix("\\renewcommand")
+                || trimmed.hasPrefix("\\DeclareMathOperator") || trimmed.hasPrefix("\\def\\")
+                || trimmed.hasPrefix("\\providecommand")) {
+                idx.macroCount += 1
             }
 
             if let envName = parseBeginEnvironment(trimmed) {
@@ -269,28 +186,17 @@ enum LaTeXDocumentIndexer {
                 }
             }
 
-            if line.contains("\\label{") {
-                labelRegex.enumerateMatches(in: line, range: NSRange(location: 0, length: (line as NSString).length)) { m, _, _ in
-                    guard let m = m else { return }
-                    let key = (line as NSString).substring(with: m.range(at: 1)).trimmingCharacters(in: .whitespaces)
-                    idx.labels[key] = LaTeXLabelTarget(
-                        key: key,
-                        kind: currentContext.kind,
-                        number: currentContext.number,
-                        title: currentContext.title,
-                        characterLocation: currentContext.loc
-                    )
-                }
-            }
-
-            if line.contains("\\bibliography{") || line.contains("\\addbibresource{") {
-                bibResourceRegex.enumerateMatches(in: line, range: NSRange(location: 0, length: (line as NSString).length)) { m, _, _ in
-                    guard let m = m else { return }
-                    let raw = (line as NSString).substring(with: m.range(at: 1))
-                    for part in raw.split(separator: ",") {
-                        bibFiles.append(part.trimmingCharacters(in: .whitespaces))
-                    }
-                }
+            if line.contains("\\") {
+                applyScannedDirectives(
+                    in: line,
+                    lineLocation: lineRange.location,
+                    inPreamble: inPreamble,
+                    baseDirectoryURL: baseDirectoryURL,
+                    secCounters: &secCounters,
+                    currentContext: &currentContext,
+                    bibFiles: &bibFiles,
+                    into: &idx
+                )
             }
 
             charIndex = NSMaxRange(lineRange)

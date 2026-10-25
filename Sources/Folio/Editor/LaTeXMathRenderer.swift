@@ -3,14 +3,8 @@ import Foundation
 import FolioEngineFFI
 
 public enum MathFontStyle: Equatable {
-    case italicVariable
-    case romanUpright
-    case boldUpright
-    case calligraphic
-    case blackboardBold
-    case monospace
-    case operatorSymbol
-    case bigOperator
+    case italicVariable, romanUpright, boldUpright, calligraphic
+    case blackboardBold, monospace, operatorSymbol, bigOperator
 
     public static func fromEngineCode(_ code: UInt32) -> MathFontStyle {
         switch code {
@@ -27,18 +21,6 @@ public enum MathFontStyle: Equatable {
     }
 }
 
-public indirect enum MathNode: Equatable {
-    case row([MathNode])
-    case text(String, MathFontStyle)
-    case space(CGFloat)
-    case fraction(numerator: MathNode, denominator: MathNode)
-    case sqrt(radicand: MathNode)
-    case scripts(base: MathNode, sub: MathNode?, sup: MathNode?)
-    case delimited(left: String, body: MathNode, right: String)
-    case accent(base: MathNode, mark: String)
-    case boxed(MathNode)
-}
-
 public struct MathLayoutBox {
     public let width: CGFloat
     public let ascent: CGFloat
@@ -48,18 +30,12 @@ public struct MathLayoutBox {
     public let drawBox: (_ x: CGFloat, _ baselineY: CGFloat, _ color: NSColor) -> Void
 
     public init(
-        width: CGFloat,
-        ascent: CGFloat,
-        descent: CGFloat,
-        tag: String? = nil,
+        width: CGFloat, ascent: CGFloat, descent: CGFloat, tag: String? = nil,
         usesNativeOpenTypeMath: Bool = false,
         drawBox: @escaping (_ x: CGFloat, _ baselineY: CGFloat, _ color: NSColor) -> Void
     ) {
-        self.width = width
-        self.ascent = ascent
-        self.descent = descent
-        self.tag = tag
-        self.usesNativeOpenTypeMath = usesNativeOpenTypeMath
+        self.width = width; self.ascent = ascent; self.descent = descent
+        self.tag = tag; self.usesNativeOpenTypeMath = usesNativeOpenTypeMath
         self.drawBox = drawBox
     }
 
@@ -73,16 +49,16 @@ enum CapturedEngineDrawCmd {
     case delimiter(symbol: String, x: CGFloat, topY: CGFloat, bottomY: CGFloat, width: CGFloat, thickness: CGFloat)
 }
 
+private struct MathFontCacheKey: Hashable {
+    let style: MathFontStyle
+    let quantizedSize: Int
+}
+
 public final class LaTeXMathRenderer {
+    private static let fontCacheLock = NSLock()
+    nonisolated(unsafe) private static var fallbackFontCache: [MathFontCacheKey: NSFont] = [:]
 
-    // MARK: - Public API
-    public static func parse(_ latex: String) -> MathNode {
-        let chars = Array(latex.trimmingCharacters(in: .whitespacesAndNewlines))
-        var index = 0
-        return parseSequence(chars, index: &index, stopOnRightCommand: false, stopOnCloseBrace: false, depth: 0)
-    }
-
-    /// Executes 2D math parsing and OpenType MATH layout via SwiftMath, falling back to the Rust/Swift engine if incomplete.
+    /// Executes 2D math parsing and OpenType MATH layout via SwiftMath, falling back to the Rust core engine if incomplete.
     public static func layoutLatex(
         _ latex: String,
         baseFontSize: CGFloat,
@@ -120,7 +96,7 @@ public final class LaTeXMathRenderer {
             ot_engine_layout_latex(cStr, Double(baseFontSize), isDisplayStyle)
         }
         guard let ptr = rawPtr else {
-            return layout(node: parse(latex), baseFontSize: baseFontSize, isDisplayStyle: isDisplayStyle)
+            return MathLayoutBox(width: 0, ascent: baseFontSize * 0.72, descent: baseFontSize * 0.22, tag: tag) { _, _, _ in }
         }
         defer { ot_engine_free_math_layout(ptr) }
 
@@ -134,37 +110,23 @@ public final class LaTeXMathRenderer {
                 case 0:
                     let str = cmd.text != nil ? String(cString: cmd.text) : ""
                     captured.append(.text(
-                        x: CGFloat(cmd.x),
-                        y: CGFloat(cmd.y),
-                        text: str,
-                        style: MathFontStyle.fromEngineCode(cmd.font_style),
-                        fontSize: CGFloat(cmd.font_size)
+                        x: CGFloat(cmd.x), y: CGFloat(cmd.y), text: str,
+                        style: MathFontStyle.fromEngineCode(cmd.font_style), fontSize: CGFloat(cmd.font_size)
                     ))
                 case 1:
                     captured.append(.rule(
-                        x: CGFloat(cmd.x),
-                        y: CGFloat(cmd.y),
-                        width: CGFloat(cmd.width),
-                        height: CGFloat(cmd.height)
+                        x: CGFloat(cmd.x), y: CGFloat(cmd.y), width: CGFloat(cmd.width), height: CGFloat(cmd.height)
                     ))
                 case 2:
                     captured.append(.radical(
-                        x: CGFloat(cmd.x),
-                        topY: CGFloat(cmd.y),
-                        bottomY: CGFloat(cmd.height),
-                        hookWidth: CGFloat(cmd.width),
-                        radicandWidth: CGFloat(cmd.font_size),
-                        thickness: CGFloat(cmd.thickness)
+                        x: CGFloat(cmd.x), topY: CGFloat(cmd.y), bottomY: CGFloat(cmd.height),
+                        hookWidth: CGFloat(cmd.width), radicandWidth: CGFloat(cmd.font_size), thickness: CGFloat(cmd.thickness)
                     ))
                 case 3:
                     let sym = cmd.text != nil ? String(cString: cmd.text) : "|"
                     captured.append(.delimiter(
-                        symbol: sym,
-                        x: CGFloat(cmd.x),
-                        topY: CGFloat(cmd.y),
-                        bottomY: CGFloat(cmd.height),
-                        width: CGFloat(cmd.width),
-                        thickness: CGFloat(cmd.thickness)
+                        symbol: sym, x: CGFloat(cmd.x), topY: CGFloat(cmd.y), bottomY: CGFloat(cmd.height),
+                        width: CGFloat(cmd.width), thickness: CGFloat(cmd.thickness)
                     ))
                 default:
                     break
@@ -173,11 +135,8 @@ public final class LaTeXMathRenderer {
         }
 
         return MathLayoutBox(
-            width: CGFloat(res.width),
-            ascent: CGFloat(res.ascent),
-            descent: CGFloat(res.descent),
-            tag: tag,
-            usesNativeOpenTypeMath: false
+            width: CGFloat(res.width), ascent: CGFloat(res.ascent), descent: CGFloat(res.descent),
+            tag: tag, usesNativeOpenTypeMath: false
         ) { originX, baselineY, color in
             for item in captured {
                 switch item {
@@ -191,40 +150,22 @@ public final class LaTeXMathRenderer {
                     color.setFill()
                     NSRect(x: originX + dx, y: baselineY + dy, width: width, height: height).fill()
                 case let .radical(dx, topYRel, bottomYRel, hookWidth, radicandWidth, thickness):
-                    let x = originX + dx
-                    let topY = baselineY + topYRel
-                    let bottomY = baselineY + bottomYRel
+                    let x = originX + dx, topY = baselineY + topYRel, bottomY = baselineY + bottomYRel
                     let path = NSBezierPath()
-                    path.lineWidth = thickness
-                    path.lineCapStyle = .round
-                    path.lineJoinStyle = .round
+                    path.lineWidth = thickness; path.lineCapStyle = .round; path.lineJoinStyle = .round
                     path.move(to: NSPoint(x: x + 1.0, y: topY + (bottomY - topY) * 0.55))
                     path.line(to: NSPoint(x: x + hookWidth * 0.42, y: bottomY))
                     path.line(to: NSPoint(x: x + hookWidth, y: topY))
                     path.line(to: NSPoint(x: x + hookWidth + radicandWidth + 2.0, y: topY))
-                    color.setStroke()
-                    path.stroke()
+                    color.setStroke(); path.stroke()
                 case let .delimiter(symbol, dx, topYRel, bottomYRel, width, _):
                     drawTallDelimiter(
-                        symbol,
-                        x: originX + dx,
-                        topY: baselineY + topYRel,
-                        bottomY: baselineY + bottomYRel,
-                        width: width,
-                        color: color
+                        symbol, x: originX + dx, topY: baselineY + topYRel,
+                        bottomY: baselineY + bottomYRel, width: width, color: color
                     )
                 }
             }
         }
-    }
-
-    public static func layout(
-        node: MathNode,
-        baseFontSize: CGFloat,
-        isDisplayStyle: Bool
-    ) -> MathLayoutBox {
-        let effectiveSize = isDisplayStyle ? baseFontSize * 1.18 : baseFontSize * 1.02
-        return layoutNode(node, fontSize: effectiveSize, isDisplay: isDisplayStyle)
     }
 
     /// Converts a LaTeX expression to a readable plain/Unicode representation via the Rust core engine
@@ -233,36 +174,120 @@ public final class LaTeXMathRenderer {
             ot_engine_plain_text_latex(cStr)
         }
         guard let ptr = cOut else {
-            return flattenToText(parse(latex))
+            return latex
         }
         defer { ot_engine_free_string(ptr) }
         return String(cString: ptr)
     }
 
-    public static func flattenToText(_ node: MathNode) -> String {
-        switch node {
-        case .row(let children):
-            return children.map(flattenToText).joined()
-        case .text(let s, _):
-            return s
-        case .space:
-            return " "
-        case .fraction(let num, let den):
-            return "(\(flattenToText(num)))/(\(flattenToText(den)))"
-        case .sqrt(let rad):
-            return "√(\(flattenToText(rad)))"
-        case .scripts(let base, let sub, let sup):
-            var res = flattenToText(base)
-            if let sub = sub { res += "_\(flattenToText(sub))" }
-            if let sup = sup { res += "^\(flattenToText(sup))" }
-            return res
-        case .delimited(let l, let body, let r):
-            return "\(l)\(flattenToText(body))\(r)"
-        case .accent(let base, let mark):
-            return "\(flattenToText(base))\(mark)"
-        case .boxed(let inner):
-            return "[\(flattenToText(inner))]"
+    static func font(for style: MathFontStyle, size: CGFloat) -> NSFont {
+        let key = MathFontCacheKey(style: style, quantizedSize: Int((size * 100.0).rounded()))
+        fontCacheLock.lock()
+        if let cached = fallbackFontCache[key] {
+            fontCacheLock.unlock()
+            return cached
         }
+        fontCacheLock.unlock()
+
+        let resolved: NSFont
+        switch style {
+        case .italicVariable:
+            resolved = NSFont(name: "Times New Roman Italic", size: size)
+                ?? NSFont(name: "Georgia Italic", size: size)
+                ?? NSFontManager.shared.convert(NSFont.systemFont(ofSize: size), toHaveTrait: .italicFontMask)
+        case .romanUpright, .calligraphic, .blackboardBold:
+            resolved = NSFont(name: "Times New Roman", size: size)
+                ?? NSFont(name: "Georgia", size: size)
+                ?? NSFont.systemFont(ofSize: size, weight: .regular)
+        case .boldUpright:
+            resolved = NSFont(name: "Times New Roman Bold", size: size)
+                ?? NSFont(name: "Georgia Bold", size: size)
+                ?? NSFont.systemFont(ofSize: size, weight: .bold)
+        case .monospace:
+            resolved = NSFont.monospacedSystemFont(ofSize: size * 0.9, weight: .regular)
+        case .operatorSymbol:
+            resolved = NSFont(name: "Times New Roman", size: size)
+                ?? NSFont.systemFont(ofSize: size, weight: .regular)
+        case .bigOperator:
+            resolved = NSFont(name: "Times New Roman", size: size * 1.45)
+                ?? NSFont.systemFont(ofSize: size * 1.45, weight: .light)
+        }
+        fontCacheLock.lock()
+        fallbackFontCache[key] = resolved
+        fontCacheLock.unlock()
+        return resolved
+    }
+
+    static func wrapInBoxedFrame(_ inner: MathLayoutBox, tag: String? = nil) -> MathLayoutBox {
+        let padX: CGFloat = 5.5
+        let padY: CGFloat = 3.5
+        let boxWidth = inner.width + padX * 2.0
+        let boxAscent = inner.ascent + padY
+        let boxDescent = inner.descent + padY
+        return MathLayoutBox(
+            width: boxWidth,
+            ascent: boxAscent,
+            descent: boxDescent,
+            tag: tag ?? inner.tag,
+            usesNativeOpenTypeMath: inner.usesNativeOpenTypeMath
+        ) { originX, baselineY, color in
+            inner.drawBox(originX + padX, baselineY, color)
+            let isFlipped = NSGraphicsContext.current?.isFlipped ?? true
+            let rectY = isFlipped ? (baselineY - boxAscent + 0.5) : (baselineY - boxDescent + 0.5)
+            let rect = NSRect(x: originX + 0.5, y: rectY, width: max(2.0, boxWidth - 1.0), height: max(2.0, boxAscent + boxDescent - 1.0))
+            let path = NSBezierPath(roundedRect: rect, xRadius: 2.0, yRadius: 2.0)
+            path.lineWidth = 1.15
+            color.withAlphaComponent(max(0.4, color.alphaComponent * 0.88)).setStroke()
+            path.stroke()
+        }
+    }
+
+    static func drawTallDelimiter(
+        _ symbol: String,
+        x: CGFloat,
+        topY: CGFloat,
+        bottomY: CGFloat,
+        width: CGFloat,
+        color: NSColor
+    ) {
+        let path = NSBezierPath()
+        path.lineWidth = 1.35
+        path.lineCapStyle = .round
+        let midY = (topY + bottomY) * 0.5
+
+        switch symbol {
+        case "(":
+            path.move(to: NSPoint(x: x + width, y: topY))
+            path.curve(
+                to: NSPoint(x: x + width, y: bottomY),
+                controlPoint1: NSPoint(x: x - 1.0, y: topY + (bottomY - topY) * 0.22),
+                controlPoint2: NSPoint(x: x - 1.0, y: topY + (bottomY - topY) * 0.78)
+            )
+        case ")":
+            path.move(to: NSPoint(x: x, y: topY))
+            path.curve(
+                to: NSPoint(x: x, y: bottomY),
+                controlPoint1: NSPoint(x: x + width + 1.0, y: topY + (bottomY - topY) * 0.22),
+                controlPoint2: NSPoint(x: x + width + 1.0, y: topY + (bottomY - topY) * 0.78)
+            )
+        case "[":
+            path.move(to: NSPoint(x: x + width, y: topY))
+            path.line(to: NSPoint(x: x + 1.0, y: topY))
+            path.line(to: NSPoint(x: x + 1.0, y: bottomY))
+            path.line(to: NSPoint(x: x + width, y: bottomY))
+        case "]":
+            path.move(to: NSPoint(x: x, y: topY))
+            path.line(to: NSPoint(x: x + width - 1.0, y: topY))
+            path.line(to: NSPoint(x: x + width - 1.0, y: bottomY))
+            path.line(to: NSPoint(x: x, y: bottomY))
+        default:
+            path.move(to: NSPoint(x: x + width * 0.5, y: topY))
+            path.line(to: NSPoint(x: x + width * 0.5, y: midY))
+            path.line(to: NSPoint(x: x + width * 0.5, y: bottomY))
+        }
+
+        color.setStroke()
+        path.stroke()
     }
 }
 
