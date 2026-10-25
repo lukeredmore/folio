@@ -319,4 +319,28 @@ final class SwiftMathAndMacroRenderingTests: XCTestCase {
         let pStyle = storage.attribute(.paragraphStyle, at: titleLoc, effectiveRange: nil) as? NSParagraphStyle
         XCTAssertEqual(pStyle?.alignment, .center)
     }
+
+    func testProseMacrosCommentFoldingAndLeadingCommentsBeforeDocumentClass() {
+        let tex = #"""
+        % Compile with XeLaTeX.
+        \documentclass[12pt]{article}
+        \newcommand{\sendername}{Luke W. Redmore}
+        \newcommand{\originaltoll}{\$5.60}
+        \begin{document}
+        % Option 1 draft
+        % \sendername
+        \textbf{Re: Violation \originaltoll{}} under ``Grounds''
+        Active line
+        \end{document}
+        """#
+        let storage = NSTextStorage(string: tex)
+        let activeLoc = (tex as NSString).range(of: "Active line").location
+        let analysis = LaTeXLiveStyler.applyStyles(
+            to: storage, theme: .daylight, sourceCodeMode: false, focusMode: false,
+            selectedRange: NSRange(location: activeLoc, length: 0), containerWidth: 680
+        )
+        XCTAssertTrue(analysis.decorations.contains { if case .latexPreambleCard = $0.kind { return true }; return false })
+        XCTAssertTrue(analysis.decorations.contains { if case .latexInlineText("$5.60", _, _, _) = $0.kind { return true }; return false })
+        XCTAssertTrue(analysis.decorations.contains { if case .latexInlineText("“", _, _, _) = $0.kind { return true }; return false })
+    }
 }

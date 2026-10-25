@@ -192,6 +192,7 @@ extension LaTeXLiveStyler {
                     in: storage,
                     lineRange: lineRange,
                     contentRange: contentRange,
+                    trimmed: trimmed,
                     isActive: isActive,
                     prettyMode: prettyMode,
                     theme: theme,
@@ -297,6 +298,7 @@ extension LaTeXLiveStyler {
         in storage: NSTextStorage,
         lineRange: NSRange,
         contentRange: NSRange,
+        trimmed: String,
         isActive: Bool,
         prettyMode: Bool,
         theme: EditorTheme,
@@ -306,9 +308,10 @@ extension LaTeXLiveStyler {
     ) {
         storage.addAttribute(MKey.noSpellCheck, value: true, range: lineRange)
         if !isActive && prettyMode {
+            let lineH = foldedBoundaryLineHeight(for: trimmed, effectiveBaseSize: effectiveBaseSize)
             let pStyle = NSMutableParagraphStyle()
-            pStyle.minimumLineHeight = 4.0
-            pStyle.maximumLineHeight = 4.0
+            pStyle.minimumLineHeight = lineH
+            pStyle.maximumLineHeight = lineH
             pStyle.lineSpacing = 0
             pStyle.paragraphSpacing = 0
             pStyle.tailIndent = effectiveContainerWidth

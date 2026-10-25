@@ -239,6 +239,29 @@ extension HybridMarkdownTextView {
                 withAttributes: textAttrs
             )
 
+        case let .latexInlineText(text, font, spanRange, dimFactor):
+            guard spanRange.location != NSNotFound,
+                  spanRange.location < (self.string as NSString).length else { return }
+            let firstGlyph = layoutManager.glyphIndexForCharacter(at: spanRange.location)
+            guard firstGlyph != NSNotFound, firstGlyph < layoutManager.numberOfGlyphs else { return }
+            let lineFrag = layoutManager.lineFragmentRect(forGlyphAt: firstGlyph, effectiveRange: nil)
+            let glyphLoc = layoutManager.location(forGlyphAt: firstGlyph)
+            let baselineY = origin.y + lineFrag.minY + glyphLoc.y
+            let drawX = origin.x + lineFrag.minX + glyphLoc.x
+            let drawY = baselineY - font.ascender
+            let attrs: [NSAttributedString.Key: Any] = [
+                .font: font,
+                .foregroundColor: currentTheme.textNSColor.withAlphaComponent(dimFactor)
+            ]
+            let lines = text.components(separatedBy: "\n")
+            let lineStep = ceil((font.ascender - font.descender) * 1.25)
+            for (idx, line) in lines.enumerated() {
+                (line as NSString).draw(
+                    at: NSPoint(x: drawX, y: drawY + CGFloat(idx) * lineStep),
+                    withAttributes: attrs
+                )
+            }
+
         default:
             break
         }

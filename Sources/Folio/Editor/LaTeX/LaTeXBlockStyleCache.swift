@@ -286,6 +286,8 @@ enum LaTeXBlockStyleCache {
         case let .latexInlinePill(label, tooltip, targetLoc, targetURL, range, fontSize, isCitation, dimFactor):
             let shiftedTarget = targetLoc.map { $0 >= editLocation ? $0 + delta : $0 }
             newKind = .latexInlinePill(label: label, tooltip: tooltip, targetLocation: shiftedTarget, targetURL: targetURL, range: shiftRange(range, by: delta), fontSize: fontSize, isCitation: isCitation, dimFactor: dimFactor)
+        case let .latexInlineText(text, font, range, dimFactor):
+            newKind = .latexInlineText(text: text, font: font, range: shiftRange(range, by: delta), dimFactor: dimFactor)
         }
         return LineDecoration(lineRange: newLineRange, kind: newKind)
     }

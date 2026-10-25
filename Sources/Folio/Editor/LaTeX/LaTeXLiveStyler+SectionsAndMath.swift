@@ -35,7 +35,25 @@ extension LaTeXLiveStyler {
         headings: inout [OutlineHeading],
         decorations: inout [LineDecoration]
     ) -> (nextIndex: Int, lineDelta: Int)? {
-        guard trimmedLine.hasPrefix("\\") || trimmedLine.hasPrefix("$$") else { return nil }
+        guard trimmedLine.hasPrefix("\\") || trimmedLine.hasPrefix("$$") || trimmedLine.hasPrefix("%") else { return nil }
+
+        if trimmedLine.hasPrefix("%") {
+            return styleLaTeXCommentBlock(
+                in: storage,
+                nsString: nsString,
+                fullLength: fullLength,
+                lineRange: lineRange,
+                contentRange: contentRange,
+                isActiveLine: isActiveLine,
+                activeLineRange: activeLineRange,
+                selectedRange: selectedRange,
+                theme: theme,
+                effectiveBaseSize: effectiveBaseSize,
+                effectiveContainerWidth: effectiveContainerWidth,
+                prettyMode: prettyMode,
+                focusMode: focusMode
+            )
+        }
 
         // 1. Sectioning commands (\section{...}, \subsection{...}, etc.)
         if let secInfo = docIndex.lineSectionNumbers[lineRange.location],

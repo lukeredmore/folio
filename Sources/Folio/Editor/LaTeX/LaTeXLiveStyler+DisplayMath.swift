@@ -198,4 +198,106 @@ extension LaTeXLiveStyler {
         }
         return (s, explicitTag)
     }
+
+    static func foldedBoundaryLineHeight(for trimmed: String, effectiveBaseSize: CGFloat) -> CGFloat {
+        if trimmed.hasPrefix("\\vspace"),
+           let openBrace = trimmed.firstIndex(of: "{"),
+           let closeBrace = trimmed.lastIndex(of: "}"),
+           openBrace < closeBrace {
+            let arg = trimmed[trimmed.index(after: openBrace)..<closeBrace].trimmingCharacters(in: .whitespaces)
+            if arg.hasSuffix("em"), let val = Double(arg.dropLast(2)), val > 0 {
+                return min(72.0, max(4.0, CGFloat(val) * effectiveBaseSize))
+            }
+            if arg.hasSuffix("pt"), let val = Double(arg.dropLast(2)), val > 0 {
+                return min(72.0, max(4.0, CGFloat(val)))
+            }
+        }
+        return 4.0
+    }
+
+    static func styleLaTeXCommentBlock(
+        in storage: NSTextStorage,
+        nsString: NSString,
+        fullLength: Int,
+        lineRange: NSRange,
+        contentRange: NSRange,
+        isActiveLine: Bool,
+        activeLineRange: NSRange,
+        selectedRange: NSRange,
+        theme: EditorTheme,
+        effectiveBaseSize: CGFloat,
+        effectiveContainerWidth: CGFloat,
+        prettyMode: Bool,
+        focusMode: Bool
+    ) -> (nextIndex: Int, lineDelta: Int) {
+        var commentLines: [(lineRange: NSRange, contentRange: NSRange, isActive: Bool)] = [
+            (lineRange, contentRange, isActiveLine)
+        ]
+        var pendingBlankLines: [(lineRange: NSRange, contentRange: NSRange, isActive: Bool)] = []
+        var scanIndex = NSMaxRange(lineRange)
+
+        while scanIndex < fullLength {
+            let nextLR = nsString.lineRange(for: NSRange(location: scanIndex, length: 0))
+            let nextCR = MarkdownLiveStyler.strippedLineContentRange(nsString: nsString, lineRange: nextLR)
+            let nextTrimmed = nsString.substring(with: nextCR).trimmingCharacters(in: .whitespaces)
+            let nextActive = MarkdownLiveStyler.isLineActive(
+                lineRange: nextLR,
+                activeLineRange: activeLineRange,
+                selectedRange: selectedRange
+            )
+            if nextTrimmed.hasPrefix("%") {
+                commentLines.append(contentsOf: pendingBlankLines)
+                pendingBlankLines.removeAll(keepingCapacity: true)
+                commentLines.append((nextLR, nextCR, nextActive))
+                scanIndex = NSMaxRange(nextLR)
+            } else if nextTrimmed.isEmpty {
+                pendingBlankLines.append((nextLR, nextCR, nextActive))
+                scanIndex = NSMaxRange(nextLR)
+            } else {
+                break
+            }
+        }
+
+        let endChar = commentLines.last.map { NSMaxRange($0.lineRange) } ?? NSMaxRange(lineRange)
+        let fullBlockRange = NSRange(location: lineRange.location, length: endChar - lineRange.location)
+        if fullBlockRange.length > lineRange.length {
+            LaTeXBlockStyleCache.resetAttributes(
+                in: storage,
+                range: NSRange(location: NSMaxRange(lineRange), length: fullBlockRange.length - lineRange.length)
+            )
+        }
+        storage.addAttribute(MKey.noSpellCheck, value: true, range: fullBlockRange)
+
+        let isBlockActive = commentLines.contains(where: { $0.isActive }) ||
+            NSIntersectionRange(fullBlockRange, selectedRange).length > 0
+        let blockDim: CGFloat = (focusMode && !isBlockActive) ? 0.30 : 1.0
+
+        if !isBlockActive && prettyMode {
+            let perLineH = max(0.25, min(2.0, 4.0 / CGFloat(max(1, commentLines.count))))
+            let pStyle = NSMutableParagraphStyle()
+            pStyle.minimumLineHeight = perLineH
+            pStyle.maximumLineHeight = perLineH
+            pStyle.lineSpacing = 0
+            pStyle.paragraphSpacing = 0
+            pStyle.paragraphSpacingBefore = 0
+            pStyle.lineBreakMode = .byClipping
+            pStyle.tailIndent = effectiveContainerWidth
+            storage.addAttributes([
+                .font: NSFont.systemFont(ofSize: 1.0),
+                .foregroundColor: NSColor.clear,
+                .paragraphStyle: pStyle,
+                .kern: 0.0
+            ], range: fullBlockRange)
+        } else {
+            let commentFont = theme.bodyFont(size: effectiveBaseSize * 0.92, italic: true)
+            for cl in commentLines where cl.contentRange.length > 0 {
+                storage.addAttributes([
+                    .font: commentFont,
+                    .foregroundColor: theme.secondaryTextNSColor.withAlphaComponent(0.75 * blockDim)
+                ], range: cl.contentRange)
+            }
+        }
+
+        return (endChar, commentLines.count)
+    }
 }
