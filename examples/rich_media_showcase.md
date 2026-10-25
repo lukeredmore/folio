@@ -69,6 +69,26 @@ pie title Rendering Pipeline Overhead
     "CoreGraphics Vector Raster" : 5
 ```
 
+### Class Diagram (`classDiagram`)
+```mermaid
+classDiagram
+    class FolioEngine {
+        +analyze_markdown(text)
+        +render_mermaid_svg(code, is_dark)
+    }
+    class MermanRenderer {
+        +render_svg_sync(source, request)
+    }
+    FolioEngine --> MermanRenderer : delegates layout & SVG
+```
+
+### Entity-Relationship Diagram (`erDiagram`)
+```mermaid
+erDiagram
+    WORKSPACE ||--o{ DOCUMENT : contains
+    DOCUMENT ||--o{ MERMAID_BLOCK : embeds
+```
+
 ---
 
 ## 4. Inline SVG Vector Blocks (` ```svg `)

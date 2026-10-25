@@ -147,10 +147,18 @@ fn test_normalize_svg_markup() {
 
 #[test]
 fn test_flowchart_ampersand_in_quoted_label_and_cyclic_state_diagram() {
-    let flow = "flowchart LR\n    A[\"R&D & QA\"] --> B[\"Ship <v1>\"]\n";
+    let flow = "flowchart LR\n    A[\"R&D & QA\"] --> B[\"Ship &lt;v1&gt;\"]\n";
     let flow_svg = render_mermaid_to_svg(flow, false);
     assert!(flow_svg.svg.contains("R&amp;D &amp; QA"));
     assert!(flow_svg.svg.contains("Ship &lt;v1&gt;"));
+
+    let styler_flow = "flowchart LR\n    Styler[\"Live Buffer Folds & Inlays\"] --> View[\"HybridMarkdownTextView\"]\n";
+    let styler_svg = render_mermaid_to_svg(styler_flow, false);
+    assert!(
+        styler_svg.svg.contains("Live Buffer Folds &amp; Inlays"),
+        "SVG was: {}",
+        styler_svg.svg
+    );
 
     let cyclic_state = "stateDiagram-v2\n    Idle --> Running : start\n    Running --> Idle : stop\n";
     let state_svg = render_mermaid_to_svg(cyclic_state, false);
