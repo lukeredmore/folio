@@ -128,11 +128,13 @@ extension MarkdownLiveStyler {
             let inlineCodeAttrs: [NSAttributedString.Key: Any] = [
                 .font: codeFont,
                 .foregroundColor: theme.inlineCodeNSColor.withAlphaComponent(dimFactor),
-                inlineCodeFontAttributeKey: true
+                inlineCodeFontAttributeKey: true,
+                noSpellCheckAttributeKey: true
             ]
             for codeSpan in codeSpans {
                 let fullMatchRange = codeSpan.fullRange
                 insertSortedRange(fullMatchRange, into: &codeAndMathRanges)
+                storage.addAttribute(noSpellCheckAttributeKey, value: true, range: fullMatchRange)
 
                 var openRange = codeSpan.openRange
                 var innerRange = codeSpan.innerRange
@@ -175,13 +177,15 @@ extension MarkdownLiveStyler {
             let innerRange = match.range(at: 2)
             let closeRange = match.range(at: 3)
             let latexStr = nsString.substring(with: innerRange)
+            storage.addAttribute(noSpellCheckAttributeKey, value: true, range: fullMatchRange)
 
             if isActiveLine {
                 let mathMono = theme.codeFont(size: fontSize * 0.90)
                 storage.addAttributes([
                     .font: mathMono,
                     .foregroundColor: theme.textNSColor.withAlphaComponent(dimFactor),
-                    .backgroundColor: theme.codeBackgroundNSColor.withAlphaComponent(0.55 * dimFactor)
+                    .backgroundColor: theme.codeBackgroundNSColor.withAlphaComponent(0.55 * dimFactor),
+                    noSpellCheckAttributeKey: true
                 ], range: innerRange)
                 highlightLaTeXSource(in: storage, range: innerRange, theme: theme, dimFactor: dimFactor)
                 styleSyntaxToken(in: storage, range: openRange, isActiveLine: true, theme: theme, dimFactor: dimFactor)
@@ -189,17 +193,29 @@ extension MarkdownLiveStyler {
             } else {
                 let mathBox = LaTeXMathRenderer.layoutLatex(latexStr, baseFontSize: fontSize, isDisplayStyle: false)
                 let targetWidth = max(12.0, mathBox.width + 6.0)
-
-                let tinyFont = NSFont.monospacedSystemFont(ofSize: 2.0, weight: .regular)
+                let tinyFont = NSFont.monospacedSystemFont(ofSize: 0.01, weight: .regular)
                 let rawSubstr = nsString.substring(with: fullMatchRange) as NSString
                 let baseW = rawSubstr.size(withAttributes: [.font: tinyFont]).width
-                let perCharKern = (targetWidth - baseW) / CGFloat(max(1, fullMatchRange.length))
+                let firstCharKern = max(0.0, targetWidth - baseW)
+                let spanInfo = InlineMathLayoutInfo(
+                    range: fullMatchRange,
+                    width: targetWidth,
+                    ascent: mathBox.ascent,
+                    descent: mathBox.descent
+                )
 
                 storage.addAttributes([
                     .font: tinyFont,
                     .foregroundColor: NSColor.clear,
-                    .kern: perCharKern
+                    .kern: 0.0,
+                    inlineMathSpanAttributeKey: spanInfo,
+                    noSpellCheckAttributeKey: true
                 ], range: fullMatchRange)
+                storage.addAttribute(
+                    .kern,
+                    value: firstCharKern,
+                    range: NSRange(location: fullMatchRange.location, length: 1)
+                )
 
                 decorations.append(LineDecoration(
                     lineRange: fullMatchRange,

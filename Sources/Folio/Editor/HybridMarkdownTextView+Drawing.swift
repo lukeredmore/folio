@@ -230,32 +230,24 @@ extension HybridMarkdownTextView {
                         withAttributes: badgeAttrs
                     )
                 } else {
-                    let startX = origin.x + max(12.0, (contentWidth - mathBox.width) * 0.5)
-                    let baselineY = blockRect.midY + (mathBox.ascent - mathBox.descent) * 0.5
-                    mathBox.drawBox(startX, baselineY, mathColor)
-                    if let tag = mathBox.tag, !tag.isEmpty {
-                        let tagNS = tag as NSString
-                        let tagAttrs: [NSAttributedString.Key: Any] = [
-                            .font: currentTheme.bodyFont(size: effectiveFontSize * 0.92),
-                            .foregroundColor: currentTheme.secondaryTextNSColor.withAlphaComponent(0.85 * dimFactor)
-                        ]
-                        let tagSize = tagNS.size(withAttributes: tagAttrs)
-                        tagNS.draw(
-                            at: NSPoint(x: origin.x + contentWidth - tagSize.width - 14.0, y: blockRect.midY - tagSize.height * 0.5),
-                            withAttributes: tagAttrs
-                        )
-                    }
+                    drawRenderedMathBlock(
+                        mathBox: mathBox,
+                        blockRect: blockRect,
+                        origin: origin,
+                        contentWidth: contentWidth,
+                        effectiveFontSize: effectiveFontSize,
+                        mathColor: mathColor,
+                        dimFactor: dimFactor
+                    )
                 }
 
             case .inlineMathRendered(let latex, let mathRange, let fontSize, let dimFactor):
-                let mathGlyphs = layoutManager.glyphRange(forCharacterRange: mathRange, actualCharacterRange: nil)
-                guard mathGlyphs.location != NSNotFound else { continue }
-                var mathRect = layoutManager.boundingRect(forGlyphRange: mathGlyphs, in: textContainer)
-                mathRect.origin.x += origin.x
-                mathRect.origin.y += origin.y
-
-                let lineFrag = layoutManager.lineFragmentRect(forGlyphAt: mathGlyphs.location, effectiveRange: nil)
-                let glyphLoc = layoutManager.location(forGlyphAt: mathGlyphs.location)
+                guard mathRange.location != NSNotFound,
+                      mathRange.location < (self.string as NSString).length else { continue }
+                let firstGlyph = layoutManager.glyphIndexForCharacter(at: mathRange.location)
+                guard firstGlyph != NSNotFound, firstGlyph < layoutManager.numberOfGlyphs else { continue }
+                let lineFrag = layoutManager.lineFragmentRect(forGlyphAt: firstGlyph, effectiveRange: nil)
+                let glyphLoc = layoutManager.location(forGlyphAt: firstGlyph)
                 let baselineOffset = (self.textStorage?.attribute(.baselineOffset, at: mathRange.location, effectiveRange: nil) as? CGFloat) ?? 0.0
                 let baselineY = origin.y + lineFrag.minY + glyphLoc.y - baselineOffset
 
@@ -264,7 +256,8 @@ extension HybridMarkdownTextView {
                     baseFontSize: fontSize,
                     isDisplayStyle: false
                 )
-                let drawX = mathRect.minX + max(1.0, (mathRect.width - mathBox.width) * 0.5)
+                let targetWidth = max(12.0, mathBox.width + 6.0)
+                let drawX = origin.x + lineFrag.minX + glyphLoc.x + max(1.0, (targetWidth - mathBox.width) * 0.5)
                 let mathColor = currentTheme.headingNSColor.withAlphaComponent(dimFactor)
                 mathBox.drawBox(drawX, baselineY, mathColor)
 

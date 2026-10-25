@@ -43,4 +43,56 @@ final class WideBlockLayoutManager: NSLayoutManager {
             }
         }
     }
+
+    static func shouldSuppressSpellCheck(in storage: NSTextStorage, range: NSRange) -> Bool {
+        let clampedLoc = max(0, min(range.location, storage.length))
+        let clampedLen = max(0, min(range.length, storage.length - clampedLoc))
+        guard clampedLen > 0 else { return false }
+        let safeRange = NSRange(location: clampedLoc, length: clampedLen)
+        var suppress = false
+        storage.enumerateAttributes(in: safeRange, options: []) { attrs, _, stop in
+            if attrs[MarkdownLiveStyler.noSpellCheckAttributeKey] != nil ||
+                attrs[MarkdownLiveStyler.collapsedTokenAttributeKey] != nil ||
+                attrs[MarkdownLiveStyler.inlineCodeFontAttributeKey] != nil ||
+                attrs[MarkdownLiveStyler.inlineMathSpanAttributeKey] != nil {
+                suppress = true
+                stop.pointee = true
+            }
+        }
+        return suppress
+    }
+
+    override func addTemporaryAttribute(_ attrName: NSAttributedString.Key, value: Any, forCharacterRange charRange: NSRange) {
+        if attrName == .spellingState,
+           let storage = textStorage,
+           Self.shouldSuppressSpellCheck(in: storage, range: charRange) {
+            return
+        }
+        super.addTemporaryAttribute(attrName, value: value, forCharacterRange: charRange)
+    }
+
+    override func addTemporaryAttributes(_ attrs: [NSAttributedString.Key: Any] = [:], forCharacterRange charRange: NSRange) {
+        if attrs[.spellingState] != nil,
+           let storage = textStorage,
+           Self.shouldSuppressSpellCheck(in: storage, range: charRange) {
+            var filtered = attrs
+            filtered.removeValue(forKey: .spellingState)
+            guard !filtered.isEmpty else { return }
+            super.addTemporaryAttributes(filtered, forCharacterRange: charRange)
+            return
+        }
+        super.addTemporaryAttributes(attrs, forCharacterRange: charRange)
+    }
+
+    override func setTemporaryAttributes(_ attrs: [NSAttributedString.Key: Any], forCharacterRange charRange: NSRange) {
+        if attrs[.spellingState] != nil,
+           let storage = textStorage,
+           Self.shouldSuppressSpellCheck(in: storage, range: charRange) {
+            var filtered = attrs
+            filtered.removeValue(forKey: .spellingState)
+            super.setTemporaryAttributes(filtered, forCharacterRange: charRange)
+            return
+        }
+        super.setTemporaryAttributes(attrs, forCharacterRange: charRange)
+    }
 }

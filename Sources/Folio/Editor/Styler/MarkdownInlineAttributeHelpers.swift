@@ -68,7 +68,8 @@ extension MarkdownLiveStyler {
         .kern: 0.0,
         .underlineStyle: 0,
         .strikethroughStyle: 0,
-        collapsedTokenAttributeKey: true
+        collapsedTokenAttributeKey: true,
+        noSpellCheckAttributeKey: true
     ]
 
     static func collapseWhitespaceRange(
@@ -90,7 +91,8 @@ extension MarkdownLiveStyler {
         if isActiveLine {
             storage.addAttributes([
                 .foregroundColor: theme.markdownTokenNSColor.withAlphaComponent(0.85 * dimFactor),
-                .font: theme.codeFont(size: max(11.0, theme.baseFontSize * 0.85))
+                .font: theme.codeFont(size: max(11.0, theme.baseFontSize * 0.85)),
+                noSpellCheckAttributeKey: true
             ], range: range)
         } else {
             collapseWhitespaceRange(in: storage, range: range)
@@ -104,6 +106,7 @@ extension MarkdownLiveStyler {
         dimFactor: CGFloat
     ) {
         guard range.length > 0 else { return }
+        storage.addAttribute(noSpellCheckAttributeKey, value: true, range: range)
         let string = storage.string
         latexCommandRegex.enumerateMatches(in: string, options: [], range: range) { match, _, _ in
             if let r = match?.range {
