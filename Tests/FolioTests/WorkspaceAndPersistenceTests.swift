@@ -294,13 +294,15 @@ final class WorkspaceAndPersistenceTests: XCTestCase {
         )
 
         // 3. Click the StatusBarView sidebar toggle button ("sidebar.left") via NSApp event queue + window.sendEvent
+        let detailOriginInWindow = (textView.enclosingScrollView ?? textView).convert(NSPoint.zero, to: nil)
         XCTAssertTrue(vm.showSidebar)
-        try sendLeftClick(at: NSPoint(x: 272, y: 14))
+        try sendLeftClick(at: NSPoint(x: detailOriginInWindow.x + 20, y: 15))
         RunLoop.current.run(until: Date().addingTimeInterval(0.25))
         hostingView.layoutSubtreeIfNeeded()
-        XCTAssertFalse(vm.showSidebar, "Clicking the StatusBar sidebar button must hide the sidebar")
+        XCTAssertFalse(vm.showSidebar, "Clicking the StatusBar sidebar button must hide the sidebar (detailOriginX=\(detailOriginInWindow.x))")
 
-        try sendLeftClick(at: NSPoint(x: 26, y: 14))
+        let closedOriginInWindow = (textView.enclosingScrollView ?? textView).convert(NSPoint.zero, to: nil)
+        try sendLeftClick(at: NSPoint(x: closedOriginInWindow.x + 20, y: 15))
         RunLoop.current.run(until: Date().addingTimeInterval(0.25))
         hostingView.layoutSubtreeIfNeeded()
         XCTAssertTrue(vm.showSidebar, "Clicking the StatusBar sidebar button again must re-open the sidebar")

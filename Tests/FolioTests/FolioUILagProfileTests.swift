@@ -248,4 +248,52 @@ final class FolioUILagProfileTests: XCTestCase {
         XCTAssertLessThan(typingTotalMs / 20.0, 8.0, "Live typing with 440KB undo history should stay responsive")
         XCTAssertLessThan(cursorTotalMs / 20.0, 8.0, "Cursor line transitions should stay responsive")
     }
+
+    @MainActor
+    func testNativeSidebarAndBottomBarHeightAlignment() throws {
+        let vm = EditorWorkspaceViewModel()
+        vm.showSidebar = true
+        let hostingView = NSHostingView(rootView: MainWindowView(viewModel: vm))
+        let window = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 1000, height: 700),
+            styleMask: [.titled, .closable, .resizable],
+            backing: .buffered,
+            defer: false
+        )
+        window.contentView = hostingView
+        window.makeKeyAndOrderFront(nil)
+        defer { window.orderOut(nil) }
+
+        hostingView.layoutSubtreeIfNeeded()
+        RunLoop.current.run(until: Date().addingTimeInterval(0.05))
+        hostingView.layoutSubtreeIfNeeded()
+
+        var sidebarFooterFrame: NSRect?
+        func findSidebarFooter(_ v: NSView) {
+            let winFrame = v.convert(v.bounds, to: nil)
+            if String(describing: type(of: v)) == "ContainerView",
+               abs(winFrame.minX) < 1.0,
+               abs(winFrame.minY) < 1.0,
+               winFrame.width >= 200,
+               winFrame.height <= 45 {
+                sidebarFooterFrame = winFrame
+            }
+            for sub in v.subviews {
+                findSidebarFooter(sub)
+            }
+        }
+        if let root = window.contentView?.superview {
+            findSidebarFooter(root)
+        }
+        let footerRect = try XCTUnwrap(sidebarFooterFrame, "Expected native sidebar safeAreaBar footer ContainerView")
+        let scrollView = try XCTUnwrap(vm.activeTextView?.enclosingScrollView)
+        let editorScrollMinY = scrollView.convert(scrollView.bounds, to: nil).minY
+        XCTAssertEqual(footerRect.height, 30.0, accuracy: 0.5, "Sidebar footer bar height must match 30pt StatusBarView")
+        XCTAssertEqual(footerRect.maxY, editorScrollMinY, accuracy: 0.5, "Sidebar footer top edge must align with StatusBarView top edge")
+
+        for tab in SidebarTab.allCases {
+            vm.activeSidebarTab = tab
+            hostingView.layoutSubtreeIfNeeded()
+        }
+    }
 }

@@ -321,6 +321,6 @@ extension SidebarView {
         .controlSize(.small)
         .foregroundStyle(.secondary)
         .padding(.horizontal, 12)
-        .padding(.vertical, 6)
+        .padding(.vertical, 8)
     }
 }
