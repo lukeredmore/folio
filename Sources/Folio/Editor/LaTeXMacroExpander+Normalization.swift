@@ -163,6 +163,30 @@ extension LaTeXMacroExpander {
                         i = afterBody
                         continue
                     }
+                } else if cmd == "\\ket" {
+                    let idx = skipSpaces(chars, from: afterCmd)
+                    if let (body, afterBody) = readBracedGroup(chars, at: idx) {
+                        out.append("\\left\\vert \(body) \\right\\rangle")
+                        i = afterBody
+                        continue
+                    }
+                } else if cmd == "\\bra" {
+                    let idx = skipSpaces(chars, from: afterCmd)
+                    if let (body, afterBody) = readBracedGroup(chars, at: idx) {
+                        out.append("\\left\\langle \(body) \\right\\vert")
+                        i = afterBody
+                        continue
+                    }
+                } else if cmd == "\\braket" {
+                    let idx1 = skipSpaces(chars, from: afterCmd)
+                    if let (lhs, afterLhs) = readBracedGroup(chars, at: idx1) {
+                        let idx2 = skipSpaces(chars, from: afterLhs)
+                        if let (rhs, afterRhs) = readBracedGroup(chars, at: idx2) {
+                            out.append("\\left\\langle \(lhs) \\vert \(rhs) \\right\\rangle")
+                            i = afterRhs
+                            continue
+                        }
+                    }
                 } else if isDelimiterSizingCommand(cmd) {
                     i = afterCmd
                     continue
@@ -179,7 +203,8 @@ extension LaTeXMacroExpander {
         case "\\big", "\\Big", "\\bigg", "\\Bigg",
              "\\bigl", "\\bigr", "\\Bigl", "\\Bigr",
              "\\biggl", "\\biggr", "\\Biggl", "\\Biggr",
-             "\\bigm", "\\Bigm", "\\biggm", "\\Biggm":
+             "\\bigm", "\\Bigm", "\\biggm", "\\Biggm",
+             "\\middle":
             return true
         default:
             return false
