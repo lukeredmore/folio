@@ -31,7 +31,9 @@ ENGINE_SRCS = [
     "src/math/mod.rs",
     "src/math/parser.rs",
     "src/math/symbols.rs",
-    "src/mermaid.rs",
+    "src/mermaid/mod.rs",
+    "src/mermaid/svg_norm.rs",
+    "src/mermaid/theme.rs",
     "src/reflow/mod.rs",
     "src/reflow/protected.rs",
     "src/stats.rs",
@@ -46,7 +48,7 @@ rust_library(
     edition = "2021",
     deps = [
         "@cmark_gfm//:cmark_gfm",
-        "@crates//:mermaid-rs-renderer",
+        "@crates//:merman",
     ],
 )
 
@@ -58,7 +60,7 @@ rust_static_library(
     edition = "2021",
     deps = [
         "@cmark_gfm//:cmark_gfm",
-        "@crates//:mermaid-rs-renderer",
+        "@crates//:merman",
     ],
 )
 
