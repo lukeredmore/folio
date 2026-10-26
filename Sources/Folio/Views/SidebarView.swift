@@ -90,13 +90,13 @@ public struct SidebarView: View {
                     viewModel.performWorkspaceSearch()
                 }
             }
-            .toolbar {
-                if viewModel.showSidebar {
-                    ToolbarItem(placement: .automatic) {
-                        sidebarModePicker
-                    }
-                }
-            }
+            .background(
+                SidebarModeSegmentedControl(
+                    activeTab: $viewModel.activeSidebarTab,
+                    isVisible: viewModel.showSidebar
+                )
+                .frame(width: 0, height: 0)
+            )
             .safeAreaBar(edge: .bottom) {
                 sidebarFooterBar
             }
@@ -233,65 +233,6 @@ public struct SidebarView: View {
                 }
             }
             .listStyle(.sidebar)
-        }
-    }
-}
-
-final class CompactSidebarSegmentedControl: NSSegmentedControl {
-    override var intrinsicContentSize: NSSize {
-        NSSize(width: 66, height: 22)
-    }
-}
-
-struct SidebarModeSegmentedControl: NSViewRepresentable {
-    @Binding var activeTab: SidebarTab
-
-    final class Coordinator: NSObject {
-        var parent: SidebarModeSegmentedControl
-        init(_ parent: SidebarModeSegmentedControl) {
-            self.parent = parent
-        }
-        @MainActor @objc func segmentChanged(_ sender: NSSegmentedControl) {
-            let tabs = SidebarTab.allCases
-            let idx = sender.selectedSegment
-            guard idx >= 0, idx < tabs.count else { return }
-            if parent.activeTab != tabs[idx] {
-                parent.activeTab = tabs[idx]
-            }
-        }
-    }
-
-    func makeCoordinator() -> Coordinator {
-        Coordinator(self)
-    }
-
-    func makeNSView(context: Context) -> CompactSidebarSegmentedControl {
-        let tabs = SidebarTab.allCases
-        let control = CompactSidebarSegmentedControl(frame: NSRect(x: 0, y: 0, width: 66, height: 22))
-        control.segmentCount = tabs.count
-        control.trackingMode = .selectOne
-        control.segmentStyle = .automatic
-        control.controlSize = .small
-        control.target = context.coordinator
-        control.action = #selector(Coordinator.segmentChanged(_:))
-        for (idx, tab) in tabs.enumerated() {
-            let img = NSImage(systemSymbolName: tab.systemImage, accessibilityDescription: tab.rawValue)
-            control.setImage(img, forSegment: idx)
-            control.setImageScaling(.scaleProportionallyDown, forSegment: idx)
-            control.setWidth(20, forSegment: idx)
-            control.setToolTip(tab.rawValue, forSegment: idx)
-        }
-        if let selectedIdx = tabs.firstIndex(of: activeTab) {
-            control.selectedSegment = selectedIdx
-        }
-        return control
-    }
-
-    func updateNSView(_ nsView: CompactSidebarSegmentedControl, context: Context) {
-        context.coordinator.parent = self
-        let tabs = SidebarTab.allCases
-        if let selectedIdx = tabs.firstIndex(of: activeTab), nsView.selectedSegment != selectedIdx {
-            nsView.selectedSegment = selectedIdx
         }
     }
 }
