@@ -40,6 +40,7 @@ public struct SelectionActionTooltipView: View {
             .animation(.easeOut(duration: 0.14), value: isComposingComment)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .ignoresSafeArea()
         .onAppear {
             if isComposingComment {
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.03) { isCommentFieldFocused = true }
@@ -263,5 +264,48 @@ public struct SelectionActionTooltipView: View {
             : (belowCenterY <= maxY ? belowCenterY : aboveCenterY)
         let clampedY = min(max(minY, rawY), maxY)
         return (clampedX, clampedY)
+    }
+}
+
+public final class SelectionTooltipHostingView: NSHostingView<SelectionActionTooltipView> {
+    public override var safeAreaInsets: NSEdgeInsets {
+        NSEdgeInsetsZero
+    }
+
+    public override func acceptsFirstMouse(for event: NSEvent?) -> Bool {
+        true
+    }
+
+    public override func hitTest(_ point: NSPoint) -> NSView? {
+        let localPt = convert(point, from: superview)
+        let topLeftY = isFlipped ? localPt.y : (bounds.height - localPt.y)
+        let topLeftPt = NSPoint(x: localPt.x, y: topLeftY)
+        let isExpanded = (rootView.viewModel.activeCommentDraftRange != nil)
+        let pos = SelectionActionTooltipView.tooltipPosition(for: rootView.anchor, isExpanded: isExpanded)
+        let width: CGFloat = isExpanded ? 320.0 : 46.0
+        let height: CGFloat = isExpanded ? 44.0 : 124.0
+        let cardRect = NSRect(x: pos.centerX - width * 0.5, y: pos.centerY - height * 0.5, width: width, height: height)
+        guard cardRect.insetBy(dx: -6, dy: -6).contains(topLeftPt) else {
+            return nil
+        }
+        return super.hitTest(point) ?? self
+    }
+}
+
+public struct SelectionTooltipOverlayRepresentable: NSViewRepresentable {
+    @ObservedObject var viewModel: EditorWorkspaceViewModel
+    let anchor: SelectionTooltipAnchor
+
+    public init(viewModel: EditorWorkspaceViewModel, anchor: SelectionTooltipAnchor) {
+        self.viewModel = viewModel
+        self.anchor = anchor
+    }
+
+    public func makeNSView(context: Context) -> SelectionTooltipHostingView {
+        SelectionTooltipHostingView(rootView: SelectionActionTooltipView(viewModel: viewModel, anchor: anchor))
+    }
+
+    public func updateNSView(_ nsView: SelectionTooltipHostingView, context: Context) {
+        nsView.rootView = SelectionActionTooltipView(viewModel: viewModel, anchor: anchor)
     }
 }

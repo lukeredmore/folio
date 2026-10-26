@@ -43,7 +43,8 @@ public struct MainWindowView: View {
                                 .ignoresSafeArea(.container, edges: .top)
 
                             if let anchor = viewModel.selectionTooltipAnchor {
-                                SelectionActionTooltipView(viewModel: viewModel, anchor: anchor)
+                                SelectionTooltipOverlayRepresentable(viewModel: viewModel, anchor: anchor)
+                                    .frame(maxWidth: .infinity, maxHeight: .infinity)
                                     .ignoresSafeArea(.container, edges: .top)
                             }
                         }

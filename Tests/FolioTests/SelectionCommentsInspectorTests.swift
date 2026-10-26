@@ -49,8 +49,16 @@ final class SelectionCommentsInspectorTests: XCTestCase {
             XCTFail("Failed to construct mouse events")
             return
         }
+        NSApplication.shared.postEvent(up, atStart: false)
         window.sendEvent(down)
-        window.sendEvent(up)
+        if let pendingUp = NSApplication.shared.nextEvent(
+            matching: .leftMouseUp,
+            until: nil,
+            inMode: .default,
+            dequeue: true
+        ) {
+            window.sendEvent(pendingUp)
+        }
     }
 
     func testInspectorSidebarButtonsHitTestAndClickActions() throws {
