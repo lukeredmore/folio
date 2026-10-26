@@ -6,7 +6,6 @@ public struct MainWindowView: View {
     @ObservedObject var updateManager: AppUpdateManager = .shared
     @State private var columnVisibility: NavigationSplitViewVisibility = .all
     @State private var isHoveringBottomEdge: Bool = false
-    @State private var didCopyAllComments: Bool = false
 
     public init(viewModel: EditorWorkspaceViewModel) {
         self.viewModel = viewModel
@@ -20,12 +19,7 @@ public struct MainWindowView: View {
     private var commentsInspectorBinding: Binding<Bool> {
         Binding(
             get: { viewModel.isCommentsSidebarVisible },
-            set: { shouldShow in
-                guard !viewModel.selectionComments.isEmpty else { return }
-                if viewModel.showCommentsSidebar != shouldShow {
-                    viewModel.showCommentsSidebar = shouldShow
-                }
-            }
+            set: { _ in }
         )
     }
 
@@ -97,49 +91,11 @@ public struct MainWindowView: View {
                 .ignoresSafeArea(.container, edges: .top)
                 .background(viewModel.theme.editorBackgroundColor.ignoresSafeArea(.container, edges: [.top, .bottom, .leading]))
                 .toolbarBackgroundVisibility(.hidden, for: .windowToolbar)
-                .toolbar {
-                    ToolbarItemGroup(placement: .primaryAction) {
-                        if !viewModel.selectionComments.isEmpty {
-                            if viewModel.isCommentsSidebarVisible {
-                                Button {
-                                    viewModel.showCommentsSidebar = false
-                                } label: {
-                                    Label("Hide Comments", systemImage: "sidebar.right")
-                                }
-                                .help("Hide comments sidebar")
-
-                                Button {
-                                    if viewModel.copyAllSelectionComments() != nil {
-                                        didCopyAllComments = true
-                                        DispatchQueue.main.asyncAfter(deadline: .now() + 1.1) {
-                                            didCopyAllComments = false
-                                        }
-                                    }
-                                } label: {
-                                    Label(
-                                        didCopyAllComments ? "Copied" : "Copy All Comments",
-                                        systemImage: didCopyAllComments ? "checkmark" : "doc.on.doc"
-                                    )
-                                }
-                                .help("Copy all comments (Cmd+Ctrl+C)")
-
-                                Button {
-                                    viewModel.clearAllSelectionComments()
-                                } label: {
-                                    Label("Delete All Comments", systemImage: "trash")
-                                }
-                                .help("Clear all comments and remove companion file")
-                            } else {
-                                Button {
-                                    viewModel.showCommentsSidebar = true
-                                } label: {
-                                    Label("Show Comments", systemImage: "text.bubble")
-                                }
-                                .help("Show comments sidebar")
-                            }
-                        }
-                    }
-                }
+                .background(
+                    CommentsTitlebarAccessory(viewModel: viewModel)
+                        .frame(width: 0, height: 0)
+                        .allowsHitTesting(false)
+                )
                 .inspector(isPresented: commentsInspectorBinding) {
                     SelectionCommentsSidebarView(viewModel: viewModel)
                         .inspectorColumnWidth(min: 240, ideal: 280, max: 380)

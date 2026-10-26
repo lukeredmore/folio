@@ -85,7 +85,7 @@ final class SelectionCommentsInspectorTests: XCTestCase {
         XCTAssertTrue(vm.isCommentsSidebarVisible)
         XCTAssertEqual(vm.selectionComments.count, 2)
 
-        let hostingController = NSHostingController(rootView: MainWindowView(viewModel: vm))
+        let hostingView = NSHostingView(rootView: MainWindowView(viewModel: vm))
         let window = NSWindow(
             contentRect: NSRect(x: 0, y: 0, width: 1120, height: 760),
             styleMask: [.titled, .closable, .resizable, .fullSizeContentView],
@@ -94,9 +94,7 @@ final class SelectionCommentsInspectorTests: XCTestCase {
         )
         window.appearance = NSAppearance(named: .aqua)
         window.toolbarStyle = .unified
-        window.contentViewController = hostingController
-        window.setContentSize(NSSize(width: 1120, height: 760))
-        let hostingView = hostingController.view
+        window.contentView = hostingView
         window.makeKeyAndOrderFront(nil)
         defer { window.orderOut(nil) }
 
@@ -127,15 +125,12 @@ final class SelectionCommentsInspectorTests: XCTestCase {
             XCTAssertLessThan(modeRect.maxX, 265.0, "Sidebar mode picker must stay on the left side")
         }
 
-        // Verify right-side Liquid Glass toolbar items (Copy All Comments, Delete All Comments, Hide Comments)
-        let toolbar = try XCTUnwrap(window.toolbar)
-        let copyItem = try XCTUnwrap(toolbar.items.first(where: { $0.label == "Copy All Comments" }))
-        let deleteAllItem = try XCTUnwrap(toolbar.items.first(where: { $0.label == "Delete All Comments" }))
-        let hideItem = try XCTUnwrap(toolbar.items.first(where: { $0.label == "Hide Comments" }))
-
-        let copyView = try XCTUnwrap(copyItem.view)
-        let deleteAllView = try XCTUnwrap(deleteAllItem.view)
-        let hideView = try XCTUnwrap(hideItem.view)
+        // Verify right-side Liquid Glass titlebar buttons (Hide Comments, Copy All Comments, Delete All Comments)
+        let allButtons = findSubviews(of: NSButton.self, in: themeFrame)
+        let hideView = try XCTUnwrap(allButtons.first(where: { $0.accessibilityLabel() == "Hide Comments" && !$0.isHidden }))
+        let copyView = try XCTUnwrap(allButtons.first(where: { $0.accessibilityLabel() == "Copy All Comments" && !$0.isHidden }))
+        let deleteAllView = try XCTUnwrap(allButtons.first(where: { $0.accessibilityLabel() == "Delete All Comments" && !$0.isHidden }))
+        XCTAssertNil(allButtons.first(where: { $0.accessibilityLabel() == "Show Comments" && !$0.isHidden }))
 
         let hideRect = hideView.convert(hideView.bounds, to: nil)
         let copyRect = copyView.convert(copyView.bounds, to: nil)
@@ -191,25 +186,22 @@ final class SelectionCommentsInspectorTests: XCTestCase {
 
         // 3. Click 'Hide Comments' liquid glass toolbar button
         themeFrame.layoutSubtreeIfNeeded()
-        let updatedHideView = try XCTUnwrap(toolbar.items.first(where: { $0.label == "Hide Comments" })?.view)
-        let updatedHideRect = updatedHideView.convert(updatedHideView.bounds, to: nil)
+        let updatedHideRect = hideView.convert(hideView.bounds, to: nil)
         sendClick(at: NSPoint(x: updatedHideRect.midX, y: updatedHideRect.midY), in: window)
-        RunLoop.current.run(until: Date().addingTimeInterval(0.35))
+        RunLoop.current.run(until: Date().addingTimeInterval(0.25))
         hostingView.layoutSubtreeIfNeeded()
         themeFrame.layoutSubtreeIfNeeded()
         XCTAssertFalse(vm.showCommentsSidebar, "Clicking Hide Comments toolbar button must collapse the comments inspector")
 
         // 4. When closed, verify only the 'Show Comments' bubble button appears in top-right toolbar
-        let showCommentsItem = try XCTUnwrap(
-            toolbar.items.first(where: { $0.label == "Show Comments" }),
+        let closedButtons = findSubviews(of: NSButton.self, in: themeFrame)
+        let showView = try XCTUnwrap(
+            closedButtons.first(where: { $0.accessibilityLabel() == "Show Comments" && !$0.isHidden }),
             "When comments sidebar is closed, top-right toolbar must show single Show Comments bubble button"
         )
-        XCTAssertNil(toolbar.items.first(where: { $0.label == "Copy All Comments" }))
-        XCTAssertNil(toolbar.items.first(where: { $0.label == "Delete All Comments" }))
+        XCTAssertNil(closedButtons.first(where: { $0.accessibilityLabel() == "Copy All Comments" && !$0.isHidden }))
+        XCTAssertNil(closedButtons.first(where: { $0.accessibilityLabel() == "Delete All Comments" && !$0.isHidden }))
 
-        let showView = try XCTUnwrap(showCommentsItem.view)
-        themeFrame.layoutSubtreeIfNeeded()
-        RunLoop.current.run(until: Date().addingTimeInterval(0.1))
         let showRect = showView.convert(showView.bounds, to: nil)
         XCTAssertGreaterThan(showRect.minX, window.frame.width - 120, "Show Comments bubble button must be in the top-right")
         sendClick(at: NSPoint(x: showRect.midX, y: showRect.midY), in: window)
