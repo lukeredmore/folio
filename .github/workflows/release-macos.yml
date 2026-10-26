@@ -20,7 +20,7 @@ jobs:
     runs-on: macos-26
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Select Xcode 26+ & configure Bazel CI profile
         run: |
@@ -34,7 +34,7 @@ jobs:
           echo "common --config=ci" >> ~/.bazelrc
 
       - name: Cache Bazel repository & disk cache (test)
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: |
             ~/.cache/bazel-repo
@@ -45,7 +45,7 @@ jobs:
             bazel-test-macos26-${{ runner.os }}-
 
       - name: Cache Cargo workspace build artifacts (test)
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: |
             ~/.cargo/registry
@@ -74,7 +74,7 @@ jobs:
       commit_msg: ${{ steps.meta.outputs.commit_msg }}
     steps:
       - name: Checkout repository (full history for commit count build number)
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           fetch-depth: 0
 
@@ -98,7 +98,7 @@ jobs:
 
       - name: Restore cached Folio.dmg if Bazel graph is unchanged
         id: dmg_cache
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: |
             Folio.dmg
@@ -131,7 +131,7 @@ jobs:
 
       - name: Cache Bazel repository & disk cache (opt)
         if: steps.dmg_cache.outputs.cache-hit != 'true' && steps.reuse_release.outputs.reused != 'true'
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: |
             ~/.cache/bazel-repo
@@ -204,7 +204,7 @@ jobs:
           security delete-keychain "$RUNNER_TEMP/folio-signing.keychain-db" 2>/dev/null || true
 
       - name: Upload Folio.dmg artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: Folio.dmg
           path: Folio.dmg
@@ -266,12 +266,12 @@ jobs:
       extension_sha256: ${{ steps.meta.outputs.extension_sha256 }}
     steps:
       - name: Checkout repository (full history for commit count build number)
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           fetch-depth: 0
 
       - name: Cache Cargo WASI extension build artifacts
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: |
             ~/.cargo/registry
@@ -294,7 +294,7 @@ jobs:
           echo "extension_sha256=$EXT_SHA256" >> "$GITHUB_OUTPUT"
 
       - name: Upload folio-markdown-outline.tar.gz artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: folio-markdown-outline.tar.gz
           path: folio-markdown-outline.tar.gz
@@ -312,10 +312,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Download Folio.dmg and folio-markdown-outline.tar.gz artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           merge-multiple: true
 
