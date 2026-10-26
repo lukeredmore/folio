@@ -45,8 +45,6 @@ public struct MathLayoutBox {
 enum CapturedEngineDrawCmd {
     case text(x: CGFloat, y: CGFloat, text: String, style: MathFontStyle, fontSize: CGFloat)
     case rule(x: CGFloat, y: CGFloat, width: CGFloat, height: CGFloat)
-    case radical(x: CGFloat, topY: CGFloat, bottomY: CGFloat, hookWidth: CGFloat, radicandWidth: CGFloat, thickness: CGFloat)
-    case delimiter(symbol: String, x: CGFloat, topY: CGFloat, bottomY: CGFloat, width: CGFloat, thickness: CGFloat)
 }
 
 private struct MathFontCacheKey: Hashable {
@@ -117,17 +115,6 @@ public final class LaTeXMathRenderer {
                     captured.append(.rule(
                         x: CGFloat(cmd.x), y: CGFloat(cmd.y), width: CGFloat(cmd.width), height: CGFloat(cmd.height)
                     ))
-                case 2:
-                    captured.append(.radical(
-                        x: CGFloat(cmd.x), topY: CGFloat(cmd.y), bottomY: CGFloat(cmd.height),
-                        hookWidth: CGFloat(cmd.width), radicandWidth: CGFloat(cmd.font_size), thickness: CGFloat(cmd.thickness)
-                    ))
-                case 3:
-                    let sym = cmd.text != nil ? String(cString: cmd.text) : "|"
-                    captured.append(.delimiter(
-                        symbol: sym, x: CGFloat(cmd.x), topY: CGFloat(cmd.y), bottomY: CGFloat(cmd.height),
-                        width: CGFloat(cmd.width), thickness: CGFloat(cmd.thickness)
-                    ))
                 default:
                     break
                 }
@@ -149,20 +136,6 @@ public final class LaTeXMathRenderer {
                 case let .rule(dx, dy, width, height):
                     color.setFill()
                     NSRect(x: originX + dx, y: baselineY + dy, width: width, height: height).fill()
-                case let .radical(dx, topYRel, bottomYRel, hookWidth, radicandWidth, thickness):
-                    let x = originX + dx, topY = baselineY + topYRel, bottomY = baselineY + bottomYRel
-                    let path = NSBezierPath()
-                    path.lineWidth = thickness; path.lineCapStyle = .round; path.lineJoinStyle = .round
-                    path.move(to: NSPoint(x: x + 1.0, y: topY + (bottomY - topY) * 0.55))
-                    path.line(to: NSPoint(x: x + hookWidth * 0.42, y: bottomY))
-                    path.line(to: NSPoint(x: x + hookWidth, y: topY))
-                    path.line(to: NSPoint(x: x + hookWidth + radicandWidth + 2.0, y: topY))
-                    color.setStroke(); path.stroke()
-                case let .delimiter(symbol, dx, topYRel, bottomYRel, width, _):
-                    drawTallDelimiter(
-                        symbol, x: originX + dx, topY: baselineY + topYRel,
-                        bottomY: baselineY + bottomYRel, width: width, color: color
-                    )
                 }
             }
         }
@@ -240,54 +213,6 @@ public final class LaTeXMathRenderer {
             color.withAlphaComponent(max(0.4, color.alphaComponent * 0.88)).setStroke()
             path.stroke()
         }
-    }
-
-    static func drawTallDelimiter(
-        _ symbol: String,
-        x: CGFloat,
-        topY: CGFloat,
-        bottomY: CGFloat,
-        width: CGFloat,
-        color: NSColor
-    ) {
-        let path = NSBezierPath()
-        path.lineWidth = 1.35
-        path.lineCapStyle = .round
-        let midY = (topY + bottomY) * 0.5
-
-        switch symbol {
-        case "(":
-            path.move(to: NSPoint(x: x + width, y: topY))
-            path.curve(
-                to: NSPoint(x: x + width, y: bottomY),
-                controlPoint1: NSPoint(x: x - 1.0, y: topY + (bottomY - topY) * 0.22),
-                controlPoint2: NSPoint(x: x - 1.0, y: topY + (bottomY - topY) * 0.78)
-            )
-        case ")":
-            path.move(to: NSPoint(x: x, y: topY))
-            path.curve(
-                to: NSPoint(x: x, y: bottomY),
-                controlPoint1: NSPoint(x: x + width + 1.0, y: topY + (bottomY - topY) * 0.22),
-                controlPoint2: NSPoint(x: x + width + 1.0, y: topY + (bottomY - topY) * 0.78)
-            )
-        case "[":
-            path.move(to: NSPoint(x: x + width, y: topY))
-            path.line(to: NSPoint(x: x + 1.0, y: topY))
-            path.line(to: NSPoint(x: x + 1.0, y: bottomY))
-            path.line(to: NSPoint(x: x + width, y: bottomY))
-        case "]":
-            path.move(to: NSPoint(x: x, y: topY))
-            path.line(to: NSPoint(x: x + width - 1.0, y: topY))
-            path.line(to: NSPoint(x: x + width - 1.0, y: bottomY))
-            path.line(to: NSPoint(x: x, y: bottomY))
-        default:
-            path.move(to: NSPoint(x: x + width * 0.5, y: topY))
-            path.line(to: NSPoint(x: x + width * 0.5, y: midY))
-            path.line(to: NSPoint(x: x + width * 0.5, y: bottomY))
-        }
-
-        color.setStroke()
-        path.stroke()
     }
 }
 

@@ -1,11 +1,9 @@
 pub mod editing_ffi;
-pub mod latex_block_ffi;
 pub mod latex_ffi;
 pub mod markdown_ffi;
 pub mod math_ffi;
 
 pub use editing_ffi::*;
-pub use latex_block_ffi::*;
 pub use latex_ffi::*;
 pub use markdown_ffi::*;
 pub use math_ffi::*;

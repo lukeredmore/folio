@@ -26,8 +26,7 @@ pub use markdown::{
     NewlineAction, OutlineHeadingItem, SyntaxFoldSpan, SyntaxTokenKind,
 };
 pub use math::{
-    layout_latex, layout_math_node, parse_latex, plain_text_summary, MathDrawPrimitive,
-    MathFontStyle, MathLayoutPlan, MathNode,
+    layout_latex, plain_text_summary, MathDrawPrimitive, MathFontStyle, MathLayoutPlan,
 };
 pub use mermaid::{
     detect_mermaid_kind, normalize_svg_markup, render_mermaid_to_svg, MermaidDiagramKind,
