@@ -3,13 +3,6 @@ import SwiftUI
 
 extension SidebarView {
 
-    // MARK: - Top Navigation Bar
-    var sidebarModePicker: some View {
-        SidebarModeSegmentedControl(activeTab: $viewModel.activeSidebarTab)
-            .frame(width: 66, height: 22)
-            .help("Switch between Files (Ctrl+Cmd+2/3), Outline (Ctrl+Cmd+1), and Search (Cmd+Shift+F)")
-    }
-
     private var searchOptionsRow: some View {
         HStack(spacing: 4) {
             Toggle(isOn: $viewModel.showWorkspaceReplace) {
