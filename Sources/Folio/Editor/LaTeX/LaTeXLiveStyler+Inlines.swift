@@ -20,8 +20,7 @@ extension LaTeXLiveStyler {
         decorations: inout [LineDecoration]
     ) {
         guard range.length > 0 else { return }
-        _ = string
-        _ = baseDirectoryURL
+        _ = (string, baseDirectoryURL)
         let fontSize = baseFont.pointSize
 
         // 1. Handle % comments (ignoring escaped \%)
@@ -34,19 +33,16 @@ extension LaTeXLiveStyler {
             ).trimmingCharacters(in: .whitespaces).isEmpty
 
             if isActiveLine || !prettyMode {
-                let commentFont = docIndex.bodyFont(size: fontSize * 0.92, italic: true, fallbackTheme: theme)
                 storage.addAttributes([
-                    .font: commentFont,
+                    .font: docIndex.bodyFont(size: fontSize * 0.92, italic: true, fallbackTheme: theme),
                     .foregroundColor: theme.secondaryTextNSColor.withAlphaComponent(0.75 * dimFactor)
                 ], range: commentRange)
             } else {
                 MarkdownLiveStyler.collapseWhitespaceRange(in: storage, range: commentRange)
                 if isWholeLineComment {
                     let pStyle = NSMutableParagraphStyle()
-                    pStyle.minimumLineHeight = 2.0
-                    pStyle.maximumLineHeight = 2.0
-                    pStyle.lineSpacing = 0
-                    pStyle.paragraphSpacing = 0
+                    pStyle.minimumLineHeight = 2.0; pStyle.maximumLineHeight = 2.0
+                    pStyle.lineSpacing = 0; pStyle.paragraphSpacing = 0
                     storage.addAttributes([
                         .font: NSFont.systemFont(ofSize: 1.0),
                         .foregroundColor: NSColor.clear,
@@ -58,10 +54,9 @@ extension LaTeXLiveStyler {
         }
         guard effectiveRange.length > 0 else { return }
         let lineSub = nsString.substring(with: effectiveRange)
-        let hasBackslash = lineSub.contains("\\")
-        let hasDollar = lineSub.contains("$")
-        let hasTeXQuotes = lineSub.contains("``") || lineSub.contains("''")
-        guard hasBackslash || hasDollar || hasTeXQuotes else { return }
+        guard lineSub.contains("\\") || lineSub.contains("$") || lineSub.contains("``") || lineSub.contains("''") else {
+            return
+        }
 
         guard let scanRes = lineSub.withCString({ ot_engine_scan_latex_inlines($0) }) else { return }
         defer { ot_engine_free_latex_inlines(scanRes) }
@@ -72,18 +67,9 @@ extension LaTeXLiveStyler {
 
         // Pass 1: Container & text-formatting spans in pre-order (Href, Url, SizeGroup, ColorGroup, StyleCmd)
         styleLaTeXContainerSpans(
-            spans: spans,
-            baseLoc: baseLoc,
-            in: storage,
-            nsString: nsString,
-            baseFont: baseFont,
-            fontSize: fontSize,
-            isActiveLine: isActiveLine,
-            prettyMode: prettyMode,
-            docIndex: docIndex,
-            theme: theme,
-            dimFactor: dimFactor,
-            decorations: &decorations
+            spans: spans, baseLoc: baseLoc, in: storage, nsString: nsString, baseFont: baseFont,
+            fontSize: fontSize, isActiveLine: isActiveLine, prettyMode: prettyMode,
+            docIndex: docIndex, theme: theme, dimFactor: dimFactor, decorations: &decorations
         )
 
         // Pass 2: Leaf spans (InlineMath, Cite, Ref, HiddenMeta, LogoCmd, TextBackslash, ProseMacro, TexQuote, EscapedChar)
@@ -113,10 +99,10 @@ extension LaTeXLiveStyler {
                 )
             case 3: // Ref
                 styleRefSpan(
-                    in: storage, nsString: nsString, fullRange: fullRange, cmd: cmd,
-                    rawKey: arg, baseFont: baseFont, fontSize: fontSize,
-                    isActiveLine: isActiveLine, prettyMode: prettyMode, docIndex: docIndex,
-                    theme: theme, dimFactor: dimFactor, decorations: &decorations
+                    in: storage, nsString: nsString, fullRange: fullRange, cmd: cmd, rawKey: arg,
+                    baseFont: baseFont, fontSize: fontSize, isActiveLine: isActiveLine,
+                    prettyMode: prettyMode, docIndex: docIndex, theme: theme,
+                    dimFactor: dimFactor, decorations: &decorations
                 )
             case 4: // HiddenMeta
                 if !isActiveLine && prettyMode && cmd == "\\\\" && !arg.isEmpty,
@@ -130,11 +116,8 @@ extension LaTeXLiveStyler {
                     }
                 }
                 MarkdownLiveStyler.styleSyntaxToken(
-                    in: storage,
-                    range: fullRange,
-                    isActiveLine: isActiveLine || !prettyMode,
-                    theme: theme,
-                    dimFactor: dimFactor
+                    in: storage, range: fullRange, isActiveLine: isActiveLine || !prettyMode,
+                    theme: theme, dimFactor: dimFactor
                 )
             case 10, 11, 12, 13, 14:
                 styleLaTeXLeafSymbolOrMacroSpan(
@@ -150,25 +133,15 @@ extension LaTeXLiveStyler {
     }
 
     private static func styleInlineMathSpan(
-        in storage: NSTextStorage,
-        nsString: NSString,
-        fullRange: NSRange,
-        openRange: NSRange,
-        innerRange: NSRange,
-        closeRange: NSRange,
-        latexStr: String,
-        fontSize: CGFloat,
-        isActiveLine: Bool,
-        prettyMode: Bool,
-        theme: EditorTheme,
-        dimFactor: CGFloat,
+        in storage: NSTextStorage, nsString: NSString, fullRange: NSRange, openRange: NSRange,
+        innerRange: NSRange, closeRange: NSRange, latexStr: String, fontSize: CGFloat,
+        isActiveLine: Bool, prettyMode: Bool, theme: EditorTheme, dimFactor: CGFloat,
         decorations: inout [LineDecoration]
     ) {
         storage.addAttribute(MKey.noSpellCheck, value: true, range: fullRange)
         if isActiveLine || !prettyMode {
-            let mathMono = theme.codeFont(size: fontSize * 0.90)
             storage.addAttributes([
-                .font: mathMono,
+                .font: theme.codeFont(size: fontSize * 0.90),
                 .foregroundColor: theme.textNSColor.withAlphaComponent(dimFactor),
                 .backgroundColor: theme.codeBackgroundNSColor.withAlphaComponent(0.55 * dimFactor)
             ], range: innerRange)
@@ -177,15 +150,9 @@ extension LaTeXLiveStyler {
             MarkdownLiveStyler.styleSyntaxToken(in: storage, range: closeRange, isActiveLine: true, theme: theme, dimFactor: dimFactor)
         } else {
             let mathBox = LaTeXMathRenderer.layoutLatex(latexStr, baseFontSize: fontSize, isDisplayStyle: false)
-            let targetWidth = max(4.0, mathBox.width + 2.0)
             reserveAtomicInlineSpan(
-                in: storage,
-                nsString: nsString,
-                fullRange: fullRange,
-                width: targetWidth,
-                ascent: mathBox.ascent,
-                descent: mathBox.descent,
-                verticalPadding: 3.0
+                in: storage, nsString: nsString, fullRange: fullRange, width: max(4.0, mathBox.width + 2.0),
+                ascent: mathBox.ascent, descent: mathBox.descent, verticalPadding: 3.0
             )
             decorations.append(LineDecoration(
                 lineRange: fullRange,
@@ -195,17 +162,9 @@ extension LaTeXLiveStyler {
     }
 
     private static func styleCiteSpan(
-        in storage: NSTextStorage,
-        nsString: NSString,
-        fullRange: NSRange,
-        rawKeysStr: String,
-        baseFont: NSFont,
-        fontSize: CGFloat,
-        isActiveLine: Bool,
-        prettyMode: Bool,
-        docIndex: LaTeXDocumentIndex,
-        theme: EditorTheme,
-        dimFactor: CGFloat,
+        in storage: NSTextStorage, nsString: NSString, fullRange: NSRange, rawKeysStr: String,
+        baseFont: NSFont, fontSize: CGFloat, isActiveLine: Bool, prettyMode: Bool,
+        docIndex: LaTeXDocumentIndex, theme: EditorTheme, dimFactor: CGFloat,
         decorations: inout [LineDecoration]
     ) {
         storage.addAttribute(MKey.noSpellCheck, value: true, range: fullRange)
@@ -213,32 +172,22 @@ extension LaTeXLiveStyler {
             MarkdownLiveStyler.highlightLaTeXSource(in: storage, range: fullRange, theme: theme, dimFactor: dimFactor)
             return
         }
-        let rawKeys = rawKeysStr
-            .split(separator: ",")
-            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
-            .filter { !$0.isEmpty }
-        var labels: [String] = []
-        var tooltips: [String] = []
-        var firstLoc: Int?
-        var firstURL: URL?
+        let rawKeys = rawKeysStr.split(separator: ",").map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }.filter { !$0.isEmpty }
+        var labels: [String] = [], tooltips: [String] = []
+        var firstLoc: Int?, firstURL: URL?
         for k in rawKeys {
             if let entry = docIndex.bibEntries[k] {
                 labels.append(entry.shortCitation)
-                let t = entry.title.isEmpty ? entry.key : "\(entry.author) (\(entry.year)) — \(entry.title)"
-                tooltips.append(t)
+                tooltips.append(entry.title.isEmpty ? entry.key : "\(entry.author) (\(entry.year)) — \(entry.title)")
                 if firstLoc == nil { firstLoc = entry.characterLocation; firstURL = entry.fileURL }
             } else {
-                labels.append(k)
-                tooltips.append("Citation key: \(k)")
+                labels.append(k); tooltips.append("Citation key: \(k)")
             }
         }
         let pillLabel = "[\(labels.joined(separator: "; "))]"
         let pillFont = NSFont.systemFont(ofSize: max(10.5, fontSize * 0.82), weight: .medium)
         let labelW = ceil((pillLabel as NSString).size(withAttributes: [.font: pillFont]).width) + 12.0
-        reserveAtomicInlineSpan(
-            in: storage, nsString: nsString, fullRange: fullRange, width: labelW,
-            ascent: baseFont.ascender, descent: -baseFont.descender
-        )
+        reserveAtomicInlineSpan(in: storage, nsString: nsString, fullRange: fullRange, width: labelW, ascent: baseFont.ascender, descent: -baseFont.descender)
         decorations.append(LineDecoration(
             lineRange: fullRange,
             kind: .latexInlinePill(
@@ -250,19 +199,10 @@ extension LaTeXLiveStyler {
     }
 
     private static func styleRefSpan(
-        in storage: NSTextStorage,
-        nsString: NSString,
-        fullRange: NSRange,
-        cmd: String,
-        rawKey: String,
-        baseFont: NSFont,
-        fontSize: CGFloat,
-        isActiveLine: Bool,
-        prettyMode: Bool,
-        docIndex: LaTeXDocumentIndex,
-        theme: EditorTheme,
-        dimFactor: CGFloat,
-        decorations: inout [LineDecoration]
+        in storage: NSTextStorage, nsString: NSString, fullRange: NSRange, cmd: String,
+        rawKey: String, baseFont: NSFont, fontSize: CGFloat, isActiveLine: Bool,
+        prettyMode: Bool, docIndex: LaTeXDocumentIndex, theme: EditorTheme,
+        dimFactor: CGFloat, decorations: inout [LineDecoration]
     ) {
         storage.addAttribute(MKey.noSpellCheck, value: true, range: fullRange)
         if isActiveLine || !prettyMode {
@@ -272,28 +212,16 @@ extension LaTeXLiveStyler {
         let key = rawKey.trimmingCharacters(in: .whitespacesAndNewlines)
         let info = docIndex.labels[key]
         let num = info?.number ?? key
-        let pillLabel: String
-        switch cmd {
-        case "eqref":
-            pillLabel = "(\(num))"
-        case "autoref", "cref", "Cref":
-            pillLabel = "\(info?.kind ?? "Ref.") \(num)"
-        default:
-            pillLabel = num
-        }
+        let pillLabel = (cmd == "eqref") ? "(\(num))" : (["autoref", "cref", "Cref"].contains(cmd) ? "\(info?.kind ?? "Ref.") \(num)" : num)
         let tooltip = info.map { "\($0.kind) \($0.number): \($0.title)" } ?? "Label: \(key)"
         let pillFont = NSFont.systemFont(ofSize: max(10.5, fontSize * 0.82), weight: .medium)
         let labelW = ceil((pillLabel as NSString).size(withAttributes: [.font: pillFont]).width) + 12.0
-        reserveAtomicInlineSpan(
-            in: storage, nsString: nsString, fullRange: fullRange, width: labelW,
-            ascent: baseFont.ascender, descent: -baseFont.descender
-        )
+        reserveAtomicInlineSpan(in: storage, nsString: nsString, fullRange: fullRange, width: labelW, ascent: baseFont.ascender, descent: -baseFont.descender)
         decorations.append(LineDecoration(
             lineRange: fullRange,
             kind: .latexInlinePill(
                 label: pillLabel, tooltip: tooltip, targetLocation: info?.characterLocation,
-                targetURL: nil, range: fullRange, fontSize: fontSize,
-                isCitation: false, dimFactor: dimFactor
+                targetURL: nil, range: fullRange, fontSize: fontSize, isCitation: false, dimFactor: dimFactor
             )
         ))
     }

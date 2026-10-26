@@ -11,13 +11,11 @@ extension LaTeXLiveStyler {
             if nsString.character(at: i) == 0x25 { // '%'
                 var backslashes = 0
                 var p = i - 1
-                while p >= range.location && nsString.character(at: p) == 0x5C { // '\'
+                while p >= range.location && nsString.character(at: p) == 0x5C {
                     backslashes += 1
                     p -= 1
                 }
-                if backslashes % 2 == 0 {
-                    return i
-                }
+                if backslashes % 2 == 0 { return i }
             }
             i += 1
         }
@@ -37,27 +35,15 @@ extension LaTeXLiveStyler {
     ) {
         guard fullRange.length > 0 else { return }
         _ = nsString
-        let baseW = CGFloat(fullRange.length) * 0.006
-        let firstCharKern = max(0.0, width - baseW)
+        let firstCharKern = max(0.0, width - CGFloat(fullRange.length) * 0.006)
         let spanInfo = MarkdownLiveStyler.InlineMathLayoutInfo(
-            range: fullRange,
-            width: width,
-            ascent: ascent,
-            descent: descent,
-            padding: verticalPadding
+            range: fullRange, width: width, ascent: ascent, descent: descent, padding: verticalPadding
         )
         storage.addAttributes([
-            .font: tinyAtomicFont,
-            .foregroundColor: NSColor.clear,
-            .kern: 0.0,
-            MKey.inlineMathSpan: spanInfo,
-            MKey.noSpellCheck: true
+            .font: tinyAtomicFont, .foregroundColor: NSColor.clear, .kern: 0.0,
+            MKey.inlineMathSpan: spanInfo, MKey.noSpellCheck: true
         ], range: fullRange)
-        storage.addAttribute(
-            .kern,
-            value: firstCharKern,
-            range: NSRange(location: fullRange.location, length: 1)
-        )
+        storage.addAttribute(.kern, value: firstCharKern, range: NSRange(location: fullRange.location, length: 1))
     }
 
     static func styleLaTeXContainerSpans(
@@ -95,15 +81,9 @@ extension LaTeXLiveStyler {
             case 5: // Href
                 storage.addAttribute(MKey.noSpellCheck, value: true, range: openRange)
                 MarkdownLiveStyler.applyAttributesToVisibleCharacters(
-                    in: storage,
-                    range: innerRange,
-                    attributes: [
-                        .foregroundColor: theme.linkNSColor.withAlphaComponent(dimFactor),
-                        .underlineStyle: NSUnderlineStyle.single.rawValue
-                    ]
+                    in: storage, range: innerRange,
+                    attributes: [.foregroundColor: theme.linkNSColor.withAlphaComponent(dimFactor), .underlineStyle: NSUnderlineStyle.single.rawValue]
                 )
-                MarkdownLiveStyler.styleSyntaxToken(in: storage, range: openRange, isActiveLine: showTokens, theme: theme, dimFactor: dimFactor)
-                MarkdownLiveStyler.styleSyntaxToken(in: storage, range: closeRange, isActiveLine: showTokens, theme: theme, dimFactor: dimFactor)
             case 6: // Url
                 storage.addAttribute(MKey.noSpellCheck, value: true, range: fullRange)
                 storage.addAttributes([
@@ -111,30 +91,23 @@ extension LaTeXLiveStyler {
                     .foregroundColor: theme.linkNSColor.withAlphaComponent(dimFactor),
                     .underlineStyle: NSUnderlineStyle.single.rawValue
                 ], range: innerRange)
-                MarkdownLiveStyler.styleSyntaxToken(in: storage, range: openRange, isActiveLine: showTokens, theme: theme, dimFactor: dimFactor)
-                MarkdownLiveStyler.styleSyntaxToken(in: storage, range: closeRange, isActiveLine: showTokens, theme: theme, dimFactor: dimFactor)
             case 7: // SizeGroup
                 let scale = scaleMap[cmd] ?? 1.0
-                let sizedFont = docIndex.bodyFont(size: fontSize * scale, semibold: scale >= 1.25, fallbackTheme: theme)
-                var attrs: [NSAttributedString.Key: Any] = [.font: sizedFont]
+                var attrs: [NSAttributedString.Key: Any] = [
+                    .font: docIndex.bodyFont(size: fontSize * scale, semibold: scale >= 1.25, fallbackTheme: theme)
+                ]
                 if !arg.isEmpty {
                     let baseColor = docIndex.resolveColor(named: arg, fallbackTheme: theme)
                     storage.addAttribute(MKey.customColor, value: baseColor, range: innerRange)
                     attrs[.foregroundColor] = baseColor.withAlphaComponent(dimFactor)
                 }
                 MarkdownLiveStyler.applyAttributesToVisibleCharacters(in: storage, range: innerRange, attributes: attrs)
-                MarkdownLiveStyler.styleSyntaxToken(in: storage, range: openRange, isActiveLine: showTokens, theme: theme, dimFactor: dimFactor)
-                MarkdownLiveStyler.styleSyntaxToken(in: storage, range: closeRange, isActiveLine: showTokens, theme: theme, dimFactor: dimFactor)
             case 8: // ColorGroup
                 let baseColor = docIndex.resolveColor(named: arg, fallbackTheme: theme)
                 storage.addAttribute(MKey.customColor, value: baseColor, range: innerRange)
                 MarkdownLiveStyler.applyAttributesToVisibleCharacters(
-                    in: storage,
-                    range: innerRange,
-                    attributes: [.foregroundColor: baseColor.withAlphaComponent(dimFactor)]
+                    in: storage, range: innerRange, attributes: [.foregroundColor: baseColor.withAlphaComponent(dimFactor)]
                 )
-                MarkdownLiveStyler.styleSyntaxToken(in: storage, range: openRange, isActiveLine: showTokens, theme: theme, dimFactor: dimFactor)
-                MarkdownLiveStyler.styleSyntaxToken(in: storage, range: closeRange, isActiveLine: showTokens, theme: theme, dimFactor: dimFactor)
             case 9: // StyleCmd
                 storage.addAttribute(MKey.noSpellCheck, value: true, range: openRange)
                 applyStyleCommandAttributes(
@@ -142,66 +115,47 @@ extension LaTeXLiveStyler {
                     fontSize: fontSize, docIndex: docIndex, theme: theme, dimFactor: dimFactor,
                     decorations: &decorations
                 )
-                MarkdownLiveStyler.styleSyntaxToken(in: storage, range: openRange, isActiveLine: showTokens, theme: theme, dimFactor: dimFactor)
-                MarkdownLiveStyler.styleSyntaxToken(in: storage, range: closeRange, isActiveLine: showTokens, theme: theme, dimFactor: dimFactor)
             default:
                 break
             }
+            MarkdownLiveStyler.styleSyntaxToken(in: storage, range: openRange, isActiveLine: showTokens, theme: theme, dimFactor: dimFactor)
+            MarkdownLiveStyler.styleSyntaxToken(in: storage, range: closeRange, isActiveLine: showTokens, theme: theme, dimFactor: dimFactor)
         }
     }
 
     private static func applyStyleCommandAttributes(
-        cmd: String,
-        innerRange: NSRange,
-        in storage: NSTextStorage,
-        baseFont: NSFont,
-        fontSize: CGFloat,
-        docIndex: LaTeXDocumentIndex,
-        theme: EditorTheme,
-        dimFactor: CGFloat,
-        decorations: inout [LineDecoration]
+        cmd: String, innerRange: NSRange, in storage: NSTextStorage, baseFont: NSFont,
+        fontSize: CGFloat, docIndex: LaTeXDocumentIndex, theme: EditorTheme,
+        dimFactor: CGFloat, decorations: inout [LineDecoration]
     ) {
         switch cmd {
         case "textbf":
-            MarkdownLiveStyler.applyFontTraitToVisibleCharacters(
-                in: storage, range: innerRange, trait: .boldFontMask, fallbackFont: baseFont
-            )
+            MarkdownLiveStyler.applyFontTraitToVisibleCharacters(in: storage, range: innerRange, trait: .boldFontMask, fallbackFont: baseFont)
         case "textit", "emph":
-            MarkdownLiveStyler.applyFontTraitToVisibleCharacters(
-                in: storage, range: innerRange, trait: .italicFontMask, fallbackFont: baseFont
-            )
+            MarkdownLiveStyler.applyFontTraitToVisibleCharacters(in: storage, range: innerRange, trait: .italicFontMask, fallbackFont: baseFont)
         case "underline":
             MarkdownLiveStyler.applyAttributesToVisibleCharacters(
-                in: storage,
-                range: innerRange,
-                attributes: [.underlineStyle: NSUnderlineStyle.single.rawValue]
+                in: storage, range: innerRange, attributes: [.underlineStyle: NSUnderlineStyle.single.rawValue]
             )
         case "texttt":
             let codeFontSize = fontSize * 0.88
-            let codeFont = docIndex.codeFont(size: codeFontSize, fallbackTheme: theme)
             storage.addAttributes([
-                .font: codeFont,
+                .font: docIndex.codeFont(size: codeFontSize, fallbackTheme: theme),
                 .foregroundColor: theme.inlineCodeNSColor.withAlphaComponent(dimFactor),
                 MarkdownLiveStyler.inlineCodeFontAttributeKey: true,
                 MKey.noSpellCheck: true
             ], range: innerRange)
             decorations.append(LineDecoration(
-                lineRange: innerRange,
-                kind: .inlineCode(range: innerRange, fontSize: codeFontSize, dimFactor: dimFactor)
+                lineRange: innerRange, kind: .inlineCode(range: innerRange, fontSize: codeFontSize, dimFactor: dimFactor)
             ))
         case "textsc":
             MarkdownLiveStyler.applyAttributesToVisibleCharacters(
-                in: storage,
-                range: innerRange,
-                attributes: [
-                    .font: docIndex.bodyFont(size: fontSize * 0.90, semibold: true, fallbackTheme: theme),
-                    .kern: 0.6
-                ]
+                in: storage, range: innerRange,
+                attributes: [.font: docIndex.bodyFont(size: fontSize * 0.90, semibold: true, fallbackTheme: theme), .kern: 0.6]
             )
         case "footnote":
             MarkdownLiveStyler.applyAttributesToVisibleCharacters(
-                in: storage,
-                range: innerRange,
+                in: storage, range: innerRange,
                 attributes: [
                     .font: docIndex.bodyFont(size: fontSize * 0.86, italic: true, fallbackTheme: theme),
                     .foregroundColor: theme.secondaryTextNSColor.withAlphaComponent(dimFactor)
@@ -213,19 +167,9 @@ extension LaTeXLiveStyler {
     }
 
     static func styleLaTeXLeafSymbolOrMacroSpan(
-        kind: UInt32,
-        cmd: String,
-        fullRange: NSRange,
-        openRange: NSRange,
-        closeRange: NSRange,
-        in storage: NSTextStorage,
-        nsString: NSString,
-        baseFont: NSFont,
-        isActiveLine: Bool,
-        prettyMode: Bool,
-        theme: EditorTheme,
-        dimFactor: CGFloat,
-        decorations: inout [LineDecoration]
+        kind: UInt32, cmd: String, fullRange: NSRange, openRange: NSRange, closeRange: NSRange,
+        in storage: NSTextStorage, nsString: NSString, baseFont: NSFont, isActiveLine: Bool,
+        prettyMode: Bool, theme: EditorTheme, dimFactor: CGFloat, decorations: inout [LineDecoration]
     ) {
         let showTokens = isActiveLine || !prettyMode
         switch kind {
@@ -254,12 +198,10 @@ extension LaTeXLiveStyler {
                 guard !displayText.isEmpty else { return }
                 let currentFont = (storage.attribute(.font, at: fullRange.location, effectiveRange: nil) as? NSFont) ?? baseFont
                 let maxW = parts.map { ceil(($0 as NSString).size(withAttributes: [.font: currentFont]).width) }.max() ?? 4.0
-                let lineStep = ceil((currentFont.ascender - currentFont.descender) * 1.10)
-                let extraDescent = CGFloat(max(0, parts.count - 1)) * lineStep
+                let extraDescent = CGFloat(max(0, parts.count - 1)) * ceil((currentFont.ascender - currentFont.descender) * 1.10)
                 reserveAtomicInlineSpan(
-                    in: storage, nsString: nsString, fullRange: fullRange,
-                    width: max(4.0, maxW), ascent: currentFont.ascender,
-                    descent: -currentFont.descender + extraDescent
+                    in: storage, nsString: nsString, fullRange: fullRange, width: max(4.0, maxW),
+                    ascent: currentFont.ascender, descent: -currentFont.descender + extraDescent
                 )
                 decorations.append(LineDecoration(
                     lineRange: fullRange,
@@ -274,8 +216,8 @@ extension LaTeXLiveStyler {
                 let currentFont = (storage.attribute(.font, at: fullRange.location, effectiveRange: nil) as? NSFont) ?? baseFont
                 let quoteW = max(3.0, ceil((quoteStr as NSString).size(withAttributes: [.font: currentFont]).width))
                 reserveAtomicInlineSpan(
-                    in: storage, nsString: nsString, fullRange: fullRange,
-                    width: quoteW, ascent: currentFont.ascender, descent: -currentFont.descender
+                    in: storage, nsString: nsString, fullRange: fullRange, width: quoteW,
+                    ascent: currentFont.ascender, descent: -currentFont.descender
                 )
                 decorations.append(LineDecoration(
                     lineRange: fullRange,
