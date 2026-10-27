@@ -36,6 +36,8 @@ public final class FolioMediaImageCache: @unchecked Sendable {
             return (img, svg)
         }
 
+        let span = EditorPerfPhase.mediaDecode.begin()
+        defer { span.end() }
         let svg = MarkdownLiveStyler.renderMermaidSVG(source, isDark: isDark)
         let img = svg.data(using: .utf8)
             .flatMap { NSImage(data: $0) }
@@ -60,6 +62,8 @@ public final class FolioMediaImageCache: @unchecked Sendable {
             return (img, svg)
         }
 
+        let span = EditorPerfPhase.mediaDecode.begin()
+        defer { span.end() }
         let normalized = MarkdownLiveStyler.normalizeSVG(rawSVG)
         let img = normalized.data(using: .utf8)
             .flatMap { NSImage(data: $0) }
@@ -223,6 +227,8 @@ public final class FolioMediaImageCache: @unchecked Sendable {
     }
 
     func storeAndDecodeImageData(_ data: Data, forKey key: String) -> NSImage? {
+        let span = EditorPerfPhase.mediaDecode.begin()
+        defer { span.end() }
         if let animated = Self.decodeAnimatedFrames(from: data), let first = animated.frames.first {
             lock.lock()
             animatedFramesCache[key] = animated

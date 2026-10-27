@@ -241,6 +241,9 @@ extension MarkdownLiveStyler {
 
     /// Parses Markdown into a CommonMark 0.31.2 + GFM 0.29.0 AST via `cmark-gfm` in `folio_engine`.
     public static func parseSpecAST(_ markdown: String) -> (blocks: [CmarkAstBlock], inlines: [CmarkAstInline]) {
+        EditorPerfScope.recorder?.increment(.parse)
+        let span = EditorPerfPhase.parse.begin()
+        defer { span.end() }
         return markdown.withCString { mdPtr in
             guard let resPtr = ot_engine_parse_markdown_ast(mdPtr) else {
                 return ([], [])

@@ -87,6 +87,8 @@ public final class EditorWorkspaceViewModel: ObservableObject {
     /// Seconds without edits before autosave writes the file. 0 saves on every edit.
     public var autoSaveDelay: TimeInterval = 1.0
     var pendingAutoSaveWorkItem: DispatchWorkItem?
+    /// Persistence work counts, read by the perf invariant tests.
+    var perfCounters = WorkspacePerfCounters()
     var pendingRemoteUploads: [URL: String] = [:]
     var remoteUploadsInFlight: Set<URL> = []
     nonisolated(unsafe) var terminationObserver: NSObjectProtocol?

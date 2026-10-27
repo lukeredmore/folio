@@ -120,6 +120,8 @@ public final class MarkdownLiveStyler {
                 fileURL: fileURL
             )
         }
+        let span = EditorPerfPhase.applyStyles.begin()
+        defer { span.end() }
         let nsString = string as NSString
         let fullLength = nsString.length
         LaTeXBlockStyleCache.invalidate()
