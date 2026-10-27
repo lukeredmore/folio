@@ -1,0 +1,52 @@
+\documentclass[11pt,a4paper]{article}
+\documentclass{report}
+\documentclass[broken
+\usepackage[utf8]{inputenc}
+\usepackage{amsmath}
+\usepackage[
+\section{Introduction to \emph{Folio}}
+\section*{Starred}
+\sectiontitle{Section Title}
+\subsection[Short]{Long \textbf{title}}
+\subsubsection{Deep}
+\paragraph{Para} trailing text
+\subparagraph{Sub}
+\part{Part One}
+\chapter{Chapter é}
+\section{Unclosed
+  \section{Indented section}
+Text before \section{not at start}
+\label{sec:intro}
+\label{  spaced  }
+\label{unclosed
+\bibliography{refs}
+\addbibresource{refs.bib}
+\input{chapters/one}
+\include{chapters/two}
+\title{A \textit{Title}}
+\author{Ada Lovelace}
+\date{\today}
+\title[short]{Long}
+\newif\ifdraft
+\newif\if
+\newif
+\drafttrue
+\draftfalse
+\iftrue
+\true
+See \cite{knuth}, \citep[p.~3]{lamport}, \citet*{a,b}, \parencite[see][12]{c}, \textcite{d}, \autocite{e}.
+Broken \cite[p.~3] and \cite{unclosed
+Refs \eqref{eq:1}, \autoref{fig}, \cref{t}, \Cref{T}, \ref{x}, \pageref{y}, and \ref broken.
+Meta \label{l} \bibliography{b} \bibliographystyle{plain} \addbibresource{c.bib} \nocite{*}
+Bare \centering \noindent \newpage \clearpage \tableofcontents end.
+Links \href{https://example.com}{the \textbf{site}} and \textcolor{red}{red \emph{text}}.
+Broken \href{https://x} and \textcolor{blue} and \url{https://folio.app} and \url broken.
+Style \textbf{bold} \textit{it} \emph{em} \underline{u} \texttt{tt} \textsc{sc} \footnote{fn} \textrm{rm} \textsf{sf}.
+Nested \textbf{a \textit{b \texttt{c}}} and \textbf{unclosed
+Logos \LaTeX{} \TeX \today{} and \LaTeX.
+Backslash \textbackslash{} and \textbackslash  x.
+Macros \mymacro{} \other \withargs{x} \é unicode é \ü.
+Math $x^2$ and \(a+b\) and \[ c \] and $$d$$ with \$ escaped \& \% \# \_ \{ \}.
+Line break \\ and \\[2pt] done.
+% comment \section{hidden}
+\section{After} % trailing \label{hidden}

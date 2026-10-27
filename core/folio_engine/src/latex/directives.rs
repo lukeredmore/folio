@@ -1,3 +1,5 @@
+use std::borrow::Cow;
+
 use super::{
     clean_tex_inline_text, read_balanced_braces, read_bracket_group, read_control_word,
     skip_ascii_ws, skip_hspace, LatexDirectiveItem, LatexDirectiveKind, MacroTemplateAnalysis,
@@ -118,141 +120,161 @@ fn try_scan_directive(
     is_preamble: bool,
     out: &mut Vec<LatexDirectiveItem>,
 ) -> Option<usize> {
-    let bytes = text.as_bytes();
-    match cmd {
-        "documentclass" => {
-            let (opt, a1, next) = read_opt_and_brace(text, after)?;
-            push_item(
-                out,
-                LatexDirectiveKind::DocumentClass,
-                false,
-                cmd,
-                opt,
-                (a1, "", ""),
-            );
-            return Some(next);
-        }
-        "usepackage" if is_preamble => {
-            let (opt, a1, next) = read_opt_and_brace(text, after)?;
-            push_item(
-                out,
-                LatexDirectiveKind::UsePackage,
-                false,
-                cmd,
-                opt,
-                (a1, "", ""),
-            );
-            return Some(next);
-        }
-        "part" | "chapter" | "section" | "sectiontitle" | "subsection" | "subsubsection"
-        | "paragraph" | "subparagraph"
-            if at_start =>
-        {
-            let starred = cmd == "sectiontitle" || bytes.get(after) == Some(&b'*');
-            let p = after + usize::from(bytes.get(after) == Some(&b'*'));
-            let (opt, raw, next) = read_opt_and_brace(text, p)?;
-            push_item(
-                out,
-                LatexDirectiveKind::Section,
-                starred,
-                cmd,
-                opt,
-                (&clean_tex_inline_text(raw), "", ""),
-            );
-            return Some(next);
-        }
-        "label" => {
-            let (s, e, next) = read_balanced_braces(bytes, after)?;
-            push_item(
-                out,
-                LatexDirectiveKind::Label,
-                false,
-                cmd,
-                "",
-                (text[s..e].trim(), "", ""),
-            );
-            return Some(next);
-        }
-        "bibliography" | "addbibresource" => {
-            let (s, e, next) = read_balanced_braces(bytes, after)?;
-            push_item(
-                out,
-                LatexDirectiveKind::BibResource,
-                false,
-                cmd,
-                "",
-                (&text[s..e], "", ""),
-            );
-            return Some(next);
-        }
-        "input" | "include" if is_preamble && at_start => {
-            let (s, e, next) = read_balanced_braces(bytes, after)?;
-            push_item(
-                out,
-                LatexDirectiveKind::InputFile,
-                false,
-                cmd,
-                "",
-                (&text[s..e], "", ""),
-            );
-            return Some(next);
-        }
-        "title" | "author" | "date" if at_start => {
-            let (opt, raw, next) = read_opt_and_brace(text, after)?;
-            push_item(
-                out,
-                LatexDirectiveKind::Frontmatter,
-                false,
-                cmd,
-                opt,
-                (&clean_tex_inline_text(raw), "", ""),
-            );
-            return Some(next);
-        }
-        _ => {}
+    if let Some(result) = scan_document_directive(text, cmd, after, at_start, is_preamble, out) {
+        return result;
     }
     if is_preamble {
         if let Some(next) = try_scan_preamble_style(text, cmd, after, out) {
             return Some(next);
         }
     }
+    scan_conditional_directive(text, cmd, after, out)
+}
+
+/// How a directive's brace argument becomes the stored value.
+#[derive(Clone, Copy)]
+enum ArgText {
+    Raw,
+    Trimmed,
+    CleanedTex,
+}
+
+impl ArgText {
+    fn apply(self, raw: &str) -> Cow<'_, str> {
+        match self {
+            Self::Raw => Cow::Borrowed(raw),
+            Self::Trimmed => Cow::Borrowed(raw.trim()),
+            Self::CleanedTex => Cow::Owned(clean_tex_inline_text(raw)),
+        }
+    }
+}
+
+/// Scans `\cmd[opt]{arg}` and records it. Returns the offset after the argument.
+fn push_opt_and_brace(
+    text: &str,
+    pos: usize,
+    item: (LatexDirectiveKind, bool, &str),
+    arg_text: ArgText,
+    out: &mut Vec<LatexDirectiveItem>,
+) -> Option<usize> {
+    let (kind, starred, cmd) = item;
+    let (opt, raw, next) = read_opt_and_brace(text, pos)?;
+    push_item(out, kind, starred, cmd, opt, (&arg_text.apply(raw), "", ""));
+    Some(next)
+}
+
+/// Scans `\cmd{arg}` and records it. Returns the offset after the argument.
+fn push_brace(
+    text: &str,
+    pos: usize,
+    item: (LatexDirectiveKind, &str),
+    arg_text: ArgText,
+    out: &mut Vec<LatexDirectiveItem>,
+) -> Option<usize> {
+    let (kind, cmd) = item;
+    let (s, e, next) = read_balanced_braces(text.as_bytes(), pos)?;
+    push_item(
+        out,
+        kind,
+        false,
+        cmd,
+        "",
+        (&arg_text.apply(&text[s..e]), "", ""),
+    );
+    Some(next)
+}
+
+/// Returns `None` when `cmd` is not a document-structure directive in this
+/// position, or `Some(scan result)` when it is.
+fn scan_document_directive(
+    text: &str,
+    cmd: &str,
+    after: usize,
+    at_start: bool,
+    is_preamble: bool,
+    out: &mut Vec<LatexDirectiveItem>,
+) -> Option<Option<usize>> {
+    use LatexDirectiveKind as K;
+    let result = match cmd {
+        "documentclass" => push_opt_and_brace(
+            text,
+            after,
+            (K::DocumentClass, false, cmd),
+            ArgText::Raw,
+            out,
+        ),
+        "usepackage" if is_preamble => {
+            push_opt_and_brace(text, after, (K::UsePackage, false, cmd), ArgText::Raw, out)
+        }
+        "part" | "chapter" | "section" | "sectiontitle" | "subsection" | "subsubsection"
+        | "paragraph" | "subparagraph"
+            if at_start =>
+        {
+            let has_star = text.as_bytes().get(after) == Some(&b'*');
+            let starred = cmd == "sectiontitle" || has_star;
+            let pos = after + usize::from(has_star);
+            push_opt_and_brace(
+                text,
+                pos,
+                (K::Section, starred, cmd),
+                ArgText::CleanedTex,
+                out,
+            )
+        }
+        "label" => push_brace(text, after, (K::Label, cmd), ArgText::Trimmed, out),
+        "bibliography" | "addbibresource" => {
+            push_brace(text, after, (K::BibResource, cmd), ArgText::Raw, out)
+        }
+        "input" | "include" if is_preamble && at_start => {
+            push_brace(text, after, (K::InputFile, cmd), ArgText::Raw, out)
+        }
+        "title" | "author" | "date" if at_start => push_opt_and_brace(
+            text,
+            after,
+            (K::Frontmatter, false, cmd),
+            ArgText::CleanedTex,
+            out,
+        ),
+        _ => return None,
+    };
+    Some(result)
+}
+
+/// Scans `\newif\ifname` and `\nametrue` / `\namefalse` toggles.
+fn scan_conditional_directive(
+    text: &str,
+    cmd: &str,
+    after: usize,
+    out: &mut Vec<LatexDirectiveItem>,
+) -> Option<usize> {
     if cmd == "newif" {
-        let (if_cmd, next) = read_cmd_at(text, skip_hspace(bytes, after))?;
-        if let Some(c) = if_cmd.strip_prefix("if").filter(|c| !c.is_empty()) {
+        let (if_cmd, next) = read_cmd_at(text, skip_hspace(text.as_bytes(), after))?;
+        let name = if_cmd.strip_prefix("if").filter(|c| !c.is_empty())?;
+        push_item(
+            out,
+            LatexDirectiveKind::NewIf,
+            false,
+            "newif",
+            "",
+            (name, "", ""),
+        );
+        return Some(next);
+    }
+    for value in ["true", "false"] {
+        if let Some(name) = cmd
+            .strip_suffix(value)
+            .filter(|&c| !c.is_empty() && c != "if")
+        {
             push_item(
                 out,
-                LatexDirectiveKind::NewIf,
+                LatexDirectiveKind::ToggleIf,
                 false,
-                "newif",
+                cmd,
                 "",
-                (c, "", ""),
+                (name, value, ""),
             );
-            return Some(next);
+            break;
         }
-    } else if let Some(c) = cmd
-        .strip_suffix("true")
-        .filter(|&c| !c.is_empty() && c != "if")
-    {
-        push_item(
-            out,
-            LatexDirectiveKind::ToggleIf,
-            false,
-            cmd,
-            "",
-            (c, "true", ""),
-        );
-    } else if let Some(c) = cmd
-        .strip_suffix("false")
-        .filter(|&c| !c.is_empty() && c != "if")
-    {
-        push_item(
-            out,
-            LatexDirectiveKind::ToggleIf,
-            false,
-            cmd,
-            "",
-            (c, "false", ""),
-        );
     }
     None
 }

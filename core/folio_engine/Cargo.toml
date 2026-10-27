@@ -40,3 +40,7 @@ path = "tst/latex_scan_tests.rs"
 
 [lints]
 workspace = true
+
+[[test]]
+name = "latex_golden_tests"
+path = "tst/latex_golden_tests.rs"
