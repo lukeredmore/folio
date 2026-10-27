@@ -79,7 +79,6 @@ bazel run //:folio -- README.md:20:1
 
 # Run all unit, integration, and shared behavior tests
 bazel test //...
-cargo test --workspace
 
 # Package standalone macOS Folio.dmg locally
 ./scripts/package_dmg.sh       # Produces ./Folio.dmg

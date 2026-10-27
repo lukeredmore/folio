@@ -24,11 +24,8 @@
 ## Building & Testing
 
 ```bash
-# Run all core engine unit, cmark-gfm spec, scan, reflow, and declarative behavior tests
+# Run all core engine unit, cmark-gfm spec, scan, reflow, and declarative behavior tests, plus clippy and rustfmt
 bazel test //core/folio_engine/...
-
-# Or run via Cargo
-cargo test -p folio_engine
 ```
 
 Shared cross-product behavior specifications live in [`tst/specs/*.json`](../../tst/specs) and are verified against `folio_engine`, `folio_zed_extension`, and `FolioTests`.

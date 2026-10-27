@@ -30,7 +30,6 @@ jobs:
           fi
           xcodebuild -version
           swiftc --version
-          rustup target add wasm32-wasip2
           echo "common --config=ci" >> ~/.bazelrc
 
       - name: Cache Bazel repository & disk cache (test)
@@ -44,22 +43,8 @@ jobs:
             bazel-test-macos26-${{ runner.os }}-${{ hashFiles('MODULE.bazel', 'MODULE.bazel.lock', 'Cargo.lock') }}-
             bazel-test-macos26-${{ runner.os }}-
 
-      - name: Cache Cargo workspace build artifacts (test)
-        uses: actions/cache@v6
-        with:
-          path: |
-            ~/.cargo/registry
-            ~/.cargo/git
-            target
-          key: cargo-test-macos26-${{ runner.os }}-${{ hashFiles('rust-toolchain.toml', 'Cargo.lock') }}-${{ hashFiles('core/**/*.rs', 'zed/**/*.rs', 'tst/specs/**/*.json') }}
-          restore-keys: |
-            cargo-test-macos26-${{ runner.os }}-${{ hashFiles('rust-toolchain.toml', 'Cargo.lock') }}-
-            cargo-test-macos26-${{ runner.os }}-
-
-      - name: Run all workspace tests and hygiene checks
-        run: |
-          ./scripts/audit_slop.sh
-          bazel test //... --test_output=errors
+      - name: Run all tests, lints, and format checks
+        run: bazel test //...
 
   build-folio-dmg:
     name: Build & Package Folio.dmg
@@ -270,17 +255,19 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Cache Cargo WASI extension build artifacts
+      - name: Configure Bazel CI profile
+        run: echo "common --config=ci" >> ~/.bazelrc
+
+      - name: Cache Bazel repository & disk cache (zed extension)
         uses: actions/cache@v6
         with:
           path: |
-            ~/.cargo/registry
-            ~/.cargo/git
-            target/wasm-extension
-          key: cargo-zed-ext-macos26-${{ runner.os }}-${{ hashFiles('Cargo.lock', 'zed/folio_zed_extension/wasm/Cargo.toml', 'zed/folio_zed_extension/extension.toml') }}-${{ hashFiles('core/**/*.rs', 'zed/**/*.rs') }}
+            ~/.cache/bazel-repo
+            ~/.cache/bazel-disk
+          key: bazel-zed-ext-macos26-${{ runner.os }}-${{ hashFiles('MODULE.bazel', 'MODULE.bazel.lock', 'Cargo.lock') }}-${{ hashFiles('core/**/*.rs', 'zed/**/*.rs') }}
           restore-keys: |
-            cargo-zed-ext-macos26-${{ runner.os }}-${{ hashFiles('Cargo.lock', 'zed/folio_zed_extension/wasm/Cargo.toml', 'zed/folio_zed_extension/extension.toml') }}-
-            cargo-zed-ext-macos26-${{ runner.os }}-
+            bazel-zed-ext-macos26-${{ runner.os }}-${{ hashFiles('MODULE.bazel', 'MODULE.bazel.lock', 'Cargo.lock') }}-
+            bazel-zed-ext-macos26-${{ runner.os }}-
 
       - name: Build and package folio-markdown-outline.tar.gz
         id: meta

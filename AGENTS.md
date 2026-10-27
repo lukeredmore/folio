@@ -17,48 +17,50 @@ Do **not** modify files in `${MAIN_REPO_ROOT}` (`main`) or copy uncommitted chan
 
 ---
 
-## 2. Building & Testing in a Worktree
+## 2. The Only Gate: `bazel test //...`
 
-All targets in the monorepo are self-contained and build directly inside any worktree via Bazel or Cargo:
+Run this from your worktree before you report any task as done:
 
-- **Bazel builds, tests & CLI launches** (always run with your worktree as `Cwd`):
-  ```bash
-  bazel test //...
-  bazel build //:FolioApp
-  bazel run //:FolioApp -- path/to/file.md:10:1
-  bazel run //:folio -- path/to/file.md:10:1
-  ```
-  Both `bazel run //:FolioApp -- <args>` and `bazel run //:folio -- <args>` accept the full `folio` CLI interface (`[path[:line[:column]] ...]`, directories, `.`, `~`, `file://`, `--help`, `--version`) and resolve relative paths against your shell's working directory (`BUILD_WORKING_DIRECTORY`).
-- **Rust core & extension unit tests**:
-  ```bash
-  cargo test --workspace
-  ```
-- **Build & install the Zed WASI extension**:
-  ```bash
-  ./zed/install_extension.sh
-  ```
+```bash
+bazel test //...
+```
+
+It builds every target and runs every test, clippy (as a Bazel aspect, with the lints from `Cargo.toml` and `clippy.toml`), and `rustfmt` checks. It also builds the shipped Zed `extension.wasm`. Bazel caches results, so unchanged targets cost nothing. A task is not done until this command passes.
+
+To fix formatting:
+
+```bash
+bazel run @rules_rust//:rustfmt -- //core/... //zed/...
+```
+
+Other commands:
+
+```bash
+bazel build //:FolioApp
+bazel run //:FolioApp -- path/to/file.md:10:1
+bazel run //:folio -- path/to/file.md:10:1
+./zed/install_extension.sh
+```
+
+Both `bazel run` launchers accept the full `folio` CLI interface (`[path[:line[:column]] ...]`, directories, `.`, `~`, `file://`, `--help`, `--version`) and resolve relative paths against your shell's working directory (`BUILD_WORKING_DIRECTORY`).
+
+Cargo still works for editor tooling (rust-analyzer), but it is not a gate. Bazel is the source of truth for builds, lints, and tests.
 
 ---
 
-## 3. Anti-Slop Module Hygiene, File Size Limits & `tst/` Testing Rules
+## 3. Code and Test Rules
 
-To prevent monolithic files and duplicated test logic across the Zed extension and Standalone Folio, all contributions must pass `./scripts/audit_slop.sh`:
-
-1. **Strict File Size Ceiling (`<= 250` lines target, `350` lines hard max)**:
-   - Every `.rs` file in `core/` and `zed/` and every `.swift` file in `Sources/` and `Tests/` must remain under **350 lines** (warnings trigger at **250 lines**).
-   - If a file approaches 300 lines, split it into focused submodules (`mod.rs` + single-responsibility leaf modules in Rust, or `Type+Feature.swift` / domain-specific files in Swift) before adding new features.
-2. **Zero Inline Tests in `src/` & Domain-Split Test Files**:
-   - **Never** add `#[cfg(test)]` or `#[test]` inside `src/**.rs`.
-   - Every Rust crate (`core/folio_engine`, `zed/folio_zed_extension`) keeps its tests strictly under `<crate>/tst/*.rs`, registered via `[[test]]` in `Cargo.toml` and `rust_test` in `BUILD.bazel`.
-   - Swift tests in `Tests/FolioTests/` are split by domain (`*Tests.swift` + `FolioTestHelpers.swift`); never reintroduce a monolithic `Tests/FolioTests/FolioTests.swift`.
-3. **Shared Declarative Behavior Specs (`tst/specs/*.json`)**:
-   - Product behaviors shared between the Zed extension and Standalone Folio (active-line syntax reveal vs. inactive-line folding, block decorations, newline list/task continuation, inline delimiter toggling, heading toggling, and paragraph reflow) are defined in cursor-annotated JSON specs under `tst/specs/` and executed against `folio_engine`, `folio_zed_extension`, and `FolioTests`.
-4. **No Linter Tampering**:
-   - Workspace Clippy lints enforce `allow_attributes = "deny"`, `too_many_lines = "warn"`, and `cognitive_complexity = "warn"` (configured in `clippy.toml`). Never silence warnings with `#[allow(...)]`; refactor the function or module instead.
+1. **Never weaken a check to get green.** Do not loosen a threshold, skip a test, widen a tolerance, or edit a baseline to make a failure pass. If a check fails, fix the cause or stop and report the failure.
+2. **No lint suppression.** `allow_attributes` is denied. Never add `#[allow(...)]`; refactor instead.
+3. **Tests live outside `src/`.** Rust tests go in `<crate>/tst/*.rs`; Bazel creates one `rust_test` per file automatically. Swift tests go in focused `Tests/FolioTests/*Tests.swift` files, grouped by behavior.
+4. **Split files by responsibility, not by line count.** Do not split a type into extension files, or pack statements onto one line, only to make a file shorter.
+5. **Shared behavior specs.** `tst/specs/editor_behaviors.json` holds cursor-annotated cases for newline list and task continuation, inline delimiter toggling, heading levels, task checkboxes, and active-line fold/reveal. The engine, the Zed extension, and `FolioTests` each run them. Known gap: the runners call engine functions, not each product's real edit path, so a passing spec does not yet prove the app or Zed behaves the same way.
 
 ---
 
 ## 4. Final Responses
+
+State that `bazel test //...` passed in your worktree. If you did not run it, or it failed, say so plainly.
 
 Whenever you finish a task in **Folio** that results in a material change to one or more elements/applications (i.e. Zed extension, standalone app, CLI, Zed fork, etc.), always include at least one copy-pasteable command to demonstrate it. If rendered content may be affected, ensure your command opens an example file that is filled with relevant content.
 
