@@ -162,6 +162,14 @@ extension MarkdownLiveStyler {
         let closingPipeRange: NSRange
     }
 
+    /// Container context of a fenced code block nested in a list item.
+    struct CodeFenceContainer {
+        /// Leading spaces of the opening fence; stripped from each delimiter and body line.
+        var strippedSpaces = 0
+        /// Text indent (points) of the enclosing list item.
+        var indent: CGFloat = 0
+    }
+
     struct ScannedInlineCodeSpan {
         let fullRange: NSRange
         let openRange: NSRange

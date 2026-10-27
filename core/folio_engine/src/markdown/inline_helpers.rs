@@ -313,3 +313,20 @@ pub(crate) fn find_paren_close(bytes: &[u8], start_idx: usize) -> Option<usize> 
     }
     None
 }
+
+/// For each index, the nearest valid closing `$` at or after it (`usize::MAX` if none).
+/// A closer follows non-space and is not followed by a digit or `$` (Pandoc `tex_math_dollars`).
+pub(crate) fn inline_math_next_closers(bytes: &[u8]) -> Vec<usize> {
+    let mut next = vec![usize::MAX; bytes.len() + 1];
+    for idx in (0..bytes.len()).rev() {
+        let is_closer = idx > 0
+            && bytes[idx] == b'$'
+            && !matches!(bytes[idx - 1], b'\\' | b'$')
+            && !bytes[idx - 1].is_ascii_whitespace()
+            && !bytes
+                .get(idx + 1)
+                .is_some_and(|b| b.is_ascii_digit() || *b == b'$');
+        next[idx] = if is_closer { idx } else { next[idx + 1] };
+    }
+    next
+}

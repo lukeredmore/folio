@@ -81,7 +81,7 @@ public final class MarkdownLiveStyler {
     static let italicUnderscoreRegex = try! NSRegularExpression(pattern: #"(?<![\p{L}\p{N}_])_(?!_)(?=\S)((?:[^_]|__(?=\S)[^_]+?(?<=\S)__|(?<=[\p{L}\p{N}])_(?=[\p{L}\p{N}]))+?)(?<=\S)_(?![\p{L}\p{N}_])"#)
     static let strikeRegex = try! NSRegularExpression(pattern: #"(?<!~)(~~)(?!~)(?=\S)((?:(?!~~)[\s\S])+?)(?<=\S)(~~)(?!~)"#)
     static let highlightRegex = try! NSRegularExpression(pattern: #"(?<!=)(==)(?!=)(?=\S)((?:(?!==)[\s\S])+?)(?<=\S)(==)(?!=)"#)
-    static let inlineMathRegex = try! NSRegularExpression(pattern: #"(?<!\$)(\$)(?!\$)(?=\S)([^\$\n]+?)(?<=\S)(?<!\$)(\$)(?!\$)"#)
+    static let inlineMathRegex = try! NSRegularExpression(pattern: #"(?<!\$)(\$)(?!\$)(?=\S)([^\$\n]+?)(?<=\S)(?<!\$)(\$)(?![\$\d])"#)
     static let autolinkRegex = try! NSRegularExpression(pattern: #"(<)((?:https?://|mailto:)[^>\s]+|[a-zA-Z0-9._%+\-]+@(?:[a-zA-Z0-9\-]+\.)+[a-zA-Z]{2,})(>)"#)
     static let multiSpaceRegex = try! NSRegularExpression(pattern: #"[ \t]{2,}"#)
     static let leadingSpaceRegex = try! NSRegularExpression(pattern: #"^[ \t]+"#, options: [.anchorsMatchLines])
@@ -179,6 +179,7 @@ public final class MarkdownLiveStyler {
         var currentFenceChar: Character = "`"
         var currentFenceLength: Int = 3
         var currentFenceLanguage = ""
+        var fenceContainer = CodeFenceContainer()
         var previousListTextIndent: CGFloat? = nil
         var lineNumber = 1
         var index = 0
@@ -211,8 +212,9 @@ public final class MarkdownLiveStyler {
                         previousListTextIndent = nil; index = step.nextIndex; lineNumber += step.lineDelta; continue
                     }
                     inCodeFence = true; currentFenceChar = fenceChar
+                    fenceContainer = CodeFenceContainer(strippedSpaces: lineText.prefix(while: { $0 == " " }).count, indent: previousListTextIndent ?? 0)
                     currentFenceLength = markerStr.count; currentFenceLanguage = lowerLang; previousListTextIndent = nil
-                    styleCodeFenceDelimiterLine(in: storage, lineRange: lineRange, isClosing: false, isActiveLine: isActiveLine, theme: theme, typography: typography, effectiveBaseSize: effectiveBaseSize, effectiveContainerWidth: effectiveContainerWidth, dimFactor: dimFactor)
+                    styleCodeFenceDelimiterLine(in: storage, lineRange: lineRange, contentRange: contentRange, container: fenceContainer, isClosing: false, isActiveLine: isActiveLine, theme: theme, typography: typography, effectiveBaseSize: effectiveBaseSize, effectiveContainerWidth: effectiveContainerWidth, dimFactor: dimFactor)
                     decorations.append(LineDecoration(lineRange: lineRange, kind: .codeFenceStart(language: lang)))
                     index = NSMaxRange(lineRange); lineNumber += 1; continue
                 }
@@ -221,12 +223,12 @@ public final class MarkdownLiveStyler {
                 let afterLeading = String(lineText.dropFirst(leadingSpaces))
                 let fenceRun = afterLeading.prefix(while: { $0 == currentFenceChar })
                 let restAfterFence = afterLeading.dropFirst(fenceRun.count).trimmingCharacters(in: .whitespaces)
-                if leadingSpaces <= 3 && fenceRun.count >= currentFenceLength && restAfterFence.isEmpty {
+                if leadingSpaces <= 3 + fenceContainer.strippedSpaces && fenceRun.count >= currentFenceLength && restAfterFence.isEmpty {
                     inCodeFence = false; currentFenceLanguage = ""
-                    styleCodeFenceDelimiterLine(in: storage, lineRange: lineRange, isClosing: true, isActiveLine: isActiveLine, theme: theme, typography: typography, effectiveBaseSize: effectiveBaseSize, effectiveContainerWidth: effectiveContainerWidth, dimFactor: dimFactor)
+                    styleCodeFenceDelimiterLine(in: storage, lineRange: lineRange, contentRange: contentRange, container: fenceContainer, isClosing: true, isActiveLine: isActiveLine, theme: theme, typography: typography, effectiveBaseSize: effectiveBaseSize, effectiveContainerWidth: effectiveContainerWidth, dimFactor: dimFactor)
                     decorations.append(LineDecoration(lineRange: lineRange, kind: .codeFenceEnd))
                 } else {
-                    styleCodeFenceBodyLine(in: storage, lineRange: lineRange, contentRange: contentRange, language: currentFenceLanguage, theme: theme, effectiveBaseSize: effectiveBaseSize, effectiveContainerWidth: effectiveContainerWidth, dimFactor: dimFactor, decorations: &decorations)
+                    styleCodeFenceBodyLine(in: storage, lineRange: lineRange, contentRange: contentRange, container: fenceContainer, language: currentFenceLanguage, theme: theme, effectiveBaseSize: effectiveBaseSize, effectiveContainerWidth: effectiveContainerWidth, dimFactor: dimFactor, decorations: &decorations)
                 }
                 index = NSMaxRange(lineRange); lineNumber += 1; continue
             }

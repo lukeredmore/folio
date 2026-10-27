@@ -193,3 +193,24 @@ fn test_adversarial_math_scales_linearly() {
         }
     });
 }
+
+fn inline_math_sources(md: &str) -> Vec<String> {
+    analyze_markdown_document(md, usize::MAX, false, false)
+        .block_decorations
+        .into_iter()
+        .filter_map(|d| match d.kind {
+            MarkdownBlockDecorationKind::InlineMathRendered { latex, .. } => Some(latex),
+            _ => None,
+        })
+        .collect()
+}
+
+#[test]
+fn test_inline_math_ignores_dollars_in_link_destinations_and_prices() {
+    let url = "https://console.aws.amazon.com/cloudwatch/home#logsV2:logs-insights$3FqueryDetail$3D~(end~0)";
+    let md = format!("See [errors (Prod)]({url}) · [Beta]({url}).\n");
+    assert!(inline_math_sources(&md).is_empty());
+    assert!(inline_math_sources("Costs $5 and $10 today.\n").is_empty());
+    assert!(inline_math_sources("Gap $ x$ stays literal.\n").is_empty());
+    assert_eq!(inline_math_sources("Energy $E = mc^2$ holds.\n"), vec!["E = mc^2"]);
+}
