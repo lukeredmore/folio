@@ -8,18 +8,23 @@ exports_files(["Cargo.toml"])
 
 ENGINE_SRCS = glob(["src/**/*.rs"])
 
+ENGINE_DEPS = [
+    "@crates//:biblatex",
+    "@crates//:latex-rust",
+    "@crates//:merman",
+] + select({
+    # The wasm build stubs out cmark (see src/markdown/cmark_sys.rs).
+    "@platforms//cpu:wasm32": [],
+    "//conditions:default": ["@cmark_gfm//:cmark_gfm"],
+})
+
 # Native Rust library consumed by Zed extension crate (//zed/folio_zed_extension)
 rust_library(
     name = "folio_engine",
     srcs = ENGINE_SRCS,
     crate_name = "folio_engine",
     edition = "2021",
-    deps = [
-        "@cmark_gfm//:cmark_gfm",
-        "@crates//:biblatex",
-        "@crates//:latex-rust",
-        "@crates//:merman",
-    ],
+    deps = ENGINE_DEPS,
 )
 
 # Static C-ABI archive consumed by Swift / macOS AppKit (//macos/FolioApp)
@@ -28,12 +33,7 @@ rust_static_library(
     srcs = ENGINE_SRCS,
     crate_name = "folio_engine",
     edition = "2021",
-    deps = [
-        "@cmark_gfm//:cmark_gfm",
-        "@crates//:biblatex",
-        "@crates//:latex-rust",
-        "@crates//:merman",
-    ],
+    deps = ENGINE_DEPS,
 )
 
 swift_interop_hint(
@@ -63,10 +63,16 @@ ENGINE_TESTS = glob(["tst/*.rs"])
         name = src.removeprefix("tst/").removesuffix(".rs"),
         srcs = [src],
         data = [
+            "tst/corpus/latex_commands.tex",
+            "tst/golden/latex_scan.txt",
             "//tst/specs:all_behavior_specs",
             "@markdown_spec//:all_spec_files",
         ],
         edition = "2021",
+        env = {
+            "LATEX_CORPUS": "$(rootpath tst/corpus/latex_commands.tex)",
+            "LATEX_GOLDEN": "$(rootpath tst/golden/latex_scan.txt)",
+        },
         deps = [":folio_engine"],
     )
     for src in ENGINE_TESTS

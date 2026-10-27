@@ -255,174 +255,175 @@ fn try_scan_cmd(
     end: usize,
     out: &mut Vec<LatexInlineSpan>,
 ) -> Option<usize> {
-    let (text, bytes, u16) = (ctx.text, &ctx.bytes[..end], ctx.u16);
+    let bytes = &ctx.bytes[..end];
+    if let Some(next) = scan_argument_cmd(ctx, bytes, (i, cmd, after), out) {
+        return Some(next);
+    }
+    if let Some(next) = scan_bare_cmd(ctx, bytes, (i, cmd, after), out) {
+        return Some(next);
+    }
+    Some(scan_prose_macro_candidate(ctx, bytes, (i, cmd, after), out))
+}
+
+/// Builds a span for `\cmd{arg}`: the braces are the delimiters and `arg` is the content.
+fn braced_span(
+    ctx: &InlineScanCtx<'_>,
+    kind: LatexInlineSpanKind,
+    open: usize,
+    (ks, ke, next): (usize, usize, usize),
+    payload: (&str, &str),
+) -> LatexInlineSpan {
+    make_span(
+        ctx.u16,
+        kind,
+        (open, next),
+        (open, ks),
+        (ks, ke),
+        (ke, next),
+        payload,
+    )
+}
+
+/// Commands that take a braced argument. Returns `None` when `cmd` is not one of
+/// them or its argument is malformed, so the caller can treat it as a plain macro.
+fn scan_argument_cmd(
+    ctx: &InlineScanCtx<'_>,
+    bytes: &[u8],
+    (i, cmd, after): (usize, &str, usize),
+    out: &mut Vec<LatexInlineSpan>,
+) -> Option<usize> {
+    use LatexInlineSpanKind as K;
+    let text = ctx.text;
     match cmd {
         "cite" | "citep" | "citet" | "parencite" | "textcite" | "autocite" => {
             let mut p = after + usize::from(bytes.get(after) == Some(&b'*'));
             while let Some((_, _, next)) = read_bracket_group(bytes, p) {
                 p = next;
             }
-            if let Some((ks, ke, next)) = read_balanced_braces(bytes, p) {
-                out.push(make_span(
-                    u16,
-                    LatexInlineSpanKind::Cite,
-                    (i, next),
-                    (i, ks),
-                    (ks, ke),
-                    (ke, next),
-                    (cmd, &text[ks..ke]),
-                ));
-                return Some(next);
-            }
+            let arg @ (ks, ke, next) = read_balanced_braces(bytes, p)?;
+            out.push(braced_span(ctx, K::Cite, i, arg, (cmd, &text[ks..ke])));
+            Some(next)
         }
         "eqref" | "autoref" | "cref" | "Cref" | "ref" | "pageref" => {
-            if let Some((ks, ke, next)) = read_balanced_braces(bytes, after) {
-                out.push(make_span(
-                    u16,
-                    LatexInlineSpanKind::Ref,
-                    (i, next),
-                    (i, ks),
-                    (ks, ke),
-                    (ke, next),
-                    (cmd, &text[ks..ke]),
-                ));
-                return Some(next);
-            }
+            let arg @ (ks, ke, next) = read_balanced_braces(bytes, after)?;
+            out.push(braced_span(ctx, K::Ref, i, arg, (cmd, &text[ks..ke])));
+            Some(next)
         }
         "label" | "bibliography" | "bibliographystyle" | "addbibresource" | "nocite" => {
-            if let Some((ks, ke, next)) = read_balanced_braces(bytes, after) {
-                out.push(make_span(
-                    u16,
-                    LatexInlineSpanKind::HiddenMeta,
-                    (i, next),
-                    (i, next),
-                    (ks, ke),
-                    (next, next),
-                    (cmd, &text[ks..ke]),
-                ));
-                return Some(next);
-            }
-        }
-        "centering" | "noindent" | "newpage" | "clearpage" | "tableofcontents" => {
-            let p = skip_hspace(bytes, after);
+            let (ks, ke, next) = read_balanced_braces(bytes, after)?;
             out.push(make_span(
-                u16,
-                LatexInlineSpanKind::HiddenMeta,
-                (i, p),
-                (i, p),
-                (i, i),
-                (p, p),
-                (cmd, ""),
+                ctx.u16,
+                K::HiddenMeta,
+                (i, next),
+                (i, next),
+                (ks, ke),
+                (next, next),
+                (cmd, &text[ks..ke]),
             ));
-            return Some(p);
+            Some(next)
         }
         "href" | "textcolor" => {
-            if let Some((s1, e1, a1)) = read_balanced_braces(bytes, after) {
-                if let Some((s2, e2, a2)) = read_balanced_braces(bytes, a1) {
-                    let kind = if cmd == "href" {
-                        LatexInlineSpanKind::Href
-                    } else {
-                        LatexInlineSpanKind::ColorGroup
-                    };
-                    out.push(make_span(
-                        u16,
-                        kind,
-                        (i, a2),
-                        (i, s2),
-                        (s2, e2),
-                        (e2, a2),
-                        (cmd, &text[s1..e1]),
-                    ));
-                    scan_range(ctx, s2, e2, out);
-                    return Some(a2);
-                }
-            }
+            let (s1, e1, a1) = read_balanced_braces(bytes, after)?;
+            let arg @ (s2, e2, a2) = read_balanced_braces(bytes, a1)?;
+            let kind = if cmd == "href" {
+                K::Href
+            } else {
+                K::ColorGroup
+            };
+            out.push(braced_span(ctx, kind, i, arg, (cmd, &text[s1..e1])));
+            scan_range(ctx, s2, e2, out);
+            Some(a2)
         }
         "url" => {
-            if let Some((us, ue, next)) = read_balanced_braces(bytes, after) {
-                out.push(make_span(
-                    u16,
-                    LatexInlineSpanKind::Url,
-                    (i, next),
-                    (i, us),
-                    (us, ue),
-                    (ue, next),
-                    ("url", &text[us..ue]),
-                ));
-                return Some(next);
-            }
+            let arg @ (us, ue, next) = read_balanced_braces(bytes, after)?;
+            out.push(braced_span(ctx, K::Url, i, arg, ("url", &text[us..ue])));
+            Some(next)
         }
         "textbf" | "textit" | "emph" | "underline" | "texttt" | "textsc" | "footnote"
         | "textrm" | "textsf" => {
-            if let Some((ts, te, next)) = read_balanced_braces(bytes, after) {
-                out.push(make_span(
-                    u16,
-                    LatexInlineSpanKind::StyleCmd,
-                    (i, next),
-                    (i, ts),
-                    (ts, te),
-                    (te, next),
-                    (cmd, ""),
-                ));
-                scan_range(ctx, ts, te, out);
-                return Some(next);
-            }
+            let arg @ (ts, te, next) = read_balanced_braces(bytes, after)?;
+            out.push(braced_span(ctx, K::StyleCmd, i, arg, (cmd, "")));
+            scan_range(ctx, ts, te, out);
+            Some(next)
+        }
+        _ => None,
+    }
+}
+
+/// Commands that take no argument. Returns `None` when `cmd` is not one of them.
+fn scan_bare_cmd(
+    ctx: &InlineScanCtx<'_>,
+    bytes: &[u8],
+    (i, cmd, after): (usize, &str, usize),
+    out: &mut Vec<LatexInlineSpan>,
+) -> Option<usize> {
+    use LatexInlineSpanKind as K;
+    let empty_braces = bytes.get(after..after + 2) == Some(b"{}");
+    let (kind, p, layout) = match cmd {
+        "centering" | "noindent" | "newpage" | "clearpage" | "tableofcontents" => {
+            let p = skip_hspace(bytes, after);
+            (K::HiddenMeta, p, [(i, p), (i, i), (p, p)])
         }
         "LaTeX" | "TeX" | "today" => {
-            let empty_braces = bytes.get(after..after + 2) == Some(b"{}");
             let p = after + if empty_braces { 2 } else { 0 };
-            out.push(make_span(
-                u16,
-                LatexInlineSpanKind::LogoCmd,
-                (i, p),
-                (i, i + 1),
-                (i + 1, after),
-                (after, p),
-                (cmd, ""),
-            ));
-            return Some(p);
+            (K::LogoCmd, p, [(i, i + 1), (i + 1, after), (after, p)])
         }
         "textbackslash" => {
-            let p = if bytes.get(after..after + 2) == Some(b"{}") {
+            let p = if empty_braces {
                 after + 2
             } else {
                 skip_hspace(bytes, after)
             };
-            out.push(make_span(
-                u16,
-                LatexInlineSpanKind::TextBackslash,
-                (i, p),
-                (i + 1, p),
-                (i, i + 1),
-                (p, p),
-                (cmd, ""),
-            ));
-            return Some(p);
+            (K::TextBackslash, p, [(i + 1, p), (i, i + 1), (p, p)])
         }
-        _ => {}
-    }
+        _ => return None,
+    };
+    let [open, content, close] = layout;
+    out.push(make_span(
+        ctx.u16,
+        kind,
+        (i, p),
+        open,
+        content,
+        close,
+        (cmd, ""),
+    ));
+    Some(p)
+}
+
+/// Records an unknown `\cmd` or `\cmd{}` as a possible user macro. Returns the
+/// offset after it.
+fn scan_prose_macro_candidate(
+    ctx: &InlineScanCtx<'_>,
+    bytes: &[u8],
+    (i, cmd, after): (usize, &str, usize),
+    out: &mut Vec<LatexInlineSpan>,
+) -> usize {
+    let kind = LatexInlineSpanKind::ProseMacroCandidate;
     if bytes.get(after..after + 2) == Some(b"{}") {
+        let close = (after, after + 2);
         out.push(make_span(
-            u16,
-            LatexInlineSpanKind::ProseMacroCandidate,
+            ctx.u16,
+            kind,
             (i, after + 2),
             (i, after + 2),
             (i + 1, after),
-            (after, after + 2),
+            close,
             (cmd, ""),
         ));
-        return Some(after + 2);
+        return after + 2;
     }
     if bytes.get(after) != Some(&b'{') {
+        let close = (after, after);
         out.push(make_span(
-            u16,
-            LatexInlineSpanKind::ProseMacroCandidate,
+            ctx.u16,
+            kind,
             (i, after),
             (i, after),
             (i + 1, after),
-            (after, after),
+            close,
             (cmd, ""),
         ));
     }
-    Some(after)
+    after
 }
