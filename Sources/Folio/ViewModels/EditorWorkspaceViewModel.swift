@@ -65,6 +65,8 @@ public final class EditorWorkspaceViewModel: ObservableObject {
     @Published public var autoSaveEnabled: Bool = true
     @Published public var lastAutoSavedAt: Date?
     @Published public var lastSavedDiskContent: String = ""
+    /// File created by New File; deleted if the user leaves it without editing.
+    var untouchedNewFile: (url: URL, template: String)?
     @Published public var canUndo: Bool = false
     @Published public var canRedo: Bool = false
     @Published public var externalUpdateNotice: ExternalUpdateNotice?

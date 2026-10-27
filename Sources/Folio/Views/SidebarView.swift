@@ -175,6 +175,7 @@ public struct SidebarView: View {
                                     Task { await remoteManager.syncMount(id: mountID, isBackground: false) }
                                 },
                                 onDisconnectMount: { viewModel.disconnectRemoteMount(id: $0) },
+                                onDeleteItem: { viewModel.requestDeleteWorkspaceItem(at: $0) },
                                 sshDisplayPath: remoteManager.remoteSSHDisplayPath(forLocalURL: node.url) ?? node.remoteConnectionString
                             )
                             .tag(Optional(node.url))
@@ -202,6 +203,7 @@ public struct SidebarView: View {
                                     Task { await remoteManager.syncMount(id: mountID, isBackground: false) }
                                 },
                                 onDisconnectMount: { viewModel.disconnectRemoteMount(id: $0) },
+                                onDeleteItem: { viewModel.requestDeleteWorkspaceItem(at: $0) },
                                 sshDisplayPath: remoteManager.remoteSSHDisplayPath(forLocalURL: node.url) ?? node.remoteConnectionString
                             )
                         }
@@ -224,6 +226,7 @@ public struct SidebarView: View {
                                     Task { await remoteManager.syncMount(id: mountID, isBackground: false) }
                                 },
                                 onDisconnectMount: { viewModel.disconnectRemoteMount(id: $0) },
+                                onDeleteItem: { viewModel.requestDeleteWorkspaceItem(at: $0) },
                                 sshDisplayPath: remoteManager.remoteSSHDisplayPath(forLocalURL: node.url) ?? node.remoteConnectionString
                             )
                         }

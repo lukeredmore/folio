@@ -11,6 +11,7 @@ struct SidebarArticleRow: View {
     let onNewLaTeXFileInDirectory: (URL) -> Void
     let onSyncMount: (UUID) -> Void
     let onDisconnectMount: (UUID) -> Void
+    let onDeleteItem: (URL) -> Void
     let sshDisplayPath: String?
 
     var body: some View {
@@ -52,7 +53,8 @@ struct SidebarArticleRow: View {
                 onNewFileInDirectory: onNewFileInDirectory,
                 onNewLaTeXFileInDirectory: onNewLaTeXFileInDirectory,
                 onSyncMount: onSyncMount,
-                onDisconnectMount: onDisconnectMount
+                onDisconnectMount: onDisconnectMount,
+                onDeleteItem: onDeleteItem
             )
         }
     }
@@ -67,6 +69,7 @@ struct SidebarFileRow: View {
     let onNewLaTeXFileInDirectory: (URL) -> Void
     let onSyncMount: (UUID) -> Void
     let onDisconnectMount: (UUID) -> Void
+    let onDeleteItem: (URL) -> Void
     let sshDisplayPath: String?
 
     private var iconName: String {
@@ -99,7 +102,8 @@ struct SidebarFileRow: View {
                 onNewFileInDirectory: onNewFileInDirectory,
                 onNewLaTeXFileInDirectory: onNewLaTeXFileInDirectory,
                 onSyncMount: onSyncMount,
-                onDisconnectMount: onDisconnectMount
+                onDisconnectMount: onDisconnectMount,
+                onDeleteItem: onDeleteItem
             )
         }
     }
@@ -112,6 +116,7 @@ struct SidebarNodeContextMenu: View {
     let onNewLaTeXFileInDirectory: (URL) -> Void
     let onSyncMount: (UUID) -> Void
     let onDisconnectMount: (UUID) -> Void
+    let onDeleteItem: (URL) -> Void
 
     var body: some View {
         if node.isDirectory {
@@ -159,6 +164,14 @@ struct SidebarNodeContextMenu: View {
                 NSWorkspace.shared.activateFileViewerSelecting([node.url])
             } label: {
                 Label("Reveal in Finder", systemImage: "folder")
+            }
+        }
+        if node.isDeletableFromSidebar {
+            Divider()
+            Button(role: .destructive) {
+                onDeleteItem(node.url)
+            } label: {
+                Label(node.isRemote ? "Delete from Remote…" : "Move to Trash", systemImage: "trash")
             }
         }
     }

@@ -97,7 +97,10 @@ extension EditorWorkspaceViewModel {
             object: nil,
             queue: .main
         ) { [weak self] _ in
-            MainActor.assumeIsolated { self?.flushPendingAutoSave() }
+            MainActor.assumeIsolated {
+                self?.flushPendingAutoSave()
+                self?.discardUntouchedNewFile()
+            }
         }
     }
 

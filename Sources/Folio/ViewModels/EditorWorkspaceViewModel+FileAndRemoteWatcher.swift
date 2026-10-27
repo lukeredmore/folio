@@ -9,6 +9,7 @@ extension EditorWorkspaceViewModel {
     // MARK: - File & Workspace Operations
     public func newDocument() {
         flushPendingAutoSaveBeforeSwitchingFile()
+        discardUntouchedNewFile()
         stopWatchingCurrentFile()
         activeConflict = nil
         dismissExternalUpdateNotice()
@@ -80,6 +81,7 @@ extension EditorWorkspaceViewModel {
     public func openFile(at url: URL) {
         if currentFileURL?.standardizedFileURL != url.standardizedFileURL {
             flushPendingAutoSaveBeforeSwitchingFile()
+            discardUntouchedNewFile()
         } else {
             pendingAutoSaveWorkItem?.cancel()
             pendingAutoSaveWorkItem = nil
@@ -174,6 +176,7 @@ extension EditorWorkspaceViewModel {
         }
         reloadWorkspaceTree()
         openFile(at: targetURL)
+        untouchedNewFile = (targetURL, template)
     }
 
     func writeDocument(to url: URL) {
