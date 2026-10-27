@@ -6,6 +6,7 @@ public struct MainWindowView: View {
     @ObservedObject var updateManager: AppUpdateManager = .shared
     @State private var columnVisibility: NavigationSplitViewVisibility = .all
     @State private var isHoveringBottomEdge: Bool = false
+    @State private var isWindowTabBarVisible: Bool = false
 
     public init(viewModel: EditorWorkspaceViewModel) {
         self.viewModel = viewModel
@@ -14,7 +15,11 @@ public struct MainWindowView: View {
 
     private var isBottomBarVisibleWhenSidebarClosed: Bool {
         isHoveringBottomEdge || viewModel.showSettingsModal || viewModel.showWordCountPopover
+            || viewModel.externalUpdateNotice != nil
     }
+
+    /// The editor bleeds under the transparent toolbar, but not under the opaque native tab bar.
+    private var editorBleedEdges: Edge.Set { isWindowTabBarVisible ? [] : .top }
 
     private var commentsInspectorBinding: Binding<Bool> {
         Binding(
@@ -29,66 +34,63 @@ public struct MainWindowView: View {
                 SidebarView(viewModel: viewModel)
                     .navigationSplitViewColumnWidth(min: 255, ideal: 265, max: 380)
             } detail: {
-                GeometryReader { proxy in
-                    VStack(spacing: 0) {
-                        ZStack(alignment: .topLeading) {
-                            HybridMarkdownEditorRepresentable(viewModel: viewModel)
-                                .frame(maxWidth: .infinity, maxHeight: .infinity)
-                                .ignoresSafeArea(.container, edges: .top)
-
-                            if let anchor = viewModel.selectionTooltipAnchor {
-                                SelectionTooltipOverlayRepresentable(viewModel: viewModel, anchor: anchor)
-                                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-                                    .ignoresSafeArea(.container, edges: .top)
-                            }
-                        }
-                        .frame(maxWidth: .infinity, maxHeight: .infinity)
-
-                        if viewModel.showSidebar {
-                            StatusBarView(viewModel: viewModel)
-                        }
-                    }
-                    .overlay(alignment: .top) {
+                ZStack(alignment: .top) {
+                    GeometryReader { proxy in
                         VStack(spacing: 0) {
-                            RemoteConnectionBannerView(viewModel: viewModel)
-                            DocumentConflictBannerView(viewModel: viewModel)
-                            ExternalUpdateBannerView(viewModel: viewModel)
-                            if viewModel.showFindReplaceBar {
-                                FindReplaceBannerView(viewModel: viewModel)
-                            }
-                        }
-                    }
-                    .overlay(alignment: .bottom) {
-                        if !viewModel.showSidebar && isBottomBarVisibleWhenSidebarClosed {
-                            StatusBarView(viewModel: viewModel)
-                                .transition(.move(edge: .bottom).combined(with: .opacity))
-                        }
-                    }
-                    .onContinuousHover(coordinateSpace: .local) { phase in
-                        guard !viewModel.showSidebar else {
-                            if isHoveringBottomEdge {
-                                isHoveringBottomEdge = false
-                            }
-                            return
-                        }
-                        switch phase {
-                        case .active(let location):
-                            let nearBottom = (proxy.size.height - location.y) <= 34.0
-                            if isHoveringBottomEdge != nearBottom {
-                                withAnimation(.easeInOut(duration: 0.15)) {
-                                    isHoveringBottomEdge = nearBottom
+                            ZStack(alignment: .topLeading) {
+                                HybridMarkdownEditorRepresentable(viewModel: viewModel)
+                                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                                    .ignoresSafeArea(.container, edges: editorBleedEdges)
+
+                                if let anchor = viewModel.selectionTooltipAnchor {
+                                    SelectionTooltipOverlayRepresentable(viewModel: viewModel, anchor: anchor)
+                                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                                        .ignoresSafeArea(.container, edges: editorBleedEdges)
                                 }
                             }
-                        case .ended:
-                            if isHoveringBottomEdge {
-                                withAnimation(.easeInOut(duration: 0.15)) {
+                            .frame(maxWidth: .infinity, maxHeight: .infinity)
+
+                            if viewModel.showSidebar {
+                                StatusBarView(viewModel: viewModel)
+                            }
+                        }
+                        .overlay(alignment: .bottom) {
+                            if !viewModel.showSidebar && isBottomBarVisibleWhenSidebarClosed {
+                                StatusBarView(viewModel: viewModel)
+                                    .transition(.move(edge: .bottom).combined(with: .opacity))
+                            }
+                        }
+                        .overlayPreferenceValue(AutosaveIndicatorAnchorKey.self) { anchor in
+                            ExternalUpdateTooltipOverlay(viewModel: viewModel, anchor: anchor)
+                        }
+                        .onContinuousHover(coordinateSpace: .local) { phase in
+                            guard !viewModel.showSidebar else {
+                                if isHoveringBottomEdge {
                                     isHoveringBottomEdge = false
                                 }
+                                return
+                            }
+                            switch phase {
+                            case .active(let location):
+                                let nearBottom = (proxy.size.height - location.y) <= 34.0
+                                if isHoveringBottomEdge != nearBottom {
+                                    withAnimation(.easeInOut(duration: 0.15)) {
+                                        isHoveringBottomEdge = nearBottom
+                                    }
+                                }
+                            case .ended:
+                                if isHoveringBottomEdge {
+                                    withAnimation(.easeInOut(duration: 0.15)) {
+                                        isHoveringBottomEdge = false
+                                    }
+                                }
                             }
                         }
                     }
+                    .ignoresSafeArea(.container, edges: editorBleedEdges)
+
+                    DocumentBannerStack(viewModel: viewModel)
                 }
-                .ignoresSafeArea(.container, edges: .top)
                 .background(viewModel.theme.editorBackgroundColor.ignoresSafeArea(.container, edges: [.top, .bottom, .leading]))
                 .toolbarBackgroundVisibility(.hidden, for: .windowToolbar)
                 .background(
@@ -139,6 +141,7 @@ public struct MainWindowView: View {
                 .frame(width: 0, height: 0)
                 .allowsHitTesting(false)
         )
+        .readsWindowTabBarVisibility($isWindowTabBarVisible)
         .background(
             DoubleShiftEventMonitorAccessor(viewModel: viewModel)
                 .frame(width: 0, height: 0)

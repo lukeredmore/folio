@@ -206,9 +206,7 @@ final class CommentsTitlebarAnchorView: NSView {
 
         let pillHeight: CGFloat = 28
         let pillWidth: CGFloat = isCommentsSidebarVisible ? 104 : 36
-        let y: CGFloat = hostView === themeFrame
-            ? round(themeFrame.bounds.height - 26.0 - pillHeight / 2.0)
-            : round((hostView.bounds.height - pillHeight) / 2.0)
+        let y = Self.toolbarRowCenterY(in: hostView, window: window, themeFrame: themeFrame) - round(pillHeight / 2.0)
         let x = max(280.0, round(hostView.bounds.width - pillWidth - 12.0))
         glassView.frame = NSRect(x: x, y: y, width: pillWidth, height: pillHeight)
         glassView.layoutSubtreeIfNeeded()
@@ -229,6 +227,15 @@ final class CommentsTitlebarAnchorView: NSView {
             showButton.isHidden = false
             showButton.frame = NSRect(x: 3, y: 2, width: 30, height: 24)
         }
+    }
+
+    /// Vertical center of the toolbar row, which matches the traffic lights even when a tab bar
+    /// makes the titlebar view taller.
+    private static func toolbarRowCenterY(in hostView: NSView, window: NSWindow, themeFrame: NSView) -> CGFloat {
+        if let close = window.standardWindowButton(.closeButton), close.window === window, !close.isHidden {
+            return round(hostView.convert(close.bounds, from: close).midY)
+        }
+        return hostView === themeFrame ? round(themeFrame.bounds.height - 26.0) : round(hostView.bounds.height / 2.0)
     }
 
     private static func findSubview(named classSubstring: String, in root: NSView) -> NSView? {

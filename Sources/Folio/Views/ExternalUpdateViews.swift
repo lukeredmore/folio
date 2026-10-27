@@ -1,62 +1,7 @@
 import AppKit
 import SwiftUI
 
-// MARK: - Live External Auto-Update Banner & Diff Inspector
-
-public struct ExternalUpdateBannerView: View {
-    @ObservedObject var viewModel: EditorWorkspaceViewModel
-
-    public init(viewModel: EditorWorkspaceViewModel) {
-        self.viewModel = viewModel
-    }
-
-    public var body: some View {
-        if let notice = viewModel.externalUpdateNotice, viewModel.activeConflict == nil {
-            HStack(spacing: 10) {
-                Image(systemName: notice.wasThreeWayMerged ? "arrow.triangle.branch" : "arrow.triangle.2.circlepath.circle.fill")
-                    .font(.system(size: 13, weight: .semibold))
-                    .foregroundColor(.green)
-
-                VStack(alignment: .leading, spacing: 1) {
-                    Text("\(notice.headlineText) in \(notice.fileURL.lastPathComponent) (\(notice.summaryText))")
-                        .font(.system(size: 11.5, weight: .semibold))
-                        .foregroundColor(viewModel.theme.textColor)
-                    Text("Changed lines are highlighted in green in the editor.")
-                        .font(.system(size: 10.5))
-                        .foregroundColor(viewModel.theme.secondaryTextColor)
-                }
-
-                Spacer()
-
-                Button("View Diff") {
-                    viewModel.showExternalUpdateDiffModal = true
-                }
-                .controlSize(.small)
-
-                Button("Undo Update") {
-                    viewModel.undo()
-                    viewModel.dismissExternalUpdateNotice()
-                }
-                .controlSize(.small)
-
-                Button {
-                    viewModel.dismissExternalUpdateNotice()
-                } label: {
-                    Image(systemName: "xmark")
-                        .font(.system(size: 10.5, weight: .semibold))
-                        .foregroundColor(viewModel.theme.secondaryTextColor)
-                }
-                .buttonStyle(.plain)
-            }
-            .padding(.horizontal, 14)
-            .padding(.vertical, 8)
-            .background(Color.green.opacity(viewModel.theme.isDark ? 0.14 : 0.08))
-            .overlay(alignment: .bottom) {
-                Divider().overlay(Color.green.opacity(0.35))
-            }
-        }
-    }
-}
+// MARK: - Document Conflict Banner & External Update Diff Inspector
 
 public struct DocumentConflictBannerView: View {
     @ObservedObject var viewModel: EditorWorkspaceViewModel
