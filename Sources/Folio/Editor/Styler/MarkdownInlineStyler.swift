@@ -164,11 +164,13 @@ extension MarkdownLiveStyler {
             }
         }
 
-        // 2. Inline Math ($E = mc^2$)
+        // 2. Inline Math ($E = mc^2$); `$` inside link destinations (e.g. CloudWatch `$3F`) is literal
+        let linkDestinationRanges = nsString.range(of: "$", options: .literal, range: range).location == NSNotFound
+            ? [] : scanMarkdownLinks(nsString: nsString, range: range, isDelimiterProtected: isInCodeOrMath).map(\.trailingSyntaxRange)
         inlineMathRegex.enumerateMatches(in: string, options: [], range: range) { match, _, _ in
             guard let match = match else { return }
             let fullMatchRange = match.range(at: 0)
-            if isInCodeOrMath(fullMatchRange) {
+            if isInCodeOrMath(fullMatchRange) || linkDestinationRanges.contains(where: { NSIntersectionRange($0, fullMatchRange).length > 0 }) {
                 return
             }
             insertSortedRange(fullMatchRange, into: &codeAndMathRanges)

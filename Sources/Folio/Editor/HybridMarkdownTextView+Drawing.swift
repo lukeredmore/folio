@@ -63,10 +63,13 @@ extension HybridMarkdownTextView {
 
                 let fenceTop = origin.y + firstFrag.minY - 2.0
                 let fenceBottom = origin.y + lastFrag.maxY + 2.0
+                // Cards nested in list items start at the item's text indent (code lines sit 14pt inside the card).
+                let fencePara = textStorage?.attribute(.paragraphStyle, at: dec.lineRange.location, effectiveRange: nil) as? NSParagraphStyle
+                let cardInset = min(max(0.0, (fencePara?.firstLineHeadIndent ?? 14.0) - 14.0), contentWidth * 0.5)
                 let unifiedFenceRect = NSRect(
-                    x: origin.x,
+                    x: origin.x + cardInset,
                     y: fenceTop,
-                    width: contentWidth,
+                    width: contentWidth - cardInset,
                     height: max(24.0, fenceBottom - fenceTop)
                 )
 

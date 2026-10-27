@@ -162,6 +162,8 @@ extension MarkdownLiveStyler {
     static func styleCodeFenceDelimiterLine(
         in storage: NSTextStorage,
         lineRange: NSRange,
+        contentRange: NSRange,
+        container: CodeFenceContainer,
         isClosing: Bool,
         isActiveLine: Bool,
         theme: EditorTheme,
@@ -176,8 +178,9 @@ extension MarkdownLiveStyler {
         fencePara.lineSpacing = 0.0
         fencePara.paragraphSpacingBefore = 0.0
         fencePara.paragraphSpacing = isClosing ? max(4.0, typography.paragraphSpacing * 0.55) : 0.0
-        fencePara.firstLineHeadIndent = 14.0
-        fencePara.headIndent = 14.0
+        let fenceIndent = codeFenceContainerLayout(in: storage, contentRange: contentRange, container: container, font: codeMono)
+        fencePara.firstLineHeadIndent = fenceIndent.first
+        fencePara.headIndent = fenceIndent.wrapped
         fencePara.minimumLineHeight = fenceRowHeight
         fencePara.maximumLineHeight = fenceRowHeight
         fencePara.tailIndent = effectiveContainerWidth
@@ -190,12 +193,14 @@ extension MarkdownLiveStyler {
             .kern: 0.0,
             noSpellCheckAttributeKey: true
         ], range: lineRange)
+        collapseWhitespaceRange(in: storage, range: fenceIndent.collapsed)
     }
 
     static func styleCodeFenceBodyLine(
         in storage: NSTextStorage,
         lineRange: NSRange,
         contentRange: NSRange,
+        container: CodeFenceContainer = CodeFenceContainer(),
         language: String?,
         theme: EditorTheme,
         effectiveBaseSize: CGFloat,
@@ -210,8 +215,9 @@ extension MarkdownLiveStyler {
         codePara.lineSpacing = 0.0
         codePara.paragraphSpacingBefore = 0.0
         codePara.paragraphSpacing = 0.0
-        codePara.firstLineHeadIndent = 14.0
-        codePara.headIndent = 14.0
+        let bodyIndent = codeFenceContainerLayout(in: storage, contentRange: contentRange, container: container, font: codeMono)
+        codePara.firstLineHeadIndent = bodyIndent.first
+        codePara.headIndent = bodyIndent.wrapped
         codePara.minimumLineHeight = bodyRowHeight
         codePara.maximumLineHeight = bodyRowHeight
         codePara.tailIndent = effectiveContainerWidth
@@ -234,6 +240,23 @@ extension MarkdownLiveStyler {
                 dimFactor: dimFactor
             )
         }
+        collapseWhitespaceRange(in: storage, range: bodyIndent.collapsed)
+    }
+
+    /// Indents a fenced code line to its list item, hiding the container indent and hanging wrapped rows under the code's own indent.
+    static func codeFenceContainerLayout(
+        in storage: NSTextStorage,
+        contentRange: NSRange,
+        container: CodeFenceContainer,
+        font: NSFont
+    ) -> (first: CGFloat, wrapped: CGFloat, collapsed: NSRange) {
+        let text = (storage.string as NSString).substring(with: contentRange)
+        let leading = text.prefix(while: { $0 == " " }).count
+        let stripped = min(leading, container.strippedSpaces)
+        let first = 14.0 + container.indent
+        let spaceWidth = (" " as NSString).size(withAttributes: [.font: font]).width
+        let wrapped = first + min(CGFloat(leading - stripped) * spaceWidth, 160.0)
+        return (first, wrapped, NSRange(location: contentRange.location, length: stripped))
     }
 
     static func styleBlankLine(

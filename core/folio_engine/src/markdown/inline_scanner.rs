@@ -1,7 +1,7 @@
 use super::html_inline::{try_scan_anchor_image, try_scan_inline_html_tag};
 use super::inline_helpers::{
-    detect_emphasis_marker, find_closing_marker_cached, is_ascii_punctuation_byte, match_parens,
-    parse_markdown_link_dest_and_title,
+    detect_emphasis_marker, find_closing_marker_cached, inline_math_next_closers,
+    is_ascii_punctuation_byte, match_parens, parse_markdown_link_dest_and_title,
 };
 use super::types::{
     MarkdownBlockDecoration, MarkdownBlockDecorationKind, SyntaxFoldSpan, SyntaxTokenKind,
@@ -43,6 +43,7 @@ fn scan_inline_with_ctx(ctx: &mut InlineScanContext<'_>) {
     let mut i = 0;
     let mut failed_tick_mask: u64 = 0;
     let mut no_closing_dollar = false;
+    let mut math_closers: Option<Vec<usize>> = None;
     let mut cached_bracket_paren: Option<Option<usize>> = None;
     let mut no_closing_angle = false;
     let mut exhausted_from = [usize::MAX; 8];
@@ -65,7 +66,9 @@ fn scan_inline_with_ctx(ctx: &mut InlineScanContext<'_>) {
         }
 
         if !no_closing_dollar && bytes[i] == b'$' && i + 1 < bytes.len() && bytes[i + 1] != b'$' {
-            if let Some(next_i) = try_scan_inline_math(ctx, i, &mut no_closing_dollar) {
+            if let Some(next_i) =
+                try_scan_inline_math(ctx, i, &mut math_closers, &mut no_closing_dollar)
+            {
                 i = next_i;
                 continue;
             }
@@ -163,23 +166,17 @@ fn try_scan_code_span(
 fn try_scan_inline_math(
     ctx: &mut InlineScanContext<'_>,
     start: usize,
+    math_closers: &mut Option<Vec<usize>>,
     no_closing_dollar: &mut bool,
 ) -> Option<usize> {
     let bytes = ctx.line_slice.as_bytes();
-    let mut search = start + 1;
-    let mut found_close = None;
-    while search < bytes.len() {
-        if bytes[search] == b'$' && bytes[search - 1] != b'\\' {
-            found_close = Some(search);
-            break;
-        }
-        search += 1;
-    }
-    let Some(close_idx) = found_close else {
+    let closers = math_closers.get_or_insert_with(|| inline_math_next_closers(bytes));
+    let close_idx = closers[start + 2];
+    if close_idx == usize::MAX {
         *no_closing_dollar = true;
         return None;
-    };
-    if close_idx <= start + 1 {
+    }
+    if bytes[start + 1].is_ascii_whitespace() {
         return None;
     }
     let latex = ctx.line_slice[start + 1..close_idx].to_string();
