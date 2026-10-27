@@ -199,6 +199,7 @@ public struct StatusBarView: View {
                     .foregroundStyle(.green)
             }
             .buttonStyle(.borderless)
+            .anchorPreference(key: AutosaveIndicatorAnchorKey.self, value: .bounds) { $0 }
             .help(
                 (notice.wasThreeWayMerged
                     ? "Auto-Merged (+\(notice.addedLines)/-\(notice.removedLines))"
