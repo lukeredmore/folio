@@ -50,6 +50,7 @@ extension EditorWorkspaceViewModel {
 
     public func newLaTeXDocument() {
         flushPendingAutoSaveBeforeSwitchingFile()
+        discardUntouchedNewFile()
         stopWatchingCurrentFile()
         activeConflict = nil
         dismissExternalUpdateNotice()
@@ -103,6 +104,7 @@ extension EditorWorkspaceViewModel {
         }
         reloadWorkspaceTree()
         openFile(at: targetURL)
+        untouchedNewFile = (targetURL, template)
     }
 
     // MARK: - Mode-Aware Formatting Helpers
