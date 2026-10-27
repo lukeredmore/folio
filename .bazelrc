@@ -12,6 +12,14 @@ common --repository_cache=~/.cache/bazel-repo
 build --disk_cache=~/.cache/bazel-disk
 test --test_output=errors
 
+# Rust lints run as part of every build and test, so `bazel test //...` is the only gate.
+# These flags mirror [workspace.lints] in Cargo.toml, which Bazel does not read.
+build --aspects=@rules_rust//rust:defs.bzl%rust_clippy_aspect
+build --output_groups=+clippy_checks
+build --@rules_rust//rust/settings:clippy.toml=//:clippy.toml
+build --@rules_rust//rust/settings:rustfmt.toml=//:rustfmt.toml
+build --@rules_rust//rust/settings:clippy_flags=-Dwarnings,-Dclippy::allow_attributes,-Dclippy::wildcard_imports,-Wclippy::too_many_lines,-Wclippy::cognitive_complexity,-Wclippy::too_many_arguments,-Wclippy::type_complexity
+
 # CI profile for GitHub Actions macOS Apple Silicon runners
 common:ci --color=yes
 common:ci --curses=no

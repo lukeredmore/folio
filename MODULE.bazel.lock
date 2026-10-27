@@ -174,7 +174,7 @@
           "@@//zed/folio_zed_extension/Cargo.toml": "804c0b58aa5296c8336f42d74da604fd4d82788039d219a07fc175554e987272",
           "@@//Cargo.lock": "0277a9e271f7d647446595d8844fc97c5adb0800fdf69e28c5b2f10cd7fc6c57",
           "@@//core/folio_engine/Cargo.toml": "f903e81bbc1a264439a354ca1c8045dae3d044b95337732bf5bff5ff03b51015",
-          "@@//MODULE.bazel": "ec7b3fdf24f401ffb2bf9e725e54c1fe1bcdb6e9310872e8b83cb78d9efeb65f",
+          "@@//MODULE.bazel": "9cb985a7658799b03bfd1b8c0bfe8eea78c94fa19e482b9aebe6d84daf67eca4",
           "@@rules_rust~~rust_host_tools~rust_host_tools//rust_host_tools": "ENOENT"
         },
         "recordedDirentsInputs": {},
