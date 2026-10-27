@@ -140,10 +140,18 @@ pub fn parse_bibtex_entries(content: &str) -> Vec<BibEntryData> {
             let key = raw_entry.v.key.v.trim().to_string();
             let (mut author, mut year, mut title) = (String::new(), String::new(), String::new());
             if let Some(entry) = resolved.as_ref().and_then(|b| b.get(&key)) {
-                if let Some(c) = entry.fields.get("author").or_else(|| entry.fields.get("editor")) {
+                if let Some(c) = entry
+                    .fields
+                    .get("author")
+                    .or_else(|| entry.fields.get("editor"))
+                {
                     author = clean_tex_inline_text(&c.format_verbatim());
                 }
-                if let Some(c) = entry.fields.get("year").or_else(|| entry.fields.get("date")) {
+                if let Some(c) = entry
+                    .fields
+                    .get("year")
+                    .or_else(|| entry.fields.get("date"))
+                {
                     year = c.format_verbatim().chars().take(4).collect();
                 }
                 if let Some(c) = entry.fields.get("title") {
@@ -244,7 +252,14 @@ pub fn read_bracket_group(bytes: &[u8], open: usize) -> Option<(usize, usize, us
 
 pub fn clean_tex_inline_text(raw: &str) -> String {
     let mut s = raw.to_string();
-    for w in ["\\textbf{", "\\textit{", "\\emph{", "\\texttt{", "\\textsc{", "\\underline{"] {
+    for w in [
+        "\\textbf{",
+        "\\textit{",
+        "\\emph{",
+        "\\texttt{",
+        "\\textsc{",
+        "\\underline{",
+    ] {
         while let Some(pos) = s.find(w) {
             s.replace_range(pos..(pos + w.len()), "");
             if let Some(last) = s.rfind('}') {
@@ -253,9 +268,20 @@ pub fn clean_tex_inline_text(raw: &str) -> String {
         }
     }
     for (pat, rep) in [
-        ("\\LaTeX{}", "LaTeX"), ("\\LaTeX", "LaTeX"), ("\\TeX{}", "TeX"), ("\\TeX", "TeX"),
-        ("\\&", "&"), ("\\%", "%"), ("\\_", "_"), ("\\#", "#"), ("\\$", "$"),
-        ("~", " "), ("---", "—"), ("--", "–"), ("``", "“"), ("''", "”"),
+        ("\\LaTeX{}", "LaTeX"),
+        ("\\LaTeX", "LaTeX"),
+        ("\\TeX{}", "TeX"),
+        ("\\TeX", "TeX"),
+        ("\\&", "&"),
+        ("\\%", "%"),
+        ("\\_", "_"),
+        ("\\#", "#"),
+        ("\\$", "$"),
+        ("~", " "),
+        ("---", "—"),
+        ("--", "–"),
+        ("``", "“"),
+        ("''", "”"),
     ] {
         s = s.replace(pat, rep);
     }

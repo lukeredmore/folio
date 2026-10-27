@@ -1,14 +1,14 @@
 use std::{borrow::Cow, sync::OnceLock};
 
 use merman::{
-    Engine, MermaidConfig, Renderer, SvgEnvironment, SvgRequest,
     svg::{
-        CssOverridePolicy, DeterministicTextMeasurer, HostTheme, HostThemePreset, LayoutOptions,
-        MeasurementProfileId, Presentation, RenderError, SvgDebugOptions, SvgOutputPolicy,
-        SvgPipeline, SvgPipelinePreset, SvgPostprocessContext, SvgPostprocessor, SvgRenderOptions,
-        TextMeasurementPolicy, TextMeasurementProfile, TextMeasurementProfileIdentity, TextStyle,
-        ThemeRole, sanitize_svg_id,
+        sanitize_svg_id, CssOverridePolicy, DeterministicTextMeasurer, HostTheme, HostThemePreset,
+        LayoutOptions, MeasurementProfileId, Presentation, RenderError, SvgDebugOptions,
+        SvgOutputPolicy, SvgPipeline, SvgPipelinePreset, SvgPostprocessContext, SvgPostprocessor,
+        SvgRenderOptions, TextMeasurementPolicy, TextMeasurementProfile,
+        TextMeasurementProfileIdentity, TextStyle, ThemeRole,
     },
+    Engine, MermaidConfig, Renderer, SvgEnvironment, SvgRequest,
 };
 
 const FONT_FAMILY: &str =
@@ -29,29 +29,52 @@ pub(super) struct FolioMermaidColors {
 pub(super) const fn theme_colors(is_dark: bool) -> FolioMermaidColors {
     if is_dark {
         FolioMermaidColors {
-            canvas: "#161922", surface: "#232838", surface_alt: "#283352", text: "#E8ECF4",
-            subtle_text: "#B8C4DC", border: "#4B6BFB", line: "#8B9BB8", edge_label_bg: "#1A1E29",
+            canvas: "#161922",
+            surface: "#232838",
+            surface_alt: "#283352",
+            text: "#E8ECF4",
+            subtle_text: "#B8C4DC",
+            border: "#4B6BFB",
+            line: "#8B9BB8",
+            edge_label_bg: "#1A1E29",
         }
     } else {
         FolioMermaidColors {
-            canvas: "#FFFFFF", surface: "#F4F6FB", surface_alt: "#E6ECFA", text: "#1B2234",
-            subtle_text: "#4B5672", border: "#3B5BDB", line: "#52607A", edge_label_bg: "#FFFFFF",
+            canvas: "#FFFFFF",
+            surface: "#F4F6FB",
+            surface_alt: "#E6ECFA",
+            text: "#1B2234",
+            subtle_text: "#4B5672",
+            border: "#3B5BDB",
+            line: "#52607A",
+            edge_label_bg: "#FFFFFF",
         }
     }
 }
 
 const DARK_ROLES: &[(ThemeRole, &str)] = &[
-    (ThemeRole::Canvas, "#161922"), (ThemeRole::Surface, "#232838"),
-    (ThemeRole::SurfaceAlt, "#283352"), (ThemeRole::SurfaceMuted, "#1C202B"),
-    (ThemeRole::Text, "#E8ECF4"), (ThemeRole::SubtleText, "#B8C4DC"),
-    (ThemeRole::Border, "#4B6BFB"), (ThemeRole::Line, "#8B9BB8"),
-    (ThemeRole::EdgeLabelBackground, "#1A1E29"), (ThemeRole::ClusterBackground, "#191D28"),
-    (ThemeRole::ClusterBorder, "#36405A"), (ThemeRole::NoteBackground, "#283352"),
-    (ThemeRole::NoteBorder, "#4B6BFB"), (ThemeRole::NoteText, "#E8ECF4"),
-    (ThemeRole::ActorBackground, "#232838"), (ThemeRole::ActorBorder, "#4B6BFB"),
-    (ThemeRole::ActorText, "#E8ECF4"), (ThemeRole::ActivationBackground, "#283352"),
-    (ThemeRole::ActivationBorder, "#5E81F4"), (ThemeRole::Error, "#F87171"),
-    (ThemeRole::Warning, "#FBBF24"), (ThemeRole::Success, "#34D399"),
+    (ThemeRole::Canvas, "#161922"),
+    (ThemeRole::Surface, "#232838"),
+    (ThemeRole::SurfaceAlt, "#283352"),
+    (ThemeRole::SurfaceMuted, "#1C202B"),
+    (ThemeRole::Text, "#E8ECF4"),
+    (ThemeRole::SubtleText, "#B8C4DC"),
+    (ThemeRole::Border, "#4B6BFB"),
+    (ThemeRole::Line, "#8B9BB8"),
+    (ThemeRole::EdgeLabelBackground, "#1A1E29"),
+    (ThemeRole::ClusterBackground, "#191D28"),
+    (ThemeRole::ClusterBorder, "#36405A"),
+    (ThemeRole::NoteBackground, "#283352"),
+    (ThemeRole::NoteBorder, "#4B6BFB"),
+    (ThemeRole::NoteText, "#E8ECF4"),
+    (ThemeRole::ActorBackground, "#232838"),
+    (ThemeRole::ActorBorder, "#4B6BFB"),
+    (ThemeRole::ActorText, "#E8ECF4"),
+    (ThemeRole::ActivationBackground, "#283352"),
+    (ThemeRole::ActivationBorder, "#5E81F4"),
+    (ThemeRole::Error, "#F87171"),
+    (ThemeRole::Warning, "#FBBF24"),
+    (ThemeRole::Success, "#34D399"),
 ];
 
 const DARK_PALETTE: &[&str] = &[
@@ -60,17 +83,28 @@ const DARK_PALETTE: &[&str] = &[
 ];
 
 const LIGHT_ROLES: &[(ThemeRole, &str)] = &[
-    (ThemeRole::Canvas, "#FFFFFF"), (ThemeRole::Surface, "#F4F6FB"),
-    (ThemeRole::SurfaceAlt, "#E6ECFA"), (ThemeRole::SurfaceMuted, "#EEF2F8"),
-    (ThemeRole::Text, "#1B2234"), (ThemeRole::SubtleText, "#4B5672"),
-    (ThemeRole::Border, "#3B5BDB"), (ThemeRole::Line, "#52607A"),
-    (ThemeRole::EdgeLabelBackground, "#FFFFFF"), (ThemeRole::ClusterBackground, "#F3F5FA"),
-    (ThemeRole::ClusterBorder, "#C5D0E6"), (ThemeRole::NoteBackground, "#FFF9DB"),
-    (ThemeRole::NoteBorder, "#F08C00"), (ThemeRole::NoteText, "#2B2110"),
-    (ThemeRole::ActorBackground, "#F4F6FB"), (ThemeRole::ActorBorder, "#3B5BDB"),
-    (ThemeRole::ActorText, "#1B2234"), (ThemeRole::ActivationBackground, "#E6ECFA"),
-    (ThemeRole::ActivationBorder, "#3B5BDB"), (ThemeRole::Error, "#E03131"),
-    (ThemeRole::Warning, "#F08C00"), (ThemeRole::Success, "#0CA678"),
+    (ThemeRole::Canvas, "#FFFFFF"),
+    (ThemeRole::Surface, "#F4F6FB"),
+    (ThemeRole::SurfaceAlt, "#E6ECFA"),
+    (ThemeRole::SurfaceMuted, "#EEF2F8"),
+    (ThemeRole::Text, "#1B2234"),
+    (ThemeRole::SubtleText, "#4B5672"),
+    (ThemeRole::Border, "#3B5BDB"),
+    (ThemeRole::Line, "#52607A"),
+    (ThemeRole::EdgeLabelBackground, "#FFFFFF"),
+    (ThemeRole::ClusterBackground, "#F3F5FA"),
+    (ThemeRole::ClusterBorder, "#C5D0E6"),
+    (ThemeRole::NoteBackground, "#FFF9DB"),
+    (ThemeRole::NoteBorder, "#F08C00"),
+    (ThemeRole::NoteText, "#2B2110"),
+    (ThemeRole::ActorBackground, "#F4F6FB"),
+    (ThemeRole::ActorBorder, "#3B5BDB"),
+    (ThemeRole::ActorText, "#1B2234"),
+    (ThemeRole::ActivationBackground, "#E6ECFA"),
+    (ThemeRole::ActivationBorder, "#3B5BDB"),
+    (ThemeRole::Error, "#E03131"),
+    (ThemeRole::Warning, "#F08C00"),
+    (ThemeRole::Success, "#0CA678"),
 ];
 
 const LIGHT_PALETTE: &[&str] = &[
@@ -98,13 +132,21 @@ pub(super) const fn fallback_text_color(is_dark: bool) -> &'static str {
 }
 
 fn build_renderer(is_dark: bool) -> FolioMermaidRenderer {
-    let resolved = Presentation::new().with_theme(build_host_theme(is_dark)).resolve();
+    let resolved = Presentation::new()
+        .with_theme(build_host_theme(is_dark))
+        .resolve();
     let mut site_config = MermaidConfig::empty_object();
     site_config.set_value("look", "classic".into());
     site_config.set_value("flowchart.wrappingWidth", 220.into());
     site_config.set_value("sequence.messageMargin", 42.into());
-    let engine = resolved.materialize_engine(Engine::new()).with_site_config(site_config);
-    let diagram_id = if is_dark { "folio-mermaid-dark" } else { "folio-mermaid-light" };
+    let engine = resolved
+        .materialize_engine(Engine::new())
+        .with_site_config(site_config);
+    let diagram_id = if is_dark {
+        "folio-mermaid-dark"
+    } else {
+        "folio-mermaid-light"
+    };
     let svg_request = SvgRequest {
         environment: build_svg_environment(),
         layout: LayoutOptions::headless_svg_defaults(),
@@ -116,7 +158,10 @@ fn build_renderer(is_dark: bool) -> FolioMermaidRenderer {
         pipeline: Some(build_svg_pipeline()),
         presentation: resolved.render_policy(),
     };
-    FolioMermaidRenderer { renderer: Renderer::new().with_engine(engine), svg_request }
+    FolioMermaidRenderer {
+        renderer: Renderer::new().with_engine(engine),
+        svg_request,
+    }
 }
 
 fn build_svg_environment() -> SvgEnvironment {
@@ -125,7 +170,8 @@ fn build_svg_environment() -> SvgEnvironment {
         if let Ok(identity) = TextMeasurementProfileIdentity::new(id, "v1") {
             let measurer =
                 DeterministicTextMeasurer::default().with_width_callback(sf_pro_text_width_px);
-            let policy = TextMeasurementPolicy::uniform(TextMeasurementProfile::new(identity, measurer));
+            let policy =
+                TextMeasurementPolicy::uniform(TextMeasurementProfile::new(identity, measurer));
             env = env.with_text_measurement_policy(policy);
         }
     }
@@ -165,12 +211,23 @@ fn build_host_theme(is_dark: bool) -> HostTheme {
         (HostThemePreset::EditorLight, LIGHT_ROLES, LIGHT_PALETTE)
     };
     let mut theme = HostTheme::from_preset(preset);
-    if let Ok(t) = theme.clone().try_with_font_family(FONT_FAMILY) { theme = t; }
-    if let Ok(t) = theme.clone().try_with_font_size("14px") { theme = t; }
-    for &(role, color) in roles {
-        if let Ok(t) = theme.clone().try_with_role(role, color) { theme = t; }
+    if let Ok(t) = theme.clone().try_with_font_family(FONT_FAMILY) {
+        theme = t;
     }
-    if let Ok(t) = theme.clone().try_with_series_palette(palette.iter().copied()) { theme = t; }
+    if let Ok(t) = theme.clone().try_with_font_size("14px") {
+        theme = t;
+    }
+    for &(role, color) in roles {
+        if let Ok(t) = theme.clone().try_with_role(role, color) {
+            theme = t;
+        }
+    }
+    if let Ok(t) = theme
+        .clone()
+        .try_with_series_palette(palette.iter().copied())
+    {
+        theme = t;
+    }
     theme
 }
 
@@ -193,8 +250,11 @@ impl SvgPostprocessor for ClassMemberAlignPostprocessor {
                 let start = from + rel;
                 let end = find_matching_g_end(&owned, start).unwrap_or(owned.len());
                 let slice = &owned[start..end];
-                if slice.contains("<foreignObject ") && !slice.contains(r#"<foreignObject text-anchor="start" "#) {
-                    let replaced = slice.replace("<foreignObject ", r#"<foreignObject text-anchor="start" "#);
+                if slice.contains("<foreignObject ")
+                    && !slice.contains(r#"<foreignObject text-anchor="start" "#)
+                {
+                    let replaced =
+                        slice.replace("<foreignObject ", r#"<foreignObject text-anchor="start" "#);
                     from = start + replaced.len();
                     owned.replace_range(start..end, &replaced);
                 } else {

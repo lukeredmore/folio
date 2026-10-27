@@ -49,7 +49,8 @@ pub(crate) fn try_scan_anchor_image(
         is_revealed: ctx.is_active_line,
     });
     ctx.syntax_fold_spans.push(SyntaxFoldSpan {
-        byte_range: (ctx.base_offset + img_bracket_close)..(ctx.base_offset + outer_paren_close + 1),
+        byte_range: (ctx.base_offset + img_bracket_close)
+            ..(ctx.base_offset + outer_paren_close + 1),
         kind: SyntaxTokenKind::LinkSyntax,
         is_revealed: ctx.is_active_line,
     });
@@ -90,8 +91,8 @@ fn scan_html_img_tag(
             end_idx = open_gt + 1 + close_rel + "</video>".len();
         }
     }
-    let raw_src = extract_html_attr(attrs, "src")
-        .or_else(|| extract_html_attr(inner_slice, "src"))?;
+    let raw_src =
+        extract_html_attr(attrs, "src").or_else(|| extract_html_attr(inner_slice, "src"))?;
     let src = raw_src.replace("&amp;", "&");
     let alt = extract_html_attr(attrs, "alt").unwrap_or_default();
     let title = extract_html_attr(attrs, "title");
@@ -122,8 +123,8 @@ fn scan_html_img_tag(
 
 fn map_paired_html_tag(tag_name: &str) -> Option<HtmlInlineTagKind> {
     use HtmlInlineTagKind::{
-        Bold, Code, Details, Italic, Kbd, Mark, Span, Strikethrough, Subscript, Superscript,
-        Summary, Underline,
+        Bold, Code, Details, Italic, Kbd, Mark, Span, Strikethrough, Subscript, Summary,
+        Superscript, Underline,
     };
     match tag_name {
         "kbd" => Some(Kbd),
@@ -151,8 +152,7 @@ fn scan_inline_svg_tag(
         .to_ascii_lowercase()
         .find("</svg>")?;
     let svg_end = open_gt + 1 + close_rel + "</svg>".len();
-    let (norm_svg, w, h) =
-        crate::mermaid::normalize_svg_markup(&ctx.line_slice[open_lt..svg_end])?;
+    let (norm_svg, w, h) = crate::mermaid::normalize_svg_markup(&ctx.line_slice[open_lt..svg_end])?;
     let span = (ctx.base_offset + open_lt)..(ctx.base_offset + svg_end);
     ctx.syntax_fold_spans.push(SyntaxFoldSpan {
         byte_range: span.clone(),

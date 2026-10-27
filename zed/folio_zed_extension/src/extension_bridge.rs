@@ -71,7 +71,12 @@ fn build_editor_highlights(text: &str, frame: &FolioZedRenderFrame) -> EditorHig
     let mut row_highlights = Vec::new();
     let code_bg = pack_engine_rgba(frame.theme.code_background);
     let inline_code_fg = pack_engine_rgba(frame.theme.inline_code_color);
-    let quote_bg = pack_rgba(0.35, 0.55, 0.95, if frame.theme.is_dark { 0.08 } else { 0.06 });
+    let quote_bg = pack_rgba(
+        0.35,
+        0.55,
+        0.95,
+        if frame.theme.is_dark { 0.08 } else { 0.06 },
+    );
 
     for dec in &frame.block_decorations {
         match dec {

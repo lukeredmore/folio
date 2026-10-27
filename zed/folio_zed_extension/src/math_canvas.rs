@@ -1,6 +1,4 @@
-use folio_engine::math::{
-    layout_latex, plain_text_summary, MathDrawPrimitive, MathFontStyle,
-};
+use folio_engine::math::{layout_latex, plain_text_summary, MathDrawPrimitive, MathFontStyle};
 
 /// A GPU-ready paint command for Zed's GPUI `WindowContext::paint_quad` and `TextSystem::shape_line`.
 #[derive(Debug, Clone, PartialEq)]

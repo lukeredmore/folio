@@ -1,10 +1,6 @@
-use crate::keystroke_controller::{
-    evaluate_markdown_keystroke, KeystrokeDecision, KeystrokeInput,
-};
+use crate::keystroke_controller::{evaluate_markdown_keystroke, KeystrokeDecision, KeystrokeInput};
 use crate::markdown_formatting::cycle_code_block_language;
-use crate::math_canvas::{
-    build_gpui_math_canvas, GpuiMathCanvasDescriptor, GpuiMathPrimitive,
-};
+use crate::math_canvas::{build_gpui_math_canvas, GpuiMathCanvasDescriptor, GpuiMathPrimitive};
 use crate::text_navigation::{
     extract_html_attr, percent_decode_str, surrounding_code_span_delimiters,
 };
@@ -48,8 +44,14 @@ pub fn dispatch_preview_command(command: &str, args: &[String]) -> Result<String
         "evaluate_keystroke" => handle_evaluate_keystroke(args),
         "surrounding_code_span_delimiters" => {
             let src = args.first().map(String::as_str).unwrap_or("");
-            let start = args.get(1).and_then(|s| s.parse::<usize>().ok()).unwrap_or(0);
-            let end = args.get(2).and_then(|s| s.parse::<usize>().ok()).unwrap_or(0);
+            let start = args
+                .get(1)
+                .and_then(|s| s.parse::<usize>().ok())
+                .unwrap_or(0);
+            let end = args
+                .get(2)
+                .and_then(|s| s.parse::<usize>().ok())
+                .unwrap_or(0);
             if let Some((open, close)) = surrounding_code_span_delimiters(src, &(start..end)) {
                 Ok(format!(
                     "1\t{}\t{}\t{}\t{}",
@@ -61,8 +63,14 @@ pub fn dispatch_preview_command(command: &str, args: &[String]) -> Result<String
         }
         "cycle_code_block_language" => {
             let src = args.first().map(String::as_str).unwrap_or("");
-            let start = args.get(1).and_then(|s| s.parse::<usize>().ok()).unwrap_or(0);
-            let end = args.get(2).and_then(|s| s.parse::<usize>().ok()).unwrap_or(0);
+            let start = args
+                .get(1)
+                .and_then(|s| s.parse::<usize>().ok())
+                .unwrap_or(0);
+            let end = args
+                .get(2)
+                .and_then(|s| s.parse::<usize>().ok())
+                .unwrap_or(0);
             let lang = args.get(3).map(String::as_str).unwrap_or("");
             if let Some((range, repl)) = cycle_code_block_language(src, start..end, lang) {
                 Ok(format!("1\t{}\t{}\n{}", range.start, range.end, repl))
@@ -89,10 +97,22 @@ pub fn dispatch_preview_command(command: &str, args: &[String]) -> Result<String
 
 fn handle_evaluate_keystroke(args: &[String]) -> Result<String, String> {
     let source = args.first().map(String::as_str).unwrap_or("");
-    let sel_start = args.get(1).and_then(|s| s.parse::<usize>().ok()).unwrap_or(0);
-    let sel_end = args.get(2).and_then(|s| s.parse::<usize>().ok()).unwrap_or(0);
-    let head = args.get(3).and_then(|s| s.parse::<usize>().ok()).unwrap_or(0);
-    let tail = args.get(4).and_then(|s| s.parse::<usize>().ok()).unwrap_or(0);
+    let sel_start = args
+        .get(1)
+        .and_then(|s| s.parse::<usize>().ok())
+        .unwrap_or(0);
+    let sel_end = args
+        .get(2)
+        .and_then(|s| s.parse::<usize>().ok())
+        .unwrap_or(0);
+    let head = args
+        .get(3)
+        .and_then(|s| s.parse::<usize>().ok())
+        .unwrap_or(0);
+    let tail = args
+        .get(4)
+        .and_then(|s| s.parse::<usize>().ok())
+        .unwrap_or(0);
     let key = args.get(5).map(String::as_str).unwrap_or("");
     let flags = args.get(6).and_then(|s| s.parse::<u32>().ok()).unwrap_or(0);
     let input = KeystrokeInput {

@@ -138,9 +138,7 @@ pub fn toggle_heading_level(
     let len = source.len();
     let cursor = snap_char_boundary_left(source, cursor);
     let line_start = source[..cursor].rfind('\n').map_or(0, |idx| idx + 1);
-    let line_end = source[cursor..]
-        .find('\n')
-        .map_or(len, |rel| cursor + rel);
+    let line_end = source[cursor..].find('\n').map_or(len, |rel| cursor + rel);
     let line = &source[line_start..line_end];
     let existing_hashes = line.bytes().take_while(|&b| b == b'#').count();
     let existing_ws = if existing_hashes > 0 {
@@ -184,7 +182,11 @@ pub fn cycle_code_block_language(
 ) -> Option<(Range<usize>, String)> {
     let current = {
         let s = current_lang.trim();
-        if s.is_empty() { "plain" } else { s }
+        if s.is_empty() {
+            "plain"
+        } else {
+            s
+        }
     };
     let next_idx = CODE_BLOCK_LANGUAGES
         .iter()

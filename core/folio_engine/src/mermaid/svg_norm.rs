@@ -27,7 +27,8 @@ pub fn normalize_svg_markup(raw_svg: &str) -> Option<(String, f32, f32)> {
     let w = width.unwrap_or(320.0).clamp(24.0, 4096.0);
     let h = height.unwrap_or(180.0).clamp(24.0, 4096.0);
 
-    let cleaned_open_tag = strip_non_numeric_svg_dimensions(open_tag, explicit_width, explicit_height);
+    let cleaned_open_tag =
+        strip_non_numeric_svg_dimensions(open_tag, explicit_width, explicit_height);
     let mut normalized = String::with_capacity(svg_slice.len() + 96);
     normalized.push_str(&cleaned_open_tag);
     if !cleaned_open_tag.contains("xmlns=") {

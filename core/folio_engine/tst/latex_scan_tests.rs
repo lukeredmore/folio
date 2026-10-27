@@ -44,10 +44,7 @@ fn test_scan_latex_directives_preamble_and_body() {
     assert_eq!(d1[0].opt_arg, "11pt,a4paper");
     assert_eq!(d1[0].arg1, "article");
 
-    let d2 = scan_latex_directives(
-        r"\newif\ifblind \blindfalse % \blindtrue in comment",
-        true,
-    );
+    let d2 = scan_latex_directives(r"\newif\ifblind \blindfalse % \blindtrue in comment", true);
     assert_eq!(d2.len(), 2);
     assert_eq!(d2[0].kind, LatexDirectiveKind::NewIf);
     assert_eq!(d2[0].arg1, "blind");
@@ -91,7 +88,10 @@ fn test_classify_latex_line_and_macro_template() {
     assert_eq!(tpl.color_name, "accent");
     assert_eq!(tpl.prefix_label, "Solution:");
 
-    let math = normalize_display_math(r"a &= b \label{eq:1} \tag{A.1} \\ c &= d \nonumber", "align*");
+    let math = normalize_display_math(
+        r"a &= b \label{eq:1} \tag{A.1} \\ c &= d \nonumber",
+        "align*",
+    );
     assert_eq!(math.explicit_tag, "A.1");
     assert!(math.cleaned_latex.starts_with(r"\begin{aligned}"));
     assert!(!math.cleaned_latex.contains(r"\label"));

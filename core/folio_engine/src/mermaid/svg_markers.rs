@@ -45,7 +45,9 @@ pub(super) fn materialize_svg_markers(svg: &str, colors: FolioMermaidColors) -> 
         }
 
         let pts = if is_path {
-            extract_attr(raw_tag, "d").map(parse_path_points).unwrap_or_default()
+            extract_attr(raw_tag, "d")
+                .map(parse_path_points)
+                .unwrap_or_default()
         } else {
             parse_line_points(raw_tag)
         };
@@ -151,7 +153,11 @@ fn parse_path_points(d: &str) -> Vec<(f64, f64)> {
             i += 1;
         }
     }
-    nums.as_chunks::<2>().0.iter().map(|&[x, y]| (x, y)).collect()
+    nums.as_chunks::<2>()
+        .0
+        .iter()
+        .map(|&[x, y]| (x, y))
+        .collect()
 }
 
 fn start_tangent(pts: &[(f64, f64)]) -> Option<(f64, f64, f64)> {
@@ -191,7 +197,9 @@ fn emit_marker_shape(
 
     if marker_id.contains("zeroOrMore") || marker_id.contains("oneOrMore") {
         let extra = if marker_id.contains("zeroOrMore") {
-            format!(r#"<circle cx="20" cy="0" r="4.5" fill="{surface}" stroke="{line}" stroke-width="1.5"/>"#)
+            format!(
+                r#"<circle cx="20" cy="0" r="4.5" fill="{surface}" stroke="{line}" stroke-width="1.5"/>"#
+            )
         } else {
             r#"<path d="M 15,-6.5 L 15,6.5"/>"#.to_string()
         };
@@ -202,7 +210,9 @@ fn emit_marker_shape(
     } else if marker_id.contains("onlyOne") || marker_id.contains("zeroOrOne") {
         let rot = if is_start { deg } else { deg + 180.0 };
         let inner = if marker_id.contains("zeroOrOne") {
-            format!(r#"<path d="M 9,-6.5 L 9,6.5"/><circle cx="19" cy="0" r="4.5" fill="{surface}" stroke="{line}" stroke-width="1.5"/>"#)
+            format!(
+                r#"<path d="M 9,-6.5 L 9,6.5"/><circle cx="19" cy="0" r="4.5" fill="{surface}" stroke="{line}" stroke-width="1.5"/>"#
+            )
         } else {
             r#"<path d="M 9,-6.5 L 9,6.5 M 15,-6.5 L 15,6.5"/>"#.to_string()
         };
@@ -219,7 +229,11 @@ fn emit_marker_shape(
             r#"<polygon points="{pts}" fill="{surface}" stroke="{line}" stroke-width="1.5" transform="translate({x:.2},{y:.2}) rotate({dir_deg:.2})"/>"#
         ));
     } else if marker_id.contains("composition") || marker_id.contains("aggregation") {
-        let fill = if marker_id.contains("composition") { line } else { surface };
+        let fill = if marker_id.contains("composition") {
+            line
+        } else {
+            surface
+        };
         out.push_str(&format!(
             r#"<polygon points="0,0 -7,-4.5 -14,0 -7,4.5" fill="{fill}" stroke="{line}" stroke-width="1.5" transform="translate({x:.2},{y:.2}) rotate({dir_deg:.2})"/>"#
         ));

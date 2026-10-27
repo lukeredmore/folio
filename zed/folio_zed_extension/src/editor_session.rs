@@ -1,6 +1,4 @@
-use crate::inlay_folding::{
-    analyze_buffer_for_zed_with_options, ZedBlockDecoration, ZedFoldRange,
-};
+use crate::inlay_folding::{analyze_buffer_for_zed_with_options, ZedBlockDecoration, ZedFoldRange};
 use crate::math_canvas::{build_gpui_math_canvas, GpuiMathCanvasDescriptor};
 use crate::theme_sync::ZedThemeOverrides;
 use folio_engine::markdown::{
@@ -63,7 +61,9 @@ impl FolioZedModSession {
         cursor_byte_range: Range<usize>,
     ) -> FolioZedRenderFrame {
         let theme = ZedThemeOverrides::for_appearance(self.is_dark);
-        let sel_len = cursor_byte_range.end.saturating_sub(cursor_byte_range.start);
+        let sel_len = cursor_byte_range
+            .end
+            .saturating_sub(cursor_byte_range.start);
         let stats = DocumentStats::compute(buffer_text, Some((cursor_byte_range.start, sel_len)));
 
         if !self.enabled {

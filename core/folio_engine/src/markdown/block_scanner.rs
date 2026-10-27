@@ -174,7 +174,10 @@ pub(crate) fn is_horizontal_rule(line: &str) -> bool {
     }
     let check_marker = |marker: char| -> bool {
         let count = trimmed.chars().filter(|&c| c == marker).count();
-        count >= 3 && trimmed.chars().all(|c| c == marker || c == ' ' || c == '\t')
+        count >= 3
+            && trimmed
+                .chars()
+                .all(|c| c == marker || c == ' ' || c == '\t')
     };
     check_marker('-') || check_marker('*') || check_marker('_')
 }

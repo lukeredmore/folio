@@ -11,8 +11,7 @@ pub fn compute_newline_continuation(line_up_to_cursor: &str) -> NewlineAction {
 
     // 1. Check unordered / task list: '-', '*', '+' followed by whitespace
     if let Some(first) = after_ws.chars().next() {
-        if (first == '-' || first == '*' || first == '+')
-            && after_ws[1..].starts_with([' ', '\t'])
+        if (first == '-' || first == '*' || first == '+') && after_ws[1..].starts_with([' ', '\t'])
         {
             return compute_unordered_or_task_newline(line_up_to_cursor, ws_end, after_ws);
         }
@@ -20,8 +19,7 @@ pub fn compute_newline_continuation(line_up_to_cursor: &str) -> NewlineAction {
         if first == '>' && after_ws[1..].starts_with([' ', '\t']) {
             let mut quote_ws_end = 1;
             let qb = after_ws.as_bytes();
-            while quote_ws_end < qb.len()
-                && (qb[quote_ws_end] == b' ' || qb[quote_ws_end] == b'\t')
+            while quote_ws_end < qb.len() && (qb[quote_ws_end] == b' ' || qb[quote_ws_end] == b'\t')
             {
                 quote_ws_end += 1;
             }
