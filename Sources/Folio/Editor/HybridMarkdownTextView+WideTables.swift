@@ -110,6 +110,14 @@ extension HybridMarkdownTextView {
     }
 
     public override func draw(_ dirtyRect: NSRect) {
+        let recorder = editorCoordinator?.perf
+        recorder?.increment(.draw)
+        EditorPerfScope.bind(recorder) {
+            EditorPerfPhase.draw.measure { drawEditorContent(dirtyRect) }
+        }
+    }
+
+    private func drawEditorContent(_ dirtyRect: NSRect) {
         if !drawsBackground {
             drawBackground(in: dirtyRect)
         }

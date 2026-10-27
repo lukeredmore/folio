@@ -54,6 +54,9 @@ extension EditorWorkspaceViewModel {
 
     func persistUndoTimelines() {
         guard !isRestoringState else { return }
+        perfCounters.undoPersistCount += 1
+        let span = EditorPerfPhase.undoPersist.begin()
+        defer { span.end() }
         hasUnpersistedUndoChanges = false
         var boundedTimelines: [String: DocumentUndoTimeline] = [:]
         boundedTimelines.reserveCapacity(perFileUndoTimelines.count)

@@ -110,7 +110,7 @@ public final class DiagramImageRenderer: @unchecked Sendable {
             let key = queue.removeFirst()
             lock.unlock()
 
-            let image = renderFunction(key)
+            let image = EditorPerfPhase.diagramRender.measure { renderFunction(key) }
 
             lock.lock()
             if entries[key] != nil {

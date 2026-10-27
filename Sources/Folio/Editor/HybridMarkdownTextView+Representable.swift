@@ -30,6 +30,7 @@ public struct HybridMarkdownEditorRepresentable: NSViewRepresentable {
         let layoutManager = WideBlockLayoutManager()
         layoutManager.delegate = context.coordinator.softLineBreakLayoutDelegate
         textStorage.addLayoutManager(layoutManager)
+        context.coordinator.observePerfEdits(of: textStorage)
 
         let textContainer = WideBlockTextContainer(containerSize: NSSize(width: 800, height: CGFloat.greatestFiniteMagnitude))
         textContainer.widthTracksTextView = false

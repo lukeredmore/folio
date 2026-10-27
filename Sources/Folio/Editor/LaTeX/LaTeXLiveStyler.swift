@@ -49,6 +49,8 @@ public enum LaTeXLiveStyler {
         baseDirectoryURL: URL? = nil,
         fileURL: URL? = nil
     ) -> MarkdownDocumentAnalysis {
+        let span = EditorPerfPhase.latexStyles.begin()
+        defer { span.end() }
         let typography = typography ?? theme.typography
         let string = storage.string
         let nsString = string as NSString
