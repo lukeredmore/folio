@@ -30,9 +30,7 @@ pub use editing::{
     toggle_task_checkbox_at_cursor,
 };
 pub use newline::{compute_newline_continuation, replace_code_fence_language};
-pub use tables::{
-    is_gfm_table_candidate_line, is_gfm_table_delimiter_row, split_gfm_table_cells,
-};
+pub use tables::{is_gfm_table_candidate_line, is_gfm_table_delimiter_row, split_gfm_table_cells};
 pub use types::{
     CmarkAstAnalysis, CmarkBlockKind, CmarkBlockSpan, CmarkInlineKind, CmarkInlineSpan,
     HtmlInlineTagKind, MarkdownAnalysis, MarkdownBlockDecoration, MarkdownBlockDecorationKind,

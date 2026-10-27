@@ -71,7 +71,8 @@ fn count_words_in_str(s: &str) -> usize {
     let mut count = 0;
     let mut in_word = false;
     for ch in s.chars() {
-        let is_word_char = ch.is_alphanumeric() || (in_word && (ch == '\'' || ch == '’' || ch == '-'));
+        let is_word_char =
+            ch.is_alphanumeric() || (in_word && (ch == '\'' || ch == '’' || ch == '-'));
         if is_word_char {
             if !in_word {
                 in_word = true;

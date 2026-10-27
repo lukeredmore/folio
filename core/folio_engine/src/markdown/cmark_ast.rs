@@ -232,9 +232,8 @@ unsafe fn extract_list_item_span(
             sib = cmark_node_next(sib);
         }
     }
-    let flags = (u32::from(is_ordered) * 4)
-        | (u32::from(is_task) * 8)
-        | (u32::from(task_checked) * 16);
+    let flags =
+        (u32::from(is_ordered) * 4) | (u32::from(is_task) * 8) | (u32::from(task_checked) * 16);
     CmarkBlockSpan {
         kind: CmarkBlockKind::ListItem,
         start_line: pos.0,

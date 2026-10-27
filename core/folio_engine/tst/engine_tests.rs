@@ -58,7 +58,8 @@ fn test_markdown_analysis_and_newline() {
 
 #[test]
 fn test_replace_code_fence_language_and_table_headers() {
-    let md = "Intro\n```swift\nlet x = 1\n```\n| Col A | Col B |\n| :--- | :--- |\n| `v1` | `v2` |\n";
+    let md =
+        "Intro\n```swift\nlet x = 1\n```\n| Col A | Col B |\n| :--- | :--- |\n| `v1` | `v2` |\n";
     let fence_offset = md.find("```swift").unwrap();
     let updated = replace_code_fence_language(md, fence_offset, "rust").unwrap();
     assert!(updated.contains("```rust\nlet x = 1\n```"));
@@ -161,7 +162,8 @@ fn test_flowchart_ampersand_in_quoted_label_and_cyclic_state_diagram() {
         styler_svg.svg
     );
 
-    let cyclic_state = "stateDiagram-v2\n    Idle --> Running : start\n    Running --> Idle : stop\n";
+    let cyclic_state =
+        "stateDiagram-v2\n    Idle --> Running : start\n    Running --> Idle : stop\n";
     let state_svg = render_mermaid_to_svg(cyclic_state, false);
     assert!(state_svg.svg.contains("Idle"));
     assert!(state_svg.svg.contains("Running"));
@@ -201,7 +203,10 @@ fn test_rich_media_images_mermaid_svg_and_inline_html() {
     )));
     assert!(analysis.block_decorations.iter().any(|b| matches!(
         &b.kind,
-        MarkdownBlockDecorationKind::HtmlInline { tag: HtmlInlineTagKind::Kbd, .. }
+        MarkdownBlockDecorationKind::HtmlInline {
+            tag: HtmlInlineTagKind::Kbd,
+            ..
+        }
     )));
     assert!(analysis
         .syntax_fold_spans

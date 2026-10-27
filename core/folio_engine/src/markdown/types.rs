@@ -60,10 +60,18 @@ pub struct SyntaxFoldSpan {
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum MarkdownBlockDecorationKind {
-    HeadingUnderline { level: usize },
-    Blockquote { nest_level: usize },
-    CodeFenceStart { language: String },
-    CodeFenceBody { language: String },
+    HeadingUnderline {
+        level: usize,
+    },
+    Blockquote {
+        nest_level: usize,
+    },
+    CodeFenceStart {
+        language: String,
+    },
+    CodeFenceBody {
+        language: String,
+    },
     CodeFenceEnd,
     InlineCode,
     MathBlockRendered {

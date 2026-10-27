@@ -100,7 +100,10 @@ pub fn plain_text_summary(latex: &str) -> String {
             Token::Superscript => out.push('^'),
             Token::Subscript => out.push('_'),
             Token::Space => out.push(' '),
-            Token::BeginGroup | Token::EndGroup | Token::AlignmentTab | Token::MathShift
+            Token::BeginGroup
+            | Token::EndGroup
+            | Token::AlignmentTab
+            | Token::MathShift
             | Token::DisplayShift => {}
         }
     }

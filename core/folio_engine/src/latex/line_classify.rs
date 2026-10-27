@@ -144,21 +144,23 @@ fn classify_caption(
 ) -> Option<LatexLineClassification> {
     let p = after_cmd + usize::from(bytes.get(after_cmd) == Some(&b'*'));
     let trimmed_end = line.trim_end_matches([' ', '\t']).len();
-    (bytes.get(p) == Some(&b'{') && trimmed_end > p + 1 && bytes[trimmed_end - 1] == b'}').then(|| {
-        let (inner_s, close_b) = (p + 1, trimmed_end - 1);
-        LatexLineClassification {
-            kind: LatexLineKind::Caption,
-            open_loc: u16[start],
-            open_len: u16[inner_s].saturating_sub(u16[start]),
-            body_loc: u16[inner_s],
-            body_len: u16[close_b].saturating_sub(u16[inner_s]),
-            close_loc: u16[close_b],
-            close_len: u16[trimmed_end].saturating_sub(u16[close_b]),
-            cmd: "caption".to_string(),
-            arg1: line[inner_s..close_b].to_string(),
-            ..empty_classification()
-        }
-    })
+    (bytes.get(p) == Some(&b'{') && trimmed_end > p + 1 && bytes[trimmed_end - 1] == b'}').then(
+        || {
+            let (inner_s, close_b) = (p + 1, trimmed_end - 1);
+            LatexLineClassification {
+                kind: LatexLineKind::Caption,
+                open_loc: u16[start],
+                open_len: u16[inner_s].saturating_sub(u16[start]),
+                body_loc: u16[inner_s],
+                body_len: u16[close_b].saturating_sub(u16[inner_s]),
+                close_loc: u16[close_b],
+                close_len: u16[trimmed_end].saturating_sub(u16[close_b]),
+                cmd: "caption".to_string(),
+                arg1: line[inner_s..close_b].to_string(),
+                ..empty_classification()
+            }
+        },
+    )
 }
 
 fn classify_macro_open(
@@ -174,7 +176,13 @@ fn classify_macro_open(
     if bytes.get(p) == Some(&b'{') {
         let (body_loc, body_len, close_loc, close_len, arg1) =
             if let Some((s, e, after_b)) = read_balanced_braces(bytes, p) {
-                (u16[s], u16[e].saturating_sub(u16[s]), u16[e], u16[after_b].saturating_sub(u16[e]), line[s..e].to_string())
+                (
+                    u16[s],
+                    u16[e].saturating_sub(u16[s]),
+                    u16[e],
+                    u16[after_b].saturating_sub(u16[e]),
+                    line[s..e].to_string(),
+                )
             } else {
                 (u16[p + 1], 0, 0, 0, String::new())
             };

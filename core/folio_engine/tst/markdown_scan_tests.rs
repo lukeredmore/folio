@@ -212,5 +212,8 @@ fn test_inline_math_ignores_dollars_in_link_destinations_and_prices() {
     assert!(inline_math_sources(&md).is_empty());
     assert!(inline_math_sources("Costs $5 and $10 today.\n").is_empty());
     assert!(inline_math_sources("Gap $ x$ stays literal.\n").is_empty());
-    assert_eq!(inline_math_sources("Energy $E = mc^2$ holds.\n"), vec!["E = mc^2"]);
+    assert_eq!(
+        inline_math_sources("Energy $E = mc^2$ holds.\n"),
+        vec!["E = mc^2"]
+    );
 }

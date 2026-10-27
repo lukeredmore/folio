@@ -63,10 +63,7 @@ fn unescape_json_str(raw: &str) -> String {
     out
 }
 
-fn parse_flat_objects_in_section(
-    json: &str,
-    section_key: &str,
-) -> Vec<BTreeMap<String, String>> {
+fn parse_flat_objects_in_section(json: &str, section_key: &str) -> Vec<BTreeMap<String, String>> {
     let needle = format!("\"{section_key}\"");
     let start = json.find(&needle).expect("Missing section in spec JSON");
     let bracket_open = json[start..].find('[').unwrap() + start;

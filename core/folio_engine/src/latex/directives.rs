@@ -71,9 +71,30 @@ pub fn scan_latex_directives(line: &str, is_preamble: bool) -> Vec<LatexDirectiv
     let mut out = Vec::new();
     if is_preamble {
         match text.trim() {
-            "\\onehalfspacing" => push_item(&mut out, LatexDirectiveKind::SetStretch, false, "onehalfspacing", "", ("1.25", "", "")),
-            "\\doublespacing" => push_item(&mut out, LatexDirectiveKind::SetStretch, false, "doublespacing", "", ("1.65", "", "")),
-            "\\singlespacing" => push_item(&mut out, LatexDirectiveKind::SetStretch, false, "singlespacing", "", ("1.0", "", "")),
+            "\\onehalfspacing" => push_item(
+                &mut out,
+                LatexDirectiveKind::SetStretch,
+                false,
+                "onehalfspacing",
+                "",
+                ("1.25", "", ""),
+            ),
+            "\\doublespacing" => push_item(
+                &mut out,
+                LatexDirectiveKind::SetStretch,
+                false,
+                "doublespacing",
+                "",
+                ("1.65", "", ""),
+            ),
+            "\\singlespacing" => push_item(
+                &mut out,
+                LatexDirectiveKind::SetStretch,
+                false,
+                "singlespacing",
+                "",
+                ("1.0", "", ""),
+            ),
             _ => {}
         }
     }
@@ -101,12 +122,26 @@ fn try_scan_directive(
     match cmd {
         "documentclass" => {
             let (opt, a1, next) = read_opt_and_brace(text, after)?;
-            push_item(out, LatexDirectiveKind::DocumentClass, false, cmd, opt, (a1, "", ""));
+            push_item(
+                out,
+                LatexDirectiveKind::DocumentClass,
+                false,
+                cmd,
+                opt,
+                (a1, "", ""),
+            );
             return Some(next);
         }
         "usepackage" if is_preamble => {
             let (opt, a1, next) = read_opt_and_brace(text, after)?;
-            push_item(out, LatexDirectiveKind::UsePackage, false, cmd, opt, (a1, "", ""));
+            push_item(
+                out,
+                LatexDirectiveKind::UsePackage,
+                false,
+                cmd,
+                opt,
+                (a1, "", ""),
+            );
             return Some(next);
         }
         "part" | "chapter" | "section" | "sectiontitle" | "subsection" | "subsubsection"
@@ -116,27 +151,62 @@ fn try_scan_directive(
             let starred = cmd == "sectiontitle" || bytes.get(after) == Some(&b'*');
             let p = after + usize::from(bytes.get(after) == Some(&b'*'));
             let (opt, raw, next) = read_opt_and_brace(text, p)?;
-            push_item(out, LatexDirectiveKind::Section, starred, cmd, opt, (&clean_tex_inline_text(raw), "", ""));
+            push_item(
+                out,
+                LatexDirectiveKind::Section,
+                starred,
+                cmd,
+                opt,
+                (&clean_tex_inline_text(raw), "", ""),
+            );
             return Some(next);
         }
         "label" => {
             let (s, e, next) = read_balanced_braces(bytes, after)?;
-            push_item(out, LatexDirectiveKind::Label, false, cmd, "", (text[s..e].trim(), "", ""));
+            push_item(
+                out,
+                LatexDirectiveKind::Label,
+                false,
+                cmd,
+                "",
+                (text[s..e].trim(), "", ""),
+            );
             return Some(next);
         }
         "bibliography" | "addbibresource" => {
             let (s, e, next) = read_balanced_braces(bytes, after)?;
-            push_item(out, LatexDirectiveKind::BibResource, false, cmd, "", (&text[s..e], "", ""));
+            push_item(
+                out,
+                LatexDirectiveKind::BibResource,
+                false,
+                cmd,
+                "",
+                (&text[s..e], "", ""),
+            );
             return Some(next);
         }
         "input" | "include" if is_preamble && at_start => {
             let (s, e, next) = read_balanced_braces(bytes, after)?;
-            push_item(out, LatexDirectiveKind::InputFile, false, cmd, "", (&text[s..e], "", ""));
+            push_item(
+                out,
+                LatexDirectiveKind::InputFile,
+                false,
+                cmd,
+                "",
+                (&text[s..e], "", ""),
+            );
             return Some(next);
         }
         "title" | "author" | "date" if at_start => {
             let (opt, raw, next) = read_opt_and_brace(text, after)?;
-            push_item(out, LatexDirectiveKind::Frontmatter, false, cmd, opt, (&clean_tex_inline_text(raw), "", ""));
+            push_item(
+                out,
+                LatexDirectiveKind::Frontmatter,
+                false,
+                cmd,
+                opt,
+                (&clean_tex_inline_text(raw), "", ""),
+            );
             return Some(next);
         }
         _ => {}
@@ -149,13 +219,40 @@ fn try_scan_directive(
     if cmd == "newif" {
         let (if_cmd, next) = read_cmd_at(text, skip_hspace(bytes, after))?;
         if let Some(c) = if_cmd.strip_prefix("if").filter(|c| !c.is_empty()) {
-            push_item(out, LatexDirectiveKind::NewIf, false, "newif", "", (c, "", ""));
+            push_item(
+                out,
+                LatexDirectiveKind::NewIf,
+                false,
+                "newif",
+                "",
+                (c, "", ""),
+            );
             return Some(next);
         }
-    } else if let Some(c) = cmd.strip_suffix("true").filter(|&c| !c.is_empty() && c != "if") {
-        push_item(out, LatexDirectiveKind::ToggleIf, false, cmd, "", (c, "true", ""));
-    } else if let Some(c) = cmd.strip_suffix("false").filter(|&c| !c.is_empty() && c != "if") {
-        push_item(out, LatexDirectiveKind::ToggleIf, false, cmd, "", (c, "false", ""));
+    } else if let Some(c) = cmd
+        .strip_suffix("true")
+        .filter(|&c| !c.is_empty() && c != "if")
+    {
+        push_item(
+            out,
+            LatexDirectiveKind::ToggleIf,
+            false,
+            cmd,
+            "",
+            (c, "true", ""),
+        );
+    } else if let Some(c) = cmd
+        .strip_suffix("false")
+        .filter(|&c| !c.is_empty() && c != "if")
+    {
+        push_item(
+            out,
+            LatexDirectiveKind::ToggleIf,
+            false,
+            cmd,
+            "",
+            (c, "false", ""),
+        );
     }
     None
 }
@@ -170,7 +267,14 @@ fn try_scan_preamble_style(
     match cmd {
         "setmainfont" | "setsansfont" | "setmonofont" => {
             let (opt, f, next) = read_opt_and_brace(text, after)?;
-            push_item(out, LatexDirectiveKind::SetFont, false, cmd, opt, (f.trim(), "", ""));
+            push_item(
+                out,
+                LatexDirectiveKind::SetFont,
+                false,
+                cmd,
+                opt,
+                (f.trim(), "", ""),
+            );
             Some(next)
         }
         "renewcommand" => {
@@ -179,13 +283,27 @@ fn try_scan_preamble_style(
             let (s2, e2, a2) = read_balanced_braces(bytes, a1)?;
             let target = text[s2..e2].trim().trim_start_matches('\\');
             matches!(target, "sfdefault" | "rmdefault" | "ttdefault").then(|| {
-                push_item(out, LatexDirectiveKind::FamilyDefault, false, cmd, "", (target, "", ""));
+                push_item(
+                    out,
+                    LatexDirectiveKind::FamilyDefault,
+                    false,
+                    cmd,
+                    "",
+                    (target, "", ""),
+                );
                 a2
             })
         }
         "setstretch" | "linespread" => {
             let (s, e, next) = read_balanced_braces(bytes, after)?;
-            push_item(out, LatexDirectiveKind::SetStretch, false, cmd, "", (text[s..e].trim(), "", ""));
+            push_item(
+                out,
+                LatexDirectiveKind::SetStretch,
+                false,
+                cmd,
+                "",
+                (text[s..e].trim(), "", ""),
+            );
             Some(next)
         }
         "setlength" => {
@@ -193,14 +311,32 @@ fn try_scan_preamble_style(
             let param = text[s1..e1].trim().trim_start_matches('\\');
             matches!(param, "parindent" | "parskip").then_some(())?;
             let (s2, e2, a2) = read_balanced_braces(bytes, a1)?;
-            push_item(out, LatexDirectiveKind::SetLength, false, cmd, "", (param, text[s2..e2].trim(), ""));
+            push_item(
+                out,
+                LatexDirectiveKind::SetLength,
+                false,
+                cmd,
+                "",
+                (param, text[s2..e2].trim(), ""),
+            );
             Some(a2)
         }
         "definecolor" => {
             let (s1, e1, a1) = read_balanced_braces(bytes, after)?;
             let (s2, e2, a2) = read_balanced_braces(bytes, a1)?;
             let (s3, e3, a3) = read_balanced_braces(bytes, a2)?;
-            push_item(out, LatexDirectiveKind::DefineColor, false, cmd, "", (text[s1..e1].trim(), text[s2..e2].trim(), text[s3..e3].trim()));
+            push_item(
+                out,
+                LatexDirectiveKind::DefineColor,
+                false,
+                cmd,
+                "",
+                (
+                    text[s1..e1].trim(),
+                    text[s2..e2].trim(),
+                    text[s3..e3].trim(),
+                ),
+            );
             Some(a3)
         }
         _ => None,
@@ -209,50 +345,108 @@ fn try_scan_preamble_style(
 
 pub fn analyze_macro_template(active: &str, body_placeholder: &str) -> MacroTemplateAnalysis {
     let shows_body = !body_placeholder.is_empty() && active.contains(body_placeholder);
-    let ph_pos = if shows_body { active.find(body_placeholder).unwrap_or(active.len()) } else { 0 };
+    let ph_pos = if shows_body {
+        active.find(body_placeholder).unwrap_or(active.len())
+    } else {
+        0
+    };
     let bytes = active.as_bytes();
     let (mut color_name, mut prefix_label, mut vspace_list, mut heading_level, mut i) =
         (String::new(), String::new(), Vec::new(), 0u32, 0usize);
     while i < bytes.len() {
-        let Some((cmd, after)) = read_control_word(active, i) else { i += 1; continue; };
+        let Some((cmd, after)) = read_control_word(active, i) else {
+            i += 1;
+            continue;
+        };
         let p = after + usize::from(bytes.get(after) == Some(&b'*'));
         if matches!(cmd, "color" | "textcolor") && color_name.is_empty() {
-            if let Some((s, e, next)) = read_balanced_braces(bytes, after) { color_name = active[s..e].to_string(); i = next; continue; }
+            if let Some((s, e, next)) = read_balanced_braces(bytes, after) {
+                color_name = active[s..e].to_string();
+                i = next;
+                continue;
+            }
         } else if cmd == "textbf" && shows_body && prefix_label.is_empty() && i < ph_pos {
-            if let Some((s, e, next)) = read_balanced_braces(bytes, after) { prefix_label = active[s..e].to_string(); i = next; continue; }
+            if let Some((s, e, next)) = read_balanced_braces(bytes, after) {
+                prefix_label = active[s..e].to_string();
+                i = next;
+                continue;
+            }
         } else if cmd == "vspace" {
-            if let Some((s, e, next)) = read_balanced_braces(bytes, p) { vspace_list.push(active[s..e].trim().to_string()); i = next; continue; }
-        } else if shows_body && heading_level == 0 && bytes.get(skip_ascii_ws(bytes, p)) == Some(&b'{') {
-            heading_level = match cmd { "part" | "chapter" | "section" | "sectiontitle" => 1, "subsection" => 2, "subsubsection" => 3, "paragraph" => 4, _ => 0 };
+            if let Some((s, e, next)) = read_balanced_braces(bytes, p) {
+                vspace_list.push(active[s..e].trim().to_string());
+                i = next;
+                continue;
+            }
+        } else if shows_body
+            && heading_level == 0
+            && bytes.get(skip_ascii_ws(bytes, p)) == Some(&b'{')
+        {
+            heading_level = match cmd {
+                "part" | "chapter" | "section" | "sectiontitle" => 1,
+                "subsection" => 2,
+                "subsubsection" => 3,
+                "paragraph" => 4,
+                _ => 0,
+            };
         }
         i = after;
     }
-    MacroTemplateAnalysis { shows_body, heading_level, color_name, prefix_label, vspace_args: vspace_list.join(",") }
+    MacroTemplateAnalysis {
+        shows_body,
+        heading_level,
+        color_name,
+        prefix_label,
+        vspace_args: vspace_list.join(","),
+    }
 }
 
 pub fn normalize_display_math(raw: &str, env_name: &str) -> NormalizedDisplayMath {
     let bytes = raw.as_bytes();
-    let (mut explicit_tag, mut stripped, mut i) = (String::new(), String::with_capacity(raw.len()), 0usize);
+    let (mut explicit_tag, mut stripped, mut i) =
+        (String::new(), String::with_capacity(raw.len()), 0usize);
     while i < bytes.len() {
         if let Some((cmd, after)) = read_control_word(raw, i) {
             let p = after + usize::from(bytes.get(after) == Some(&b'*'));
             if cmd == "tag" {
                 if let Some((s, e, next)) = read_balanced_braces(bytes, p) {
-                    if explicit_tag.is_empty() { explicit_tag = raw[s..e].to_string(); }
-                    i = next; continue;
+                    if explicit_tag.is_empty() {
+                        explicit_tag = raw[s..e].to_string();
+                    }
+                    i = next;
+                    continue;
                 }
             } else if cmd == "label" {
-                if let Some((_, _, next)) = read_balanced_braces(bytes, after) { i = next; continue; }
-            } else if matches!(cmd, "nonumber" | "notag") { i = after; continue; }
+                if let Some((_, _, next)) = read_balanced_braces(bytes, after) {
+                    i = next;
+                    continue;
+                }
+            } else if matches!(cmd, "nonumber" | "notag") {
+                i = after;
+                continue;
+            }
         }
-        if let Some(ch) = raw[i..].chars().next() { stripped.push(ch); i += ch.len_utf8(); } else { break; }
+        if let Some(ch) = raw[i..].chars().next() {
+            stripped.push(ch);
+            i += ch.len_utf8();
+        } else {
+            break;
+        }
     }
     let mut s = stripped.trim().to_string();
     let base = env_name.replace('*', "");
-    if matches!(base.as_str(), "align" | "flalign" | "alignat") && !s.contains("\\begin{aligned}") && (s.contains('&') || s.contains("\\\\")) {
+    if matches!(base.as_str(), "align" | "flalign" | "alignat")
+        && !s.contains("\\begin{aligned}")
+        && (s.contains('&') || s.contains("\\\\"))
+    {
         s = format!("\\begin{{aligned}}\n{s}\n\\end{{aligned}}");
-    } else if matches!(base.as_str(), "gather" | "multline") && !s.contains("\\begin{gathered}") && s.contains("\\\\") {
+    } else if matches!(base.as_str(), "gather" | "multline")
+        && !s.contains("\\begin{gathered}")
+        && s.contains("\\\\")
+    {
         s = format!("\\begin{{gathered}}\n{s}\n\\end{{gathered}}");
     }
-    NormalizedDisplayMath { cleaned_latex: s, explicit_tag }
+    NormalizedDisplayMath {
+        cleaned_latex: s,
+        explicit_tag,
+    }
 }

@@ -236,5 +236,9 @@ fn delim_decision(source: &str, sel: Range<usize>, delim: &str) -> KeystrokeDeci
 }
 
 const fn select_target(tail: usize, next_pos: usize, shift: bool) -> Range<usize> {
-    if shift { tail..next_pos } else { next_pos..next_pos }
+    if shift {
+        tail..next_pos
+    } else {
+        next_pos..next_pos
+    }
 }

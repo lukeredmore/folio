@@ -60,10 +60,7 @@ fn unescape_json_str(raw: &str) -> String {
     out
 }
 
-fn parse_flat_objects_in_section(
-    json: &str,
-    section_key: &str,
-) -> Vec<BTreeMap<String, String>> {
+fn parse_flat_objects_in_section(json: &str, section_key: &str) -> Vec<BTreeMap<String, String>> {
     let needle = format!("\"{section_key}\"");
     let start = json.find(&needle).expect("Missing section in spec JSON");
     let bracket_open = json[start..].find('[').unwrap() + start;
@@ -194,7 +191,10 @@ fn test_zed_mod_session_matches_shared_fold_reveal_specs() {
         );
         // Active cursor byte must never be inside any Zed fold range
         assert!(
-            frame.folds.iter().all(|f| !f.byte_range.contains(&cursor_byte)),
+            frame
+                .folds
+                .iter()
+                .all(|f| !f.byte_range.contains(&cursor_byte)),
             "Zed Extension case {id}: active cursor {cursor_byte} must not be folded"
         );
     }

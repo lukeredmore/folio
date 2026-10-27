@@ -228,8 +228,7 @@ pub(crate) fn handle_math_or_hr_or_heading(
         kind: SyntaxTokenKind::HeadingHashes,
         is_revealed: ctx.effective_active,
     });
-    if let Some(close_idx) =
-        closing_start.filter(|&c| c > prefix_len && c < ctx.content_line.len())
+    if let Some(close_idx) = closing_start.filter(|&c| c > prefix_len && c < ctx.content_line.len())
     {
         out.syntax_fold_spans.push(SyntaxFoldSpan {
             byte_range: (ctx.line_start + close_idx)..ctx.content_end,

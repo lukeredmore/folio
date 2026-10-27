@@ -264,7 +264,9 @@ pub fn analyze_markdown_document_with_options(
             &mut state,
             &line_ctx,
             is_table_line,
-            raw_lines.get(idx + 1).map(|l| (line_offsets[idx + 1], l.len())),
+            raw_lines
+                .get(idx + 1)
+                .map(|l| (line_offsets[idx + 1], l.len())),
             cursor_byte_offset,
             &mut out,
         ) {
@@ -299,8 +301,14 @@ fn process_single_line(
         return false;
     }
     if let Some((next_start, next_len)) = next_line_span {
-        if try_handle_setext_heading(state, line_ctx, next_start, next_len, cursor_byte_offset, out)
-        {
+        if try_handle_setext_heading(
+            state,
+            line_ctx,
+            next_start,
+            next_len,
+            cursor_byte_offset,
+            out,
+        ) {
             return true;
         }
     }
