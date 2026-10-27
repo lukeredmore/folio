@@ -4,8 +4,6 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 EXT_DIR="${SCRIPT_DIR}/folio_zed_extension"
-WASM_MANIFEST="${EXT_DIR}/wasm/Cargo.toml"
-WASM_TARGET_DIR="${REPO_ROOT}/target/wasm-extension"
 
 OUTPUT_ARCHIVE="${REPO_ROOT}/folio-markdown-outline.tar.gz"
 VERSION_OVERRIDE=""
@@ -27,19 +25,10 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
-if ! rustup target list --installed | grep -q '^wasm32-wasip2$'; then
-    echo "Installing Rust target wasm32-wasip2..."
-    rustup target add wasm32-wasip2
-fi
-
 echo "Building Folio Zed extension (wasm32-wasip2)..."
-cargo build \
-    --manifest-path "${WASM_MANIFEST}" \
-    --target wasm32-wasip2 \
-    --release \
-    --target-dir "${WASM_TARGET_DIR}"
-
-WASM_ARTIFACT="${WASM_TARGET_DIR}/wasm32-wasip2/release/folio_markdown_outline.wasm"
+WASM_TARGET="//zed/folio_zed_extension/wasm:extension_wasm"
+(cd "${REPO_ROOT}" && bazel build -c opt "${WASM_TARGET}")
+WASM_ARTIFACT="${REPO_ROOT}/$(cd "${REPO_ROOT}" && bazel cquery -c opt --output=files "${WASM_TARGET}" 2>/dev/null)"
 if [[ ! -f "${WASM_ARTIFACT}" ]]; then
     echo "Error: expected WASI component at ${WASM_ARTIFACT}" >&2
     exit 1

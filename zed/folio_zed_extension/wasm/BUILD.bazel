@@ -1,0 +1,43 @@
+load("@rules_rust//rust:defs.bzl", "rust_shared_library", "rust_test", "rustfmt_test")
+
+package(default_visibility = ["//visibility:public"])
+
+platform(
+    name = "wasm32_wasip2",
+    constraint_values = [
+        "@platforms//cpu:wasm32",
+        "@platforms//os:wasi",
+        "@rules_rust//rust/platform:wasi_preview_2",
+    ],
+)
+
+# The extension.wasm component that ships to Zed.
+rust_shared_library(
+    name = "extension_wasm",
+    srcs = ["src/lib.rs"],
+    crate_name = "folio_markdown_outline",
+    edition = "2021",
+    platform = ":wasm32_wasip2",
+    # .bazelrc keeps symbols for native debugging; the shipped component does not need them.
+    rustc_flags = ["-Cstrip=debuginfo"],
+    deps = [
+        "//zed/folio_zed_extension",
+        "@crates_wasm//:zed_extension_api",
+    ],
+)
+
+rust_test(
+    name = "artifact_test",
+    srcs = ["tst/artifact_test.rs"],
+    data = [":extension_wasm"],
+    edition = "2021",
+    env = {"EXTENSION_WASM": "$(rootpath :extension_wasm)"},
+)
+
+rustfmt_test(
+    name = "rustfmt",
+    targets = [
+        ":artifact_test",
+        ":extension_wasm",
+    ],
+)
