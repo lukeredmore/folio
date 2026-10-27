@@ -1,46 +1,12 @@
 load("@build_bazel_rules_swift//swift:swift_interop_hint.bzl", "swift_interop_hint")
 load("@rules_cc//cc:defs.bzl", "cc_library")
-load("@rules_rust//rust:defs.bzl", "rust_library", "rust_static_library", "rust_test")
+load("@rules_rust//rust:defs.bzl", "rust_library", "rust_static_library", "rust_test", "rustfmt_test")
 
 package(default_visibility = ["//visibility:public"])
 
 exports_files(["Cargo.toml"])
 
-ENGINE_SRCS = [
-    "src/ffi/editing_ffi.rs",
-    "src/ffi/latex_ffi.rs",
-    "src/ffi/markdown_ffi.rs",
-    "src/ffi/math_ffi.rs",
-    "src/ffi/mod.rs",
-    "src/latex/directives.rs",
-    "src/latex/inline_scan.rs",
-    "src/latex/line_classify.rs",
-    "src/latex/mod.rs",
-    "src/lib.rs",
-    "src/markdown/analyzer.rs",
-    "src/markdown/block_handlers.rs",
-    "src/markdown/block_scanner.rs",
-    "src/markdown/cmark_ast.rs",
-    "src/markdown/cmark_sys.rs",
-    "src/markdown/editing.rs",
-    "src/markdown/html_inline.rs",
-    "src/markdown/inline_helpers.rs",
-    "src/markdown/inline_scanner.rs",
-    "src/markdown/mod.rs",
-    "src/markdown/newline.rs",
-    "src/markdown/tables.rs",
-    "src/markdown/types.rs",
-    "src/math/mod.rs",
-    "src/mermaid/mod.rs",
-    "src/mermaid/svg_inline.rs",
-    "src/mermaid/svg_markers.rs",
-    "src/mermaid/svg_norm.rs",
-    "src/mermaid/theme.rs",
-    "src/reflow/mod.rs",
-    "src/reflow/protected.rs",
-    "src/stats.rs",
-    "src/theme.rs",
-]
+ENGINE_SRCS = glob(["src/**/*.rs"])
 
 # Native Rust library consumed by Zed extension crate (//zed/folio_zed_extension)
 rust_library(
@@ -89,50 +55,27 @@ cc_library(
     ],
 )
 
-rust_test(
-    name = "folio_engine_test",
-    srcs = ["tst/engine_tests.rs"],
-    edition = "2021",
-    deps = [":folio_engine"],
-)
+# One test target per tst/*.rs file, so a new test file cannot be left unregistered.
+ENGINE_TESTS = glob(["tst/*.rs"])
 
-rust_test(
-    name = "cmark_gfm_spec_test",
-    srcs = ["tst/cmark_gfm_spec_tests.rs"],
-    data = [
-        "@markdown_spec//:all_spec_files",
+[
+    rust_test(
+        name = src.removeprefix("tst/").removesuffix(".rs"),
+        srcs = [src],
+        data = [
+            "//tst/specs:all_behavior_specs",
+            "@markdown_spec//:all_spec_files",
+        ],
+        edition = "2021",
+        deps = [":folio_engine"],
+    )
+    for src in ENGINE_TESTS
+]
+
+rustfmt_test(
+    name = "rustfmt",
+    targets = [":folio_engine"] + [
+        ":" + src.removeprefix("tst/").removesuffix(".rs")
+        for src in ENGINE_TESTS
     ],
-    edition = "2021",
-    deps = [":folio_engine"],
-)
-
-rust_test(
-    name = "markdown_scan_test",
-    srcs = ["tst/markdown_scan_tests.rs"],
-    edition = "2021",
-    deps = [":folio_engine"],
-)
-
-rust_test(
-    name = "reflow_test",
-    srcs = ["tst/reflow_tests.rs"],
-    edition = "2021",
-    deps = [":folio_engine"],
-)
-
-rust_test(
-    name = "behavior_suite_test",
-    srcs = ["tst/behavior_suite.rs"],
-    data = [
-        "//tst/specs:all_behavior_specs",
-    ],
-    edition = "2021",
-    deps = [":folio_engine"],
-)
-
-rust_test(
-    name = "latex_scan_test",
-    srcs = ["tst/latex_scan_tests.rs"],
-    edition = "2021",
-    deps = [":folio_engine"],
 )
