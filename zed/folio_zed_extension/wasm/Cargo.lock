@@ -1635,7 +1635,7 @@ dependencies = [
 [[package]]
 name = "zed_extension_api"
 version = "0.8.0"
-source = "git+https://github.com/lukeredmore/zed?branch=main#db41c83895eadc457e3ad114f16c535353172d1c"
+source = "git+https://github.com/lukeredmore/zed?rev=db41c83895eadc457e3ad114f16c535353172d1c#db41c83895eadc457e3ad114f16c535353172d1c"
 dependencies = [
  "serde",
  "serde_json",

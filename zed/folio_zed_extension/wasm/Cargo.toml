@@ -16,4 +16,4 @@ doctest = false
 
 [dependencies]
 folio_zed_extension = { path = ".." }
-zed_extension_api = { git = "https://github.com/lukeredmore/zed", branch = "main" }
+zed_extension_api = { git = "https://github.com/lukeredmore/zed", rev = "db41c83895eadc457e3ad114f16c535353172d1c" }
