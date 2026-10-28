@@ -25,12 +25,13 @@ Run this from your worktree before you report any task as done:
 bazel test //...
 ```
 
-It builds every target and runs every test, clippy (as a Bazel aspect, with the lints from `Cargo.toml` and `clippy.toml`), and `rustfmt` checks. It also builds the shipped Zed `extension.wasm`. Bazel caches results, so unchanged targets cost nothing. A task is not done until this command passes.
+It builds every target and runs every test, clippy (as a Bazel aspect, with the lints from `Cargo.toml` and `clippy.toml`), `rustfmt` checks, and `swift-format` checks (`//:swift_format`, with `.swift-format`). First-party Swift compiles with `-warnings-as-errors`. It also builds the shipped Zed `extension.wasm`. Bazel caches results, so unchanged targets cost nothing. A task is not done until this command passes.
 
 To fix formatting:
 
 ```bash
 bazel run @rules_rust//:rustfmt -- //core/... //zed/...
+git ls-files '*.swift' | xargs xcrun swift-format format --in-place --parallel --configuration .swift-format
 ```
 
 Other commands:
