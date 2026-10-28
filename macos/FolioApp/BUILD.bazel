@@ -11,6 +11,11 @@ exports_files([
     "folio",
 ])
 
+filegroup(
+    name = "swift_srcs",
+    srcs = glob(["*.swift"]),
+)
+
 swift_library(
     name = "FolioAppMainLib",
     srcs = ["AppMain.swift"],
