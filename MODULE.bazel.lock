@@ -171,14 +171,14 @@
     },
     "@@rules_rust~//crate_universe:extensions.bzl%crate": {
       "general": {
-        "bzlTransitiveDigest": "UmrRoknsqllpvBNUopz49C3AsxzVGqIEjeR9x1Gc6sY=",
+        "bzlTransitiveDigest": "9Vf6PAEI0ZA8sZh1vOU2MHlJjIKyghtd5UftcJipn5Q=",
         "usagesDigest": "ZRDM5Fvs/9V0aOxEg1U5mME/E0qnPtlItJ63Zb8nuho=",
         "recordedFileInputs": {
           "@@//Cargo.toml": "6a41442a984b383e563a45d9223f4b3541f0b929037c49e48d62900f8ef20874",
           "@@//zed/folio_zed_extension/Cargo.toml": "804c0b58aa5296c8336f42d74da604fd4d82788039d219a07fc175554e987272",
           "@@//Cargo.lock": "0277a9e271f7d647446595d8844fc97c5adb0800fdf69e28c5b2f10cd7fc6c57",
           "@@//core/folio_engine/Cargo.toml": "e12f5670f2ff5b8e14f79d003d7324562e87365fc30e41e15c3ccd15c6909afd",
-          "@@//MODULE.bazel": "4289bf44f35cc30822a3873c37cf6da8bc4f10acf4bd165e2931e89bb6b2da06",
+          "@@//MODULE.bazel": "308fbafd96c11424b98d0fa046ac37f6f90be6a18fd71281ae2a0ebaee1a288b",
           "@@rules_rust~~rust_host_tools~rust_host_tools//rust_host_tools": "ENOENT"
         },
         "recordedDirentsInputs": {},
