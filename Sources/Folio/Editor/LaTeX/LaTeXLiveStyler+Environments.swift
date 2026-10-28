@@ -21,7 +21,21 @@ extension LaTeXLiveStyler {
         if trimmed.hasPrefix("\\vspace") && trimmed.hasSuffix("}") && !trimmed.dropFirst(7).contains("\\") {
             return true
         }
-        return false
+        return trimmed.hasPrefix("\\index{") && isIndexOnlyLine(trimmed)
+    }
+
+    /// True when the line holds only `\index{...}` entries and an optional comment. TeX prints
+    /// nothing for such a line.
+    static func isIndexOnlyLine(_ trimmed: String) -> Bool {
+        let chars = Array(LaTeXFileFacts.stripComment(Substring(trimmed)))
+        var idx = LaTeXMacroExpander.skipSpaces(chars, from: 0)
+        guard idx < chars.count else { return false }
+        while idx < chars.count {
+            let (word, after) = LaTeXMacroExpander.readControlWord(chars, at: idx)
+            guard word == "\\index", let (_, end) = LaTeXMacroExpander.readBracedGroup(chars, at: after) else { return false }
+            idx = LaTeXMacroExpander.skipSpaces(chars, from: end)
+        }
+        return true
     }
 
     /// True when `trimmed` is only `\begin{name}` with its arguments, or only `\end{name}`, for an

@@ -37,7 +37,7 @@ final class LaTeXMasterMacroGoldenTests: XCTestCase {
         let directory = try fixtureCopy()
         let cases: [(file: String, cursorLine: Int)] = [
             ("chapter.tex", 0),
-            ("chapter.tex", 8),
+            ("chapter.tex", 9),
             ("texroot-chapter.tex", 0),
             ("emacs-chapter.tex", 0)
         ]

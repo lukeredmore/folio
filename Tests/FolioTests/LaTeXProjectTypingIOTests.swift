@@ -29,7 +29,7 @@ final class LaTeXProjectTypingIOTests: XCTestCase {
                 return false
             }, "macros inherited from the master expand after open")
 
-        let proseLine = 8
+        let proseLine = 9
         XCTAssertTrue(harness.lineText(proseLine).hasPrefix("The \\Product"), "fixture layout changed")
         harness.moveCursor(toLine: proseLine, column: .max)
         let before = harness.counters
