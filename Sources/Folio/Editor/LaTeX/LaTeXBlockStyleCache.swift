@@ -279,6 +279,9 @@ enum LaTeXBlockStyleCache {
             newKind = .mermaidBlockRendered(mermaidSource: source, fullBlockRange: shiftRange(fullBlockRange, by: delta), dimFactor: dimFactor)
         case let .svgBlockRendered(source, fullBlockRange, dimFactor):
             newKind = .svgBlockRendered(svgSource: source, fullBlockRange: shiftRange(fullBlockRange, by: delta), dimFactor: dimFactor)
+        case let .htmlBlockRendered(source, fullBlockRange, width, dimFactor):
+            newKind = .htmlBlockRendered(
+                htmlSource: source, fullBlockRange: shiftRange(fullBlockRange, by: delta), layoutWidth: width, dimFactor: dimFactor)
         case let .imageRendered(url, alt, fullRange, ew, eh, baseDir, dimFactor):
             newKind = .imageRendered(
                 url: url, alt: alt, fullRange: shiftRange(fullRange, by: delta), explicitWidth: ew, explicitHeight: eh, baseDirectoryURL: baseDir,

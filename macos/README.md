@@ -38,6 +38,7 @@ The standalone macOS app (`//:FolioApp`) provides a dedicated writing window wit
 | **Paragraph Line Wrapping** | `Ctrl + Q` | Source line breaks inside a paragraph render as spaces, so paragraphs wrap to the window. When you leave a paragraph you edited, its source is rewrapped to **Wrap Markdown Source At** (Settings, default 80 columns, or Off). **Paragraph > Reflow Paragraph / Reflow Document** rewrap on demand |
 | **Bold / Italic / Code** | `Cmd + B` / `Cmd + I` / ``Cmd + ` `` | Wrap selection in inline Markdown formatting |
 | **Code Fences / Math Block / Table** | `Cmd + Opt + C / M / T` | Insert syntax-highlighted code block, LaTeX math block, or Markdown table |
+| **HTML Blocks** | — | A self-contained HTML block (for example `<div>…</div>` or `<table>…</table>`) renders in a live web view, where you can select, copy, and comment on text. Click the block (or move the caret onto it) to edit its source; the caret goes where you clicked. Drag or double-click to select text, and click a comment highlight to open its comment. Page scripts do not run, and only images and media load from the network. Inline tags such as `<kbd>`, `<img>`, `<svg>`, and `<details>` keep their native rendering. Example: `examples/html_blocks_showcase.md` |
 
 ### LaTeX Projects
 

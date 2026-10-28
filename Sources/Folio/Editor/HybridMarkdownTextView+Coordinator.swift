@@ -67,10 +67,12 @@ extension HybridMarkdownEditorRepresentable {
             if abs(newContentWidth - lastContentWidth) > 0.5 {
                 scheduleResizeRestyle(for: tv)
             }
+            tv.scheduleHTMLBlockOverlaySync()
             viewModel.refreshTooltipAnchorOnViewportChangeIfNeeded()
         }
 
         @objc func clipViewBoundsDidChange(_ notification: Notification) {
+            textView?.scheduleHTMLBlockOverlaySync()
             viewModel.refreshTooltipAnchorOnViewportChangeIfNeeded()
         }
 

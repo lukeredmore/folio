@@ -27,7 +27,7 @@ extension EditorWorkspaceViewModel {
                 return NSRange(location: loc, length: len)
             }
         }
-        let rawSel = activeTextView?.selectedRange() ?? currentSelectedRange
+        let rawSel = activeTextView?.commentSelectionRange ?? currentSelectedRange
         let loc = max(0, min(rawSel.location, nsLen))
         let len = max(0, min(rawSel.length, nsLen - loc))
         guard len > 0 else { return nil }
@@ -162,7 +162,7 @@ extension EditorWorkspaceViewModel {
     public func cancelCommentDraft() {
         activeCommentDraftRange = nil
         activeCommentDraftText = ""
-        let sel = activeTextView?.selectedRange() ?? currentSelectedRange
+        let sel = activeTextView?.commentSelectionRange ?? currentSelectedRange
         updateSelectionTooltipAnchor(for: sel)
         activeTextView?.needsDisplay = true
         if let tv = activeTextView, let window = tv.window {
@@ -224,7 +224,7 @@ extension EditorWorkspaceViewModel {
         activeCommentDraftRange = nil
         activeCommentDraftText = ""
         autoSaveCompanionCommentsIfNeeded()
-        let currentSel = activeTextView?.selectedRange() ?? currentSelectedRange
+        let currentSel = activeTextView?.commentSelectionRange ?? currentSelectedRange
         updateSelectionTooltipAnchor(for: currentSel)
         activeTextView?.needsDisplay = true
         if let tv = activeTextView, let window = tv.window {
@@ -315,8 +315,10 @@ extension EditorWorkspaceViewModel {
         activeCommentDraftRange = safeRange
         activeCommentDraftText = comment.commentText
         if let tv = activeTextView {
-            tv.setSelectedRange(safeRange)
-            tv.scrollRangeToVisible(safeRange)
+            if !tv.selectHTMLBlockSource(safeRange) {
+                tv.setSelectedRange(safeRange)
+                tv.scrollRangeToVisible(safeRange)
+            }
             tv.needsDisplay = true
         }
         updateSelectionTooltipAnchor(for: safeRange)

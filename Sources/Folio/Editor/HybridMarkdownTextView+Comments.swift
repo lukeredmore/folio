@@ -29,29 +29,36 @@ extension HybridMarkdownTextView {
             )
         }
 
-        layoutManager.ensureLayout(forCharacterRange: safeRange)
-        let glyphRange = layoutManager.glyphRange(forCharacterRange: safeRange, actualCharacterRange: nil)
-        guard glyphRange.location != NSNotFound, glyphRange.length > 0 else {
-            return nil
-        }
+        var bounding: NSRect
+        var headBounding: NSRect
+        if let blockRects = htmlBlockAnchorRects(for: safeRange, direction: resolvedDirection) {
+            bounding = blockRects.bounding
+            headBounding = blockRects.head
+        } else {
+            layoutManager.ensureLayout(forCharacterRange: safeRange)
+            let glyphRange = layoutManager.glyphRange(forCharacterRange: safeRange, actualCharacterRange: nil)
+            guard glyphRange.location != NSNotFound, glyphRange.length > 0 else {
+                return nil
+            }
 
-        let origin = self.textContainerOrigin
-        var bounding = layoutManager.boundingRect(forGlyphRange: glyphRange, in: textContainer)
-        bounding.origin.x += origin.x
-        bounding.origin.y += origin.y
+            let origin = self.textContainerOrigin
+            bounding = layoutManager.boundingRect(forGlyphRange: glyphRange, in: textContainer)
+            bounding.origin.x += origin.x
+            bounding.origin.y += origin.y
+
+            let headGlyphIndex =
+                resolvedDirection == .backward
+                ? glyphRange.location
+                : max(glyphRange.location, NSMaxRange(glyphRange) - 1)
+            headBounding = layoutManager.boundingRect(
+                forGlyphRange: NSRange(location: headGlyphIndex, length: 1),
+                in: textContainer
+            )
+            headBounding.origin.x += origin.x
+            headBounding.origin.y += origin.y
+        }
         bounding.size.width = max(16.0, bounding.size.width)
         bounding.size.height = max(18.0, bounding.size.height)
-
-        let headGlyphIndex =
-            resolvedDirection == .backward
-            ? glyphRange.location
-            : max(glyphRange.location, NSMaxRange(glyphRange) - 1)
-        var headBounding = layoutManager.boundingRect(
-            forGlyphRange: NSRange(location: headGlyphIndex, length: 1),
-            in: textContainer
-        )
-        headBounding.origin.x += origin.x
-        headBounding.origin.y += origin.y
         headBounding.size.width = max(8.0, headBounding.size.width)
         headBounding.size.height = max(18.0, headBounding.size.height)
 

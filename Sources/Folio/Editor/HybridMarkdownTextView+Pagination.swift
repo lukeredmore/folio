@@ -12,6 +12,7 @@ extension HybridMarkdownTextView {
             switch decoration.kind {
             case let .mermaidBlockRendered(_, fullBlockRange, _),
                 let .svgBlockRendered(_, fullBlockRange, _),
+                let .htmlBlockRendered(_, fullBlockRange, _, _),
                 let .mathBlockRendered(_, fullBlockRange, _),
                 let .latexTheoremCard(_, _, _, fullBlockRange, _),
                 let .latexAbstractCard(_, fullBlockRange, _):
