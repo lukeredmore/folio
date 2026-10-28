@@ -41,6 +41,11 @@ final class MainThreadStallMonitor {
         busySince = nil
     }
 
+    /// Clears `maxStall` only, so a caller can measure the longest stall of one step.
+    func resetMaxStall() {
+        maxStall = 0
+    }
+
     private func markBusy() {
         if busySince == nil {
             busySince = CFAbsoluteTimeGetCurrent()

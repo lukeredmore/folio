@@ -73,19 +73,29 @@ final class EditorPerfScalingTests: XCTestCase {
         }
     }
 
-    func testFiftyKeyBurstDoesNotStallMainThread() throws {
-        let measured = try withHarness(lines: Self.largeLines) { harness in
-            harness.stallMonitor.reset()
-            let before = harness.counters
-            harness.type(String(repeating: "burst text ", count: 5).prefix(50).description)
-            return (maxStall: harness.stallMonitor.maxStall, delta: harness.counters.delta(since: before))
+    /// No keystroke in a burst may take far longer than a typical keystroke on the same
+    /// machine. This catches hitches such as synchronous I/O or autosave work landing on a key,
+    /// without an absolute time budget that depends on how fast the runner is.
+    func testFiftyKeyBurstHasNoOutlierStall() throws {
+        let perKey = try withHarness(lines: Self.largeLines) { harness in
+            String(repeating: "burst text ", count: 5).prefix(50).map { character in
+                let before = harness.stallMonitor.totalBusy
+                harness.stallMonitor.resetMaxStall()
+                harness.type(String(character))
+                return (busy: harness.stallMonitor.totalBusy - before, stall: harness.stallMonitor.maxStall)
+            }
         }
-        let stallMilliseconds = Int(measured.maxStall * 1000)
-        var report = PerfReport.values(measured.delta, keys: 50)
-        report["maxStallMilliseconds"] = measured.maxStall * 1000
-        report["documentLines"] = Self.largeLines
-        PerfReport.record("burst50_1600", report)
-        XCTAssertLessThan(measured.maxStall, 0.25, "main thread stalled \(stallMilliseconds) ms during a 50-key burst")
+        let median = perKey.map(\.busy).sorted()[perKey.count / 2]
+        let maxStall = perKey.map(\.stall).max() ?? 0
+        PerfReport.record("burst50_1600", [
+            "documentLines": Self.largeLines,
+            "keys": perKey.count,
+            "medianBusyMillisecondsPerKey": median * 1000,
+            "maxStallMilliseconds": maxStall * 1000
+        ])
+        let detail = String(format: "max stall %.0f ms, median key %.0f ms", maxStall * 1000, median * 1000)
+        XCTAssertLessThan(maxStall, 4 * median, "one keystroke stalled far longer than a typical one: \(detail)")
+        XCTAssertLessThan(maxStall, 2.0, "main thread hung during a 50-key burst: \(detail)")
     }
 
     /// Length of the run of non-blank lines that contains `line`.

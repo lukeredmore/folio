@@ -26,6 +26,7 @@ extension HybridMarkdownEditorRepresentable {
         var lastMaxColumnWidth: CGFloat = 0
         var hasPerformedInitialScroll = false
         var pendingResizeRestyleWorkItem: DispatchWorkItem?
+        var scheduler = EditorScheduler.live
 
         let softLineBreakLayoutDelegate = SoftLineBreakLayoutDelegate()
         var reflowAnchors: [Int] = []
@@ -67,7 +68,7 @@ extension HybridMarkdownEditorRepresentable {
                 }
             }
             pendingResizeRestyleWorkItem = item
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.06, execute: item)
+            scheduler.schedule(0.06, item)
         }
 
         func currentContentWidth(for textView: HybridMarkdownTextView) -> CGFloat {
