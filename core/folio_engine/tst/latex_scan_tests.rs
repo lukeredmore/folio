@@ -1,7 +1,7 @@
 use folio_engine::{
     analyze_macro_template, classify_latex_line, normalize_display_math, parse_bibtex_entries,
-    scan_latex_directives, scan_latex_inlines, LatexDirectiveKind, LatexInlineSpanKind,
-    LatexLineKind,
+    scan_latex_directives, scan_latex_inlines, LatexDirectiveKind, LatexInlineSpan,
+    LatexInlineSpanKind, LatexLineKind,
 };
 
 #[test]
@@ -113,4 +113,82 @@ fn test_parse_bibtex_entries() {
     assert_eq!(entries[0].entry_type, "article");
     assert_eq!(entries[0].author, "Knuth, Donald E.");
     assert_eq!(entries[0].year, "1984");
+}
+
+fn candidates(line: &str) -> Vec<LatexInlineSpan> {
+    scan_latex_inlines(line)
+        .into_iter()
+        .filter(|s| s.kind == LatexInlineSpanKind::ProseMacroCandidate)
+        .collect()
+}
+
+fn slice(line: &str, loc: usize, len: usize) -> String {
+    let units: Vec<u16> = line.encode_utf16().collect();
+    String::from_utf16(&units[loc..loc + len]).unwrap()
+}
+
+#[test]
+fn test_prose_macro_candidate_covers_adjacent_argument_groups() {
+    let line = r"All \VAR{number}s and \pair[o]{a}{b} end";
+    let spans = candidates(line);
+    assert_eq!(spans.len(), 2);
+    assert_eq!(spans[0].cmd, "VAR");
+    assert_eq!(
+        slice(line, spans[0].full_loc, spans[0].full_len),
+        r"\VAR{number}"
+    );
+    assert_eq!(slice(line, spans[0].open_loc, spans[0].open_len), r"\VAR");
+    assert_eq!(
+        slice(line, spans[0].close_loc, spans[0].close_len),
+        "{number}"
+    );
+    assert_eq!(spans[1].cmd, "pair");
+    assert_eq!(
+        slice(line, spans[1].full_loc, spans[1].full_len),
+        r"\pair[o]{a}{b}"
+    );
+}
+
+#[test]
+fn test_prose_macro_candidate_keeps_nested_candidates_and_star() {
+    let line = r"(\FU*{=}\RP{\VAR{x}})";
+    let spans = candidates(line);
+    let names: Vec<&str> = spans.iter().map(|s| s.cmd.as_str()).collect();
+    assert_eq!(names, ["FU*", "RP", "VAR"]);
+    assert_eq!(
+        slice(line, spans[0].full_loc, spans[0].full_len),
+        r"\FU*{=}"
+    );
+    assert_eq!(
+        slice(line, spans[1].full_loc, spans[1].full_len),
+        r"\RP{\VAR{x}}"
+    );
+}
+
+#[test]
+fn test_prose_macro_candidate_edge_forms() {
+    let empty = candidates(r"\foo{} x");
+    assert_eq!(empty.len(), 1);
+    assert_eq!(empty[0].full_len, 6);
+
+    let unclosed = r"\foo{bar";
+    let spans = candidates(unclosed);
+    assert_eq!(spans.len(), 1);
+    assert_eq!(
+        slice(unclosed, spans[0].full_loc, spans[0].full_len),
+        r"\foo"
+    );
+
+    let spaced = r"\foo {x}";
+    let spans = candidates(spaced);
+    assert_eq!(slice(spaced, spans[0].full_loc, spans[0].full_len), r"\foo");
+}
+
+#[test]
+fn test_known_commands_are_not_prose_macro_candidates() {
+    let line = r"\textbf{b} \cite{k} \index{key@$k$} \href{u}{t}";
+    assert!(candidates(line).is_empty());
+    assert!(scan_latex_inlines(line)
+        .iter()
+        .any(|s| s.kind == LatexInlineSpanKind::HiddenMeta && s.cmd == "index"));
 }

@@ -309,7 +309,7 @@ fn scan_argument_cmd(
             out.push(braced_span(ctx, K::Ref, i, arg, (cmd, &text[ks..ke])));
             Some(next)
         }
-        "label" | "bibliography" | "bibliographystyle" | "addbibresource" | "nocite" => {
+        "label" | "bibliography" | "bibliographystyle" | "addbibresource" | "nocite" | "index" => {
             let (ks, ke, next) = read_balanced_braces(bytes, after)?;
             out.push(make_span(
                 ctx.u16,
@@ -391,39 +391,61 @@ fn scan_bare_cmd(
     Some(p)
 }
 
-/// Records an unknown `\cmd` or `\cmd{}` as a possible user macro. Returns the
-/// offset after it.
+/// Maximum braced arguments a `\newcommand` macro can take.
+const MAX_MACRO_GROUPS: usize = 9;
+
+/// Returns the end of the `[...]` and `{...}` groups that directly follow `start`, with no
+/// space between them. At most one bracket group is read, and only before the brace groups.
+fn adjacent_argument_groups_end(bytes: &[u8], start: usize) -> usize {
+    let mut p = start;
+    if let Some((_, _, next)) = read_bracket_group(bytes, p) {
+        p = next;
+    }
+    for _ in 0..MAX_MACRO_GROUPS {
+        let Some((_, _, next)) = read_balanced_braces(bytes, p) else {
+            break;
+        };
+        p = next;
+    }
+    p
+}
+
+/// Records an unknown `\cmd` or `\cmd*` as a possible user macro. `cmd` in the span includes
+/// a trailing `*`. The full range also covers the `[...]` and `{...}` groups that directly
+/// follow the name, which are the close range. Swift reads the arguments that the document's
+/// definition takes, so this returns the offset after the name and the groups' contents are
+/// still scanned for nested spans. `\cmd{}` is the exception: it consumes the empty group.
 fn scan_prose_macro_candidate(
     ctx: &InlineScanCtx<'_>,
     bytes: &[u8],
-    (i, cmd, after): (usize, &str, usize),
+    (i, _, after): (usize, &str, usize),
     out: &mut Vec<LatexInlineSpan>,
 ) -> usize {
     let kind = LatexInlineSpanKind::ProseMacroCandidate;
-    if bytes.get(after..after + 2) == Some(b"{}") {
-        let close = (after, after + 2);
+    let name_end = after + usize::from(bytes.get(after) == Some(&b'*'));
+    let name = &ctx.text[(i + 1)..name_end];
+    if bytes.get(name_end..name_end + 2) == Some(b"{}") {
+        let full = (i, name_end + 2);
         out.push(make_span(
             ctx.u16,
             kind,
-            (i, after + 2),
-            (i, after + 2),
-            (i + 1, after),
-            close,
-            (cmd, ""),
+            full,
+            full,
+            (i + 1, name_end),
+            (name_end, name_end + 2),
+            (name, ""),
         ));
-        return after + 2;
+        return name_end + 2;
     }
-    if bytes.get(after) != Some(&b'{') {
-        let close = (after, after);
-        out.push(make_span(
-            ctx.u16,
-            kind,
-            (i, after),
-            (i, after),
-            (i + 1, after),
-            close,
-            (cmd, ""),
-        ));
-    }
-    after
+    let groups_end = adjacent_argument_groups_end(bytes, name_end);
+    out.push(make_span(
+        ctx.u16,
+        kind,
+        (i, groups_end),
+        (i, name_end),
+        (i + 1, name_end),
+        (name_end, groups_end),
+        (name, ""),
+    ));
+    name_end
 }
