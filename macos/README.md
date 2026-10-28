@@ -62,11 +62,23 @@ bazel run //:FolioApp -- .
 bazel run //:FolioApp -- --help
 bazel run //:folio -- README.md:20:1
 ```
-Dev builds launched via Bazel display the **DEV**-badged app icon in the macOS Dock.
+Dev builds launched via Bazel display the **DEV**-badged app icon in the macOS Dock and run as **Folio Dev** (bundle ID `app.folio.macos.dev`). `FolioAppIdentity` derives their state from the bundle ID, so it stays apart from the installed `Folio.app`:
+
+| State | Release (`app.folio.macos`) | Dev (`app.folio.macos.dev`) |
+|---|---|---|
+| Preferences | `~/Library/Preferences/app.folio.macos.plist` | `~/Library/Preferences/app.folio.macos.dev.plist` |
+| CLI open queue | `~/Library/Application Support/Folio/` | `~/Library/Application Support/Folio-app.folio.macos.dev/` |
+| Remote mirrors | `~/Library/Caches/FolioRemoteMirrors` | `~/Library/Caches/FolioRemoteMirrors-app.folio.macos.dev` |
+| SSH control sockets | `/tmp/folio-ssh-<hash>.sock` | `/tmp/folio-ssh-app.folio.macos.dev-<hash>.sock` |
+| `folio` command | Installed on first launch | Not installed on launch; the menu item installs `folio-dev` |
+| Updates | Checked and installed | Never installed |
+| Document types | `LSHandlerRank` `Alternate` | `LSHandlerRank` `None` |
+
+The `folio` launcher sends `SIGUSR1` only to running processes whose app has the bundle ID of the app that it opens. For screenshots and manual checks, use a dev build, open a copy of the project, and never send clicks or keystrokes to its window.
 
 ### 2. Bundled `folio` CLI in `Folio.app` & `Folio.dmg`
 Every `Folio.app` bundle (including inside `Folio.dmg`) embeds the executable `folio` CLI launcher at `Folio.app/Contents/Resources/bin/folio`:
-- **Automatic Setup:** On first launch, `Folio.app` links `~/.local/bin/folio` to its bundled `Contents/Resources/bin/folio` launcher if `folio` is not already in `$PATH`.
+- **Automatic Setup:** On first launch, a release `Folio.app` writes the `folio` launcher to each writable directory of `/usr/local/bin` and `~/.local/bin`. Dev builds skip this step.
 - **Manual / `/usr/local/bin` Setup:** Choose **Folio → Install 'folio' Command in PATH…** from the menu bar (or **Settings (`Cmd + ,`) → General → Command Line Tool**) to symlink `/usr/local/bin/folio -> /Applications/Folio.app/Contents/Resources/bin/folio`.
 - **Supported CLI Arguments:**
   ```bash
