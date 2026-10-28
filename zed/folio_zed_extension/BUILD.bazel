@@ -76,6 +76,7 @@ py_test(
         "extension.toml",
         ":archive",
     ],
+    legacy_create_init = False,
 )
 
 opt_files(
