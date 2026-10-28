@@ -1,3 +1,23 @@
+load("@buildifier_prebuilt//:rules.bzl", "buildifier")
+
 package(default_visibility = ["//visibility:public"])
 
 exports_files(["update_markdown_spec.py"])
+
+# Directories that hold generated or third-party Starlark files.
+BUILDIFIER_EXCLUDE_PATTERNS = [
+    "./.bsp/*",
+    "./.claude/*",
+    "./.worktrees/*",
+    "./target/*",
+    "./third_party/cmark_gfm/*",
+    "./third_party/markdown_spec/*",
+]
+
+# bazel run //tools:buildifier
+buildifier(
+    name = "buildifier",
+    exclude_patterns = BUILDIFIER_EXCLUDE_PATTERNS,
+    lint_mode = "fix",
+    mode = "fix",
+)
