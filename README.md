@@ -35,7 +35,7 @@ You can install the Folio extension into `lukeredmore/zed` the same way as any Z
   ```
 - **Option C — Build & Install Locally from Source:**
   ```bash
-  ./zed/install_extension.sh
+  bazel run //:install_zed_extension
   ```
 
 ### 3. Open `.md` Files in the WYSIWYG Preview View by Default
@@ -71,18 +71,35 @@ bazel run //:FolioApp -- README.md:20:1
 # Or invoke the bundled `folio` CLI launcher directly via Bazel
 bazel run //:folio -- README.md:20:1
 
-# Build and install the Folio WASI extension into Zed
-./zed/install_extension.sh
+# Build (with -c opt) and install the Folio WASI extension into Zed
+bazel run //:install_zed_extension
 
-# Package the Folio WASI extension archive (folio-markdown-outline.tar.gz)
-./zed/package_extension.sh
+# Package the Folio WASI extension archive
+bazel build --config=release //:folio_zed_extension   # bazel-bin/zed/folio_zed_extension/folio-markdown-outline.tar.gz
 
-# Run all unit, integration, and shared behavior tests
+# Run all unit, integration, shared behavior, and lint tests
 bazel test //...
 
-# Package standalone macOS Folio.dmg locally
-./scripts/package_dmg.sh       # Produces ./Folio.dmg
+# Package the stamped, optimized macOS Folio.dmg locally
+bazel build --config=release //:FolioDmg              # bazel-bin/macos/FolioApp/Folio.dmg
+
+# Format BUILD, .bzl, and MODULE.bazel files
+bazel run //tools:buildifier
 ```
+
+`--config=release` stamps the build from `tools/release/workspace_status.sh`: `CFBundleVersion` is the commit count, `FolioCommitSHA` is the short commit SHA, `FolioBuildChannel` is `release`, and the commit count replaces the patch number of the extension version in `extension.toml`. Set `FOLIO_VERSION` to override `CFBundleShortVersionString`. Builds without `--config=release` are dev builds with the dev channel and the **DEV** icon.
+
+---
+
+## Editor Setup (Swift Indexing)
+
+Swift indexing uses [sourcekit-bazel-bsp](https://github.com/spotify/sourcekit-bazel-bsp), which lets `sourcekit-lsp` get compiler arguments from Bazel. There is no `Package.swift`.
+
+1. Run `bazel run //tools:setup_sourcekit_bsp` once per clone or worktree, and again after `//tools:sourcekit_bsp_config` changes. It writes `.bsp/` and `.sourcekit-lsp/` (both ignored by Git).
+2. Open the repository root in an editor that runs `sourcekit-lsp`, for example VS Code or Cursor with the Swift extension. The `sourcekit-lsp` that ships with Xcode works.
+3. When `sourcekit-lsp` asks whether to trust the workspace, choose **Trust Workspace**. If you do not, it ignores `.bsp/` and reports `No such module 'FolioEngineFFI'`.
+
+The first indexing build can take a few minutes. It uses a separate Bazel output base, so it does not discard the analysis cache of your normal builds. The BSP indexes the Swift libraries under `//macos/FolioApp:FolioApp` (`Sources/Folio`, `macos/FolioApp/AppMain.swift`, and the `FolioEngineFFI` C module). It does not index `Tests/FolioTests`, because that code is compiled by a `swift_test` target, not a `swift_library`.
 
 ---
 

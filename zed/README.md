@@ -31,7 +31,7 @@ Install the Folio extension into `lukeredmore/zed` using any of the standard Zed
   ```
 - **Local Source Install (Developer Workflow):**
   ```bash
-  ./zed/install_extension.sh
+  bazel run //:install_zed_extension
   ```
 
 ---
@@ -77,5 +77,5 @@ The extension uses four general-purpose capabilities on `lukeredmore/zed`:
 
 - [`zed/folio_zed_extension/`](folio_zed_extension) — Rust library crate (`folio_zed_extension`) implementing `FolioZedExtension`, `FolioZedModSession`, cursor-aware folding, $\text{LaTeX}$ math canvas layout, and Zed `v0.8.0` extension bridges.
 - [`zed/folio_zed_extension/wasm/`](folio_zed_extension/wasm) — `wasm32-wasip2` `cdylib` crate linking `folio_zed_extension` with `zed_extension_api` (`v0.8.0`) and registering `register_extension!`.
-- [`zed/install_extension.sh`](install_extension.sh) — Builds `extension.wasm` and installs the extension bundle locally into Zed.
-- [`zed/package_extension.sh`](package_extension.sh) — Packages `folio-markdown-outline.tar.gz` for GitHub Releases distribution and automatic updates.
+- `//zed/folio_zed_extension:archive` (`bazel build --config=release //:folio_zed_extension`) — Packages `folio-markdown-outline.tar.gz` for GitHub Releases distribution and automatic updates. `//zed/folio_zed_extension:archive_test` checks its files, the WebAssembly header, and the `zed:api-version` section.
+- `//:install_zed_extension` (`bazel run //:install_zed_extension`) — Builds the archive with `-c opt` and installs it into Zed.
