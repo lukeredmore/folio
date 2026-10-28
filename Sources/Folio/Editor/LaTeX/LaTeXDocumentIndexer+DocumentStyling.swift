@@ -145,7 +145,8 @@ extension LaTeXDocumentIndex {
         ]
         let mult = multipliers[level] ?? 1.0
         let size = round(baseSize * mult)
-        let targetFamily = (documentClass.hasPrefix("scr") && documentStyle.sansFontFamily != nil)
+        let targetFamily =
+            (documentClass.hasPrefix("scr") && documentStyle.sansFontFamily != nil)
             ? (documentStyle.sansFontFamily ?? family)
             : family
         return EditorTheme.resolveFont(
@@ -159,7 +160,8 @@ extension LaTeXDocumentIndex {
 
     public func codeFont(size: CGFloat, fallbackTheme: EditorTheme) -> NSFont {
         if let mono = documentStyle.monoFontFamily, !mono.isEmpty,
-           let custom = NSFont(name: mono, size: size) {
+            let custom = NSFont(name: mono, size: size)
+        {
             return custom
         }
         return fallbackTheme.codeFont(size: size)
@@ -269,12 +271,14 @@ extension LaTeXDocumentIndex {
             || trimmed == "\\begin{document}" || trimmed == "\\end{document}"
             || trimmed == "\\begin{center}" || trimmed == "\\end{center}"
             || trimmed == "\\begin{itemize}" || trimmed == "\\end{itemize}"
-            || trimmed == "\\begin{enumerate}" || trimmed == "\\end{enumerate}" {
+            || trimmed == "\\begin{enumerate}" || trimmed == "\\end{enumerate}"
+        {
             return true
         }
         if trimmed.hasPrefix("\\section") || trimmed.hasPrefix("\\subsection")
             || trimmed.hasPrefix("\\subsubsection") || trimmed.hasPrefix("\\chapter")
-            || trimmed.hasPrefix("\\part") || trimmed.hasPrefix("\\sectiontitle") {
+            || trimmed.hasPrefix("\\part") || trimmed.hasPrefix("\\sectiontitle")
+        {
             return true
         }
         return false
@@ -320,7 +324,8 @@ extension LaTeXLiveStyler {
         let isBlockActive = anyActive || NSIntersectionRange(fullBlockRange, selectedRange).length > 0
         let redundant = docIndex.isBlankBlockRedundant(range: fullBlockRange, in: nsString, fullLength: fullLength)
         let parskip = max(2.0, docIndex.effectiveParagraphSpacing(baseSize: effectiveBaseSize, fallback: typography))
-        let lineH: CGFloat = (!isBlockActive && prettyMode)
+        let lineH: CGFloat =
+            (!isBlockActive && prettyMode)
             ? (redundant ? 0.5 : parskip)
             : max(parskip, round(effectiveBaseSize * 1.05))
         let pStyle = NSMutableParagraphStyle()
@@ -330,10 +335,11 @@ extension LaTeXLiveStyler {
         pStyle.paragraphSpacing = 0
         pStyle.paragraphSpacingBefore = 0
         pStyle.tailIndent = effectiveContainerWidth
-        storage.addAttributes([
-            .font: NSFont.systemFont(ofSize: max(0.1, min(effectiveBaseSize, lineH * 0.7))),
-            .paragraphStyle: pStyle
-        ], range: fullBlockRange)
+        storage.addAttributes(
+            [
+                .font: NSFont.systemFont(ofSize: max(0.1, min(effectiveBaseSize, lineH * 0.7))),
+                .paragraphStyle: pStyle
+            ], range: fullBlockRange)
         if !isBlockActive && prettyMode && blankRanges.count > 1 {
             LaTeXBlockStyleCache.collapseInternalNewlines(in: storage, nsString: nsString, range: fullBlockRange)
         }

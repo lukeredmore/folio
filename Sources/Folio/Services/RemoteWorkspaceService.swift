@@ -71,7 +71,8 @@ public final class RemoteWorkspaceManager: ObservableObject {
         if let customRoot = mirrorBaseDirectory ?? mirrorRootURL {
             self.mirrorRootURL = customRoot
         } else {
-            let cachesDir = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first
+            let cachesDir =
+                FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first
                 ?? FileManager.default.temporaryDirectory
             self.mirrorRootURL = cachesDir.appendingPathComponent("FolioRemoteMirrors", isDirectory: true)
         }
@@ -79,7 +80,8 @@ public final class RemoteWorkspaceManager: ObservableObject {
         try? FileManager.default.createDirectory(at: self.mirrorRootURL, withIntermediateDirectories: true)
 
         if let savedData = userDefaults.data(forKey: mountsDefaultsKey),
-           let decoded = try? JSONDecoder().decode([RemoteMountSpec].self, from: savedData) {
+            let decoded = try? JSONDecoder().decode([RemoteMountSpec].self, from: savedData)
+        {
             self.mounts = decoded
             for mount in decoded {
                 let dir = localMirrorDirectory(for: mount)
@@ -148,7 +150,8 @@ public final class RemoteWorkspaceManager: ObservableObject {
         if resolved.relativePath.isEmpty || resolved.mount.targetKind == .file {
             return resolved.mount.connectionSpecString
         }
-        let base = resolved.mount.remotePath.hasSuffix("/")
+        let base =
+            resolved.mount.remotePath.hasSuffix("/")
             ? String(resolved.mount.remotePath.dropLast())
             : resolved.mount.remotePath
         return "\(resolved.mount.sshDestination):\(base)/\(resolved.relativePath)"

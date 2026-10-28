@@ -5,8 +5,9 @@ extension HybridMarkdownTextView {
 
     func latexDecorationTooltip(at point: NSPoint) -> String? {
         guard !isSourceCodeMode,
-              let layoutManager = self.layoutManager,
-              let textContainer = self.textContainer else { return nil }
+            let layoutManager = self.layoutManager,
+            let textContainer = self.textContainer
+        else { return nil }
         let origin = self.textContainerOrigin
         let fullContentWidth = self.bounds.width - origin.x * 2
         let contentWidth = proseColumnWidth > 0 ? proseColumnWidth : fullContentWidth
@@ -55,8 +56,9 @@ extension HybridMarkdownTextView {
 
     func handleLaTeXDecorationClick(at point: NSPoint, event: NSEvent) -> Bool {
         guard !isSourceCodeMode,
-              let layoutManager = self.layoutManager,
-              let textContainer = self.textContainer else { return false }
+            let layoutManager = self.layoutManager,
+            let textContainer = self.textContainer
+        else { return false }
         let origin = self.textContainerOrigin
         let fullContentWidth = self.bounds.width - origin.x * 2
         let contentWidth = proseColumnWidth > 0 ? proseColumnWidth : fullContentWidth
@@ -95,13 +97,15 @@ extension HybridMarkdownTextView {
                 }
 
             case let .latexInlinePill(label, _, targetLocation, targetURL, pillRange, fontSize, _, _):
-                guard let rect = computeLaTeXInlinePillRect(
-                    pillRange: pillRange,
-                    label: label,
-                    fontSize: fontSize,
-                    layoutManager: layoutManager,
-                    origin: origin
-                ), rect.insetBy(dx: -2, dy: -2).contains(point) else { continue }
+                guard
+                    let rect = computeLaTeXInlinePillRect(
+                        pillRange: pillRange,
+                        label: label,
+                        fontSize: fontSize,
+                        layoutManager: layoutManager,
+                        origin: origin
+                    ), rect.insetBy(dx: -2, dy: -2).contains(point)
+                else { continue }
 
                 if event.modifierFlags.contains(.command) {
                     if let url = targetURL, url != workspaceViewModel?.currentFileURL {

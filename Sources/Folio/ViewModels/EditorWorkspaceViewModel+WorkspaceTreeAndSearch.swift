@@ -100,11 +100,13 @@ extension EditorWorkspaceViewModel {
     ) -> [WorkspaceFileNode] {
         guard depth < 4 else { return [] }
         let fm = FileManager.default
-        guard let contents = try? fm.contentsOfDirectory(
-            at: url,
-            includingPropertiesForKeys: [.isDirectoryKey, .contentModificationDateKey, .creationDateKey],
-            options: [.skipsHiddenFiles]
-        ) else {
+        guard
+            let contents = try? fm.contentsOfDirectory(
+                at: url,
+                includingPropertiesForKeys: [.isDirectoryKey, .contentModificationDateKey, .creationDateKey],
+                options: [.skipsHiddenFiles]
+            )
+        else {
             return []
         }
 
@@ -242,13 +244,14 @@ extension EditorWorkspaceViewModel {
             let lineRange = nsStr.lineRange(for: NSRange(location: index, length: 0))
             if let match = regex.firstMatch(in: text, options: [], range: lineRange) {
                 let snippet = nsStr.substring(with: lineRange).trimmingCharacters(in: .whitespacesAndNewlines)
-                results.append(WorkspaceSearchMatch(
-                    fileURL: fileURL,
-                    fileName: fileName,
-                    lineNumber: lineNum,
-                    lineSnippet: snippet,
-                    matchRangeInFile: match.range
-                ))
+                results.append(
+                    WorkspaceSearchMatch(
+                        fileURL: fileURL,
+                        fileName: fileName,
+                        lineNumber: lineNum,
+                        lineSnippet: snippet,
+                        matchRangeInFile: match.range
+                    ))
             }
             index = NSMaxRange(lineRange)
             lineNum += 1

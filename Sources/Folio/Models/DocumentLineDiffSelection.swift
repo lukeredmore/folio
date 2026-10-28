@@ -16,10 +16,11 @@ extension DocumentLineDiff {
             let targetStart = t0 + 1
             let targetEnd = t1
             if baseStart < baseEnd || targetStart < targetEnd {
-                edits.append(LineEdit(
-                    baseRange: baseStart..<baseEnd,
-                    replacement: Array(newLines[targetStart..<targetEnd])
-                ))
+                edits.append(
+                    LineEdit(
+                        baseRange: baseStart..<baseEnd,
+                        replacement: Array(newLines[targetStart..<targetEnd])
+                    ))
             }
         }
         return edits
@@ -53,15 +54,16 @@ extension DocumentLineDiff {
                     changedLineNumbers.insert(lineIdx + 1)
                 }
                 if newRange.isEmpty && !newLines.isEmpty {
-                    let anchorLine = min( max(1, t0 + 1), newLines.count)
+                    let anchorLine = min(max(1, t0 + 1), newLines.count)
                     changedLineNumbers.insert(anchorLine)
                 }
-                hunks.append(ExternalUpdateDiffHunk(
-                    oldStartLine: max(1, oldRange.lowerBound + 1),
-                    newStartLine: max(1, newRange.lowerBound + 1),
-                    removedLines: removed,
-                    addedLines: added
-                ))
+                hunks.append(
+                    ExternalUpdateDiffHunk(
+                        oldStartLine: max(1, oldRange.lowerBound + 1),
+                        newStartLine: max(1, newRange.lowerBound + 1),
+                        removedLines: removed,
+                        addedLines: added
+                    ))
             }
         }
 
@@ -118,7 +120,8 @@ extension DocumentLineDiff {
         var suffixLen = 0
         while suffixLen < (oldLen - prefixLen)
             && suffixLen < (newLen - prefixLen)
-            && oldNS.character(at: oldLen - 1 - suffixLen) == newNS.character(at: newLen - 1 - suffixLen) {
+            && oldNS.character(at: oldLen - 1 - suffixLen) == newNS.character(at: newLen - 1 - suffixLen)
+        {
             suffixLen += 1
         }
 

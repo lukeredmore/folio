@@ -14,7 +14,8 @@ extension LaTeXLiveStyler {
         }
         if trimmed == "\\vfill" || trimmed == "\\newpage" || trimmed == "\\clearpage"
             || trimmed == "\\else" || trimmed == "\\fi"
-            || trimmed == "\\answersfalse" || trimmed == "\\answerstrue" {
+            || trimmed == "\\answersfalse" || trimmed == "\\answerstrue"
+        {
             return true
         }
         if trimmed.hasPrefix("\\vspace") && trimmed.hasSuffix("}") && !trimmed.dropFirst(7).contains("\\") {
@@ -80,11 +81,12 @@ extension LaTeXLiveStyler {
             color = theme.secondaryTextNSColor
         }
 
-        storage.addAttributes([
-            .font: font,
-            .foregroundColor: color.withAlphaComponent(dimFactor),
-            .paragraphStyle: pStyle
-        ], range: lineRange)
+        storage.addAttributes(
+            [
+                .font: font,
+                .foregroundColor: color.withAlphaComponent(dimFactor),
+                .paragraphStyle: pStyle
+            ], range: lineRange)
 
         MarkdownLiveStyler.styleSyntaxToken(in: storage, range: openSyntaxRange, isActiveLine: isActiveLine || !prettyMode, theme: theme, dimFactor: dimFactor)
         MarkdownLiveStyler.styleSyntaxToken(in: storage, range: closeSyntaxRange, isActiveLine: isActiveLine || !prettyMode, theme: theme, dimFactor: dimFactor)
@@ -178,8 +180,7 @@ extension LaTeXLiveStyler {
         }
 
         let fullBlockRange = NSRange(location: lineRange.location, length: scanIndex - lineRange.location)
-        let isBlockActive = envLines.contains(where: { $0.isActive }) ||
-            NSIntersectionRange(fullBlockRange, selectedRange).length > 0
+        let isBlockActive = envLines.contains(where: { $0.isActive }) || NSIntersectionRange(fullBlockRange, selectedRange).length > 0
         let blockDim: CGFloat = (focusMode && !isBlockActive) ? 0.30 : 1.0
 
         // Code block environments (verbatim / lstlisting / minted)
@@ -198,15 +199,17 @@ extension LaTeXLiveStyler {
                 pStyle.firstLineHeadIndent = 14.0
                 pStyle.headIndent = 14.0
                 pStyle.tailIndent = effectiveContainerWidth
-                storage.addAttributes([
-                    .font: monoFont,
-                    .foregroundColor: theme.textNSColor.withAlphaComponent(blockDim),
-                    .paragraphStyle: pStyle
-                ], range: el.lineRange)
+                storage.addAttributes(
+                    [
+                        .font: monoFont,
+                        .foregroundColor: theme.textNSColor.withAlphaComponent(blockDim),
+                        .paragraphStyle: pStyle
+                    ], range: el.lineRange)
                 if (i == 0 || i == envLines.count - 1) && !isBlockActive && prettyMode {
                     MarkdownLiveStyler.collapseWhitespaceRange(in: storage, range: el.contentRange)
                 }
-                let kind: BlockDecorationKind = (i == 0)
+                let kind: BlockDecorationKind =
+                    (i == 0)
                     ? .codeFenceStart(language: envName)
                     : (i == envLines.count - 1 ? .codeFenceEnd : .codeFenceBody)
                 decorations.append(LineDecoration(lineRange: el.lineRange, kind: kind))
@@ -244,7 +247,8 @@ extension LaTeXLiveStyler {
         }
 
         if envName == "abstract" || envName == "quote" || envName == "quotation"
-            || LaTeXDocumentIndexer.theoremEnvironments[envName] != nil || envName == "proof" {
+            || LaTeXDocumentIndexer.theoremEnvironments[envName] != nil || envName == "proof"
+        {
             if fullBlockRange.length > lineRange.length {
                 LaTeXBlockStyleCache.resetAttributes(
                     in: storage,
@@ -296,16 +300,18 @@ extension LaTeXLiveStyler {
             pStyle.lineSpacing = 0
             pStyle.paragraphSpacing = 0
             pStyle.tailIndent = effectiveContainerWidth
-            storage.addAttributes([
-                .font: NSFont.systemFont(ofSize: 2.0),
-                .foregroundColor: NSColor.clear,
-                .paragraphStyle: pStyle
-            ], range: lineRange)
+            storage.addAttributes(
+                [
+                    .font: NSFont.systemFont(ofSize: 2.0),
+                    .foregroundColor: NSColor.clear,
+                    .paragraphStyle: pStyle
+                ], range: lineRange)
         } else {
-            storage.addAttributes([
-                .font: theme.codeFont(size: effectiveBaseSize * 0.86),
-                .foregroundColor: theme.markdownTokenNSColor.withAlphaComponent(0.85 * dimFactor)
-            ], range: contentRange)
+            storage.addAttributes(
+                [
+                    .font: theme.codeFont(size: effectiveBaseSize * 0.86),
+                    .foregroundColor: theme.markdownTokenNSColor.withAlphaComponent(0.85 * dimFactor)
+                ], range: contentRange)
         }
     }
 }

@@ -32,10 +32,12 @@ extension EditorSettingsView {
                     range: 480.0...1600.0,
                     step: 20.0
                 )
-                Text("The column is always centered. Tables wider than the column are centered at full width, and scroll sideways on their own when wider than the window.")
-                    .font(.system(size: 10.5))
-                    .foregroundColor(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
+                Text(
+                    "The column is always centered. Tables wider than the column are centered at full width, and scroll sideways on their own when wider than the window."
+                )
+                .font(.system(size: 10.5))
+                .foregroundColor(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
             }
 
             settingsCard(title: "PRINT & PDF PAGE SETUP") {
@@ -124,10 +126,12 @@ extension EditorSettingsView {
                         }
                     }
                 } else {
-                    Text("You can also configure paper size and margins in document source via \\usepackage[margin=1in,a4paper]{geometry} (LaTeX) or YAML frontmatter / <!-- page: margin=1in --> (Markdown).")
-                        .font(.system(size: 10.5))
-                        .foregroundColor(.secondary)
-                        .fixedSize(horizontal: false, vertical: true)
+                    Text(
+                        "You can also configure paper size and margins in document source via \\usepackage[margin=1in,a4paper]{geometry} (LaTeX) or YAML frontmatter / <!-- page: margin=1in --> (Markdown)."
+                    )
+                    .font(.system(size: 10.5))
+                    .foregroundColor(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
                 }
 
                 HStack {

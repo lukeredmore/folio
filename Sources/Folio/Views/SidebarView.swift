@@ -29,8 +29,9 @@ public struct SidebarView: View {
             get: { viewModel.activeHeadingID },
             set: { newID in
                 guard let id = newID,
-                      id != viewModel.activeHeadingID,
-                      let heading = viewModel.headings.first(where: { $0.id == id }) else {
+                    id != viewModel.activeHeadingID,
+                    let heading = viewModel.headings.first(where: { $0.id == id })
+                else {
                     return
                 }
                 viewModel.scrollToHeading(heading)
@@ -44,7 +45,8 @@ public struct SidebarView: View {
             set: { newID in
                 selectedSearchMatchID = newID
                 if let id = newID,
-                   let match = viewModel.workspaceSearchMatches.first(where: { $0.id == id }) {
+                    let match = viewModel.workspaceSearchMatches.first(where: { $0.id == id })
+                {
                     viewModel.jumpToSearchMatch(match)
                 }
             }
@@ -119,9 +121,8 @@ public struct SidebarView: View {
         let query = viewModel.fileFilterText.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !query.isEmpty else { return viewModel.flatMarkdownFiles }
         return viewModel.flatMarkdownFiles.filter {
-            $0.name.localizedCaseInsensitiveContains(query) ||
-            $0.url.path.localizedCaseInsensitiveContains(query) ||
-            ($0.remoteConnectionString?.localizedCaseInsensitiveContains(query) ?? false)
+            $0.name.localizedCaseInsensitiveContains(query) || $0.url.path.localizedCaseInsensitiveContains(query)
+                || ($0.remoteConnectionString?.localizedCaseInsensitiveContains(query) ?? false)
         }
     }
 

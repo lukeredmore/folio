@@ -58,12 +58,13 @@ extension MarkdownLiveStyler {
                     let openRange = NSRange(location: openRun.location, length: openRun.length)
                     let innerRange = NSRange(location: openEnd, length: innerLen)
                     let closeRange = NSRange(location: closeRun.location, length: closeRun.length)
-                    results.append(ScannedInlineCodeSpan(
-                        fullRange: fullRange,
-                        openRange: openRange,
-                        innerRange: innerRange,
-                        closeRange: closeRange
-                    ))
+                    results.append(
+                        ScannedInlineCodeSpan(
+                            fullRange: fullRange,
+                            openRange: openRange,
+                            innerRange: innerRange,
+                            closeRange: closeRange
+                        ))
                     cursorByLength[openRun.length] = cursor + 1
                     i = closeRunIdx + 1
                     continue
@@ -101,7 +102,8 @@ extension MarkdownLiveStyler {
                 }
             } else if ch == 0x29 { // ')'
                 if !isDelimiterProtected(NSRange(location: pIdx, length: 1)),
-                   let openParen = parenStack.popLast() {
+                    let openParen = parenStack.popLast()
+                {
                     matchingCloseParen[openParen] = pIdx
                 }
             }
@@ -139,9 +141,10 @@ extension MarkdownLiveStyler {
                 let closeRange = NSRange(location: idx, length: 1)
                 if !isDelimiterProtected(closeRange), let open = openStack.popLast() {
                     if idx + 1 < end,
-                       nsString.character(at: idx + 1) == 0x28,
-                       !isDelimiterProtected(NSRange(location: idx, length: 2)),
-                       let closeParen = matchingCloseParen[idx + 1] {
+                        nsString.character(at: idx + 1) == 0x28,
+                        !isDelimiterProtected(NSRange(location: idx, length: 2)),
+                        let closeParen = matchingCloseParen[idx + 1]
+                    {
                         let labelRange = NSRange(location: open.bracketPos + 1, length: idx - (open.bracketPos + 1))
                         if labelRange.length > 0 || open.isImage {
                             let rawDestRange = NSRange(location: idx + 2, length: max(0, closeParen - (idx + 2)))
@@ -154,26 +157,28 @@ extension MarkdownLiveStyler {
 
                             // Check for anchor image `[![alt](img_url)](link_url)`
                             if open.isImage,
-                               let outer = openStack.last,
-                               !outer.isImage,
-                               outer.openStart + 1 == open.openStart,
-                               closeParen + 2 < end,
-                               nsString.character(at: closeParen + 1) == 0x5D,
-                               nsString.character(at: closeParen + 2) == 0x28,
-                               !isDelimiterProtected(NSRange(location: closeParen + 1, length: 2)),
-                               let outerCloseParen = matchingCloseParen[closeParen + 2] {
+                                let outer = openStack.last,
+                                !outer.isImage,
+                                outer.openStart + 1 == open.openStart,
+                                closeParen + 2 < end,
+                                nsString.character(at: closeParen + 1) == 0x5D,
+                                nsString.character(at: closeParen + 2) == 0x28,
+                                !isDelimiterProtected(NSRange(location: closeParen + 1, length: 2)),
+                                let outerCloseParen = matchingCloseParen[closeParen + 2]
+                            {
                                 openStack.removeLast()
                                 let openSyntaxRange = NSRange(location: outer.openStart, length: 3)
                                 let trailingRange = NSRange(location: idx, length: (outerCloseParen + 1) - idx)
                                 let fullRange = NSRange(location: outer.openStart, length: (outerCloseParen + 1) - outer.openStart)
-                                results.append(ScannedMarkdownLink(
-                                    isImage: true,
-                                    fullRange: fullRange,
-                                    openSyntaxRange: openSyntaxRange,
-                                    labelRange: labelRange,
-                                    trailingSyntaxRange: trailingRange,
-                                    url: rawDest
-                                ))
+                                results.append(
+                                    ScannedMarkdownLink(
+                                        isImage: true,
+                                        fullRange: fullRange,
+                                        openSyntaxRange: openSyntaxRange,
+                                        labelRange: labelRange,
+                                        trailingSyntaxRange: trailingRange,
+                                        url: rawDest
+                                    ))
                                 openStack.removeAll(keepingCapacity: true)
                                 idx = outerCloseParen + 1
                                 continue
@@ -182,14 +187,15 @@ extension MarkdownLiveStyler {
                             let openSyntaxRange = NSRange(location: open.openStart, length: open.isImage ? 2 : 1)
                             let trailingRange = NSRange(location: idx, length: (closeParen + 1) - idx)
                             let fullRange = NSRange(location: open.openStart, length: (closeParen + 1) - open.openStart)
-                            results.append(ScannedMarkdownLink(
-                                isImage: open.isImage,
-                                fullRange: fullRange,
-                                openSyntaxRange: openSyntaxRange,
-                                labelRange: labelRange,
-                                trailingSyntaxRange: trailingRange,
-                                url: rawDest
-                            ))
+                            results.append(
+                                ScannedMarkdownLink(
+                                    isImage: open.isImage,
+                                    fullRange: fullRange,
+                                    openSyntaxRange: openSyntaxRange,
+                                    labelRange: labelRange,
+                                    trailingSyntaxRange: trailingRange,
+                                    url: rawDest
+                                ))
                             if !open.isImage {
                                 openStack.removeAll(keepingCapacity: true)
                             }

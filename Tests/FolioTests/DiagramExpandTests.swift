@@ -32,10 +32,11 @@ final class DiagramExpandTests: XCTestCase {
     func testExpandButtonOpensTheRenderedDiagram() throws {
         let source = "flowchart LR\n    Seed\(UUID().uuidString.prefix(6)) --> Bed"
         let textView = makeEditor("# Plan\n\n```mermaid\n\(source)\n```\n\nAfter.\n\n")
-        let range = try XCTUnwrap(textView.lineDecorations.compactMap { decoration -> NSRange? in
-            if case let .mermaidBlockRendered(_, fullBlockRange, _) = decoration.kind { return fullBlockRange }
-            return nil
-        }.first)
+        let range = try XCTUnwrap(
+            textView.lineDecorations.compactMap { decoration -> NSRange? in
+                if case let .mermaidBlockRendered(_, fullBlockRange, _) = decoration.kind { return fullBlockRange }
+                return nil
+            }.first)
         let card = try XCTUnwrap(textView.diagramCardRect(for: range))
         let button = HybridMarkdownTextView.diagramExpandButtonRect(in: card)
         XCTAssertTrue(card.contains(button), "The button sits inside the card")

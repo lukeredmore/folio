@@ -70,19 +70,23 @@ public struct ReleaseManifest: Codable, Equatable, Sendable {
 
         // 1. If the release body embeds `<!-- folio-release: {...} -->`, decode it directly
         if let markerRange = body.range(of: "<!-- folio-release:"),
-           let endRange = body.range(of: "-->", range: markerRange.upperBound..<body.endIndex) {
+            let endRange = body.range(of: "-->", range: markerRange.upperBound..<body.endIndex)
+        {
             let jsonSubstring = body[markerRange.upperBound..<endRange.lowerBound]
                 .trimmingCharacters(in: .whitespacesAndNewlines)
             if let embeddedData = jsonSubstring.data(using: .utf8),
-               let manifest = try? JSONDecoder().decode(ReleaseManifest.self, from: embeddedData) {
+                let manifest = try? JSONDecoder().decode(ReleaseManifest.self, from: embeddedData)
+            {
                 return manifest
             }
         }
 
         // 2. Fallback: extract from GitHub Release title, body, and Folio.dmg asset
-        let dmgAsset = release.assets.first(where: { $0.name == "Folio.dmg" })
+        let dmgAsset =
+            release.assets.first(where: { $0.name == "Folio.dmg" })
             ?? release.assets.first(where: { $0.name.hasSuffix(".dmg") && !$0.name.lowercased().contains("zed") })
-        let dmgURL = dmgAsset?.browser_download_url
+        let dmgURL =
+            dmgAsset?.browser_download_url
             ?? "https://github.com/\(defaultRepository)/releases/latest/download/Folio.dmg"
 
         var sha256 = ""
@@ -167,12 +171,14 @@ public struct AppVersionInfo: Equatable, Sendable {
         at appBundleURL: URL,
         environment: [String: String] = [:]
     ) -> AppVersionInfo? {
-        let plistURL = appBundleURL
+        let plistURL =
+            appBundleURL
             .appendingPathComponent("Contents", isDirectory: true)
             .appendingPathComponent("Info.plist", isDirectory: false)
         guard let data = try? Data(contentsOf: plistURL),
-              let plist = try? PropertyListSerialization.propertyList(from: data, options: [], format: nil),
-              let info = plist as? [String: Any] else {
+            let plist = try? PropertyListSerialization.propertyList(from: data, options: [], format: nil),
+            let info = plist as? [String: Any]
+        else {
             return nil
         }
         return fromInfoDictionary(

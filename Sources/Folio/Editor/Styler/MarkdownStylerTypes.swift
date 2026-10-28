@@ -153,8 +153,8 @@ extension MarkdownLiveStyler {
 
     struct ParsedTableCell {
         let leadingDelimiterRange: NSRange // pipe (if any) + leading spaces before cell content
-        let contentRange: NSRange          // trimmed cell text
-        let trailingSpacesRange: NSRange   // trailing spaces before the next pipe
+        let contentRange: NSRange // trimmed cell text
+        let trailingSpacesRange: NSRange // trailing spaces before the next pipe
     }
 
     struct ParsedTableRow {
@@ -180,9 +180,9 @@ extension MarkdownLiveStyler {
     struct ScannedMarkdownLink {
         let isImage: Bool
         let fullRange: NSRange
-        let openSyntaxRange: NSRange      // `[` or `![`
-        let labelRange: NSRange           // `label`
-        let trailingSyntaxRange: NSRange  // `](url)`
+        let openSyntaxRange: NSRange // `[` or `![`
+        let labelRange: NSRange // `label`
+        let trailingSyntaxRange: NSRange // `](url)`
         let url: String
     }
 
@@ -257,16 +257,17 @@ extension MarkdownLiveStyler {
                 for i in 0..<res.block_count {
                     let b = blocksBase[i]
                     let info = b.info != nil ? String(cString: b.info) : ""
-                    blocks.append(CmarkAstBlock(
-                        kind: b.kind,
-                        startLine: Int(b.start_line),
-                        startColumn: Int(b.start_column),
-                        endLine: Int(b.end_line),
-                        endColumn: Int(b.end_column),
-                        level: Int(b.level),
-                        flags: b.flags,
-                        info: info
-                    ))
+                    blocks.append(
+                        CmarkAstBlock(
+                            kind: b.kind,
+                            startLine: Int(b.start_line),
+                            startColumn: Int(b.start_column),
+                            endLine: Int(b.end_line),
+                            endColumn: Int(b.end_column),
+                            level: Int(b.level),
+                            flags: b.flags,
+                            info: info
+                        ))
                 }
             }
 
@@ -277,15 +278,16 @@ extension MarkdownLiveStyler {
                     let inl = inlinesBase[i]
                     let url = inl.url != nil ? String(cString: inl.url) : ""
                     let literal = inl.literal != nil ? String(cString: inl.literal) : ""
-                    inlines.append(CmarkAstInline(
-                        kind: inl.kind,
-                        startLine: Int(inl.start_line),
-                        startColumn: Int(inl.start_column),
-                        endLine: Int(inl.end_line),
-                        endColumn: Int(inl.end_column),
-                        url: url,
-                        literal: literal
-                    ))
+                    inlines.append(
+                        CmarkAstInline(
+                            kind: inl.kind,
+                            startLine: Int(inl.start_line),
+                            startColumn: Int(inl.start_column),
+                            endLine: Int(inl.end_line),
+                            endColumn: Int(inl.end_column),
+                            url: url,
+                            literal: literal
+                        ))
                 }
             }
 

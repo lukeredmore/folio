@@ -28,7 +28,8 @@ extension FolioCLIManager {
         bundleInfoDictionary: [String: Any]? = Bundle.main.infoDictionary
     ) -> String {
         if let shortVersion = bundleInfoDictionary?["CFBundleShortVersionString"] as? String,
-           !shortVersion.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            !shortVersion.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        {
             return shortVersion
         }
         return "1.0.0"
@@ -55,10 +56,12 @@ extension FolioCLIManager {
         arguments: [String] = ProcessInfo.processInfo.arguments,
         bundleInfoDictionary: [String: Any]? = Bundle.main.infoDictionary
     ) {
-        guard let action = evaluateImmediateCLIAction(
-            arguments: arguments,
-            bundleInfoDictionary: bundleInfoDictionary
-        ) else {
+        guard
+            let action = evaluateImmediateCLIAction(
+                arguments: arguments,
+                bundleInfoDictionary: bundleInfoDictionary
+            )
+        else {
             return
         }
         switch action {
@@ -77,7 +80,8 @@ extension FolioCLIManager {
     ) -> String {
         for key in ["FOLIO_CALLER_CWD", "BUILD_WORKING_DIRECTORY"] {
             if let value = environment[key]?.trimmingCharacters(in: .whitespacesAndNewlines),
-               !value.isEmpty {
+                !value.isEmpty
+            {
                 return value
             }
         }
@@ -135,8 +139,8 @@ extension FolioCLIManager {
 
             var cleaned = arg
             if cleaned.count >= 2,
-               (cleaned.hasPrefix("\"") && cleaned.hasSuffix("\"")) ||
-               (cleaned.hasPrefix("'") && cleaned.hasSuffix("'")) {
+                (cleaned.hasPrefix("\"") && cleaned.hasSuffix("\"")) || (cleaned.hasPrefix("'") && cleaned.hasSuffix("'"))
+            {
                 cleaned = String(cleaned.dropFirst().dropLast())
             }
             if cleaned.hasPrefix("file://") {
@@ -150,7 +154,8 @@ extension FolioCLIManager {
             let (basePath, _, _, rawSuffix) = splitPathAndLineColumnSuffix(cleaned, checkDiskExistence: false)
             let expanded = (basePath as NSString).expandingTildeInPath
             guard !expanded.isEmpty else { continue }
-            let resolvedURL = expanded.hasPrefix("/")
+            let resolvedURL =
+                expanded.hasPrefix("/")
                 ? URL(fileURLWithPath: expanded).standardizedFileURL
                 : URL(fileURLWithPath: currentDirectoryPath).appendingPathComponent(expanded).standardizedFileURL
             if let suffix = rawSuffix {

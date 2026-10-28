@@ -27,18 +27,18 @@ final class LaTeXDocumentStylerTests: XCTestCase {
 
     func testCollapsiblePreambleAndSectionNumbering() {
         let tex = """
-        \\documentclass[11pt]{article}
-        \\usepackage{amsmath,amssymb}
-        \\newcommand{\\R}{\\mathbb{R}}
-        \\begin{document}
-        \\section{Introduction}\\label{sec:intro}
-        Hello $\\R^n$ in \\autoref{sec:methods}.
-        \\subsection{Background}
-        More prose.
-        \\section{Methods}\\label{sec:methods}
-        Done.
-        \\end{document}
-        """
+            \\documentclass[11pt]{article}
+            \\usepackage{amsmath,amssymb}
+            \\newcommand{\\R}{\\mathbb{R}}
+            \\begin{document}
+            \\section{Introduction}\\label{sec:intro}
+            Hello $\\R^n$ in \\autoref{sec:methods}.
+            \\subsection{Background}
+            More prose.
+            \\section{Methods}\\label{sec:methods}
+            Done.
+            \\end{document}
+            """
         let storage = NSTextStorage(string: tex)
         let cursorAtEnd = NSRange(location: (tex as NSString).length - 5, length: 0)
 
@@ -95,30 +95,30 @@ final class LaTeXDocumentStylerTests: XCTestCase {
         let tempDir = try makeTemporaryDirectory("folio_latex_test")
 
         let bibContent = """
-        @article{vaswani2017,
-          author = {Vaswani, Ashish and Shazeer, Noam},
-          title = {Attention Is All You Need},
-          year = {2017}
-        }
-        """
+            @article{vaswani2017,
+              author = {Vaswani, Ashish and Shazeer, Noam},
+              title = {Attention Is All You Need},
+              year = {2017}
+            }
+            """
         let bibURL = tempDir.appendingPathComponent("refs.bib")
         try bibContent.write(to: bibURL, atomically: true, encoding: .utf8)
 
         let tex = """
-        \\documentclass{article}
-        \\begin{document}
-        \\begin{theorem}[Main Bound]\\label{thm:main}
-        For all $x$, we have
-        \\end{theorem}
-        \\begin{equation}\\label{eq:energy}
-        E = mc^2
-        \\end{equation}
-        \\begin{proof}
-        Immediate from \\eqref{eq:energy} and \\cite{vaswani2017}.
-        \\end{proof}
-        \\bibliography{refs}
-        \\end{document}
-        """
+            \\documentclass{article}
+            \\begin{document}
+            \\begin{theorem}[Main Bound]\\label{thm:main}
+            For all $x$, we have
+            \\end{theorem}
+            \\begin{equation}\\label{eq:energy}
+            E = mc^2
+            \\end{equation}
+            \\begin{proof}
+            Immediate from \\eqref{eq:energy} and \\cite{vaswani2017}.
+            \\end{proof}
+            \\bibliography{refs}
+            \\end{document}
+            """
         let texURL = tempDir.appendingPathComponent("main.tex")
         let storage = NSTextStorage(string: tex)
         let analysis = MarkdownLiveStyler.applyStyles(
@@ -197,18 +197,18 @@ final class LaTeXDocumentStylerTests: XCTestCase {
 
     func testFocusedTheoremBodyAndEscapedTokensAndArgminOperator() {
         let tex = """
-        \\documentclass{article}
-        \\DeclareMathOperator*{\\argmin}{arg\\,min}
-        \\begin{document}
-        \\title{Native \\LaTeX{} Paper}
-        \\begin{definition}[Inner Product]
-        Let $x \\in \\mathbb{R}$.
-        \\end{definition}
-        \\begin{itemize}
-          \\item \\textbf{Preamble \\& Macros:} Fold \\texttt{\\textbackslash usepackage} cleanly.
-        \\end{itemize}
-        \\end{document}
-        """
+            \\documentclass{article}
+            \\DeclareMathOperator*{\\argmin}{arg\\,min}
+            \\begin{document}
+            \\title{Native \\LaTeX{} Paper}
+            \\begin{definition}[Inner Product]
+            Let $x \\in \\mathbb{R}$.
+            \\end{definition}
+            \\begin{itemize}
+              \\item \\textbf{Preamble \\& Macros:} Fold \\texttt{\\textbackslash usepackage} cleanly.
+            \\end{itemize}
+            \\end{document}
+            """
         let ns = tex as NSString
         let macros = LaTeXMacroExpander.extractDocumentMacros(from: tex)
         XCTAssertEqual(macros["\\argmin"]?.operatorText, "arg min")
@@ -261,17 +261,17 @@ final class LaTeXDocumentStylerTests: XCTestCase {
 
     func testSourceCodeModeRoundtripRestoresLaTeXAndMarkdownLayoutCleanly() {
         let tex = """
-        \\documentclass[11pt]{article}
-        \\usepackage{amsmath}
-        \\begin{document}
-        \\section{Variational Principles}
-        First line of soft-wrapped paragraph
-        second line of soft-wrapped paragraph.
-        \\begin{equation}
-        \\int_0^\\infty e^{-x^2}\\,dx = \\frac{\\sqrt{\\pi}}{2}
-        \\end{equation}
-        \\end{document}
-        """
+            \\documentclass[11pt]{article}
+            \\usepackage{amsmath}
+            \\begin{document}
+            \\section{Variational Principles}
+            First line of soft-wrapped paragraph
+            second line of soft-wrapped paragraph.
+            \\begin{equation}
+            \\int_0^\\infty e^{-x^2}\\,dx = \\frac{\\sqrt{\\pi}}{2}
+            \\end{equation}
+            \\end{document}
+            """
         let ns = tex as NSString
         let storage = NSTextStorage(string: tex)
         let layoutManager = WideBlockLayoutManager()

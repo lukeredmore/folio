@@ -79,8 +79,9 @@ final class HostedMainWindow {
     /// Window-coordinate frame of the `LayoutRegionMarker` view with `identifier`, if it is on screen.
     func markedRegionFrame(identifier: String) -> NSRect? {
         guard let root = window.contentView?.superview,
-              let marker = Self.findView(identifier: identifier, in: root),
-              !marker.isHiddenOrHasHiddenAncestor else { return nil }
+            let marker = Self.findView(identifier: identifier, in: root),
+            !marker.isHiddenOrHasHiddenAncestor
+        else { return nil }
         let frame = marker.convert(marker.bounds, to: nil)
         return frame.width > 0 && frame.height > 0 ? frame : nil
     }
@@ -104,7 +105,8 @@ final class HostedMainWindow {
         }
         for item in window.toolbar?.items ?? [] {
             guard let view = item.view, view.window === window, !view.isHiddenOrHasHiddenAncestor,
-                  view.bounds.width > 0, view.bounds.height > 0 else { continue }
+                view.bounds.width > 0, view.bounds.height > 0
+            else { continue }
             frames.append((item.itemIdentifier.rawValue, view.convert(view.bounds, to: nil)))
         }
         return frames
@@ -127,13 +129,16 @@ final class HostedMainWindow {
     /// Sends a real left click at `point` (window coordinates) through the window's event path.
     func click(at point: NSPoint) {
         let time = ProcessInfo.processInfo.systemUptime
-        guard let down = NSEvent.mouseEvent(
-            with: .leftMouseDown, location: point, modifierFlags: [], timestamp: time,
-            windowNumber: window.windowNumber, context: nil, eventNumber: 1, clickCount: 1, pressure: 1
-        ), let up = NSEvent.mouseEvent(
-            with: .leftMouseUp, location: point, modifierFlags: [], timestamp: time + 0.01,
-            windowNumber: window.windowNumber, context: nil, eventNumber: 2, clickCount: 1, pressure: 0
-        ) else { return }
+        guard
+            let down = NSEvent.mouseEvent(
+                with: .leftMouseDown, location: point, modifierFlags: [], timestamp: time,
+                windowNumber: window.windowNumber, context: nil, eventNumber: 1, clickCount: 1, pressure: 1
+            ),
+            let up = NSEvent.mouseEvent(
+                with: .leftMouseUp, location: point, modifierFlags: [], timestamp: time + 0.01,
+                windowNumber: window.windowNumber, context: nil, eventNumber: 2, clickCount: 1, pressure: 0
+            )
+        else { return }
         NSApplication.shared.postEvent(up, atStart: false)
         window.sendEvent(down)
         if let pendingUp = NSApplication.shared.nextEvent(matching: .leftMouseUp, until: nil, inMode: .default, dequeue: true) {
@@ -145,8 +150,9 @@ final class HostedMainWindow {
     func writeSnapshot(named name: String) {
         let env = ProcessInfo.processInfo.environment
         guard let dir = env["FOLIO_LAYOUT_SNAPSHOT_DIR"] ?? env["TEST_UNDECLARED_OUTPUTS_DIR"],
-              let frameView = window.contentView?.superview,
-              let rep = frameView.bitmapImageRepForCachingDisplay(in: frameView.bounds) else { return }
+            let frameView = window.contentView?.superview,
+            let rep = frameView.bitmapImageRepForCachingDisplay(in: frameView.bounds)
+        else { return }
         frameView.cacheDisplay(in: frameView.bounds, to: rep)
         let url = URL(fileURLWithPath: dir).appendingPathComponent("\(name).png")
         try? FileManager.default.createDirectory(atPath: dir, withIntermediateDirectories: true)

@@ -11,7 +11,9 @@ final class RichMediaAndHtmlTests: XCTestCase {
         let mermaidSvg = MarkdownLiveStyler.renderMermaidSVG("flowchart LR\n    A[Start] --> B[End]", isDark: false)
         XCTAssertTrue(mermaidSvg.contains("<svg"), "Mermaid FFI should produce valid SVG")
         XCTAssertTrue(mermaidSvg.contains("Start") && mermaidSvg.contains("End"))
-        XCTAssertFalse(mermaidSvg.contains("fill=\"transparent\""), "Mermaid SVG must use SVG 1.1 fill=\"none\" rather than CSS fill=\"transparent\" so CoreSVG does not render a black canvas")
+        XCTAssertFalse(
+            mermaidSvg.contains("fill=\"transparent\""),
+            "Mermaid SVG must use SVG 1.1 fill=\"none\" rather than CSS fill=\"transparent\" so CoreSVG does not render a black canvas")
 
         let (mermaidNSImage, _) = FolioMediaImageCache.shared.mermaidImage(for: "flowchart LR\n    A[Start] --> B[End]", isDark: false)
         let renderedImg = try XCTUnwrap(mermaidNSImage, "CoreSVG should rasterize Mermaid SVG into NSImage")
@@ -45,25 +47,25 @@ final class RichMediaAndHtmlTests: XCTestCase {
 
         // 2. Verify live buffer decorations for Markdown images, HTML <img>/<video>, Mermaid/SVG fences, and inline HTML tags
         let markdown = """
-        # Rich Media Test
+            # Rich Media Test
 
-        ![Hero Diagram](assets/hero.png)
+            ![Hero Diagram](assets/hero.png)
 
-        <img src="assets/banner.svg" alt="Banner" width="320" height="120" />
+            <img src="assets/banner.svg" alt="Banner" width="320" height="120" />
 
-        <video src="demos/walkthrough.mp4" title="Walkthrough Video" width="480" height="270"></video>
+            <video src="demos/walkthrough.mp4" title="Walkthrough Video" width="480" height="270"></video>
 
-        Press <kbd>Cmd+Shift+P</kbd> to toggle <mark>Pretty Mode</mark> with <u>underlined</u>, H<sub>2</sub>O, and E=mc<sup>2</sup>.
+            Press <kbd>Cmd+Shift+P</kbd> to toggle <mark>Pretty Mode</mark> with <u>underlined</u>, H<sub>2</sub>O, and E=mc<sup>2</sup>.
 
-        ```mermaid
-        flowchart TD
-            Client --> Server
-        ```
+            ```mermaid
+            flowchart TD
+                Client --> Server
+            ```
 
-        ```svg
-        <svg viewBox="0 0 100 50"><circle cx="50" cy="25" r="20" fill="#2563eb"/></svg>
-        ```
-        """
+            ```svg
+            <svg viewBox="0 0 100 50"><circle cx="50" cy="25" r="20" fill="#2563eb"/></svg>
+            ```
+            """
 
         let storage = NSTextStorage(string: markdown)
         // Cursor at line 0 ("# Rich Media Test") so all media lines and blocks are inactive and rendered
@@ -129,10 +131,10 @@ final class RichMediaAndHtmlTests: XCTestCase {
 
         // 4. Verify anchor images `[![alt](img_url)](link_url)` fold the outer link syntax and emit a single `.imageRendered`
         let anchorMarkdown = """
-        # Anchor Test
+            # Anchor Test
 
-        [![Download Latest Folio.dmg](https://img.shields.io/badge/Download-Folio.dmg-blue)](https://github.com/lukeredmore/folio/releases/latest/download/Folio.dmg)
-        """
+            [![Download Latest Folio.dmg](https://img.shields.io/badge/Download-Folio.dmg-blue)](https://github.com/lukeredmore/folio/releases/latest/download/Folio.dmg)
+            """
         let anchorStorage = NSTextStorage(string: anchorMarkdown)
         let anchorAnalysis = MarkdownLiveStyler.applyStyles(
             to: anchorStorage,

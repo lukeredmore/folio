@@ -33,21 +33,23 @@ extension LaTeXLiveStyler {
             ).trimmingCharacters(in: .whitespaces).isEmpty
 
             if isActiveLine || !prettyMode {
-                storage.addAttributes([
-                    .font: docIndex.bodyFont(size: fontSize * 0.92, italic: true, fallbackTheme: theme),
-                    .foregroundColor: theme.secondaryTextNSColor.withAlphaComponent(0.75 * dimFactor)
-                ], range: commentRange)
+                storage.addAttributes(
+                    [
+                        .font: docIndex.bodyFont(size: fontSize * 0.92, italic: true, fallbackTheme: theme),
+                        .foregroundColor: theme.secondaryTextNSColor.withAlphaComponent(0.75 * dimFactor)
+                    ], range: commentRange)
             } else {
                 MarkdownLiveStyler.collapseWhitespaceRange(in: storage, range: commentRange)
                 if isWholeLineComment {
                     let pStyle = NSMutableParagraphStyle()
                     pStyle.minimumLineHeight = 2.0; pStyle.maximumLineHeight = 2.0
                     pStyle.lineSpacing = 0; pStyle.paragraphSpacing = 0
-                    storage.addAttributes([
-                        .font: NSFont.systemFont(ofSize: 1.0),
-                        .foregroundColor: NSColor.clear,
-                        .paragraphStyle: pStyle
-                    ], range: lineRange)
+                    storage.addAttributes(
+                        [
+                            .font: NSFont.systemFont(ofSize: 1.0),
+                            .foregroundColor: NSColor.clear,
+                            .paragraphStyle: pStyle
+                        ], range: lineRange)
                 }
             }
             effectiveRange = NSRange(location: range.location, length: max(0, commentStart - range.location))
@@ -106,11 +108,13 @@ extension LaTeXLiveStyler {
                 )
             case 4: // HiddenMeta
                 if !isActiveLine && prettyMode && cmd == "\\\\" && !arg.isEmpty,
-                   let len = LaTeXLength.parse(arg) {
+                    let len = LaTeXLength.parse(arg)
+                {
                     let extraPt = max(0.0, len.resolvedPoints(baseSize: fontSize))
                     if extraPt > 0,
-                       let existing = storage.attribute(.paragraphStyle, at: lineRange.location, effectiveRange: nil) as? NSParagraphStyle,
-                       let mutable = existing.mutableCopy() as? NSMutableParagraphStyle {
+                        let existing = storage.attribute(.paragraphStyle, at: lineRange.location, effectiveRange: nil) as? NSParagraphStyle,
+                        let mutable = existing.mutableCopy() as? NSMutableParagraphStyle
+                    {
                         mutable.paragraphSpacing = extraPt
                         storage.addAttribute(.paragraphStyle, value: mutable, range: lineRange)
                     }
@@ -140,11 +144,12 @@ extension LaTeXLiveStyler {
     ) {
         storage.addAttribute(MKey.noSpellCheck, value: true, range: fullRange)
         if isActiveLine || !prettyMode {
-            storage.addAttributes([
-                .font: theme.codeFont(size: fontSize * 0.90),
-                .foregroundColor: theme.textNSColor.withAlphaComponent(dimFactor),
-                .backgroundColor: theme.codeBackgroundNSColor.withAlphaComponent(0.55 * dimFactor)
-            ], range: innerRange)
+            storage.addAttributes(
+                [
+                    .font: theme.codeFont(size: fontSize * 0.90),
+                    .foregroundColor: theme.textNSColor.withAlphaComponent(dimFactor),
+                    .backgroundColor: theme.codeBackgroundNSColor.withAlphaComponent(0.55 * dimFactor)
+                ], range: innerRange)
             MarkdownLiveStyler.highlightLaTeXSource(in: storage, range: innerRange, theme: theme, dimFactor: dimFactor)
             MarkdownLiveStyler.styleSyntaxToken(in: storage, range: openRange, isActiveLine: true, theme: theme, dimFactor: dimFactor)
             MarkdownLiveStyler.styleSyntaxToken(in: storage, range: closeRange, isActiveLine: true, theme: theme, dimFactor: dimFactor)
@@ -154,10 +159,11 @@ extension LaTeXLiveStyler {
                 in: storage, nsString: nsString, fullRange: fullRange, width: max(4.0, mathBox.width + 2.0),
                 ascent: mathBox.ascent, descent: mathBox.descent, verticalPadding: 3.0
             )
-            decorations.append(LineDecoration(
-                lineRange: fullRange,
-                kind: .inlineMathRendered(latex: latexStr, range: fullRange, fontSize: fontSize, dimFactor: dimFactor)
-            ))
+            decorations.append(
+                LineDecoration(
+                    lineRange: fullRange,
+                    kind: .inlineMathRendered(latex: latexStr, range: fullRange, fontSize: fontSize, dimFactor: dimFactor)
+                ))
         }
     }
 
@@ -188,14 +194,15 @@ extension LaTeXLiveStyler {
         let pillFont = NSFont.systemFont(ofSize: max(10.5, fontSize * 0.82), weight: .medium)
         let labelW = ceil((pillLabel as NSString).size(withAttributes: [.font: pillFont]).width) + 12.0
         reserveAtomicInlineSpan(in: storage, nsString: nsString, fullRange: fullRange, width: labelW, ascent: baseFont.ascender, descent: -baseFont.descender)
-        decorations.append(LineDecoration(
-            lineRange: fullRange,
-            kind: .latexInlinePill(
-                label: pillLabel, tooltip: tooltips.joined(separator: "\n"),
-                targetLocation: firstLoc, targetURL: firstURL, range: fullRange,
-                fontSize: fontSize, isCitation: true, dimFactor: dimFactor
-            )
-        ))
+        decorations.append(
+            LineDecoration(
+                lineRange: fullRange,
+                kind: .latexInlinePill(
+                    label: pillLabel, tooltip: tooltips.joined(separator: "\n"),
+                    targetLocation: firstLoc, targetURL: firstURL, range: fullRange,
+                    fontSize: fontSize, isCitation: true, dimFactor: dimFactor
+                )
+            ))
     }
 
     private static func styleRefSpan(
@@ -217,12 +224,13 @@ extension LaTeXLiveStyler {
         let pillFont = NSFont.systemFont(ofSize: max(10.5, fontSize * 0.82), weight: .medium)
         let labelW = ceil((pillLabel as NSString).size(withAttributes: [.font: pillFont]).width) + 12.0
         reserveAtomicInlineSpan(in: storage, nsString: nsString, fullRange: fullRange, width: labelW, ascent: baseFont.ascender, descent: -baseFont.descender)
-        decorations.append(LineDecoration(
-            lineRange: fullRange,
-            kind: .latexInlinePill(
-                label: pillLabel, tooltip: tooltip, targetLocation: info?.characterLocation,
-                targetURL: nil, range: fullRange, fontSize: fontSize, isCitation: false, dimFactor: dimFactor
-            )
-        ))
+        decorations.append(
+            LineDecoration(
+                lineRange: fullRange,
+                kind: .latexInlinePill(
+                    label: pillLabel, tooltip: tooltip, targetLocation: info?.characterLocation,
+                    targetURL: nil, range: fullRange, fontSize: fontSize, isCitation: false, dimFactor: dimFactor
+                )
+            ))
     }
 }

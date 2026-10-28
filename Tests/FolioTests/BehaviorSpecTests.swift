@@ -32,7 +32,7 @@ final class BehaviorSpecTests: XCTestCase {
     private func loadSpecDocument() throws -> SpecDocument {
         let candidates = [
             "tst/specs/editor_behaviors.json",
-            "../../tst/specs/editor_behaviors.json",
+            "../../tst/specs/editor_behaviors.json"
         ]
         for rel in candidates {
             let url = URL(fileURLWithPath: rel)

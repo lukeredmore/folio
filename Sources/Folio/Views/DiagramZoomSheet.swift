@@ -13,15 +13,23 @@ struct DiagramZoomSheet: View {
                 Text("Mermaid Diagram")
                     .font(.system(size: 13, weight: .semibold))
                 Spacer()
-                Button { controller.zoom(by: 1 / 1.25) } label: { Image(systemName: "minus.magnifyingglass") }
-                    .keyboardShortcut("-", modifiers: [.command])
-                    .help("Zoom Out")
+                Button {
+                    controller.zoom(by: 1 / 1.25)
+                } label: {
+                    Image(systemName: "minus.magnifyingglass")
+                }
+                .keyboardShortcut("-", modifiers: [.command])
+                .help("Zoom Out")
                 Text("\(Int(round(controller.magnification * 100)))%")
                     .font(.system(size: 12).monospacedDigit())
                     .frame(width: 48)
-                Button { controller.zoom(by: 1.25) } label: { Image(systemName: "plus.magnifyingglass") }
-                    .keyboardShortcut("=", modifiers: [.command])
-                    .help("Zoom In")
+                Button {
+                    controller.zoom(by: 1.25)
+                } label: {
+                    Image(systemName: "plus.magnifyingglass")
+                }
+                .keyboardShortcut("=", modifiers: [.command])
+                .help("Zoom In")
                 Button("Fit") { controller.fit() }
                     .keyboardShortcut("0", modifiers: [.command])
                 Button("100%") { controller.setMagnification(1) }

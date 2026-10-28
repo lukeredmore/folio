@@ -9,8 +9,9 @@ final class WideBlockLayoutManager: NSLayoutManager {
 
     override func drawGlyphs(forGlyphRange glyphsToShow: NSRange, at origin: NSPoint) {
         guard !isDrawingWideRegions,
-              let container = textContainers.first as? WideBlockTextContainer,
-              !container.regions.isEmpty else {
+            let container = textContainers.first as? WideBlockTextContainer,
+            !container.regions.isEmpty
+        else {
             super.drawGlyphs(forGlyphRange: glyphsToShow, at: origin)
             return
         }
@@ -51,10 +52,9 @@ final class WideBlockLayoutManager: NSLayoutManager {
         let safeRange = NSRange(location: clampedLoc, length: clampedLen)
         var suppress = false
         storage.enumerateAttributes(in: safeRange, options: []) { attrs, _, stop in
-            if attrs[MarkdownLiveStyler.noSpellCheckAttributeKey] != nil ||
-                attrs[MarkdownLiveStyler.collapsedTokenAttributeKey] != nil ||
-                attrs[MarkdownLiveStyler.inlineCodeFontAttributeKey] != nil ||
-                attrs[MarkdownLiveStyler.inlineMathSpanAttributeKey] != nil {
+            if attrs[MarkdownLiveStyler.noSpellCheckAttributeKey] != nil || attrs[MarkdownLiveStyler.collapsedTokenAttributeKey] != nil
+                || attrs[MarkdownLiveStyler.inlineCodeFontAttributeKey] != nil || attrs[MarkdownLiveStyler.inlineMathSpanAttributeKey] != nil
+            {
                 suppress = true
                 stop.pointee = true
             }
@@ -64,8 +64,9 @@ final class WideBlockLayoutManager: NSLayoutManager {
 
     override func addTemporaryAttribute(_ attrName: NSAttributedString.Key, value: Any, forCharacterRange charRange: NSRange) {
         if attrName == .spellingState,
-           let storage = textStorage,
-           Self.shouldSuppressSpellCheck(in: storage, range: charRange) {
+            let storage = textStorage,
+            Self.shouldSuppressSpellCheck(in: storage, range: charRange)
+        {
             return
         }
         super.addTemporaryAttribute(attrName, value: value, forCharacterRange: charRange)
@@ -73,8 +74,9 @@ final class WideBlockLayoutManager: NSLayoutManager {
 
     override func addTemporaryAttributes(_ attrs: [NSAttributedString.Key: Any] = [:], forCharacterRange charRange: NSRange) {
         if attrs[.spellingState] != nil,
-           let storage = textStorage,
-           Self.shouldSuppressSpellCheck(in: storage, range: charRange) {
+            let storage = textStorage,
+            Self.shouldSuppressSpellCheck(in: storage, range: charRange)
+        {
             var filtered = attrs
             filtered.removeValue(forKey: .spellingState)
             guard !filtered.isEmpty else { return }
@@ -86,8 +88,9 @@ final class WideBlockLayoutManager: NSLayoutManager {
 
     override func setTemporaryAttributes(_ attrs: [NSAttributedString.Key: Any], forCharacterRange charRange: NSRange) {
         if attrs[.spellingState] != nil,
-           let storage = textStorage,
-           Self.shouldSuppressSpellCheck(in: storage, range: charRange) {
+            let storage = textStorage,
+            Self.shouldSuppressSpellCheck(in: storage, range: charRange)
+        {
             var filtered = attrs
             filtered.removeValue(forKey: .spellingState)
             super.setTemporaryAttributes(filtered, forCharacterRange: charRange)

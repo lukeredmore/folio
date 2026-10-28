@@ -122,11 +122,14 @@ final class CLILauncherAndBazelRunTests: XCTestCase {
 
     func testCLIScriptSymlinkResolutionAndLineSuffixWithoutBogusFileTouch() throws {
         let tempRoot = try makeTemporaryDirectory("folio-cli-symlink")
-        let fakeAppMacOS = tempRoot
+        let fakeAppMacOS =
+            tempRoot
             .appendingPathComponent("Folio.app/Contents/MacOS", isDirectory: true)
-        let fakeAppBin = tempRoot
+        let fakeAppBin =
+            tempRoot
             .appendingPathComponent("Folio.app/Contents/Resources/bin", isDirectory: true)
-        let fakeAppResources = tempRoot
+        let fakeAppResources =
+            tempRoot
             .appendingPathComponent("Folio.app/Contents", isDirectory: true)
         let binDir = tempRoot.appendingPathComponent("bin", isDirectory: true)
         let workDir = tempRoot.appendingPathComponent("workspace", isDirectory: true)
@@ -140,26 +143,26 @@ final class CLILauncherAndBazelRunTests: XCTestCase {
         // Create a mock Folio executable inside Folio.app/Contents/MacOS/Folio for --foreground
         let mockFolioAppBin = fakeAppMacOS.appendingPathComponent("Folio")
         let mockAppScript = """
-        #!/usr/bin/env bash
-        printf 'CWD=%s\\n' "${FOLIO_CALLER_CWD:-}"
-        for a in "$@"; do
-            printf 'ARG=%s\\n' "$a"
-        done
-        """
+            #!/usr/bin/env bash
+            printf 'CWD=%s\\n' "${FOLIO_CALLER_CWD:-}"
+            for a in "$@"; do
+                printf 'ARG=%s\\n' "$a"
+            done
+            """
         try Data(mockAppScript.utf8).write(to: mockFolioAppBin)
         try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: mockFolioAppBin.path)
 
         let infoPlist = fakeAppResources.appendingPathComponent("Info.plist")
         let plistContent = """
-        <?xml version="1.0" encoding="UTF-8"?>
-        <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-        <plist version="1.0">
-        <dict>
-            <key>CFBundleShortVersionString</key>
-            <string>3.2.0</string>
-        </dict>
-        </plist>
-        """
+            <?xml version="1.0" encoding="UTF-8"?>
+            <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+            <plist version="1.0">
+            <dict>
+                <key>CFBundleShortVersionString</key>
+                <string>3.2.0</string>
+            </dict>
+            </plist>
+            """
         try Data(plistContent.utf8).write(to: infoPlist)
 
         // Write the bundled CLI script into Folio.app/Contents/Resources/bin/folio and symlink bin/folio -> ../Folio.app/Contents/Resources/bin/folio

@@ -48,8 +48,9 @@ public struct DoubleShiftDetector: Sendable {
             }
 
             if let previousRelease = lastCleanTapReleaseTimestamp,
-               (timestamp - previousRelease) >= 0,
-               (timestamp - previousRelease) <= maxDoubleTapInterval {
+                (timestamp - previousRelease) >= 0,
+                (timestamp - previousRelease) <= maxDoubleTapInterval
+            {
                 lastCleanTapReleaseTimestamp = nil
                 return true
             } else {
@@ -134,7 +135,8 @@ struct DoubleShiftEventMonitorAccessor: NSViewRepresentable {
             let eventType = event.type
             let modifierFlags = event.modifierFlags
             let timestamp = event.timestamp
-            let keyCode: UInt16 = (eventType == .keyDown || eventType == .keyUp || eventType == .flagsChanged)
+            let keyCode: UInt16 =
+                (eventType == .keyDown || eventType == .keyUp || eventType == .flagsChanged)
                 ? event.keyCode
                 : 0
             return (eventType, modifierFlags, timestamp, keyCode)

@@ -69,7 +69,7 @@ extension BlockDecorationKind {
     func shifted(by delta: Int) -> BlockDecorationKind {
         switch self {
         case .headingUnderline, .blockquote, .codeFenceStart, .codeFenceBody, .codeFenceEnd,
-             .mathBlockStart, .mathBlockBody, .mathBlockEnd, .horizontalRule, .tableRow:
+            .mathBlockStart, .mathBlockBody, .mathBlockEnd, .horizontalRule, .tableRow:
             return self
         case let .mathBlockRendered(latex, range, dim):
             return .mathBlockRendered(latex: latex, fullBlockRange: range.shifted(by: delta), dimFactor: dim)
@@ -91,7 +91,7 @@ extension BlockDecorationKind {
         case let .listBullet(range, dim):
             return .listBullet(range: range.shifted(by: delta), dimFactor: dim)
         case .latexPreambleCard, .latexTheoremCard, .latexAbstractCard, .latexInputCard,
-             .latexEquationNumber, .latexSectionBadge, .latexInlinePill, .latexInlineText:
+            .latexEquationNumber, .latexSectionBadge, .latexInlinePill, .latexInlineText:
             return shiftedLaTeXDecoration(by: delta)
         }
     }

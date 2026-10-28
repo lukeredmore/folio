@@ -61,10 +61,11 @@ enum LaTeXBlockStyleCache {
         while idx < end {
             if nsString.character(at: idx) == 0x0A {
                 let nlRange = NSRange(location: idx, length: 1)
-                storage.addAttributes([
-                    MarkdownLiveStyler.softLineBreakAttributeKey: true,
-                    MarkdownLiveStyler.collapsedTokenAttributeKey: true
-                ], range: nlRange)
+                storage.addAttributes(
+                    [
+                        MarkdownLiveStyler.softLineBreakAttributeKey: true,
+                        MarkdownLiveStyler.collapsedTokenAttributeKey: true
+                    ], range: nlRange)
             }
             idx += 1
         }
@@ -92,9 +93,10 @@ enum LaTeXBlockStyleCache {
         docMacros: [String: LaTeXMacroDefinition]
     ) -> (entry: StorageEntry, diff: DiffWindow)? {
         guard let entry = lastEntry,
-              entry.storage === storage,
-              entry.config == config,
-              entry.docMacros == docMacros else {
+            entry.storage === storage,
+            entry.config == config,
+            entry.docMacros == docMacros
+        else {
             return nil
         }
 
@@ -121,19 +123,16 @@ enum LaTeXBlockStyleCache {
 
         var suffix = 0
         let maxSuffix = minLen - prefix
-        while suffix < maxSuffix &&
-            prevNS.character(at: prevLen - 1 - suffix) == nsString.character(at: newLen - 1 - suffix) {
+        while suffix < maxSuffix && prevNS.character(at: prevLen - 1 - suffix) == nsString.character(at: newLen - 1 - suffix) {
             suffix += 1
         }
 
         let delta = newLen - prevLen
         let prevIdx = entry.docIndex
         let numberingUnchanged =
-            docIndex.lineSectionNumbers.count == prevIdx.lineSectionNumbers.count &&
-            docIndex.blockTheoremHeaders.count == prevIdx.blockTheoremHeaders.count &&
-            docIndex.blockEquationNumbers.count == prevIdx.blockEquationNumbers.count &&
-            docIndex.labels.count == prevIdx.labels.count &&
-            docIndex.bibEntries.count == prevIdx.bibEntries.count
+            docIndex.lineSectionNumbers.count == prevIdx.lineSectionNumbers.count && docIndex.blockTheoremHeaders.count == prevIdx.blockTheoremHeaders.count
+            && docIndex.blockEquationNumbers.count == prevIdx.blockEquationNumbers.count && docIndex.labels.count == prevIdx.labels.count
+            && docIndex.bibEntries.count == prevIdx.bibEntries.count
 
         let diff = DiffWindow(
             isSameString: false,
@@ -174,7 +173,8 @@ enum LaTeXBlockStyleCache {
         if NSIntersectionRange(range, activeLineRange).length > 0 { return true }
         if selectedRange.length > 0, NSIntersectionRange(range, selectedRange).length > 0 { return true }
         if selectedRange.location >= range.location && selectedRange.location <= NSMaxRange(range)
-            && activeLineRange.location >= range.location && activeLineRange.location <= NSMaxRange(range) {
+            && activeLineRange.location >= range.location && activeLineRange.location <= NSMaxRange(range)
+        {
             return true
         }
         return false
@@ -271,7 +271,7 @@ enum LaTeXBlockStyleCache {
         let newKind: BlockDecorationKind
         switch dec.kind {
         case .headingUnderline, .blockquote, .codeFenceStart, .codeFenceBody, .codeFenceEnd,
-             .mathBlockStart, .mathBlockBody, .mathBlockEnd, .horizontalRule, .tableRow:
+            .mathBlockStart, .mathBlockBody, .mathBlockEnd, .horizontalRule, .tableRow:
             newKind = dec.kind
         case let .mathBlockRendered(latex, fullBlockRange, dimFactor):
             newKind = .mathBlockRendered(latex: latex, fullBlockRange: shiftRange(fullBlockRange, by: delta), dimFactor: dimFactor)
@@ -280,7 +280,9 @@ enum LaTeXBlockStyleCache {
         case let .svgBlockRendered(source, fullBlockRange, dimFactor):
             newKind = .svgBlockRendered(svgSource: source, fullBlockRange: shiftRange(fullBlockRange, by: delta), dimFactor: dimFactor)
         case let .imageRendered(url, alt, fullRange, ew, eh, baseDir, dimFactor):
-            newKind = .imageRendered(url: url, alt: alt, fullRange: shiftRange(fullRange, by: delta), explicitWidth: ew, explicitHeight: eh, baseDirectoryURL: baseDir, dimFactor: dimFactor)
+            newKind = .imageRendered(
+                url: url, alt: alt, fullRange: shiftRange(fullRange, by: delta), explicitWidth: ew, explicitHeight: eh, baseDirectoryURL: baseDir,
+                dimFactor: dimFactor)
         case let .inlineMathRendered(latex, range, fontSize, dimFactor):
             newKind = .inlineMathRendered(latex: latex, range: shiftRange(range, by: delta), fontSize: fontSize, dimFactor: dimFactor)
         case let .inlineCode(range, fontSize, dimFactor):
@@ -292,7 +294,8 @@ enum LaTeXBlockStyleCache {
         case let .latexPreambleCard(title, subtitle, fullBlockRange, dimFactor):
             newKind = .latexPreambleCard(title: title, subtitle: subtitle, fullBlockRange: shiftRange(fullBlockRange, by: delta), dimFactor: dimFactor)
         case let .latexTheoremCard(header, isProof, showHeader, fullBlockRange, dimFactor):
-            newKind = .latexTheoremCard(header: header, isProof: isProof, showHeader: showHeader, fullBlockRange: shiftRange(fullBlockRange, by: delta), dimFactor: dimFactor)
+            newKind = .latexTheoremCard(
+                header: header, isProof: isProof, showHeader: showHeader, fullBlockRange: shiftRange(fullBlockRange, by: delta), dimFactor: dimFactor)
         case let .latexAbstractCard(showHeader, fullBlockRange, dimFactor):
             newKind = .latexAbstractCard(showHeader: showHeader, fullBlockRange: shiftRange(fullBlockRange, by: delta), dimFactor: dimFactor)
         case let .latexInputCard(path, resolvedURL, lineRange, dimFactor):
@@ -303,7 +306,9 @@ enum LaTeXBlockStyleCache {
             newKind = .latexSectionBadge(number: number, level: level, lineRange: shiftRange(lineRange, by: delta), dimFactor: dimFactor)
         case let .latexInlinePill(label, tooltip, targetLoc, targetURL, range, fontSize, isCitation, dimFactor):
             let shiftedTarget = targetLoc.map { $0 >= editLocation ? $0 + delta : $0 }
-            newKind = .latexInlinePill(label: label, tooltip: tooltip, targetLocation: shiftedTarget, targetURL: targetURL, range: shiftRange(range, by: delta), fontSize: fontSize, isCitation: isCitation, dimFactor: dimFactor)
+            newKind = .latexInlinePill(
+                label: label, tooltip: tooltip, targetLocation: shiftedTarget, targetURL: targetURL, range: shiftRange(range, by: delta), fontSize: fontSize,
+                isCitation: isCitation, dimFactor: dimFactor)
         case let .latexInlineText(text, font, range, dimFactor):
             newKind = .latexInlineText(text: text, font: font, range: shiftRange(range, by: delta), dimFactor: dimFactor)
         }

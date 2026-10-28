@@ -66,11 +66,12 @@ public final class AppUpdateManager: ObservableObject {
             return true
         }
         if remote.buildNumber == current.buildNumber,
-           !current.commitSHA.isEmpty,
-           current.commitSHA != "dev",
-           !remote.commitSHA.isEmpty,
-           !remote.commitSHA.hasPrefix(current.commitSHA),
-           !current.commitSHA.hasPrefix(remote.commitSHA) {
+            !current.commitSHA.isEmpty,
+            current.commitSHA != "dev",
+            !remote.commitSHA.isEmpty,
+            !remote.commitSHA.hasPrefix(current.commitSHA),
+            !current.commitSHA.hasPrefix(remote.commitSHA)
+        {
             return true
         }
         return false
@@ -114,7 +115,8 @@ public final class AppUpdateManager: ObservableObject {
 
             let (data, response) = try await URLSession.shared.data(for: request)
             guard let httpResponse = response as? HTTPURLResponse,
-                  (200...299).contains(httpResponse.statusCode) else {
+                (200...299).contains(httpResponse.statusCode)
+            else {
                 if userInitiated {
                     status = .error("No published GitHub Release found yet.")
                 } else {
@@ -157,7 +159,8 @@ public final class AppUpdateManager: ObservableObject {
             let downloadedDMG = tempRoot.appendingPathComponent("Folio.dmg")
             let (tempFileURL, response) = try await URLSession.shared.download(from: dmgURL)
             guard let httpResponse = response as? HTTPURLResponse,
-                  (200...299).contains(httpResponse.statusCode) else {
+                (200...299).contains(httpResponse.statusCode)
+            else {
                 status = .error("Failed to download Folio.dmg from GitHub Releases.")
                 return
             }
@@ -226,8 +229,9 @@ public final class AppUpdateManager: ObservableObject {
         try attachProc.run()
         attachProc.waitUntilExit()
         guard attachProc.terminationStatus == 0 else {
-            throw NSError(domain: "AppUpdateManager", code: Int(attachProc.terminationStatus),
-                          userInfo: [NSLocalizedDescriptionKey: "hdiutil failed to mount Folio.dmg"])
+            throw NSError(
+                domain: "AppUpdateManager", code: Int(attachProc.terminationStatus),
+                userInfo: [NSLocalizedDescriptionKey: "hdiutil failed to mount Folio.dmg"])
         }
 
         var isMounted = true
@@ -244,8 +248,9 @@ public final class AppUpdateManager: ObservableObject {
 
         let mountedApp = mountPoint.appendingPathComponent("Folio.app", isDirectory: true)
         guard FileManager.default.fileExists(atPath: mountedApp.path) else {
-            throw NSError(domain: "AppUpdateManager", code: 2,
-                          userInfo: [NSLocalizedDescriptionKey: "Folio.app not found inside mounted DMG"])
+            throw NSError(
+                domain: "AppUpdateManager", code: 2,
+                userInfo: [NSLocalizedDescriptionKey: "Folio.app not found inside mounted DMG"])
         }
 
         let mountedVersion = AppVersionInfo.fromAppBundle(at: mountedApp)
@@ -269,28 +274,29 @@ public final class AppUpdateManager: ObservableObject {
         xattrProc.waitUntilExit()
 
         let runningBundleURL = Bundle.main.bundleURL
-        let targetAppPath = (runningBundleURL.pathExtension == "app" && !runningBundleURL.path.hasPrefix("/Volumes/"))
+        let targetAppPath =
+            (runningBundleURL.pathExtension == "app" && !runningBundleURL.path.hasPrefix("/Volumes/"))
             ? runningBundleURL.path : "/Applications/Folio.app"
 
         let currentPID = ProcessInfo.processInfo.processIdentifier
         let updaterScript = workDir.appendingPathComponent("apply_update.sh")
         let scriptContents = """
-        #!/usr/bin/env bash
-        set -euo pipefail
-        for _ in {1..10}; do
-            kill -0 \(currentPID) 2>/dev/null || break
-            sleep 0.2
-        done
-        if kill -0 \(currentPID) 2>/dev/null; then
-            kill -TERM \(currentPID) 2>/dev/null || true
-            sleep 0.3
-            kill -9 \(currentPID) 2>/dev/null || true
-        fi
-        rm -rf "\(targetAppPath)"
-        mv "\(stagedApp.path)" "\(targetAppPath)"
-        open -n "\(targetAppPath)"
-        rm -rf "\(workDir.path)"
-        """
+            #!/usr/bin/env bash
+            set -euo pipefail
+            for _ in {1..10}; do
+                kill -0 \(currentPID) 2>/dev/null || break
+                sleep 0.2
+            done
+            if kill -0 \(currentPID) 2>/dev/null; then
+                kill -TERM \(currentPID) 2>/dev/null || true
+                sleep 0.3
+                kill -9 \(currentPID) 2>/dev/null || true
+            fi
+            rm -rf "\(targetAppPath)"
+            mv "\(stagedApp.path)" "\(targetAppPath)"
+            open -n "\(targetAppPath)"
+            rm -rf "\(workDir.path)"
+            """
         try scriptContents.write(to: updaterScript, atomically: true, encoding: .utf8)
 
         let swapProc = Process()

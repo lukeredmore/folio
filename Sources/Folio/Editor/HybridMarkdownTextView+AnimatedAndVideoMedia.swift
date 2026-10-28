@@ -61,17 +61,19 @@ extension HybridMarkdownTextView {
 
         for dec in lineDecorations {
             guard case let .imageRendered(url, _, fullRange, _, _, baseDirectoryURL, _) = dec.kind,
-                  let hitRect = mediaDecorationHitRect(
-                      for: dec,
-                      layoutManager: layoutManager,
-                      origin: origin,
-                      contentWidth: contentWidth,
-                      imageXOffsetByLineLocation: &imageXOffsetByLineLocation
-                  ) else {
+                let hitRect = mediaDecorationHitRect(
+                    for: dec,
+                    layoutManager: layoutManager,
+                    origin: origin,
+                    contentWidth: contentWidth,
+                    imageXOffsetByLineLocation: &imageXOffsetByLineLocation
+                )
+            else {
                 continue
             }
             guard hitRect.contains(point),
-                  FolioMediaImageCache.shared.isKnownVideo(for: url, baseDirectoryURL: baseDirectoryURL) else {
+                FolioMediaImageCache.shared.isKnownVideo(for: url, baseDirectoryURL: baseDirectoryURL)
+            else {
                 continue
             }
             if activeInlineVideoURL == url && activeInlineVideoRange == fullRange {
@@ -96,10 +98,12 @@ extension HybridMarkdownTextView {
         frame: NSRect
     ) {
         stopInlineVideoPlayback()
-        guard let playableURL = FolioMediaImageCache.shared.playableVideoURL(
-            for: url,
-            baseDirectoryURL: baseDirectoryURL
-        ) else {
+        guard
+            let playableURL = FolioMediaImageCache.shared.playableVideoURL(
+                for: url,
+                baseDirectoryURL: baseDirectoryURL
+            )
+        else {
             return
         }
 
@@ -162,8 +166,9 @@ extension HybridMarkdownTextView {
 
     func updateInlineVideoFrameIfActive(for url: String, fullRange: NSRange, drawRect: NSRect) {
         guard activeInlineVideoURL == url,
-              activeInlineVideoRange == fullRange,
-              let container = activeInlineVideoContainer else {
+            activeInlineVideoRange == fullRange,
+            let container = activeInlineVideoContainer
+        else {
             return
         }
         if container.frame != drawRect {
@@ -173,7 +178,8 @@ extension HybridMarkdownTextView {
 
     func syncInlineVideoOverlayWithDecorations() {
         guard let activeURL = activeInlineVideoURL,
-              let activeRange = activeInlineVideoRange else {
+            let activeRange = activeInlineVideoRange
+        else {
             return
         }
         guard !isSourceCodeMode else {
@@ -205,7 +211,8 @@ extension HybridMarkdownTextView {
         guard glyphRange.location != NSNotFound else { return nil }
         let lineFrag = layoutManager.lineFragmentRect(forGlyphAt: glyphRange.location, effectiveRange: nil)
         let imgGlyphIdx = layoutManager.glyphIndexForCharacter(at: fullRange.location)
-        let glyphX = (imgGlyphIdx != NSNotFound && imgGlyphIdx < layoutManager.numberOfGlyphs)
+        let glyphX =
+            (imgGlyphIdx != NSNotFound && imgGlyphIdx < layoutManager.numberOfGlyphs)
             ? layoutManager.location(forGlyphAt: imgGlyphIdx).x
             : 0.0
         let lineKey = dec.lineRange.location

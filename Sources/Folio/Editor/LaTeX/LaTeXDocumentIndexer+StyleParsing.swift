@@ -69,14 +69,19 @@ extension LaTeXDocumentIndexer {
                     }
                 case 6: // InputFile
                     if let baseDir = baseDirectoryURL,
-                       let inputURL = resolveTeXFileURL(path: arg1, baseDirectoryURL: baseDir) {
+                        let inputURL = resolveTeXFileURL(path: arg1, baseDirectoryURL: baseDir)
+                    {
                         let imported = loadInputMacros(from: inputURL)
                         idx.extraMacros.merge(imported) { _, new in new }
                     }
                 case 7: // Frontmatter
-                    if cmd == "title" { idx.title = arg1 }
-                    else if cmd == "author" { idx.author = arg1 }
-                    else if cmd == "date" { idx.date = arg1 == "\\today" ? formattedToday() : arg1 }
+                    if cmd == "title" {
+                        idx.title = arg1
+                    } else if cmd == "author" {
+                        idx.author = arg1
+                    } else if cmd == "date" {
+                        idx.date = arg1 == "\\today" ? formattedToday() : arg1
+                    }
                 default:
                     applyStyleOrConditionalDirective(
                         kind: d.kind,
@@ -119,8 +124,7 @@ extension LaTeXDocumentIndexer {
             }
         case 11: // SetLength
             if let parsed = LaTeXLength.parse(arg2) {
-                if arg1 == "parindent" { style.parindent = parsed }
-                else if arg1 == "parskip" { style.parskip = parsed }
+                if arg1 == "parindent" { style.parindent = parsed } else if arg1 == "parskip" { style.parskip = parsed }
             }
         case 12: // DefineColor
             if let color = parseDefinedColor(model: arg2, spec: arg3) {

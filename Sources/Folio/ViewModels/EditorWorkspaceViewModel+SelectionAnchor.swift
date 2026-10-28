@@ -41,11 +41,13 @@ extension EditorWorkspaceViewModel {
         } else if selectedRange.length == 0 {
             currentSelectionDirection = .forward
         } else if selectedRange.location < previousRange.location,
-                  NSMaxRange(selectedRange) <= NSMaxRange(previousRange) {
+            NSMaxRange(selectedRange) <= NSMaxRange(previousRange)
+        {
             currentSelectionDirection = .backward
         } else if selectedRange.location > previousRange.location,
-                  NSMaxRange(selectedRange) == NSMaxRange(previousRange),
-                  currentSelectionDirection == .backward {
+            NSMaxRange(selectedRange) == NSMaxRange(previousRange),
+            currentSelectionDirection == .backward
+        {
             currentSelectionDirection = .backward
         } else {
             currentSelectionDirection = .forward
@@ -86,7 +88,8 @@ extension EditorWorkspaceViewModel {
             let directCandidate = NSRange(location: safeLoc, length: safeLen)
 
             if directCandidate.length == comment.range.length,
-               newNS.substring(with: directCandidate) == comment.selectedRawText {
+                newNS.substring(with: directCandidate) == comment.selectedRawText
+            {
                 comment.range = directCandidate
                 updated.append(comment)
                 continue

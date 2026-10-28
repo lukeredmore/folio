@@ -140,15 +140,17 @@ extension LaTeXLiveStyler {
                     pStyle.minimumLineHeight = 34.0
                     pStyle.maximumLineHeight = 34.0
                     pStyle.tailIndent = effectiveContainerWidth
-                    storage.addAttributes([
-                        .font: NSFont.systemFont(ofSize: 10.0),
-                        .foregroundColor: NSColor.clear,
-                        .paragraphStyle: pStyle
-                    ], range: lineRange)
-                    decorations.append(LineDecoration(
-                        lineRange: lineRange,
-                        kind: .latexInputCard(path: relPath, resolvedURL: resolvedURL, lineRange: lineRange, dimFactor: dimFactor)
-                    ))
+                    storage.addAttributes(
+                        [
+                            .font: NSFont.systemFont(ofSize: 10.0),
+                            .foregroundColor: NSColor.clear,
+                            .paragraphStyle: pStyle
+                        ], range: lineRange)
+                    decorations.append(
+                        LineDecoration(
+                            lineRange: lineRange,
+                            kind: .latexInputCard(path: relPath, resolvedURL: resolvedURL, lineRange: lineRange, dimFactor: dimFactor)
+                        ))
                 } else {
                     MarkdownLiveStyler.highlightLaTeXSource(in: storage, range: contentRange, theme: theme, dimFactor: dimFactor)
                 }
@@ -274,12 +276,13 @@ extension LaTeXLiveStyler {
     ) {
         let level = secInfo.level
         let headingTitle = secInfo.number.isEmpty ? secInfo.title : "\(secInfo.number) \(secInfo.title)"
-        headings.append(OutlineHeading(
-            level: level,
-            title: headingTitle,
-            characterLocation: lineRange.location,
-            lineNumber: lineNumber
-        ))
+        headings.append(
+            OutlineHeading(
+                level: level,
+                title: headingTitle,
+                characterLocation: lineRange.location,
+                lineNumber: lineNumber
+            ))
 
         let headingFont = docIndex.headingFont(
             level: level,
@@ -308,11 +311,12 @@ extension LaTeXLiveStyler {
         pStyle.headIndent = badgeIndent
         pStyle.tailIndent = effectiveContainerWidth
 
-        storage.addAttributes([
-            .font: headingFont,
-            .foregroundColor: theme.headingNSColor.withAlphaComponent(dimFactor),
-            .paragraphStyle: pStyle
-        ], range: lineRange)
+        storage.addAttributes(
+            [
+                .font: headingFont,
+                .foregroundColor: theme.headingNSColor.withAlphaComponent(dimFactor),
+                .paragraphStyle: pStyle
+            ], range: lineRange)
 
         MarkdownLiveStyler.styleSyntaxToken(in: storage, range: openSyntaxRange, isActiveLine: isActiveLine, theme: theme, dimFactor: dimFactor)
         MarkdownLiveStyler.styleSyntaxToken(in: storage, range: closeSyntaxRange, isActiveLine: isActiveLine, theme: theme, dimFactor: dimFactor)
@@ -334,10 +338,11 @@ extension LaTeXLiveStyler {
         )
 
         if !isActiveLine && !secInfo.number.isEmpty {
-            decorations.append(LineDecoration(
-                lineRange: lineRange,
-                kind: .latexSectionBadge(number: secInfo.number, level: level, lineRange: lineRange, dimFactor: dimFactor)
-            ))
+            decorations.append(
+                LineDecoration(
+                    lineRange: lineRange,
+                    kind: .latexSectionBadge(number: secInfo.number, level: level, lineRange: lineRange, dimFactor: dimFactor)
+                ))
         }
         if level <= 2 {
             decorations.append(LineDecoration(lineRange: lineRange, kind: .headingUnderline(level: level)))

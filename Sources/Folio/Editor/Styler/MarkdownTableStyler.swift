@@ -63,13 +63,14 @@ extension MarkdownLiveStyler {
                     activePara.tailIndent = 0.0
                     let naturalH = activeMono.ascender + abs(activeMono.descender)
                     let shift = max(0.0, floor((activeRowHeight - naturalH) * 0.5))
-                    storage.addAttributes([
-                        .font: activeMono,
-                        .foregroundColor: theme.markdownTokenNSColor.withAlphaComponent(0.9 * dimFactor),
-                        .paragraphStyle: activePara,
-                        .baselineOffset: shift,
-                        .kern: 0.0
-                    ], range: row.lineRange)
+                    storage.addAttributes(
+                        [
+                            .font: activeMono,
+                            .foregroundColor: theme.markdownTokenNSColor.withAlphaComponent(0.9 * dimFactor),
+                            .paragraphStyle: activePara,
+                            .baselineOffset: shift,
+                            .kern: 0.0
+                        ], range: row.lineRange)
                     let activeW = ceil(storage.attributedSubstring(from: row.contentRange).size().width) + 28.0
                     maxActiveRowWidth = max(maxActiveRowWidth, activeW)
                 } else {
@@ -81,14 +82,15 @@ extension MarkdownLiveStyler {
                     collapsedPara.paragraphSpacing = 0.0
                     collapsedPara.lineBreakMode = .byClipping
                     collapsedPara.tailIndent = 0.0
-                    storage.addAttributes([
-                        .font: NSFont.systemFont(ofSize: 0.001),
-                        .foregroundColor: NSColor.clear,
-                        .paragraphStyle: collapsedPara,
-                        .baselineOffset: 0.0,
-                        .kern: 0.0,
-                        collapsedTokenAttributeKey: true
-                    ], range: row.lineRange)
+                    storage.addAttributes(
+                        [
+                            .font: NSFont.systemFont(ofSize: 0.001),
+                            .foregroundColor: NSColor.clear,
+                            .paragraphStyle: collapsedPara,
+                            .baselineOffset: 0.0,
+                            .kern: 0.0,
+                            collapsedTokenAttributeKey: true
+                        ], range: row.lineRange)
                 }
                 continue
             }
@@ -112,13 +114,14 @@ extension MarkdownLiveStyler {
             let naturalFontHeight = cellFont.ascender + abs(cellFont.descender)
             let baselineShift = max(0.0, floor((rowHeight - naturalFontHeight) * 0.5))
 
-            storage.addAttributes([
-                .font: cellFont,
-                .foregroundColor: (isHeader ? theme.headingNSColor : theme.textNSColor).withAlphaComponent(dimFactor),
-                .paragraphStyle: rowPara,
-                .baselineOffset: baselineShift,
-                .kern: 0.0
-            ], range: row.lineRange)
+            storage.addAttributes(
+                [
+                    .font: cellFont,
+                    .foregroundColor: (isHeader ? theme.headingNSColor : theme.textNSColor).withAlphaComponent(dimFactor),
+                    .paragraphStyle: rowPara,
+                    .baselineOffset: baselineShift,
+                    .kern: 0.0
+                ], range: row.lineRange)
 
             guard let parsed = parsedRows[rIdx] else { continue }
 
@@ -200,19 +203,20 @@ extension MarkdownLiveStyler {
                 bodyCounter += 1
             }
 
-            decorations.append(LineDecoration(
-                lineRange: row.lineRange,
-                kind: .tableRow(
-                    isHeader: isHeader,
-                    isSeparator: row.isSeparator,
-                    isFirstRow: isFirst,
-                    isLastRow: isLast,
-                    bodyRowIndex: currentBodyIdx,
-                    tableOffsetX: tableOffsetX,
-                    tableWidth: totalTableWidth,
-                    columnDividers: columnDividerX
-                )
-            ))
+            decorations.append(
+                LineDecoration(
+                    lineRange: row.lineRange,
+                    kind: .tableRow(
+                        isHeader: isHeader,
+                        isSeparator: row.isSeparator,
+                        isFirstRow: isFirst,
+                        isLastRow: isLast,
+                        bodyRowIndex: currentBodyIdx,
+                        tableOffsetX: tableOffsetX,
+                        tableWidth: totalTableWidth,
+                        columnDividers: columnDividerX
+                    )
+                ))
 
             guard !row.isActive, !row.isSeparator, let parsed = parsedRows[rIdx] else { continue }
 
@@ -233,7 +237,8 @@ extension MarkdownLiveStyler {
                     collapseWhitespaceRange(in: storage, range: cell.trailingSpacesRange)
                 }
 
-                let actualCellW = cell.contentRange.length > 0
+                let actualCellW =
+                    cell.contentRange.length > 0
                     ? max(0.0, measuredWidths[rIdx][cIdx] - 4.0)
                     : 0.0
                 let colW = colWidths[cIdx]
@@ -257,7 +262,8 @@ extension MarkdownLiveStyler {
                 } else if cell.contentRange.length > 0 {
                     let firstLineIndent = max(0.0, targetCellStartX)
                     if let existingPara = storage.attribute(.paragraphStyle, at: row.lineRange.location, effectiveRange: nil) as? NSParagraphStyle,
-                       let mutablePara = existingPara.mutableCopy() as? NSMutableParagraphStyle {
+                        let mutablePara = existingPara.mutableCopy() as? NSMutableParagraphStyle
+                    {
                         mutablePara.firstLineHeadIndent = firstLineIndent
                         mutablePara.headIndent = firstLineIndent
                         storage.addAttribute(.paragraphStyle, value: mutablePara, range: row.lineRange)

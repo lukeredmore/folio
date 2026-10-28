@@ -73,7 +73,8 @@ public enum LaTeXMacroExpander {
     static func registerCustomOperators(from macros: [String: LaTeXMacroDefinition]) {
         for definition in macros.values {
             guard let opText = definition.operatorText else { continue }
-            let symbolName = definition.name.hasPrefix("\\")
+            let symbolName =
+                definition.name.hasPrefix("\\")
                 ? String(definition.name.dropFirst())
                 : definition.name
             guard !symbolName.isEmpty else { continue }
@@ -112,11 +113,13 @@ public enum LaTeXMacroExpander {
         in text: String,
         into macros: inout [String: LaTeXMacroDefinition]
     ) -> String {
-        guard text.contains("\\newcommand")
-            || text.contains("\\renewcommand")
-            || text.contains("\\providecommand")
-            || text.contains("\\DeclareMathOperator")
-            || text.contains("\\def") else {
+        guard
+            text.contains("\\newcommand")
+                || text.contains("\\renewcommand")
+                || text.contains("\\providecommand")
+                || text.contains("\\DeclareMathOperator")
+                || text.contains("\\def")
+        else {
             return text
         }
         let chars = Array(text)
@@ -149,7 +152,8 @@ public enum LaTeXMacroExpander {
             idx = skipSpaces(chars, from: afterName)
             var argCount = 0
             if let (countStr, afterCount) = readBracketGroup(chars, at: idx),
-               let parsed = Int(countStr.trimmingCharacters(in: .whitespaces)) {
+                let parsed = Int(countStr.trimmingCharacters(in: .whitespaces))
+            {
                 argCount = max(0, min(9, parsed))
                 idx = skipSpaces(chars, from: afterCount)
             }
@@ -159,12 +163,14 @@ public enum LaTeXMacroExpander {
                 idx = skipSpaces(chars, from: afterOpt)
             }
             guard let (body, afterBody) = readBracedGroup(chars, at: idx) else { return nil }
-            return (LaTeXMacroDefinition(
-                name: rawName,
-                argCount: argCount,
-                defaultFirstArg: defaultFirstArg,
-                replacement: body
-            ), afterBody)
+            return (
+                LaTeXMacroDefinition(
+                    name: rawName,
+                    argCount: argCount,
+                    defaultFirstArg: defaultFirstArg,
+                    replacement: body
+                ), afterBody
+            )
 
         case "\\DeclareMathOperator":
             var idx = skipSpaces(chars, from: afterCmd)
@@ -177,13 +183,15 @@ public enum LaTeXMacroExpander {
             idx = skipSpaces(chars, from: afterName)
             guard let (opBody, afterBody) = readBracedGroup(chars, at: idx) else { return nil }
             let cleanOp = sanitizeOperatorText(opBody)
-            return (LaTeXMacroDefinition(
-                name: rawName,
-                argCount: 0,
-                replacement: "\\mathrm{\(cleanOp)}",
-                operatorText: cleanOp,
-                operatorHasLimits: isStarred
-            ), afterBody)
+            return (
+                LaTeXMacroDefinition(
+                    name: rawName,
+                    argCount: 0,
+                    replacement: "\\mathrm{\(cleanOp)}",
+                    operatorText: cleanOp,
+                    operatorHasLimits: isStarred
+                ), afterBody
+            )
 
         case "\\def":
             var idx = skipSpaces(chars, from: afterCmd)

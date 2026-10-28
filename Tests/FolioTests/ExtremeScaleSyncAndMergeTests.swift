@@ -200,14 +200,17 @@ final class ExtremeScaleSyncAndMergeTests: XCTestCase {
         XCTAssertEqual(diffResult.addedLinesCount, 2)
         XCTAssertEqual(diffResult.removedLinesCount, 1)
         XCTAssertEqual(adjustedCursor, NSRange(location: 60_000, length: 12))
-        XCTAssertLessThan(mergeElapsed, 0.15, "5,000-line 3-way auto-merge + line diff + cursor anchoring should complete in <150ms (took \(mergeElapsed * 1000)ms)")
+        XCTAssertLessThan(
+            mergeElapsed, 0.15, "5,000-line 3-way auto-merge + line diff + cursor anchoring should complete in <150ms (took \(mergeElapsed * 1000)ms)")
 
-        print(String(
-            format: "[FolioPerf] 1000 edits=%.1fms (%.2fms/op), 1000 undos=%.1fms (%.2fms/op), 1000 redos=%.1fms (%.2fms/op), 5000-line 3-way merge+diff=%.2fms",
-            editElapsed * 1000, editElapsed,
-            undoElapsed * 1000, undoElapsed,
-            redoElapsed * 1000, redoElapsed,
-            mergeElapsed * 1000
-        ))
+        print(
+            String(
+                format:
+                    "[FolioPerf] 1000 edits=%.1fms (%.2fms/op), 1000 undos=%.1fms (%.2fms/op), 1000 redos=%.1fms (%.2fms/op), 5000-line 3-way merge+diff=%.2fms",
+                editElapsed * 1000, editElapsed,
+                undoElapsed * 1000, undoElapsed,
+                redoElapsed * 1000, redoElapsed,
+                mergeElapsed * 1000
+            ))
     }
 }

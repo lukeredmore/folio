@@ -55,22 +55,25 @@ final class IncrementalRestyleEquivalenceTests: XCTestCase {
             }
             if let mismatch = RestyleEquivalenceOracle.firstMismatch(in: harness) {
                 let recent = history.suffix(6).map(\.description).joined(separator: ", ")
-                XCTFail("""
-                \(name): seed \(String(seed, radix: 16)), operation \(index) (\(operation)) left the \
-                editor different from a full restyle: \(mismatch). Last operations: \(recent)
-                """)
+                XCTFail(
+                    """
+                    \(name): seed \(String(seed, radix: 16)), operation \(index) (\(operation)) left the \
+                    editor different from a full restyle: \(mismatch). Last operations: \(recent)
+                    """)
                 return
             }
         }
         let delta = harness.counters.delta(since: before)
-        PerfReport.record("incrementalEquivalence_\(name)", [
-            "operations": Self.operationsPerFixture,
-            "seed": String(seed, radix: 16),
-            "restyleCount": delta.restyleCount,
-            "fullRangeRestyleCount": delta.fullRangeRestyleCount,
-            "charactersRestyled": delta.charactersRestyled,
-            "operationsWithFullRestyleByLastReason": fullRestyleReasons
-        ])
+        PerfReport.record(
+            "incrementalEquivalence_\(name)",
+            [
+                "operations": Self.operationsPerFixture,
+                "seed": String(seed, radix: 16),
+                "restyleCount": delta.restyleCount,
+                "fullRangeRestyleCount": delta.fullRangeRestyleCount,
+                "charactersRestyled": delta.charactersRestyled,
+                "operationsWithFullRestyleByLastReason": fullRestyleReasons
+            ])
     }
 
     /// Diagram renders finish in the background and trigger a restyle. Waiting for them keeps

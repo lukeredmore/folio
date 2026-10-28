@@ -102,8 +102,7 @@ extension EditorTheme {
 
     public static func builtInPreset(id: String) -> EditorTheme? {
         builtInThemes.first {
-            $0.id.caseInsensitiveCompare(id) == .orderedSame ||
-            $0.name.caseInsensitiveCompare(id) == .orderedSame
+            $0.id.caseInsensitiveCompare(id) == .orderedSame || $0.name.caseInsensitiveCompare(id) == .orderedSame
         }
     }
 

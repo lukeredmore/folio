@@ -21,9 +21,11 @@ public struct ConflictResolverModalView: View {
                     VStack(alignment: .leading, spacing: 3) {
                         Text("Resolve File Conflict — \(conflict.fileURL.lastPathComponent)")
                             .font(.system(size: 15, weight: .semibold))
-                        Text("This file was updated externally while overlapping lines were modified in Folio. Choose how to resolve each conflicting section or apply a global strategy.")
-                            .font(.system(size: 12))
-                            .foregroundColor(.secondary)
+                        Text(
+                            "This file was updated externally while overlapping lines were modified in Folio. Choose how to resolve each conflicting section or apply a global strategy."
+                        )
+                        .font(.system(size: 12))
+                        .foregroundColor(.secondary)
                     }
                     Spacer()
                 }
@@ -97,12 +99,15 @@ public struct ConflictResolverModalView: View {
                 Text("Conflict #\(idx + 1) (Line \(hunk.lineNumber))")
                     .font(.system(size: 12, weight: .semibold))
                 Spacer()
-                Picker("Resolution", selection: Binding(
-                    get: { hunk.selectedStrategy },
-                    set: { newStrategy in
-                        viewModel.setConflictHunkResolution(newStrategy, forHunkID: hunk.id)
-                    }
-                )) {
+                Picker(
+                    "Resolution",
+                    selection: Binding(
+                        get: { hunk.selectedStrategy },
+                        set: { newStrategy in
+                            viewModel.setConflictHunkResolution(newStrategy, forHunkID: hunk.id)
+                        }
+                    )
+                ) {
                     ForEach(ConflictResolutionStrategy.allCases, id: \.self) { strategy in
                         Text(strategy.title).tag(strategy)
                     }

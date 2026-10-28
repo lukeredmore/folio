@@ -102,7 +102,10 @@ final class DiagramImageRendererTests: XCTestCase {
             selectedRange: NSRange(location: 0, length: 0),
             containerWidth: 700
         )
-        XCTAssertTrue(analysis.decorations.contains { if case .mermaidBlockRendered = $0.kind { return true }; return false })
+        XCTAssertTrue(
+            analysis.decorations.contains {
+                if case .mermaidBlockRendered = $0.kind { return true }; return false
+            })
         XCTAssertTrue(DiagramImageRenderer.shared.waitUntilIdle())
         XCTAssertNotNil(DiagramImageRenderer.shared.image(for: key), "Styling queues the diagram for background rendering")
     }

@@ -141,12 +141,14 @@ extension SelectionComment {
         guard !commentBody.isEmpty else { return nil }
 
         let quotedText = quoteLines.joined(separator: "\n")
-        guard let resolvedRange = resolveRange(
-            forQuotedText: quotedText,
-            hintedStartLine: hintedStartLine,
-            hintedEndLine: hintedEndLine,
-            inDocumentText: documentText
-        ), resolvedRange.length > 0 else {
+        guard
+            let resolvedRange = resolveRange(
+                forQuotedText: quotedText,
+                hintedStartLine: hintedStartLine,
+                hintedEndLine: hintedEndLine,
+                inDocumentText: documentText
+            ), resolvedRange.length > 0
+        else {
             return nil
         }
 
@@ -171,10 +173,11 @@ extension SelectionComment {
     private static func parseHeaderLineHint(_ headerLine: String) -> (startLine: Int?, endLine: Int?) {
         let pattern = #"\(L(\d+)(?:[–-]L?(\d+))?\)\*\*$"#
         guard let regex = try? NSRegularExpression(pattern: pattern),
-              let match = regex.firstMatch(
-                  in: headerLine,
-                  range: NSRange(location: 0, length: (headerLine as NSString).length)
-              ) else {
+            let match = regex.firstMatch(
+                in: headerLine,
+                range: NSRange(location: 0, length: (headerLine as NSString).length)
+            )
+        else {
             return (nil, nil)
         }
         let nsHeader = headerLine as NSString

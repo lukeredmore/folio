@@ -135,14 +135,16 @@ public enum DocumentLineDiff {
 
         var prefixCount = 0
         while prefixCount < m && prefixCount < n
-            && oldLines[oldRange.lowerBound + prefixCount] == newLines[newRange.lowerBound + prefixCount] {
+            && oldLines[oldRange.lowerBound + prefixCount] == newLines[newRange.lowerBound + prefixCount]
+        {
             prefixCount += 1
         }
 
         var suffixCount = 0
         while suffixCount < (m - prefixCount)
             && suffixCount < (n - prefixCount)
-            && oldLines[oldRange.upperBound - 1 - suffixCount] == newLines[newRange.upperBound - 1 - suffixCount] {
+            && oldLines[oldRange.upperBound - 1 - suffixCount] == newLines[newRange.upperBound - 1 - suffixCount]
+        {
             suffixCount += 1
         }
 
@@ -208,7 +210,8 @@ public enum DocumentLineDiff {
                 for idx in midOldStart..<midOldEnd {
                     let line = oldLines[idx]
                     if let oldIdx = oldCounts[line], oldIdx >= 0,
-                       let newIdx = newCounts[line], newIdx >= 0 {
+                        let newIdx = newCounts[line], newIdx >= 0
+                    {
                         uniquePairs.append((oldIdx, newIdx))
                     }
                 }

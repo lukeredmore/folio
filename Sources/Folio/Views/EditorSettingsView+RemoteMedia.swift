@@ -5,7 +5,8 @@ extension EditorSettingsView {
 
     @ViewBuilder
     var remoteMediaAndAuthSection: some View {
-        let hasCustomAuth = viewModel.mediaCurlCommandPrefix != FolioMediaImageCache.defaultCurlCommandPrefix
+        let hasCustomAuth =
+            viewModel.mediaCurlCommandPrefix != FolioMediaImageCache.defaultCurlCommandPrefix
             || viewModel.useSSHAuthForMedia
             || !viewModel.mediaSSHIdentityFile.isEmpty
             || !viewModel.mediaSSHUser.isEmpty
@@ -41,10 +42,12 @@ extension EditorSettingsView {
                         .textFieldStyle(.roundedBorder)
                         .font(.system(size: 11.5, design: .monospaced))
 
-                    Text("Replaces the start of the `curl` command used to fetch `http://`, `https://`, `sftp://`, and `scp://` images. Add auth cookies (`-b`), headers (`-H`), or paste a browser \"Copy as cURL\" snippet; Folio appends the image URL automatically.")
-                        .font(.system(size: 10.5))
-                        .foregroundColor(.secondary)
-                        .fixedSize(horizontal: false, vertical: true)
+                    Text(
+                        "Replaces the start of the `curl` command used to fetch `http://`, `https://`, `sftp://`, and `scp://` images. Add auth cookies (`-b`), headers (`-H`), or paste a browser \"Copy as cURL\" snippet; Folio appends the image URL automatically."
+                    )
+                    .font(.system(size: 10.5))
+                    .foregroundColor(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
                 }
 
                 Divider().opacity(0.5)
@@ -123,10 +126,12 @@ extension EditorSettingsView {
                             }
                         }
 
-                        Text("Automatically passes `-u '<user>:'` and `--key '<identityFile>'` from your connected Remote Host Access mount (or `~/.ssh`) directly to `curl` for `sftp://` and `scp://` image URLs.")
-                            .font(.system(size: 10.5))
-                            .foregroundColor(.secondary)
-                            .fixedSize(horizontal: false, vertical: true)
+                        Text(
+                            "Automatically passes `-u '<user>:'` and `--key '<identityFile>'` from your connected Remote Host Access mount (or `~/.ssh`) directly to `curl` for `sftp://` and `scp://` image URLs."
+                        )
+                        .font(.system(size: 10.5))
+                        .foregroundColor(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
                     }
                 }
             }

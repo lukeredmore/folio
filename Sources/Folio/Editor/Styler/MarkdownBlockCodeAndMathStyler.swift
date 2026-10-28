@@ -19,12 +19,13 @@ extension MarkdownLiveStyler {
             let level = min(6, max(1, trimmed.count))
             let title = String(lineText.dropFirst(level)).trimmingCharacters(in: .whitespaces)
             if !title.isEmpty {
-                headings.append(OutlineHeading(
-                    level: level,
-                    title: title,
-                    characterLocation: contentRange.location,
-                    lineNumber: lineNumber
-                ))
+                headings.append(
+                    OutlineHeading(
+                        level: level,
+                        title: title,
+                        characterLocation: contentRange.location,
+                        lineNumber: lineNumber
+                    ))
             }
             storage.addAttribute(
                 .foregroundColor,
@@ -92,14 +93,14 @@ extension MarkdownLiveStyler {
         }
 
         let fullBlockRange = NSRange(location: lineRange.location, length: scanIndex - lineRange.location)
-        let isDiagramBlockActive = blockLines.contains(where: { $0.isActive }) ||
-            NSIntersectionRange(fullBlockRange, selectedRange).length > 0
+        let isDiagramBlockActive = blockLines.contains(where: { $0.isActive }) || NSIntersectionRange(fullBlockRange, selectedRange).length > 0
 
         guard foundClosingFence && !isDiagramBlockActive && blockLines.count >= 3 else {
             return nil
         }
 
-        let bodySource = blockLines
+        let bodySource =
+            blockLines
             .dropFirst()
             .dropLast()
             .map(\.text)
@@ -111,10 +112,11 @@ extension MarkdownLiveStyler {
         let blockDim: CGFloat = (focusMode && !isDiagramBlockActive) ? 0.30 : 1.0
         storage.addAttribute(noSpellCheckAttributeKey, value: true, range: fullBlockRange)
         // Rendered in the background; until it is ready, the card reserves a default height.
-        let diagramImg = DiagramImageRenderer.shared.image(for: DiagramImageRenderer.Key(
-            kind: lowerLang == "mermaid" ? .mermaid(isDark: theme.isDark) : .svg,
-            source: bodySource
-        ))
+        let diagramImg = DiagramImageRenderer.shared.image(
+            for: DiagramImageRenderer.Key(
+                kind: lowerLang == "mermaid" ? .mermaid(isDark: theme.isDark) : .svg,
+                source: bodySource
+            ))
         let availW = max(200.0, effectiveContainerWidth - 32.0)
         let totalCardHeight: CGFloat
         if let img = diagramImg, img.size.width > 0, img.size.height > 0 {
@@ -136,24 +138,27 @@ extension MarkdownLiveStyler {
             cardPara.minimumLineHeight = perLineHeight
             cardPara.maximumLineHeight = perLineHeight
             cardPara.tailIndent = effectiveContainerWidth
-            storage.addAttributes([
-                .font: hiddenLineFont,
-                .foregroundColor: NSColor.clear,
-                .paragraphStyle: cardPara,
-                .kern: 0.0
-            ], range: bLine.lineRange)
+            storage.addAttributes(
+                [
+                    .font: hiddenLineFont,
+                    .foregroundColor: NSColor.clear,
+                    .paragraphStyle: cardPara,
+                    .kern: 0.0
+                ], range: bLine.lineRange)
         }
 
         if lowerLang == "mermaid" {
-            decorations.append(LineDecoration(
-                lineRange: fullBlockRange,
-                kind: .mermaidBlockRendered(mermaidSource: bodySource, fullBlockRange: fullBlockRange, dimFactor: blockDim)
-            ))
+            decorations.append(
+                LineDecoration(
+                    lineRange: fullBlockRange,
+                    kind: .mermaidBlockRendered(mermaidSource: bodySource, fullBlockRange: fullBlockRange, dimFactor: blockDim)
+                ))
         } else {
-            decorations.append(LineDecoration(
-                lineRange: fullBlockRange,
-                kind: .svgBlockRendered(svgSource: bodySource, fullBlockRange: fullBlockRange, dimFactor: blockDim)
-            ))
+            decorations.append(
+                LineDecoration(
+                    lineRange: fullBlockRange,
+                    kind: .svgBlockRendered(svgSource: bodySource, fullBlockRange: fullBlockRange, dimFactor: blockDim)
+                ))
         }
 
         return (scanIndex, scanLineCount)
@@ -185,14 +190,15 @@ extension MarkdownLiveStyler {
         fencePara.maximumLineHeight = fenceRowHeight
         fencePara.tailIndent = effectiveContainerWidth
 
-        storage.addAttributes([
-            .font: codeMono,
-            .foregroundColor: theme.markdownTokenNSColor.withAlphaComponent(isActiveLine ? 0.9 : 0.45 * dimFactor),
-            .paragraphStyle: fencePara,
-            .baselineOffset: 0.0,
-            .kern: 0.0,
-            noSpellCheckAttributeKey: true
-        ], range: lineRange)
+        storage.addAttributes(
+            [
+                .font: codeMono,
+                .foregroundColor: theme.markdownTokenNSColor.withAlphaComponent(isActiveLine ? 0.9 : 0.45 * dimFactor),
+                .paragraphStyle: fencePara,
+                .baselineOffset: 0.0,
+                .kern: 0.0,
+                noSpellCheckAttributeKey: true
+            ], range: lineRange)
         collapseWhitespaceRange(in: storage, range: fenceIndent.collapsed)
     }
 
@@ -222,14 +228,15 @@ extension MarkdownLiveStyler {
         codePara.maximumLineHeight = bodyRowHeight
         codePara.tailIndent = effectiveContainerWidth
 
-        storage.addAttributes([
-            .font: codeMono,
-            .foregroundColor: theme.textNSColor.withAlphaComponent(dimFactor),
-            .paragraphStyle: codePara,
-            .baselineOffset: 0.0,
-            .kern: 0.0,
-            noSpellCheckAttributeKey: true
-        ], range: lineRange)
+        storage.addAttributes(
+            [
+                .font: codeMono,
+                .foregroundColor: theme.textNSColor.withAlphaComponent(dimFactor),
+                .paragraphStyle: codePara,
+                .baselineOffset: 0.0,
+                .kern: 0.0,
+                noSpellCheckAttributeKey: true
+            ], range: lineRange)
 
         if let language = language {
             highlightCodeLine(
@@ -275,10 +282,11 @@ extension MarkdownLiveStyler {
         blankPara.paragraphSpacing = 0.0
         blankPara.paragraphSpacingBefore = 0.0
         blankPara.tailIndent = effectiveContainerWidth
-        storage.addAttributes([
-            .paragraphStyle: blankPara,
-            .kern: 0.0
-        ], range: lineRange)
+        storage.addAttributes(
+            [
+                .paragraphStyle: blankPara,
+                .kern: 0.0
+            ], range: lineRange)
         if !isActiveLine && contentRange.length > 0 {
             collapseWhitespaceRange(in: storage, range: contentRange)
         }

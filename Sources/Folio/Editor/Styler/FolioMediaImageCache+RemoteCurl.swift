@@ -78,11 +78,13 @@ extension FolioMediaImageCache {
 
     /// Resolves a raw Markdown/HTML image source string into an `http://`, `https://`, `sftp://`, `scp://`, or `ssh://` `URL`.
     public static func resolveRemoteURL(from rawSource: String) -> URL? {
-        let trimmed = rawSource
+        let trimmed =
+            rawSource
             .trimmingCharacters(in: .whitespacesAndNewlines)
             .replacingOccurrences(of: "&amp;", with: "&")
         let lower = trimmed.lowercased()
-        let isSupportedRemoteScheme = lower.hasPrefix("http://")
+        let isSupportedRemoteScheme =
+            lower.hasPrefix("http://")
             || lower.hasPrefix("https://")
             || lower.hasPrefix("sftp://")
             || lower.hasPrefix("scp://")
@@ -94,8 +96,9 @@ extension FolioMediaImageCache {
             return url
         }
         if let encoded = trimmed.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed),
-           let url = URL(string: encoded),
-           url.host != nil {
+            let url = URL(string: encoded),
+            url.host != nil
+        {
             return url
         }
         return nil
@@ -108,7 +111,8 @@ extension FolioMediaImageCache {
         commandPrefix: String,
         sshAuth: FolioMediaSSHAuthConfig = .disabled
     ) -> String {
-        var normalizedPrefix = commandPrefix
+        var normalizedPrefix =
+            commandPrefix
             .replacingOccurrences(of: "\\\r\n", with: " ")
             .replacingOccurrences(of: "\\\n", with: " ")
             .replacingOccurrences(of: "\r\n", with: " ")
@@ -139,9 +143,10 @@ extension FolioMediaImageCache {
     private static func stripChromeCopyAsCurlLeadingURL(from prefix: String) -> String {
         let pattern = #"^(curl(?:\.exe)?)\s+(?:'https?://[^']+'|"https?://[^"]+"|https?://\S+)\s*(.*)$"#
         guard let regex = try? NSRegularExpression(pattern: pattern, options: [.caseInsensitive]),
-              let match = regex.firstMatch(in: prefix, options: [], range: NSRange(prefix.startIndex..., in: prefix)),
-              let cmdRange = Range(match.range(at: 1), in: prefix),
-              let restRange = Range(match.range(at: 2), in: prefix) else {
+            let match = regex.firstMatch(in: prefix, options: [], range: NSRange(prefix.startIndex..., in: prefix)),
+            let cmdRange = Range(match.range(at: 1), in: prefix),
+            let restRange = Range(match.range(at: 2), in: prefix)
+        else {
             return prefix
         }
         let cmd = String(prefix[cmdRange])
@@ -153,7 +158,8 @@ extension FolioMediaImageCache {
         lock.lock()
         if inFlightRemoteURLs.contains(cacheKey)
             || failedRemoteURLs.contains(cacheKey)
-            || imageCache[cacheKey] != nil {
+            || imageCache[cacheKey] != nil
+        {
             lock.unlock()
             return
         }
@@ -191,7 +197,8 @@ extension FolioMediaImageCache {
         let cacheKey = Self.remoteCacheKey(for: url)
         let isSVGExtension = url.pathExtension.lowercased() == "svg"
         let headData = data.prefix(1024)
-        let headString = String(data: headData, encoding: .utf8)?
+        let headString =
+            String(data: headData, encoding: .utf8)?
             .trimmingCharacters(in: .whitespacesAndNewlines)
             .lowercased() ?? ""
         let looksLikeSVG = isSVGExtension || headString.contains("<svg")

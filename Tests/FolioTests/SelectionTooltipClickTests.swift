@@ -7,28 +7,30 @@ import XCTest
 final class SelectionTooltipClickTests: XCTestCase {
 
     private func sendClick(at point: NSPoint, in window: NSWindow) {
-        guard let down = NSEvent.mouseEvent(
-            with: .leftMouseDown,
-            location: point,
-            modifierFlags: [],
-            timestamp: ProcessInfo.processInfo.systemUptime,
-            windowNumber: window.windowNumber,
-            context: nil,
-            eventNumber: 1,
-            clickCount: 1,
-            pressure: 1.0
-        ),
-        let up = NSEvent.mouseEvent(
-            with: .leftMouseUp,
-            location: point,
-            modifierFlags: [],
-            timestamp: ProcessInfo.processInfo.systemUptime + 0.01,
-            windowNumber: window.windowNumber,
-            context: nil,
-            eventNumber: 2,
-            clickCount: 1,
-            pressure: 0.0
-        ) else {
+        guard
+            let down = NSEvent.mouseEvent(
+                with: .leftMouseDown,
+                location: point,
+                modifierFlags: [],
+                timestamp: ProcessInfo.processInfo.systemUptime,
+                windowNumber: window.windowNumber,
+                context: nil,
+                eventNumber: 1,
+                clickCount: 1,
+                pressure: 1.0
+            ),
+            let up = NSEvent.mouseEvent(
+                with: .leftMouseUp,
+                location: point,
+                modifierFlags: [],
+                timestamp: ProcessInfo.processInfo.systemUptime + 0.01,
+                windowNumber: window.windowNumber,
+                context: nil,
+                eventNumber: 2,
+                clickCount: 1,
+                pressure: 0.0
+            )
+        else {
             XCTFail("Failed to construct mouse events")
             return
         }
@@ -48,15 +50,15 @@ final class SelectionTooltipClickTests: XCTestCase {
         let vm = makeIsolatedViewModel()
         vm.autoSaveEnabled = false
         let doc = """
-        # Selection Comments & Inspector Sidebar Demo
+            # Selection Comments & Inspector Sidebar Demo
 
-        Select any phrase in this document to see the **Liquid Glass selection tooltip** (`Comment`, `Copy`, `Copy Raw`).
+            Select any phrase in this document to see the **Liquid Glass selection tooltip** (`Comment`, `Copy`, `Copy Raw`).
 
-        We should migrate the **renderer pipeline** to use `MTLSharedEvent` synchronization across passes so frame pacing stays deterministic under load.
+            We should migrate the **renderer pipeline** to use `MTLSharedEvent` synchronization across passes so frame pacing stays deterministic under load.
 
-        - [ ] Audit `FolioMediaImageCache` eviction thresholds
-        - [x] Verify `Cmd+Ctrl+C` copies all comments with line & column locations
-        """
+            - [ ] Audit `FolioMediaImageCache` eviction thresholds
+            - [x] Verify `Cmd+Ctrl+C` copies all comments with line & column locations
+            """
         vm.markdownText = doc
         let rExisting = (doc as NSString).range(of: "**renderer pipeline**")
         vm.addOrUpdateSelectionComment("Double-check whether this stage can run asynchronously.", for: rExisting)

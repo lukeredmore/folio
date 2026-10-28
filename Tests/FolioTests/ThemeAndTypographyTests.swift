@@ -85,9 +85,11 @@ final class ThemeAndTypographyTests: XCTestCase {
         let testDefaults = isolatedDefaults()
 
         // 1. Default presets are available as built-in themes
-        XCTAssertEqual(EditorTheme.builtInThemes.map(\.name), [
-            "Daylight", "Midnight", "Parchment", "Editorial", "Classic", "Modernist"
-        ])
+        XCTAssertEqual(
+            EditorTheme.builtInThemes.map(\.name),
+            [
+                "Daylight", "Midnight", "Parchment", "Editorial", "Classic", "Modernist"
+            ])
 
         let vm1 = makeIsolatedViewModel(defaults: testDefaults)
         XCTAssertEqual(vm1.theme, .daylight)

@@ -110,8 +110,9 @@ public final class HybridMarkdownTextView: NSTextView {
 
     public override func setSpellingState(_ value: Int, range charRange: NSRange) {
         if value != 0,
-           let storage = textStorage,
-           WideBlockLayoutManager.shouldSuppressSpellCheck(in: storage, range: charRange) {
+            let storage = textStorage,
+            WideBlockLayoutManager.shouldSuppressSpellCheck(in: storage, range: charRange)
+        {
             super.setSpellingState(0, range: charRange)
             return
         }

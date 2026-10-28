@@ -74,11 +74,15 @@ public final class MarkdownLiveStyler {
     )
     static let htmlDetailsTagRegex = try! NSRegularExpression(pattern: #"</?details\b[^>]*>"#, options: [.caseInsensitive])
     static let htmlAttrRegex = try! NSRegularExpression(pattern: #"\b([a-zA-Z_-]+)\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'=<>`]+))"#)
-    static let boldItalicRegex = try! NSRegularExpression(pattern: #"(?<!\*)\*\*\*(?!\*)(?=\S)((?:(?!\*\*\*)[\s\S])+?)(?<=\S)\*\*\*(?!\*)|(?<![\p{L}\p{N}_])___(?!_)(?=\S)((?:(?!___)[\s\S])+?)(?<=\S)___(?![\p{L}\p{N}_])"#)
+    static let boldItalicRegex = try! NSRegularExpression(
+        pattern:
+            #"(?<!\*)\*\*\*(?!\*)(?=\S)((?:(?!\*\*\*)[\s\S])+?)(?<=\S)\*\*\*(?!\*)|(?<![\p{L}\p{N}_])___(?!_)(?=\S)((?:(?!___)[\s\S])+?)(?<=\S)___(?![\p{L}\p{N}_])"#
+    )
     static let boldAsteriskRegex = try! NSRegularExpression(pattern: #"(?<!\*)\*\*(?!\*)(?=\S)((?:(?!\*\*)[\s\S])+?)(?<=\S)\*\*(?!\*)"#)
     static let boldUnderscoreRegex = try! NSRegularExpression(pattern: #"(?<![\p{L}\p{N}_])__(?!_)(?=\S)((?:(?!__)[\s\S])+?)(?<=\S)__(?![\p{L}\p{N}_])"#)
     static let italicAsteriskRegex = try! NSRegularExpression(pattern: #"(?<!\*)\*(?!\*)(?=\S)((?:[^\*]|\*\*(?=\S)[^\*]+?(?<=\S)\*\*)+?)(?<=\S)\*(?!\*)"#)
-    static let italicUnderscoreRegex = try! NSRegularExpression(pattern: #"(?<![\p{L}\p{N}_])_(?!_)(?=\S)((?:[^_]|__(?=\S)[^_]+?(?<=\S)__|(?<=[\p{L}\p{N}])_(?=[\p{L}\p{N}]))+?)(?<=\S)_(?![\p{L}\p{N}_])"#)
+    static let italicUnderscoreRegex = try! NSRegularExpression(
+        pattern: #"(?<![\p{L}\p{N}_])_(?!_)(?=\S)((?:[^_]|__(?=\S)[^_]+?(?<=\S)__|(?<=[\p{L}\p{N}])_(?=[\p{L}\p{N}]))+?)(?<=\S)_(?![\p{L}\p{N}_])"#)
     static let strikeRegex = try! NSRegularExpression(pattern: #"(?<!~)(~~)(?!~)(?=\S)((?:(?!~~)[\s\S])+?)(?<=\S)(~~)(?!~)"#)
     static let highlightRegex = try! NSRegularExpression(pattern: #"(?<!=)(==)(?!=)(?=\S)((?:(?!==)[\s\S])+?)(?<=\S)(==)(?!=)"#)
     static let inlineMathRegex = try! NSRegularExpression(pattern: #"(?<!\$)(\$)(?!\$)(?=\S)([^\$\n]+?)(?<=\S)(?<!\$)(\$)(?![\$\d])"#)
@@ -165,16 +169,19 @@ public final class MarkdownLiveStyler {
         if wasSourceMode != sourceCodeMode || wasLaTeX {
             LaTeXBlockStyleCache.invalidateLayoutManagers(for: storage, fullRange: fullRange)
         }
-        let record = sourceCodeMode ? nil : MarkdownStyleRecord(
-            text: pass.nsString,
-            parameters: parameters,
-            selectedRange: selectedRange,
-            ast: ast,
-            documentMacros: documentMacros,
-            checkpoints: pass.checkpoints,
-            decorations: pass.decorations,
-            headings: pass.headings
-        )
+        let record =
+            sourceCodeMode
+            ? nil
+            : MarkdownStyleRecord(
+                text: pass.nsString,
+                parameters: parameters,
+                selectedRange: selectedRange,
+                ast: ast,
+                documentMacros: documentMacros,
+                checkpoints: pass.checkpoints,
+                decorations: pass.decorations,
+                headings: pass.headings
+            )
         return MarkdownStyleResult(analysis: pass.analysis, record: record, restyledRanges: [fullRange])
     }
 

@@ -11,10 +11,10 @@ private final class LocalLoopbackAuthHTTPServer: @unchecked Sendable {
     private var isStopped = false
 
     static let sampleSVG = """
-    <svg xmlns="http://www.w3.org/2000/svg" width="160" height="80" viewBox="0 0 160 80">
-      <rect width="160" height="80" rx="8" fill="#2563eb"/>
-    </svg>
-    """
+        <svg xmlns="http://www.w3.org/2000/svg" width="160" height="80" viewBox="0 0 160 80">
+          <rect width="160" height="80" rx="8" fill="#2563eb"/>
+        </svg>
+        """
 
     static let samplePNGData: Data = {
         let img = NSImage(size: NSSize(width: 120, height: 60))
@@ -23,8 +23,9 @@ private final class LocalLoopbackAuthHTTPServer: @unchecked Sendable {
         NSBezierPath(rect: NSRect(x: 0, y: 0, width: 120, height: 60)).fill()
         img.unlockFocus()
         guard let tiff = img.tiffRepresentation,
-              let rep = NSBitmapImageRep(data: tiff),
-              let png = rep.representation(using: .png, properties: [:]) else {
+            let rep = NSBitmapImageRep(data: tiff),
+            let png = rep.representation(using: .png, properties: [:])
+        else {
             return Data()
         }
         return png
@@ -89,7 +90,8 @@ private final class LocalLoopbackAuthHTTPServer: @unchecked Sendable {
         let lowerReq = request.lowercased()
         let firstLine = request.split(separator: "\r\n").first.map(String.init) ?? ""
 
-        let isAuthorized = lowerReq.contains("folio_session=secret_token_42")
+        let isAuthorized =
+            lowerReq.contains("folio_session=secret_token_42")
             || lowerReq.contains("authorization: bearer secret_token_42")
 
         let statusLine: String
@@ -159,10 +161,10 @@ final class RemoteImageUrlAndAuthTests: XCTestCase {
         XCTAssertEqual(defaultCmd, "curl -sS -L --fail --max-time 30 'https://media.example.com/img.png'")
 
         let copyAsCurlSnippet = """
-        curl 'https://internal.example.com/some/page' \\
-          -H 'Authorization: Bearer secret_token_42' \\
-          -b 'folio_session=secret_token_42'
-        """
+            curl 'https://internal.example.com/some/page' \\
+              -H 'Authorization: Bearer secret_token_42' \\
+              -b 'folio_session=secret_token_42'
+            """
         let strippedCmd = FolioMediaImageCache.buildCurlShellCommand(for: targetURL, commandPrefix: copyAsCurlSnippet)
         XCTAssertEqual(
             strippedCmd,
@@ -209,16 +211,16 @@ final class RemoteImageUrlAndAuthTests: XCTestCase {
 
         // 4. Verify Markdown inline, reference, and HTML <img> rendering with remote URLs
         let markdown = """
-        # Remote Media
+            # Remote Media
 
-        ![Badge](\(publicBadgeURL))
+            ![Badge](\(publicBadgeURL))
 
-        ![Restricted][ref-img]
+            ![Restricted][ref-img]
 
-        <img src="\(restrictedURL)" width="100" alt="HTML Restricted">
+            <img src="\(restrictedURL)" width="100" alt="HTML Restricted">
 
-        [ref-img]: http://127.0.0.1:\(server.port)/restricted/chart.png
-        """
+            [ref-img]: http://127.0.0.1:\(server.port)/restricted/chart.png
+            """
         _ = FolioMediaImageCache.shared.image(for: "http://127.0.0.1:\(server.port)/restricted/chart.png")
         XCTAssertTrue(FolioMediaImageCache.shared.waitUntilRemoteFetchesIdle())
 

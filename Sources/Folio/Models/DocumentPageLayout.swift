@@ -21,9 +21,8 @@ public struct DocumentPageLayout: Equatable, Sendable {
     public init() {}
 
     public var isEmpty: Bool {
-        paperSize == nil && paperWidth == nil && paperHeight == nil && orientation == nil &&
-            topMargin == nil && bottomMargin == nil && leftMargin == nil && rightMargin == nil &&
-            textWidth == nil && textHeight == nil && baseFontSizePoints == nil && textAlignment == nil
+        paperSize == nil && paperWidth == nil && paperHeight == nil && orientation == nil && topMargin == nil && bottomMargin == nil && leftMargin == nil
+            && rightMargin == nil && textWidth == nil && textHeight == nil && baseFontSizePoints == nil && textAlignment == nil
     }
 
     public func resolve(
@@ -115,7 +114,8 @@ public struct DocumentPageLayout: Equatable, Sendable {
         } else {
             preambleText = prefix
         }
-        let uncommented = preambleText
+        let uncommented =
+            preambleText
             .components(separatedBy: .newlines)
             .map { line -> String in
                 if let pct = line.firstIndex(of: "%") { return String(line[..<pct]) }
@@ -244,8 +244,7 @@ public struct DocumentPageLayout: Equatable, Sendable {
         case "paper", "papersize", "page-size", "pagesize":
             if let p = parsePaperName(lowerVal) { layout.paperSize = p }
         case "orientation":
-            if lowerVal.contains("land") { layout.orientation = .landscape }
-            else if lowerVal.contains("port") { layout.orientation = .portrait }
+            if lowerVal.contains("land") { layout.orientation = .landscape } else if lowerVal.contains("port") { layout.orientation = .portrait }
         case "10pt": layout.baseFontSizePoints = 10
         case "11pt": layout.baseFontSizePoints = 11
         case "12pt": layout.baseFontSizePoints = 12
@@ -257,12 +256,18 @@ public struct DocumentPageLayout: Equatable, Sendable {
             }
         case "hmargin":
             let parts = lowerVal.split(separator: ",").compactMap { parsePoints(String($0)) }
-            if parts.count == 2 { layout.leftMargin = parts[0]; layout.rightMargin = parts[1] }
-            else if let pt = parts.first { layout.leftMargin = pt; layout.rightMargin = pt }
+            if parts.count == 2 {
+                layout.leftMargin = parts[0]; layout.rightMargin = parts[1]
+            } else if let pt = parts.first {
+                layout.leftMargin = pt; layout.rightMargin = pt
+            }
         case "vmargin":
             let parts = lowerVal.split(separator: ",").compactMap { parsePoints(String($0)) }
-            if parts.count == 2 { layout.topMargin = parts[0]; layout.bottomMargin = parts[1] }
-            else if let pt = parts.first { layout.topMargin = pt; layout.bottomMargin = pt }
+            if parts.count == 2 {
+                layout.topMargin = parts[0]; layout.bottomMargin = parts[1]
+            } else if let pt = parts.first {
+                layout.topMargin = pt; layout.bottomMargin = pt
+            }
         case "top", "tmargin", "margin-top", "top-margin":
             if let pt = parsePoints(lowerVal) { layout.topMargin = pt }
         case "bottom", "bmargin", "margin-bottom", "bottom-margin":
@@ -282,8 +287,11 @@ public struct DocumentPageLayout: Equatable, Sendable {
         case "geometry", "page", "print":
             applyKeyValueOptions(value, to: &layout)
         case "align", "alignment", "text-align":
-            if lowerVal.hasPrefix("justif") { layout.textAlignment = .justified }
-            else if lowerVal == "left" || lowerVal == "raggedright" { layout.textAlignment = .left }
+            if lowerVal.hasPrefix("justif") {
+                layout.textAlignment = .justified
+            } else if lowerVal == "left" || lowerVal == "raggedright" {
+                layout.textAlignment = .left
+            }
         default:
             break
         }
@@ -323,8 +331,7 @@ public struct DocumentPageLayout: Equatable, Sendable {
         var current = ""
         var depth = 0
         for ch in s {
-            if ch == "{" { depth += 1 }
-            else if ch == "}" { depth = max(0, depth - 1) }
+            if ch == "{" { depth += 1 } else if ch == "}" { depth = max(0, depth - 1) }
             if (ch == "," || ch == ";") && depth == 0 {
                 result.append(current)
                 current = ""

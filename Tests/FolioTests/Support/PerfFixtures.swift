@@ -113,9 +113,9 @@ enum PerfFixtures {
     }
 
     private static let svg = """
-    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 80" width="320" height="80">
-      <rect width="320" height="80" rx="10" fill="#1e293b"/>
-      <text x="160" y="46" text-anchor="middle" fill="#f8fafc" font-size="16">perf fixture</text>
-    </svg>
-    """
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 80" width="320" height="80">
+          <rect width="320" height="80" rx="10" fill="#1e293b"/>
+          <text x="160" y="46" text-anchor="middle" fill="#f8fafc" font-size="16">perf fixture</text>
+        </svg>
+        """
 }

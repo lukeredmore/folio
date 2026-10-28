@@ -32,8 +32,9 @@ extension XCTestCase {
         XCTAssertLessThan(
             ratio,
             maxRatio,
-            String(format: "%@: %dx input took %.1fx longer (%.2f ms -> %.2f ms); linear is ~%dx, quadratic ~%dx",
-                   label, factor, ratio, tSmall * 1000, tLarge * 1000, factor, factor * factor),
+            String(
+                format: "%@: %dx input took %.1fx longer (%.2f ms -> %.2f ms); linear is ~%dx, quadratic ~%dx",
+                label, factor, ratio, tSmall * 1000, tLarge * 1000, factor, factor * factor),
             file: file,
             line: line
         )

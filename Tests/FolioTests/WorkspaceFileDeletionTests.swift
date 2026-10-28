@@ -59,11 +59,19 @@ final class WorkspaceFileDeletionTests: XCTestCase {
     }
 
     func testSidebarDeletionRules() {
-        let local = WorkspaceFileNode(url: URL(fileURLWithPath: "/tmp/a.md"), name: "a.md", isDirectory: false, modificationDate: Date(), creationDate: Date(), children: nil)
-        let localFolder = WorkspaceFileNode(url: URL(fileURLWithPath: "/tmp/dir"), name: "dir", isDirectory: true, modificationDate: Date(), creationDate: Date(), children: [])
-        let remoteFile = WorkspaceFileNode(url: URL(fileURLWithPath: "/tmp/r.md"), name: "r.md", isDirectory: false, modificationDate: Date(), creationDate: Date(), children: nil, remoteMountID: UUID())
-        let remoteFolder = WorkspaceFileNode(url: URL(fileURLWithPath: "/tmp/rd"), name: "rd", isDirectory: true, modificationDate: Date(), creationDate: Date(), children: [], remoteMountID: UUID())
-        let remoteRoot = WorkspaceFileNode(url: URL(fileURLWithPath: "/tmp/root"), name: "root", isDirectory: true, modificationDate: Date(), creationDate: Date(), children: [], remoteMountID: UUID(), isRemoteRoot: true)
+        let local = WorkspaceFileNode(
+            url: URL(fileURLWithPath: "/tmp/a.md"), name: "a.md", isDirectory: false, modificationDate: Date(), creationDate: Date(), children: nil)
+        let localFolder = WorkspaceFileNode(
+            url: URL(fileURLWithPath: "/tmp/dir"), name: "dir", isDirectory: true, modificationDate: Date(), creationDate: Date(), children: [])
+        let remoteFile = WorkspaceFileNode(
+            url: URL(fileURLWithPath: "/tmp/r.md"), name: "r.md", isDirectory: false, modificationDate: Date(), creationDate: Date(), children: nil,
+            remoteMountID: UUID())
+        let remoteFolder = WorkspaceFileNode(
+            url: URL(fileURLWithPath: "/tmp/rd"), name: "rd", isDirectory: true, modificationDate: Date(), creationDate: Date(), children: [],
+            remoteMountID: UUID())
+        let remoteRoot = WorkspaceFileNode(
+            url: URL(fileURLWithPath: "/tmp/root"), name: "root", isDirectory: true, modificationDate: Date(), creationDate: Date(), children: [],
+            remoteMountID: UUID(), isRemoteRoot: true)
 
         XCTAssertTrue(local.isDeletableFromSidebar)
         XCTAssertTrue(localFolder.isDeletableFromSidebar)

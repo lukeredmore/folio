@@ -55,10 +55,13 @@ extension EditorSettingsView {
 
                 Divider().opacity(0.5)
 
-                Toggle("Automatically check for updates on launch", isOn: Binding(
-                    get: { AppUpdateManager.shared.autoCheckForUpdates },
-                    set: { AppUpdateManager.shared.autoCheckForUpdates = $0 }
-                ))
+                Toggle(
+                    "Automatically check for updates on launch",
+                    isOn: Binding(
+                        get: { AppUpdateManager.shared.autoCheckForUpdates },
+                        set: { AppUpdateManager.shared.autoCheckForUpdates = $0 }
+                    )
+                )
                 .font(.system(size: 12))
             }
         }

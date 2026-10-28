@@ -136,7 +136,8 @@ public struct QuickOpenModalView: View {
 
     @ViewBuilder
     private func directPathCandidateRow(_ candidate: QuickOpenPathCandidate) -> some View {
-        let iconName = !candidate.exists
+        let iconName =
+            !candidate.exists
             ? "doc.badge.plus"
             : (candidate.isDirectory ? "folder.fill" : "doc.text.fill")
         let titleText: String = {

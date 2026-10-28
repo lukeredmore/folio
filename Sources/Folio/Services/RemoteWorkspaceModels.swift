@@ -106,7 +106,8 @@ public struct RemoteMountSpec: Identifiable, Codable, Equatable, Hashable, Senda
 
         if raw.lowercased().hasPrefix("ssh://") || raw.lowercased().hasPrefix("sftp://") {
             guard let components = URLComponents(string: raw),
-                  let parsedHost = components.host, !parsedHost.isEmpty else {
+                let parsedHost = components.host, !parsedHost.isEmpty
+            else {
                 throw RemoteWorkspaceError.invalidConnectionSpec("Invalid SSH/SFTP URL: \(raw)")
             }
             user = components.user

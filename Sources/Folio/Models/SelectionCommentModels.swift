@@ -119,18 +119,19 @@ public struct SelectionComment: Identifiable, Equatable, Sendable {
         }
 
         let trimmedQuote = currentQuote.trimmingCharacters(in: .newlines)
-        let quotedLines = trimmedQuote
+        let quotedLines =
+            trimmedQuote
             .components(separatedBy: .newlines)
             .map { $0.isEmpty ? ">" : "> \($0)" }
             .joined(separator: "\n")
 
         let trimmedComment = commentText.trimmingCharacters(in: .whitespacesAndNewlines)
         return """
-        **`\(fileLabel)` (\(lineLabel))**
-        \(quotedLines)
+            **`\(fileLabel)` (\(lineLabel))**
+            \(quotedLines)
 
-        \(trimmedComment)
-        """
+            \(trimmedComment)
+            """
     }
 
     public static func formatBatchForAgentPaste(
@@ -146,7 +147,8 @@ public struct SelectionComment: Identifiable, Equatable, Sendable {
             }
             return lhs.createdAt < rhs.createdAt
         }
-        return sorted
+        return
+            sorted
             .map {
                 $0.formatForAgentPaste(
                     documentTitle: documentTitle,
@@ -168,7 +170,8 @@ public struct SelectionComment: Identifiable, Equatable, Sendable {
 
         // 1. If the exact substring still exists at the same range, keep it.
         if NSMaxRange(range) <= newNS.length,
-           newNS.substring(with: range) == selectedRawText {
+            newNS.substring(with: range) == selectedRawText
+        {
             return self
         }
 
@@ -184,8 +187,7 @@ public struct SelectionComment: Identifiable, Equatable, Sendable {
 
         var oldSuffix = oldLen
         var newSuffix = newLen
-        while oldSuffix > commonPrefix && newSuffix > commonPrefix &&
-              oldNS.character(at: oldSuffix - 1) == newNS.character(at: newSuffix - 1) {
+        while oldSuffix > commonPrefix && newSuffix > commonPrefix && oldNS.character(at: oldSuffix - 1) == newNS.character(at: newSuffix - 1) {
             oldSuffix -= 1
             newSuffix -= 1
         }
@@ -255,4 +257,3 @@ public struct SelectionTooltipAnchor: Equatable, Sendable {
         self.viewportSize = viewportSize
     }
 }
-

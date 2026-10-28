@@ -71,33 +71,33 @@ public struct SSHRemoteTransport: RemoteFileTransport {
         switch mount.targetKind {
         case .file:
             remoteScript = """
-            TARGET=\(escapedTarget)
-            if [ ! -f "$TARGET" ]; then
-                echo "__FOLIO_ERR_NOT_FOUND__" >&2
-                exit 44
-            fi
-            BASENAME=$(basename "$TARGET")
-            MTIME=$(date -r "$TARGET" +%s 2>/dev/null || stat -c %Y "$TARGET" 2>/dev/null || stat -f %m "$TARGET" 2>/dev/null || echo 0)
-            printf "===FOLIO_FILE===\\t%s\\t%s\\n" "$BASENAME" "$MTIME"
-            base64 < "$TARGET" | tr -d '\\r\\n'
-            printf "\\n===FOLIO_END===\\n"
-            """
+                TARGET=\(escapedTarget)
+                if [ ! -f "$TARGET" ]; then
+                    echo "__FOLIO_ERR_NOT_FOUND__" >&2
+                    exit 44
+                fi
+                BASENAME=$(basename "$TARGET")
+                MTIME=$(date -r "$TARGET" +%s 2>/dev/null || stat -c %Y "$TARGET" 2>/dev/null || stat -f %m "$TARGET" 2>/dev/null || echo 0)
+                printf "===FOLIO_FILE===\\t%s\\t%s\\n" "$BASENAME" "$MTIME"
+                base64 < "$TARGET" | tr -d '\\r\\n'
+                printf "\\n===FOLIO_END===\\n"
+                """
         case .folder:
             remoteScript = """
-            TARGET=\(escapedTarget)
-            if [ ! -d "$TARGET" ]; then
-                echo "__FOLIO_ERR_NOT_FOUND__" >&2
-                exit 44
-            fi
-            cd "$TARGET" || exit 44
-            find . -maxdepth 4 \\( -name .git -o -name node_modules -o -name target -o -name .build -o -name DerivedData -o -name dist -o -name build \\) -prune -o -type f \\( -iname '*.md' -o -iname '*.markdown' -o -iname '*.mdown' -o -iname '*.mkd' -o -iname '*.txt' \\) -print | while IFS= read -r f; do
-                REL="${f#./}"
-                MTIME=$(date -r "$f" +%s 2>/dev/null || stat -c %Y "$f" 2>/dev/null || stat -f %m "$f" 2>/dev/null || echo 0)
-                printf "===FOLIO_FILE===\\t%s\\t%s\\n" "$REL" "$MTIME"
-                base64 < "$f" | tr -d '\\r\\n'
-                printf "\\n===FOLIO_END===\\n"
-            done
-            """
+                TARGET=\(escapedTarget)
+                if [ ! -d "$TARGET" ]; then
+                    echo "__FOLIO_ERR_NOT_FOUND__" >&2
+                    exit 44
+                fi
+                cd "$TARGET" || exit 44
+                find . -maxdepth 4 \\( -name .git -o -name node_modules -o -name target -o -name .build -o -name DerivedData -o -name dist -o -name build \\) -prune -o -type f \\( -iname '*.md' -o -iname '*.markdown' -o -iname '*.mdown' -o -iname '*.mkd' -o -iname '*.txt' \\) -print | while IFS= read -r f; do
+                    REL="${f#./}"
+                    MTIME=$(date -r "$f" +%s 2>/dev/null || stat -c %Y "$f" 2>/dev/null || stat -f %m "$f" 2>/dev/null || echo 0)
+                    printf "===FOLIO_FILE===\\t%s\\t%s\\n" "$REL" "$MTIME"
+                    base64 < "$f" | tr -d '\\r\\n'
+                    printf "\\n===FOLIO_END===\\n"
+                done
+                """
         }
 
         let (stdout, stderr, status) = try await runSSHScript(for: mount, script: remoteScript)
@@ -132,11 +132,12 @@ public struct SSHRemoteTransport: RemoteFileTransport {
                 let decodedData = Data(base64Encoded: joinedB64) ?? Data()
                 let text = String(data: decodedData, encoding: .utf8) ?? ""
                 if !relPath.isEmpty {
-                    entries.append(RemoteFileEntry(
-                        relativePath: relPath,
-                        modificationTimestamp: mtime,
-                        content: text
-                    ))
+                    entries.append(
+                        RemoteFileEntry(
+                            relativePath: relPath,
+                            modificationTimestamp: mtime,
+                            content: text
+                        ))
                 }
             }
             idx += 1
@@ -157,22 +158,22 @@ public struct SSHRemoteTransport: RemoteFileTransport {
 
         let b64Payload = Data(content.utf8).base64EncodedString()
         let remoteScript = """
-        TARGET=\(targetFileExpr)
-        DIR=$(dirname "$TARGET")
-        mkdir -p "$DIR" || exit 45
-        TMP="$TARGET.folio_tmp.$$"
-        base64 -d > "$TMP" << '__FOLIO_B64_EOF__'
-        \(b64Payload)
-        __FOLIO_B64_EOF__
-        if [ $? -ne 0 ]; then
-            base64 -D > "$TMP" << '__FOLIO_B64_EOF__'
-        \(b64Payload)
-        __FOLIO_B64_EOF__
-        fi
-        mv -f "$TMP" "$TARGET" || exit 45
-        MTIME=$(date -r "$TARGET" +%s 2>/dev/null || stat -c %Y "$TARGET" 2>/dev/null || stat -f %m "$TARGET" 2>/dev/null || date +%s)
-        printf "%s\\n" "$MTIME"
-        """
+            TARGET=\(targetFileExpr)
+            DIR=$(dirname "$TARGET")
+            mkdir -p "$DIR" || exit 45
+            TMP="$TARGET.folio_tmp.$$"
+            base64 -d > "$TMP" << '__FOLIO_B64_EOF__'
+            \(b64Payload)
+            __FOLIO_B64_EOF__
+            if [ $? -ne 0 ]; then
+                base64 -D > "$TMP" << '__FOLIO_B64_EOF__'
+            \(b64Payload)
+            __FOLIO_B64_EOF__
+            fi
+            mv -f "$TMP" "$TARGET" || exit 45
+            MTIME=$(date -r "$TARGET" +%s 2>/dev/null || stat -c %Y "$TARGET" 2>/dev/null || stat -f %m "$TARGET" 2>/dev/null || date +%s)
+            printf "%s\\n" "$MTIME"
+            """
 
         let (stdout, stderr, status) = try await runSSHScript(for: mount, script: remoteScript)
         guard status == 0 else {
@@ -201,7 +202,8 @@ public struct SSHRemoteTransport: RemoteFileTransport {
     }
 
     func mapSSHError(mount: RemoteMountSpec, status: Int32, stderr: String) -> RemoteWorkspaceError {
-        let cleanErr = stderr
+        let cleanErr =
+            stderr
             .replacingOccurrences(of: "__FOLIO_ERR_NOT_FOUND__", with: "")
             .trimmingCharacters(in: .whitespacesAndNewlines)
         if status == 44 || stderr.contains("__FOLIO_ERR_NOT_FOUND__") {

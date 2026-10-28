@@ -80,9 +80,10 @@ extension FolioMediaImageCache {
         let urlHost = url.host?.trimmingCharacters(in: .whitespacesAndNewlines)
         let matchedMount: RemoteMountSpec?
         if let urlHost, !urlHost.isEmpty {
-            matchedMount = config.mounts.first(where: {
-                $0.host.caseInsensitiveCompare(urlHost) == .orderedSame
-            }) ?? config.mounts.first
+            matchedMount =
+                config.mounts.first(where: {
+                    $0.host.caseInsensitiveCompare(urlHost) == .orderedSame
+                }) ?? config.mounts.first
         } else {
             matchedMount = config.mounts.first
         }
@@ -116,7 +117,8 @@ extension FolioMediaImageCache {
         let resolved = resolveSSHAuth(for: url, config: sshAuth)
         var flags: [String] = []
 
-        let hasUserFlag = normalizedPrefix.contains(" -u ")
+        let hasUserFlag =
+            normalizedPrefix.contains(" -u ")
             || normalizedPrefix.hasSuffix(" -u")
             || normalizedPrefix.contains("--user")
         if !hasUserFlag, let user = resolved.user, !user.isEmpty {
@@ -130,7 +132,8 @@ extension FolioMediaImageCache {
             flags.append("--key '\(escapedKey)'")
             let pubPath = keyPath + ".pub"
             if !normalizedPrefix.contains("--pubkey"),
-               FileManager.default.fileExists(atPath: pubPath) {
+                FileManager.default.fileExists(atPath: pubPath)
+            {
                 let escapedPub = pubPath.replacingOccurrences(of: "'", with: "'\\''")
                 flags.append("--pubkey '\(escapedPub)'")
             }

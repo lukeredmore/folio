@@ -39,7 +39,8 @@ extension LaTeXLiveStyler {
             openToken = "$$"
         }
 
-        let isSingleLine = trimmedLine.count > (openToken.count + closeToken.count)
+        let isSingleLine =
+            trimmedLine.count > (openToken.count + closeToken.count)
             && trimmedLine.hasSuffix(closeToken)
 
         if !isSingleLine {
@@ -71,8 +72,7 @@ extension LaTeXLiveStyler {
         }
         storage.addAttribute(MKey.noSpellCheck, value: true, range: fullBlockRange)
 
-        let isMathBlockActive = mathLines.contains(where: { $0.isActive }) ||
-            NSIntersectionRange(fullBlockRange, selectedRange).length > 0
+        let isMathBlockActive = mathLines.contains(where: { $0.isActive }) || NSIntersectionRange(fullBlockRange, selectedRange).length > 0
         let blockDim: CGFloat = (focusMode && !isMathBlockActive) ? 0.30 : 1.0
 
         var latexParts: [String] = []
@@ -112,12 +112,13 @@ extension LaTeXLiveStyler {
                 mathPara.firstLineHeadIndent = 14.0
                 mathPara.headIndent = 14.0
                 mathPara.tailIndent = effectiveContainerWidth
-                storage.addAttributes([
-                    .font: mathMono,
-                    .foregroundColor: theme.textNSColor,
-                    .paragraphStyle: mathPara,
-                    .kern: 0.0
-                ], range: mLine.lineRange)
+                storage.addAttributes(
+                    [
+                        .font: mathMono,
+                        .foregroundColor: theme.textNSColor,
+                        .paragraphStyle: mathPara,
+                        .kern: 0.0
+                    ], range: mLine.lineRange)
                 MarkdownLiveStyler.highlightLaTeXSource(in: storage, range: mLine.contentRange, theme: theme, dimFactor: 1.0)
             }
         } else {
@@ -147,24 +148,27 @@ extension LaTeXLiveStyler {
                 mathPara.maximumLineHeight = perLineHeight
                 mathPara.lineBreakMode = .byClipping
                 mathPara.tailIndent = effectiveContainerWidth
-                storage.addAttributes([
-                    .font: hiddenLineFont,
-                    .foregroundColor: NSColor.clear,
-                    .paragraphStyle: mathPara,
-                    .kern: 0.0
-                ], range: mLine.lineRange)
+                storage.addAttributes(
+                    [
+                        .font: hiddenLineFont,
+                        .foregroundColor: NSColor.clear,
+                        .paragraphStyle: mathPara,
+                        .kern: 0.0
+                    ], range: mLine.lineRange)
             }
 
             if !cleanedLatex.isEmpty {
-                decorations.append(LineDecoration(
-                    lineRange: fullBlockRange,
-                    kind: .mathBlockRendered(latex: cleanedLatex, fullBlockRange: fullBlockRange, dimFactor: blockDim)
-                ))
-                if let eqNum = resolvedEqNum, !eqNum.isEmpty {
-                    decorations.append(LineDecoration(
+                decorations.append(
+                    LineDecoration(
                         lineRange: fullBlockRange,
-                        kind: .latexEquationNumber(number: "(\(eqNum))", fullBlockRange: fullBlockRange, dimFactor: blockDim)
+                        kind: .mathBlockRendered(latex: cleanedLatex, fullBlockRange: fullBlockRange, dimFactor: blockDim)
                     ))
+                if let eqNum = resolvedEqNum, !eqNum.isEmpty {
+                    decorations.append(
+                        LineDecoration(
+                            lineRange: fullBlockRange,
+                            kind: .latexEquationNumber(number: "(\(eqNum))", fullBlockRange: fullBlockRange, dimFactor: blockDim)
+                        ))
                 }
             }
         }
@@ -187,9 +191,10 @@ extension LaTeXLiveStyler {
 
     static func foldedBoundaryLineHeight(for trimmed: String, effectiveBaseSize: CGFloat) -> CGFloat {
         if trimmed.hasPrefix("\\vspace"),
-           let openBrace = trimmed.firstIndex(of: "{"),
-           let closeBrace = trimmed.lastIndex(of: "}"),
-           openBrace < closeBrace {
+            let openBrace = trimmed.firstIndex(of: "{"),
+            let closeBrace = trimmed.lastIndex(of: "}"),
+            openBrace < closeBrace
+        {
             let arg = trimmed[trimmed.index(after: openBrace)..<closeBrace].trimmingCharacters(in: .whitespaces)
             if arg.hasSuffix("em"), let val = Double(arg.dropLast(2)), val > 0 {
                 return min(72.0, max(4.0, CGFloat(val) * effectiveBaseSize))
@@ -254,8 +259,7 @@ extension LaTeXLiveStyler {
         }
         storage.addAttribute(MKey.noSpellCheck, value: true, range: fullBlockRange)
 
-        let isBlockActive = commentLines.contains(where: { $0.isActive }) ||
-            NSIntersectionRange(fullBlockRange, selectedRange).length > 0
+        let isBlockActive = commentLines.contains(where: { $0.isActive }) || NSIntersectionRange(fullBlockRange, selectedRange).length > 0
         let blockDim: CGFloat = (focusMode && !isBlockActive) ? 0.30 : 1.0
 
         if !isBlockActive && prettyMode {
@@ -267,20 +271,22 @@ extension LaTeXLiveStyler {
             pStyle.paragraphSpacingBefore = 0
             pStyle.lineBreakMode = .byClipping
             pStyle.tailIndent = effectiveContainerWidth
-            storage.addAttributes([
-                .font: NSFont.systemFont(ofSize: 0.1),
-                .foregroundColor: NSColor.clear,
-                .paragraphStyle: pStyle,
-                .kern: 0.0
-            ], range: fullBlockRange)
+            storage.addAttributes(
+                [
+                    .font: NSFont.systemFont(ofSize: 0.1),
+                    .foregroundColor: NSColor.clear,
+                    .paragraphStyle: pStyle,
+                    .kern: 0.0
+                ], range: fullBlockRange)
             LaTeXBlockStyleCache.collapseInternalNewlines(in: storage, nsString: nsString, range: fullBlockRange)
         } else {
             let commentFont = theme.bodyFont(size: effectiveBaseSize * 0.92, italic: true)
             for cl in commentLines where cl.contentRange.length > 0 {
-                storage.addAttributes([
-                    .font: commentFont,
-                    .foregroundColor: theme.secondaryTextNSColor.withAlphaComponent(0.75 * blockDim)
-                ], range: cl.contentRange)
+                storage.addAttributes(
+                    [
+                        .font: commentFont,
+                        .foregroundColor: theme.secondaryTextNSColor.withAlphaComponent(0.75 * blockDim)
+                    ], range: cl.contentRange)
             }
         }
         LaTeXBlockStyleCache.pendingGlyphInvalidationRanges.append(fullBlockRange)

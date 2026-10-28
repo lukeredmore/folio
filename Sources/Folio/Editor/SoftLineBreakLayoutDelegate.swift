@@ -21,13 +21,15 @@ final class SoftLineBreakLayoutDelegate: NSObject, NSLayoutManagerDelegate {
         characterIndex charIndex: Int
     ) -> NSRect {
         guard isSoftLineBreak(at: charIndex, in: layoutManager),
-              let storage = layoutManager.textStorage else {
+            let storage = layoutManager.textStorage
+        else {
             return NSRect(origin: glyphPosition, size: .zero)
         }
         if storage.attribute(MarkdownLiveStyler.collapsedTokenAttributeKey, at: charIndex, effectiveRange: nil) != nil {
             return NSRect(origin: glyphPosition, size: .zero)
         }
-        let font = (storage.attribute(.font, at: charIndex, effectiveRange: nil) as? NSFont)
+        let font =
+            (storage.attribute(.font, at: charIndex, effectiveRange: nil) as? NSFont)
             ?? NSFont.systemFont(ofSize: NSFont.systemFontSize)
         let spaceWidth = (" " as NSString).size(withAttributes: [.font: font]).width
         return NSRect(x: glyphPosition.x, y: 0, width: spaceWidth, height: 0)
@@ -94,8 +96,9 @@ final class SoftLineBreakLayoutDelegate: NSObject, NSLayoutManagerDelegate {
 
     private func shouldAllowBreak(beforeCharacterAt charIndex: Int, in layoutManager: NSLayoutManager) -> Bool {
         guard charIndex > 0,
-              let storage = layoutManager.textStorage,
-              charIndex <= storage.length else { return true }
+            let storage = layoutManager.textStorage,
+            charIndex <= storage.length
+        else { return true }
         var effectiveSpanRange = NSRange(location: 0, length: 0)
         if let prevInfo = storage.attribute(
             MarkdownLiveStyler.inlineMathSpanAttributeKey,

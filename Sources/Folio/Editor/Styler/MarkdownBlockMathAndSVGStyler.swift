@@ -43,8 +43,9 @@ extension MarkdownLiveStyler {
             }
         }
 
-        let isMathBlockActive = mathLines.contains(where: { $0.isActive }) ||
-            NSIntersectionRange(
+        let isMathBlockActive =
+            mathLines.contains(where: { $0.isActive })
+            || NSIntersectionRange(
                 NSRange(location: lineRange.location, length: scanIndex - lineRange.location),
                 selectedRange
             ).length > 0
@@ -83,12 +84,13 @@ extension MarkdownLiveStyler {
                 mathPara.firstLineHeadIndent = 14.0
                 mathPara.headIndent = 14.0
                 mathPara.tailIndent = effectiveContainerWidth
-                storage.addAttributes([
-                    .font: mathMono,
-                    .foregroundColor: theme.textNSColor,
-                    .paragraphStyle: mathPara,
-                    .kern: 0.0
-                ], range: mLine.lineRange)
+                storage.addAttributes(
+                    [
+                        .font: mathMono,
+                        .foregroundColor: theme.textNSColor,
+                        .paragraphStyle: mathPara,
+                        .kern: 0.0
+                    ], range: mLine.lineRange)
 
                 if t.hasPrefix("$$") {
                     storage.addAttribute(.foregroundColor, value: theme.linkNSColor.withAlphaComponent(0.9), range: mLine.contentRange)
@@ -123,19 +125,21 @@ extension MarkdownLiveStyler {
                 mathPara.maximumLineHeight = perLineHeight
                 mathPara.lineBreakMode = .byClipping
                 mathPara.tailIndent = effectiveContainerWidth
-                storage.addAttributes([
-                    .font: hiddenLineFont,
-                    .foregroundColor: NSColor.clear,
-                    .paragraphStyle: mathPara,
-                    .kern: 0.0
-                ], range: mLine.lineRange)
+                storage.addAttributes(
+                    [
+                        .font: hiddenLineFont,
+                        .foregroundColor: NSColor.clear,
+                        .paragraphStyle: mathPara,
+                        .kern: 0.0
+                    ], range: mLine.lineRange)
             }
 
             if !combinedLatex.isEmpty {
-                decorations.append(LineDecoration(
-                    lineRange: fullBlockRange,
-                    kind: .mathBlockRendered(latex: combinedLatex, fullBlockRange: fullBlockRange, dimFactor: blockDim)
-                ))
+                decorations.append(
+                    LineDecoration(
+                        lineRange: fullBlockRange,
+                        kind: .mathBlockRendered(latex: combinedLatex, fullBlockRange: fullBlockRange, dimFactor: blockDim)
+                    ))
             }
         }
 
@@ -189,8 +193,7 @@ extension MarkdownLiveStyler {
 
         let fullBlockRange = NSRange(location: lineRange.location, length: scanIndex - lineRange.location)
         storage.addAttribute(noSpellCheckAttributeKey, value: true, range: fullBlockRange)
-        let isSVGBlockActive = svgLines.contains(where: { $0.isActive }) ||
-            NSIntersectionRange(fullBlockRange, selectedRange).length > 0
+        let isSVGBlockActive = svgLines.contains(where: { $0.isActive }) || NSIntersectionRange(fullBlockRange, selectedRange).length > 0
         let blockDim: CGFloat = (focusMode && !isSVGBlockActive) ? 0.30 : 1.0
 
         let combinedSVG = svgLines.map(\.text).joined(separator: "\n").trimmingCharacters(in: .whitespacesAndNewlines)
@@ -216,17 +219,19 @@ extension MarkdownLiveStyler {
                 svgPara.minimumLineHeight = perLineHeight
                 svgPara.maximumLineHeight = perLineHeight
                 svgPara.tailIndent = effectiveContainerWidth
-                storage.addAttributes([
-                    .font: hiddenLineFont,
-                    .foregroundColor: NSColor.clear,
-                    .paragraphStyle: svgPara,
-                    .kern: 0.0
-                ], range: sLine.lineRange)
+                storage.addAttributes(
+                    [
+                        .font: hiddenLineFont,
+                        .foregroundColor: NSColor.clear,
+                        .paragraphStyle: svgPara,
+                        .kern: 0.0
+                    ], range: sLine.lineRange)
             }
-            decorations.append(LineDecoration(
-                lineRange: fullBlockRange,
-                kind: .svgBlockRendered(svgSource: combinedSVG, fullBlockRange: fullBlockRange, dimFactor: blockDim)
-            ))
+            decorations.append(
+                LineDecoration(
+                    lineRange: fullBlockRange,
+                    kind: .svgBlockRendered(svgSource: combinedSVG, fullBlockRange: fullBlockRange, dimFactor: blockDim)
+                ))
         } else {
             let codeMono = theme.codeFont(size: effectiveBaseSize * 0.90)
             for sLine in svgLines {
@@ -237,12 +242,13 @@ extension MarkdownLiveStyler {
                 codePara.firstLineHeadIndent = 14.0
                 codePara.headIndent = 14.0
                 codePara.tailIndent = effectiveContainerWidth
-                storage.addAttributes([
-                    .font: codeMono,
-                    .foregroundColor: theme.textNSColor.withAlphaComponent(blockDim),
-                    .paragraphStyle: codePara,
-                    .kern: 0.0
-                ], range: sLine.lineRange)
+                storage.addAttributes(
+                    [
+                        .font: codeMono,
+                        .foregroundColor: theme.textNSColor.withAlphaComponent(blockDim),
+                        .paragraphStyle: codePara,
+                        .kern: 0.0
+                    ], range: sLine.lineRange)
                 highlightCodeLine(in: storage, range: sLine.contentRange, language: "svg", theme: theme, dimFactor: blockDim)
             }
         }

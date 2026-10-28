@@ -48,7 +48,8 @@ extension HybridMarkdownEditorRepresentable.Coordinator {
         for span in targets.sorted(by: { $0.lowerBound > $1.lowerBound }) {
             let current = tv.string
             guard let edit = MarkdownSourceReflow.reflowParagraph(in: current, line: span.lowerBound, width: width),
-                  (current as NSString).substring(with: edit.range) != edit.replacement else { continue }
+                (current as NSString).substring(with: edit.range) != edit.replacement
+            else { continue }
             var newSel = tv.selectedRange()
             if newSel.location >= NSMaxRange(edit.range) {
                 newSel.location += (edit.replacement as NSString).length - edit.range.length

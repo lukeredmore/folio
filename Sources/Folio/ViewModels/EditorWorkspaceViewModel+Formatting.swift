@@ -170,10 +170,13 @@ extension EditorWorkspaceViewModel {
             let sel = tv.selectedRange()
             let line = MarkdownSourceReflow.lineNumber(at: sel.location, in: nsStr)
             guard let edit = MarkdownSourceReflow.reflowParagraph(in: text, line: line, width: effectiveReflowWidth),
-                  nsStr.substring(with: edit.range) != edit.replacement else { return }
-            let newLocation = edit.range.location + MarkdownSourceReflow.mapLocation(
-                sel.location, in: nsStr, oldRange: edit.range, to: edit.replacement as NSString
-            )
+                nsStr.substring(with: edit.range) != edit.replacement
+            else { return }
+            let newLocation =
+                edit.range.location
+                + MarkdownSourceReflow.mapLocation(
+                    sel.location, in: nsStr, oldRange: edit.range, to: edit.replacement as NSString
+                )
             tv.breakUndoCoalescing()
             if tv.shouldChangeText(in: edit.range, replacementString: edit.replacement) {
                 tv.replaceCharacters(in: edit.range, with: edit.replacement)

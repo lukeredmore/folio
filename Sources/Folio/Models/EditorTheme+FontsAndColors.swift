@@ -146,7 +146,8 @@ extension EditorTheme {
         if trimmed == "System Serif" {
             let sysFont = NSFont.systemFont(ofSize: size, weight: weight)
             if let serifDesc = sysFont.fontDescriptor.withDesign(.serif) {
-                let finalDesc = italic
+                let finalDesc =
+                    italic
                     ? serifDesc.withSymbolicTraits(serifDesc.symbolicTraits.union(.italic))
                     : serifDesc
                 if let font = NSFont(descriptor: finalDesc, size: size) {
@@ -241,7 +242,8 @@ extension EditorTheme {
             isBold = false
         }
         let isItalic = italicH3 && (level == 3)
-        let targetFamily = headingFontFamily.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        let targetFamily =
+            headingFontFamily.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
             ? bodyFontFamily
             : headingFontFamily
 

@@ -63,13 +63,16 @@ public struct AddRemoteMountModalView: View {
                 }
 
                 HStack(spacing: 14) {
-                    Picker("Mount Type", selection: Binding(
-                        get: { targetKind },
-                        set: { newKind in
-                            targetKind = newKind
-                            targetKindManuallyChosen = true
-                        }
-                    )) {
+                    Picker(
+                        "Mount Type",
+                        selection: Binding(
+                            get: { targetKind },
+                            set: { newKind in
+                                targetKind = newKind
+                                targetKindManuallyChosen = true
+                            }
+                        )
+                    ) {
                         Text("Remote Folder").tag(RemoteMountTargetKind.folder)
                         Text("Single File").tag(RemoteMountTargetKind.file)
                     }

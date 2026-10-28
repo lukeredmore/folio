@@ -58,13 +58,15 @@ final class EditorPerfScalingTests: XCTestCase {
         let small = try withHarness(lines: Self.smallLines) { minimumKeystrokeBusy($0) }
         let large = try withHarness(lines: Self.largeLines) { minimumKeystrokeBusy($0) }
         let ratio = large / max(small, 1e-6)
-        PerfReport.record("keystrokeScaling", [
-            "smallLines": Self.smallLines,
-            "largeLines": Self.largeLines,
-            "smallBusyMillisecondsPerKey": small * 1000,
-            "largeBusyMillisecondsPerKey": large * 1000,
-            "ratio": ratio
-        ])
+        PerfReport.record(
+            "keystrokeScaling",
+            [
+                "smallLines": Self.smallLines,
+                "largeLines": Self.largeLines,
+                "smallBusyMillisecondsPerKey": small * 1000,
+                "largeBusyMillisecondsPerKey": large * 1000,
+                "ratio": ratio
+            ])
         let detail = String(format: "%.2f ms -> %.2f ms (%.2fx for 8x lines)", small * 1000, large * 1000, ratio)
 
         XCTAssertLessThan(ratio, 12, "keystroke cost grew superlinearly with document size: \(detail)")
@@ -91,12 +93,14 @@ final class EditorPerfScalingTests: XCTestCase {
         }
         let median = perKey.map(\.busy).sorted()[perKey.count / 2]
         let maxStall = perKey.map(\.stall).max() ?? 0
-        PerfReport.record("burst50_1600", [
-            "documentLines": Self.largeLines,
-            "keys": perKey.count,
-            "medianBusyMillisecondsPerKey": median * 1000,
-            "maxStallMilliseconds": maxStall * 1000
-        ])
+        PerfReport.record(
+            "burst50_1600",
+            [
+                "documentLines": Self.largeLines,
+                "keys": perKey.count,
+                "medianBusyMillisecondsPerKey": median * 1000,
+                "maxStallMilliseconds": maxStall * 1000
+            ])
         let detail = String(format: "max stall %.0f ms, median key %.0f ms", maxStall * 1000, median * 1000)
         XCTAssertLessThan(maxStall, 4 * median, "one keystroke stalled far longer than a typical one: \(detail)")
         XCTAssertLessThan(maxStall, 2.0, "main thread hung during a 50-key burst: \(detail)")

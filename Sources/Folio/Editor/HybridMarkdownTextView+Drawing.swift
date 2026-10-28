@@ -7,7 +7,8 @@ extension HybridMarkdownTextView {
         super.drawBackground(in: rect)
 
         guard let layoutManager = self.layoutManager,
-              let textContainer = self.textContainer else {
+            let textContainer = self.textContainer
+        else {
             return
         }
 
@@ -56,7 +57,8 @@ extension HybridMarkdownTextView {
                 let firstFrag = layoutManager.lineFragmentRect(forGlyphAt: glyphRange.location, effectiveRange: nil)
                 let endRange = lineDecorations[endDecIdx].lineRange
                 let endGlyphs = layoutManager.glyphRange(forCharacterRange: endRange, actualCharacterRange: nil)
-                let lastGlyphIdx = endGlyphs.location != NSNotFound
+                let lastGlyphIdx =
+                    endGlyphs.location != NSNotFound
                     ? max(endGlyphs.location, NSMaxRange(endGlyphs) - 1)
                     : max(glyphRange.location, NSMaxRange(glyphRange) - 1)
                 let lastFrag = layoutManager.lineFragmentUsedRect(forGlyphAt: lastGlyphIdx, effectiveRange: nil)
@@ -79,7 +81,8 @@ extension HybridMarkdownTextView {
                 let cardPath = NSBezierPath(roundedRect: unifiedFenceRect, xRadius: 7.0, yRadius: 7.0)
                 cardPath.fill()
 
-                let cardBorderColor = currentTheme.isDark
+                let cardBorderColor =
+                    currentTheme.isDark
                     ? NSColor.white.withAlphaComponent(0.08)
                     : NSColor.black.withAlphaComponent(0.06)
                 cardBorderColor.setStroke()
@@ -135,7 +138,8 @@ extension HybridMarkdownTextView {
 
             switch dec.kind {
             case .headingUnderline(let level):
-                let borderColor = currentTheme.isDark
+                let borderColor =
+                    currentTheme.isDark
                     ? NSColor.white.withAlphaComponent(level == 1 ? 0.16 : 0.10)
                     : NSColor.black.withAlphaComponent(level == 1 ? 0.11 : 0.075)
                 borderColor.setFill()
@@ -196,7 +200,8 @@ extension HybridMarkdownTextView {
                     baseFontSize: effectiveFontSize,
                     isDisplayStyle: true
                 )
-                let customMathColor: NSColor? = (fullBlockRange.location != NSNotFound && fullBlockRange.location < (self.string as NSString).length)
+                let customMathColor: NSColor? =
+                    (fullBlockRange.location != NSNotFound && fullBlockRange.location < (self.string as NSString).length)
                     ? (self.textStorage?.attribute(MarkdownLiveStyler.customColorAttributeKey, at: fullBlockRange.location, effectiveRange: nil) as? NSColor)
                     : nil
                 let mathColor = (customMathColor ?? currentTheme.headingNSColor).withAlphaComponent(dimFactor)
@@ -225,7 +230,8 @@ extension HybridMarkdownTextView {
 
             case .inlineMathRendered(let latex, let mathRange, let fontSize, let dimFactor):
                 guard mathRange.location != NSNotFound,
-                      mathRange.location < (self.string as NSString).length else { continue }
+                    mathRange.location < (self.string as NSString).length
+                else { continue }
                 let firstGlyph = layoutManager.glyphIndexForCharacter(at: mathRange.location)
                 guard firstGlyph != NSNotFound, firstGlyph < layoutManager.numberOfGlyphs else { continue }
                 let lineFrag = layoutManager.lineFragmentRect(forGlyphAt: firstGlyph, effectiveRange: nil)
@@ -240,7 +246,8 @@ extension HybridMarkdownTextView {
                 )
                 let targetWidth = max(4.0, mathBox.width + 2.0)
                 let drawX = origin.x + lineFrag.minX + glyphLoc.x + max(0.5, (targetWidth - mathBox.width) * 0.5)
-                let customInlineColor = self.textStorage?.attribute(MarkdownLiveStyler.customColorAttributeKey, at: mathRange.location, effectiveRange: nil) as? NSColor
+                let customInlineColor =
+                    self.textStorage?.attribute(MarkdownLiveStyler.customColorAttributeKey, at: mathRange.location, effectiveRange: nil) as? NSColor
                 let mathColor = (customInlineColor ?? currentTheme.headingNSColor).withAlphaComponent(dimFactor)
                 mathBox.drawBox(drawX, baselineY, mathColor)
 
@@ -300,7 +307,8 @@ extension HybridMarkdownTextView {
                 currentTheme.codeBackgroundNSColor.withAlphaComponent(dimFactor).setFill()
                 NSBezierPath(roundedRect: pillRect, xRadius: 4.5, yRadius: 4.5).fill()
 
-                let borderColor = currentTheme.isDark
+                let borderColor =
+                    currentTheme.isDark
                     ? NSColor.white.withAlphaComponent(0.22 * dimFactor)
                     : NSColor.black.withAlphaComponent(0.16 * dimFactor)
                 borderColor.setStroke()
@@ -308,7 +316,8 @@ extension HybridMarkdownTextView {
                 borderPath.lineWidth = 1.0
                 borderPath.stroke()
 
-            case .mermaidBlockRendered, .svgBlockRendered, .imageRendered, .listBullet, .horizontalRule, .tableRow, .latexPreambleCard, .latexTheoremCard, .latexAbstractCard, .latexInputCard, .latexEquationNumber, .latexSectionBadge, .latexInlinePill, .latexInlineText:
+            case .mermaidBlockRendered, .svgBlockRendered, .imageRendered, .listBullet, .horizontalRule, .tableRow, .latexPreambleCard, .latexTheoremCard,
+                .latexAbstractCard, .latexInputCard, .latexEquationNumber, .latexSectionBadge, .latexInlinePill, .latexInlineText:
                 drawMediaAndBlockDecoration(
                     dec,
                     glyphRange: glyphRange,

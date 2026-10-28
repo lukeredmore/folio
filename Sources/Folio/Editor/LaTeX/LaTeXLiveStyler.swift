@@ -23,7 +23,8 @@ public enum LaTeXLiveStyler {
         }
         let trimmed = prefix.trimmingCharacters(in: .whitespacesAndNewlines)
         if trimmed.hasPrefix("@article{") || trimmed.hasPrefix("@book{") || trimmed.hasPrefix("@inproceedings{")
-            || trimmed.hasPrefix("@misc{") || trimmed.hasPrefix("@techreport{") || trimmed.hasPrefix("@phdthesis{") {
+            || trimmed.hasPrefix("@misc{") || trimmed.hasPrefix("@techreport{") || trimmed.hasPrefix("@phdthesis{")
+        {
             return .bibtex
         }
         return .markdown
@@ -71,7 +72,8 @@ public enum LaTeXLiveStyler {
             defaultParagraphStyle.lineHeightMultiple = typography.lineHeightMultiple
             defaultParagraphStyle.lineSpacing = max(0.0, typography.lineSpacing)
             defaultParagraphStyle.paragraphSpacing = max(4.0, typography.paragraphSpacing * 0.65)
-            let baseFont = sourceCodeMode
+            let baseFont =
+                sourceCodeMode
                 ? theme.codeFont(size: effectiveBaseSize)
                 : theme.bodyFont(size: effectiveBaseSize)
             var baseAttributes: [NSAttributedString.Key: Any] = [
@@ -115,23 +117,28 @@ public enum LaTeXLiveStyler {
         )
         LaTeXMathRenderer.setDocumentMacros(docMacros)
 
-        let effectiveBaseSize = sourceCodeMode
+        let effectiveBaseSize =
+            sourceCodeMode
             ? (theme.baseFontSize * typography.fontSizeScale)
             : docIndex.effectiveBaseFontSize(theme: theme, typography: typography)
 
         let defaultParagraphStyle = NSMutableParagraphStyle()
         defaultParagraphStyle.alignment = textAlignment
-        defaultParagraphStyle.lineHeightMultiple = sourceCodeMode
+        defaultParagraphStyle.lineHeightMultiple =
+            sourceCodeMode
             ? typography.lineHeightMultiple
             : docIndex.effectiveLineHeightMultiple(fallback: typography)
-        defaultParagraphStyle.lineSpacing = sourceCodeMode
+        defaultParagraphStyle.lineSpacing =
+            sourceCodeMode
             ? max(0.0, typography.lineSpacing)
             : docIndex.effectiveLineSpacing(fallback: typography)
-        defaultParagraphStyle.paragraphSpacing = sourceCodeMode
+        defaultParagraphStyle.paragraphSpacing =
+            sourceCodeMode
             ? max(4.0, typography.paragraphSpacing * 0.65)
             : 0.0
         defaultParagraphStyle.paragraphSpacingBefore = 0.0
-        defaultParagraphStyle.firstLineHeadIndent = sourceCodeMode
+        defaultParagraphStyle.firstLineHeadIndent =
+            sourceCodeMode
             ? 0.0
             : docIndex.effectiveFirstLineIndent(baseSize: effectiveBaseSize)
         defaultParagraphStyle.headIndent = 0.0
@@ -139,7 +146,8 @@ public enum LaTeXLiveStyler {
             defaultParagraphStyle.tailIndent = effectiveContainerWidth
         }
 
-        let baseFont = sourceCodeMode
+        let baseFont =
+            sourceCodeMode
             ? docIndex.codeFont(size: effectiveBaseSize, fallbackTheme: theme)
             : docIndex.bodyFont(size: effectiveBaseSize, fallbackTheme: theme)
 
@@ -284,8 +292,11 @@ public enum LaTeXLiveStyler {
                         let typeEnd = braceRange.location
                         let commaRange = lineStr.range(of: ",", options: [], range: NSRange(location: typeEnd + 1, length: lineLen - (typeEnd + 1)))
                         if commaRange.location != NSNotFound && commaRange.location > typeEnd + 1 {
-                            storage.addAttributes([.font: boldFont, .foregroundColor: theme.linkNSColor], range: NSRange(location: lr.location + p, length: typeEnd - p))
-                            storage.addAttributes([.font: boldFont, .foregroundColor: theme.headingNSColor], range: NSRange(location: lr.location + typeEnd + 1, length: commaRange.location - (typeEnd + 1)))
+                            storage.addAttributes(
+                                [.font: boldFont, .foregroundColor: theme.linkNSColor], range: NSRange(location: lr.location + p, length: typeEnd - p))
+                            storage.addAttributes(
+                                [.font: boldFont, .foregroundColor: theme.headingNSColor],
+                                range: NSRange(location: lr.location + typeEnd + 1, length: commaRange.location - (typeEnd + 1)))
                         }
                     }
                 } else if (firstCh >= 0x41 && firstCh <= 0x5A) || (firstCh >= 0x61 && firstCh <= 0x7A) {

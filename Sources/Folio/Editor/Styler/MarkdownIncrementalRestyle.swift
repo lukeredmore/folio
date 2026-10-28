@@ -32,12 +32,14 @@ extension MarkdownLiveStyler {
         let ast = edit == nil ? previous.ast : parseStyleAST(string)
         if edit != nil {
             guard let oldOutside = MarkdownASTProjection(previous.ast).outsideRegions(plan, old: true),
-                  let newOutside = MarkdownASTProjection(ast).outsideRegions(plan, old: false),
-                  oldOutside == newOutside else {
+                let newOutside = MarkdownASTProjection(ast).outsideRegions(plan, old: false),
+                oldOutside == newOutside
+            else {
                 return .needsFullRestyle(.astChangedOutsideRegions)
             }
         }
-        let documentMacros = edit == nil
+        let documentMacros =
+            edit == nil
             ? previous.documentMacros
             : documentMacros(in: string, sourceCodeMode: parameters.sourceCodeMode)
         guard documentMacros == previous.documentMacros else { return .needsFullRestyle(.documentMacrosChanged) }
@@ -53,9 +55,10 @@ extension MarkdownLiveStyler {
             let pass = MarkdownStylePass(storage: storage, parameters: parameters, selectedRange: selectedRange, ast: ast)
             storage.setAttributes(pass.baseAttributes, range: region.newRange)
             let stop = pass.styleLines(from: region.newRange.location, lineNumber: region.newStartLine, to: NSMaxRange(region.newRange))
-            let endedAtCheckpoint = region.newEndLine.map { endLine in
-                stop.index == NSMaxRange(region.newRange) && stop.lineNumber == endLine && !stop.inCodeFence
-            } ?? true
+            let endedAtCheckpoint =
+                region.newEndLine.map { endLine in
+                    stop.index == NSMaxRange(region.newRange) && stop.lineNumber == endLine && !stop.inCodeFence
+                } ?? true
             if endedAtCheckpoint {
                 pass.finish()
             }
@@ -82,11 +85,12 @@ extension MarkdownLiveStyler {
             decorations: decorations,
             headings: headings
         )
-        return .restyled(MarkdownStyleResult(
-            analysis: MarkdownDocumentAnalysis(headings: headings, decorations: decorations.all),
-            record: record,
-            restyledRanges: plan.regions.map(\.newRange)
-        ))
+        return .restyled(
+            MarkdownStyleResult(
+                analysis: MarkdownDocumentAnalysis(headings: headings, decorations: decorations.all),
+                record: record,
+                restyledRanges: plan.regions.map(\.newRange)
+            ))
     }
 
     /// Previous items outside the regions, moved past the edit, with each region's new items in
@@ -180,10 +184,11 @@ struct MarkdownASTProjection {
             guard let isOutside = isOutside(link.startLine, link.endLine, plan, old: old) else { return nil }
             guard isOutside else { continue }
             let move = shift.map { $0.line(link.startLine) - link.startLine } ?? 0
-            outside.links.append(CmarkAstInline(
-                kind: link.kind, startLine: link.startLine + move, startColumn: link.startColumn,
-                endLine: link.endLine + move, endColumn: link.endColumn, url: link.url, literal: link.literal
-            ))
+            outside.links.append(
+                CmarkAstInline(
+                    kind: link.kind, startLine: link.startLine + move, startColumn: link.startColumn,
+                    endLine: link.endLine + move, endColumn: link.endColumn, url: link.url, literal: link.literal
+                ))
         }
         return outside
     }

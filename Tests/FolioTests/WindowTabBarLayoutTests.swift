@@ -7,14 +7,14 @@ import XCTest
 final class WindowTabBarLayoutTests: XCTestCase {
 
     private let sampleDocument = """
-    # Folio Code Audit: Findings and Recommendations
+        # Folio Code Audit: Findings and Recommendations
 
-    2026-10-27. Read-only audit of `main`, about 48k lines of Rust and Swift.
+        2026-10-27. Read-only audit of `main`, about 48k lines of Rust and Swift.
 
-    ## Summary
+        ## Summary
 
-    The editor, sidebar, and comments inspector share one window.
-    """
+        The editor, sidebar, and comments inspector share one window.
+        """
 
     private func assertRegionClearsTitlebar(
         _ hosted: HostedMainWindow,

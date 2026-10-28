@@ -39,10 +39,11 @@ extension LaTeXLiveStyler {
         let spanInfo = MarkdownLiveStyler.InlineMathLayoutInfo(
             range: fullRange, width: width, ascent: ascent, descent: descent, padding: verticalPadding
         )
-        storage.addAttributes([
-            .font: tinyAtomicFont, .foregroundColor: NSColor.clear, .kern: 0.0,
-            MKey.inlineMathSpan: spanInfo, MKey.noSpellCheck: true
-        ], range: fullRange)
+        storage.addAttributes(
+            [
+                .font: tinyAtomicFont, .foregroundColor: NSColor.clear, .kern: 0.0,
+                MKey.inlineMathSpan: spanInfo, MKey.noSpellCheck: true
+            ], range: fullRange)
         storage.addAttribute(.kern, value: firstCharKern, range: NSRange(location: fullRange.location, length: 1))
     }
 
@@ -86,11 +87,12 @@ extension LaTeXLiveStyler {
                 )
             case 6: // Url
                 storage.addAttribute(MKey.noSpellCheck, value: true, range: fullRange)
-                storage.addAttributes([
-                    .font: theme.codeFont(size: fontSize * 0.90),
-                    .foregroundColor: theme.linkNSColor.withAlphaComponent(dimFactor),
-                    .underlineStyle: NSUnderlineStyle.single.rawValue
-                ], range: innerRange)
+                storage.addAttributes(
+                    [
+                        .font: theme.codeFont(size: fontSize * 0.90),
+                        .foregroundColor: theme.linkNSColor.withAlphaComponent(dimFactor),
+                        .underlineStyle: NSUnderlineStyle.single.rawValue
+                    ], range: innerRange)
             case 7: // SizeGroup
                 let scale = scaleMap[cmd] ?? 1.0
                 var attrs: [NSAttributedString.Key: Any] = [
@@ -139,15 +141,17 @@ extension LaTeXLiveStyler {
             )
         case "texttt":
             let codeFontSize = fontSize * 0.88
-            storage.addAttributes([
-                .font: docIndex.codeFont(size: codeFontSize, fallbackTheme: theme),
-                .foregroundColor: theme.inlineCodeNSColor.withAlphaComponent(dimFactor),
-                MarkdownLiveStyler.inlineCodeFontAttributeKey: true,
-                MKey.noSpellCheck: true
-            ], range: innerRange)
-            decorations.append(LineDecoration(
-                lineRange: innerRange, kind: .inlineCode(range: innerRange, fontSize: codeFontSize, dimFactor: dimFactor)
-            ))
+            storage.addAttributes(
+                [
+                    .font: docIndex.codeFont(size: codeFontSize, fallbackTheme: theme),
+                    .foregroundColor: theme.inlineCodeNSColor.withAlphaComponent(dimFactor),
+                    MarkdownLiveStyler.inlineCodeFontAttributeKey: true,
+                    MKey.noSpellCheck: true
+                ], range: innerRange)
+            decorations.append(
+                LineDecoration(
+                    lineRange: innerRange, kind: .inlineCode(range: innerRange, fontSize: codeFontSize, dimFactor: dimFactor)
+                ))
         case "textsc":
             MarkdownLiveStyler.applyAttributesToVisibleCharacters(
                 in: storage, range: innerRange,
@@ -203,10 +207,11 @@ extension LaTeXLiveStyler {
                     in: storage, nsString: nsString, fullRange: fullRange, width: max(4.0, maxW),
                     ascent: currentFont.ascender, descent: -currentFont.descender + extraDescent
                 )
-                decorations.append(LineDecoration(
-                    lineRange: fullRange,
-                    kind: .latexInlineText(text: displayText, font: currentFont, range: fullRange, dimFactor: dimFactor)
-                ))
+                decorations.append(
+                    LineDecoration(
+                        lineRange: fullRange,
+                        kind: .latexInlineText(text: displayText, font: currentFont, range: fullRange, dimFactor: dimFactor)
+                    ))
             }
         case 13: // TexQuote (`` or '')
             if showTokens {
@@ -219,10 +224,11 @@ extension LaTeXLiveStyler {
                     in: storage, nsString: nsString, fullRange: fullRange, width: quoteW,
                     ascent: currentFont.ascender, descent: -currentFont.descender
                 )
-                decorations.append(LineDecoration(
-                    lineRange: fullRange,
-                    kind: .latexInlineText(text: quoteStr, font: currentFont, range: fullRange, dimFactor: dimFactor)
-                ))
+                decorations.append(
+                    LineDecoration(
+                        lineRange: fullRange,
+                        kind: .latexInlineText(text: quoteStr, font: currentFont, range: fullRange, dimFactor: dimFactor)
+                    ))
             }
         case 14: // EscapedChar (\&, \%, \$, \#, \_, \{, \})
             MarkdownLiveStyler.styleSyntaxToken(in: storage, range: openRange, isActiveLine: showTokens, theme: theme, dimFactor: dimFactor)

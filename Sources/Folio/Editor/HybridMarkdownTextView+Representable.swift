@@ -132,9 +132,9 @@ public struct HybridMarkdownEditorRepresentable: NSViewRepresentable {
 
         context.coordinator.updateInsets(for: scrollView, textView: textView, theme: viewModel.theme)
 
-        if !context.coordinator.isUpdatingFromTextView &&
-            context.coordinator.lastKnownTextHash != viewModel.markdownText.hashValue &&
-            textView.string != viewModel.markdownText {
+        if !context.coordinator.isUpdatingFromTextView && context.coordinator.lastKnownTextHash != viewModel.markdownText.hashValue
+            && textView.string != viewModel.markdownText
+        {
             let fileChanged = context.coordinator.lastFileURL != viewModel.currentFileURL
             let savedSelection = fileChanged ? viewModel.currentSelectedRange : textView.selectedRange()
             textView.applyProgrammaticDocumentText(viewModel.markdownText, selectedRange: savedSelection)
@@ -142,13 +142,11 @@ public struct HybridMarkdownEditorRepresentable: NSViewRepresentable {
                 scrollView.contentView.scroll(to: .zero)
                 scrollView.reflectScrolledClipView(scrollView.contentView)
             }
-        } else if context.coordinator.lastTheme != viewModel.theme ||
-                  context.coordinator.lastTypography != viewModel.typography ||
-                  context.coordinator.lastSourceMode != viewModel.sourceCodeMode ||
-                  context.coordinator.lastPrettyMode != viewModel.prettyModeEnabled ||
-                  context.coordinator.lastTextAlignment != viewModel.textAlignment ||
-                  context.coordinator.lastFileURL != viewModel.currentFileURL ||
-                  context.coordinator.lastFocusMode != viewModel.focusMode {
+        } else if context.coordinator.lastTheme != viewModel.theme || context.coordinator.lastTypography != viewModel.typography
+            || context.coordinator.lastSourceMode != viewModel.sourceCodeMode || context.coordinator.lastPrettyMode != viewModel.prettyModeEnabled
+            || context.coordinator.lastTextAlignment != viewModel.textAlignment || context.coordinator.lastFileURL != viewModel.currentFileURL
+            || context.coordinator.lastFocusMode != viewModel.focusMode
+        {
             context.coordinator.restyle(textView: textView)
         }
 

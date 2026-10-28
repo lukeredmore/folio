@@ -27,12 +27,12 @@ final class SelectionCommentAndCopyTests: XCTestCase {
 
     func testCopyFormattedStripsSyntaxAndWritesRichTextAndHTML() throws {
         let doc = """
-        # Architecture Overview
+            # Architecture Overview
 
-        Here is **bold**, *italic*, `code`, and [Folio](https://example.com).
-        - First bullet
-        - Second bullet
-        """
+            Here is **bold**, *italic*, `code`, and [Folio](https://example.com).
+            - First bullet
+            - Second bullet
+            """
         let fullRange = NSRange(location: 0, length: (doc as NSString).length)
         let pasteboard = NSPasteboard.withUniqueName()
 
@@ -67,13 +67,13 @@ final class SelectionCommentAndCopyTests: XCTestCase {
 
     func testSelectionCommentLineNumbersAndAgentPasteFormat() {
         let doc = """
-        # Folio Spec
-        Line two intro
-        func computeLayout() {
-            return 42
-        }
-        Trailing line
-        """
+            # Folio Spec
+            Line two intro
+            func computeLayout() {
+                return 42
+            }
+            Trailing line
+            """
         let nsDoc = doc as NSString
         let targetRange = nsDoc.range(of: "func computeLayout() {\n    return 42\n}")
 
@@ -99,13 +99,13 @@ final class SelectionCommentAndCopyTests: XCTestCase {
         )
 
         let expected = """
-        **`docs/engine.md` (L3–L5)**
-        > func computeLayout() {
-        >     return 42
-        > }
+            **`docs/engine.md` (L3–L5)**
+            > func computeLayout() {
+            >     return 42
+            > }
 
-        Extract this magic constant into a named configuration parameter.
-        """
+            Extract this magic constant into a named configuration parameter.
+            """
         XCTAssertEqual(formatted, expected)
     }
 
@@ -137,12 +137,12 @@ final class SelectionCommentAndCopyTests: XCTestCase {
     func testViewModelCommentLifecycleBatchCopyAndTooltipAnchor() {
         let vm = makeViewModelWithoutAutosave()
         let doc = """
-        # Design Doc
+            # Design Doc
 
-        First section with **important** details.
+            First section with **important** details.
 
-        Second section with `code` implementation.
-        """
+            Second section with `code` implementation.
+            """
         vm.markdownText = doc
         let nsDoc = doc as NSString
 
@@ -203,14 +203,14 @@ final class SelectionCommentAndCopyTests: XCTestCase {
         let docURL = tempDir.appendingPathComponent("Architecture.md")
         let expectedCompanionURL = tempDir.appendingPathComponent("Architecture.comments.folio.md")
         let docText = """
-        # Architecture Overview
+            # Architecture Overview
 
-        The **TextKit** layout pipeline runs at 120Hz.
+            The **TextKit** layout pipeline runs at 120Hz.
 
-        ```swift
-        func renderLiveMarkdown() -> Bool { true }
-        ```
-        """
+            ```swift
+            func renderLiveMarkdown() -> Bool { true }
+            ```
+            """
         try docText.write(to: docURL, atomically: true, encoding: .utf8)
 
         let vm = makeViewModelWithoutAutosave()

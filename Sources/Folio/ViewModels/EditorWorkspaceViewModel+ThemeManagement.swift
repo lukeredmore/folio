@@ -9,8 +9,7 @@ extension EditorWorkspaceViewModel {
     public static func mergeAvailableThemes(customThemes: [EditorTheme]) -> [EditorTheme] {
         let presets = EditorTheme.builtInThemes.map { preset -> EditorTheme in
             if let savedOverride = customThemes.first(where: {
-                $0.id.caseInsensitiveCompare(preset.id) == .orderedSame ||
-                $0.name.caseInsensitiveCompare(preset.name) == .orderedSame
+                $0.id.caseInsensitiveCompare(preset.id) == .orderedSame || $0.name.caseInsensitiveCompare(preset.name) == .orderedSame
             }) {
                 return savedOverride
             }
@@ -18,8 +17,7 @@ extension EditorWorkspaceViewModel {
         }
         let nonPresetCustom = customThemes.filter { custom in
             !EditorTheme.builtInThemes.contains(where: {
-                $0.id.caseInsensitiveCompare(custom.id) == .orderedSame ||
-                $0.name.caseInsensitiveCompare(custom.name) == .orderedSame
+                $0.id.caseInsensitiveCompare(custom.id) == .orderedSame || $0.name.caseInsensitiveCompare(custom.name) == .orderedSame
             })
         }
         return presets + nonPresetCustom
@@ -102,12 +100,10 @@ extension EditorWorkspaceViewModel {
 
             if savedPreset == preset {
                 customThemes.removeAll {
-                    $0.id.caseInsensitiveCompare(preset.id) == .orderedSame ||
-                    $0.name.caseInsensitiveCompare(preset.name) == .orderedSame
+                    $0.id.caseInsensitiveCompare(preset.id) == .orderedSame || $0.name.caseInsensitiveCompare(preset.name) == .orderedSame
                 }
             } else if let existingIdx = customThemes.firstIndex(where: {
-                $0.id.caseInsensitiveCompare(preset.id) == .orderedSame ||
-                $0.name.caseInsensitiveCompare(preset.name) == .orderedSame
+                $0.id.caseInsensitiveCompare(preset.id) == .orderedSame || $0.name.caseInsensitiveCompare(preset.name) == .orderedSame
             }) {
                 customThemes[existingIdx] = savedPreset
             } else {
@@ -118,8 +114,8 @@ extension EditorWorkspaceViewModel {
         }
 
         if let existingIdx = customThemes.firstIndex(where: {
-            $0.name.caseInsensitiveCompare(resolvedName) == .orderedSame ||
-            (!theme.isBuiltIn && $0.id == theme.id && $0.name.caseInsensitiveCompare(resolvedName) == .orderedSame)
+            $0.name.caseInsensitiveCompare(resolvedName) == .orderedSame
+                || (!theme.isBuiltIn && $0.id == theme.id && $0.name.caseInsensitiveCompare(resolvedName) == .orderedSame)
         }) {
             let existingID = customThemes[existingIdx].id
             let updated = theme.savedAsCustomTheme(name: resolvedName, id: existingID)
@@ -146,7 +142,8 @@ extension EditorWorkspaceViewModel {
         customThemes.removeAll { $0.id == id }
         if wasActive {
             let targetID = fallbackPresetID ?? "Daylight"
-            theme = availableThemes.first(where: { $0.id.caseInsensitiveCompare(targetID) == .orderedSame })
+            theme =
+                availableThemes.first(where: { $0.id.caseInsensitiveCompare(targetID) == .orderedSame })
                 ?? EditorTheme.builtInPreset(id: targetID)
                 ?? .daylight
         }
@@ -170,8 +167,7 @@ extension EditorWorkspaceViewModel {
             return
         }
         customThemes.removeAll {
-            $0.id.caseInsensitiveCompare(factoryDefault.id) == .orderedSame ||
-            $0.name.caseInsensitiveCompare(factoryDefault.name) == .orderedSame
+            $0.id.caseInsensitiveCompare(factoryDefault.id) == .orderedSame || $0.name.caseInsensitiveCompare(factoryDefault.name) == .orderedSame
         }
         theme = factoryDefault
     }

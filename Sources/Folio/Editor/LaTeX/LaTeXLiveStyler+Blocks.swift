@@ -9,12 +9,13 @@ extension LaTeXLiveStyler {
         for (i, loc) in sortedLocs.enumerated() {
             guard let info = docIndex.lineSectionNumbers[loc] else { continue }
             let display = info.number.isEmpty ? info.title : "\(info.number) \(info.title)"
-            result.append(OutlineHeading(
-                level: info.level,
-                title: display,
-                characterLocation: loc,
-                lineNumber: i + 1
-            ))
+            result.append(
+                OutlineHeading(
+                    level: info.level,
+                    title: display,
+                    characterLocation: loc,
+                    lineNumber: i + 1
+                ))
         }
         return result
     }
@@ -96,22 +97,24 @@ extension LaTeXLiveStyler {
                         pStyle.paragraphSpacingBefore = 0
                         pStyle.lineBreakMode = .byClipping
                         pStyle.tailIndent = effectiveContainerWidth
-                        storage.addAttributes([
-                            .font: tinyFont,
-                            .foregroundColor: NSColor.clear,
-                            .paragraphStyle: pStyle,
-                            .kern: 0.0
-                        ], range: lr)
+                        storage.addAttributes(
+                            [
+                                .font: tinyFont,
+                                .foregroundColor: NSColor.clear,
+                                .paragraphStyle: pStyle,
+                                .kern: 0.0
+                            ], range: lr)
                     }
-                    decorations.append(LineDecoration(
-                        lineRange: preambleRange,
-                        kind: .latexPreambleCard(
-                            title: docIndex.preambleSummaryTitle,
-                            subtitle: docIndex.preambleSummarySubtitle,
-                            fullBlockRange: preambleRange,
-                            dimFactor: dimFactor
-                        )
-                    ))
+                    decorations.append(
+                        LineDecoration(
+                            lineRange: preambleRange,
+                            kind: .latexPreambleCard(
+                                title: docIndex.preambleSummaryTitle,
+                                subtitle: docIndex.preambleSummarySubtitle,
+                                fullBlockRange: preambleRange,
+                                dimFactor: dimFactor
+                            )
+                        ))
                 } else {
                     let monoFont = theme.codeFont(size: effectiveBaseSize * 0.88)
                     for (i, lr) in pLines.enumerated() {
@@ -121,12 +124,14 @@ extension LaTeXLiveStyler {
                         pStyle.firstLineHeadIndent = 14.0
                         pStyle.headIndent = 14.0
                         pStyle.tailIndent = effectiveContainerWidth
-                        storage.addAttributes([
-                            .font: monoFont,
-                            .foregroundColor: theme.textNSColor.withAlphaComponent(dimFactor),
-                            .paragraphStyle: pStyle
-                        ], range: lr)
-                        let kind: BlockDecorationKind = (i == 0)
+                        storage.addAttributes(
+                            [
+                                .font: monoFont,
+                                .foregroundColor: theme.textNSColor.withAlphaComponent(dimFactor),
+                                .paragraphStyle: pStyle
+                            ], range: lr)
+                        let kind: BlockDecorationKind =
+                            (i == 0)
                             ? .codeFenceStart(language: "latex preamble")
                             : (i == pLines.count - 1 ? .codeFenceEnd : .codeFenceBody)
                         decorations.append(LineDecoration(lineRange: lr, kind: kind))
@@ -134,15 +139,16 @@ extension LaTeXLiveStyler {
                     MarkdownLiveStyler.highlightLaTeXSource(in: storage, range: preambleRange, theme: theme, dimFactor: dimFactor)
                 }
 
-                recordedBlocks.append(LaTeXBlockStyleCache.CachedBlock(
-                    range: preambleRange,
-                    startLineNumber: lineNumber,
-                    lineCount: pLines.count,
-                    isActive: isPreambleActive,
-                    dimFactor: dimFactor,
-                    headings: Array(headings[hStart...]),
-                    decorations: Array(decorations[dStart...])
-                ))
+                recordedBlocks.append(
+                    LaTeXBlockStyleCache.CachedBlock(
+                        range: preambleRange,
+                        startLineNumber: lineNumber,
+                        lineCount: pLines.count,
+                        isActive: isPreambleActive,
+                        dimFactor: dimFactor,
+                        headings: Array(headings[hStart...]),
+                        decorations: Array(decorations[dStart...])
+                    ))
                 charIndex = NSMaxRange(preambleRange)
                 lineNumber += pLines.count
             }
@@ -200,15 +206,16 @@ extension LaTeXLiveStyler {
                     effectiveContainerWidth: effectiveContainerWidth,
                     dimFactor: dimFactor
                 )
-                recordedBlocks.append(LaTeXBlockStyleCache.CachedBlock(
-                    range: lineRange,
-                    startLineNumber: blockStartLine,
-                    lineCount: 1,
-                    isActive: isActive,
-                    dimFactor: dimFactor,
-                    headings: [],
-                    decorations: []
-                ))
+                recordedBlocks.append(
+                    LaTeXBlockStyleCache.CachedBlock(
+                        range: lineRange,
+                        startLineNumber: blockStartLine,
+                        lineCount: 1,
+                        isActive: isActive,
+                        dimFactor: dimFactor,
+                        headings: [],
+                        decorations: []
+                    ))
                 charIndex = NSMaxRange(lineRange)
                 lineNumber += 1
                 continue
@@ -249,15 +256,16 @@ extension LaTeXLiveStyler {
                     selectedRange: selectedRange
                 )
                 let blockDim: CGFloat = (focusMode && !blockActive) ? 0.30 : 1.0
-                recordedBlocks.append(LaTeXBlockStyleCache.CachedBlock(
-                    range: blockRange,
-                    startLineNumber: blockStartLine,
-                    lineCount: advance.lineDelta,
-                    isActive: blockActive,
-                    dimFactor: blockDim,
-                    headings: Array(headings[hStart...]),
-                    decorations: Array(decorations[dStart...])
-                ))
+                recordedBlocks.append(
+                    LaTeXBlockStyleCache.CachedBlock(
+                        range: blockRange,
+                        startLineNumber: blockStartLine,
+                        lineCount: advance.lineDelta,
+                        isActive: blockActive,
+                        dimFactor: blockDim,
+                        headings: Array(headings[hStart...]),
+                        decorations: Array(decorations[dStart...])
+                    ))
                 charIndex = advance.nextIndex
                 lineNumber += advance.lineDelta
                 continue
@@ -280,15 +288,16 @@ extension LaTeXLiveStyler {
                 decorations: &decorations
             )
 
-            recordedBlocks.append(LaTeXBlockStyleCache.CachedBlock(
-                range: lineRange,
-                startLineNumber: blockStartLine,
-                lineCount: 1,
-                isActive: isActive,
-                dimFactor: dimFactor,
-                headings: Array(headings[hStart...]),
-                decorations: Array(decorations[dStart...])
-            ))
+            recordedBlocks.append(
+                LaTeXBlockStyleCache.CachedBlock(
+                    range: lineRange,
+                    startLineNumber: blockStartLine,
+                    lineCount: 1,
+                    isActive: isActive,
+                    dimFactor: dimFactor,
+                    headings: Array(headings[hStart...]),
+                    decorations: Array(decorations[dStart...])
+                ))
             charIndex = NSMaxRange(lineRange)
             lineNumber += 1
         }
@@ -315,16 +324,18 @@ extension LaTeXLiveStyler {
             pStyle.lineSpacing = 0
             pStyle.paragraphSpacing = 0
             pStyle.tailIndent = effectiveContainerWidth
-            storage.addAttributes([
-                .font: NSFont.systemFont(ofSize: 2.0),
-                .foregroundColor: NSColor.clear,
-                .paragraphStyle: pStyle
-            ], range: lineRange)
+            storage.addAttributes(
+                [
+                    .font: NSFont.systemFont(ofSize: 2.0),
+                    .foregroundColor: NSColor.clear,
+                    .paragraphStyle: pStyle
+                ], range: lineRange)
         } else {
-            storage.addAttributes([
-                .font: theme.codeFont(size: effectiveBaseSize * 0.86),
-                .foregroundColor: theme.markdownTokenNSColor.withAlphaComponent(0.85 * dimFactor)
-            ], range: contentRange)
+            storage.addAttributes(
+                [
+                    .font: theme.codeFont(size: effectiveBaseSize * 0.86),
+                    .foregroundColor: theme.markdownTokenNSColor.withAlphaComponent(0.85 * dimFactor)
+                ], range: contentRange)
         }
     }
 }
