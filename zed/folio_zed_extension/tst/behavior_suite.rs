@@ -140,6 +140,11 @@ fn parse_kv_fields(obj_body: &str) -> BTreeMap<String, String> {
 fn test_zed_mod_session_matches_shared_cursor_edit_specs() {
     let json = load_spec_json();
     let cases = parse_flat_objects_in_section(&json, "cursor_edit_cases");
+    assert!(
+        cases.len() >= 15,
+        "Expected at least 15 shared cursor_edit_cases, found {}",
+        cases.len()
+    );
     let session = FolioZedModSession::new(true);
 
     for case in &cases {
@@ -176,6 +181,7 @@ fn test_zed_mod_session_matches_shared_cursor_edit_specs() {
 fn test_zed_mod_session_matches_shared_fold_reveal_specs() {
     let json = load_spec_json();
     let cases = parse_flat_objects_in_section(&json, "fold_reveal_cases");
+    assert!(!cases.is_empty(), "Expected shared fold_reveal_cases");
     let session = FolioZedModSession::new(true);
 
     for case in &cases {

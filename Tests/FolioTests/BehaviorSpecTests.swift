@@ -115,30 +115,66 @@ final class BehaviorSpecTests: XCTestCase {
 
     func testStandaloneLiveStylerMatchesSharedFoldRevealSpecs() throws {
         let spec = try loadSpecDocument()
-        XCTAssertEqual(spec.fold_reveal_cases.count, 2)
+        XCTAssertFalse(spec.fold_reveal_cases.isEmpty, "The spec must define fold_reveal_cases")
 
         for testCase in spec.fold_reveal_cases {
             let (inputText, cursorByte) = splitCursor(testCase.input)
             let prefixText = String(decoding: Array(inputText.utf8.prefix(cursorByte)), as: UTF8.self)
             let utf16Cursor = (prefixText as NSString).length
+            let theme = EditorTheme.daylight
 
             let storage = NSTextStorage(string: inputText)
             _ = MarkdownLiveStyler.applyStyles(
                 to: storage,
-                theme: .daylight,
+                theme: theme,
                 sourceCodeMode: false,
                 focusMode: false,
                 selectedRange: NSRange(location: utf16Cursor, length: 0)
             )
 
-            // Verify the character immediately before or at the active cursor is visible (not collapsed to alpha 0)
-            let checkLoc = max(0, min(utf16Cursor, storage.length - 1))
-            let activeColor = storage.attribute(.foregroundColor, at: checkLoc, effectiveRange: nil) as? NSColor
-            XCTAssertGreaterThan(
-                activeColor?.alphaComponent ?? 1.0,
-                0.1,
-                "Case \(testCase.id): active cursor line should reveal syntax tokens"
+            let revealedColor = theme.markdownTokenNSColor.withAlphaComponent(0.85)
+            let folded = syntaxTokenRuns(in: storage) { attributes in
+                attributes[MarkdownLiveStyler.collapsedTokenAttributeKey] != nil
+            }
+            let revealed = syntaxTokenRuns(in: storage) { attributes in
+                attributes[MarkdownLiveStyler.collapsedTokenAttributeKey] == nil
+                    && attributes[.foregroundColor] as? NSColor == revealedColor
+            }
+            let describe = { (runs: [NSRange]) in
+                runs.map { (inputText as NSString).substring(with: $0).debugDescription }.joined(separator: ", ")
+            }
+            XCTAssertEqual(
+                revealed.count,
+                testCase.expected_revealed_count,
+                "Case \(testCase.id): revealed syntax tokens were [\(describe(revealed))]"
+            )
+            XCTAssertGreaterThanOrEqual(
+                folded.count,
+                testCase.expected_folded_min,
+                "Case \(testCase.id): folded syntax tokens were [\(describe(folded))]"
+            )
+            let activeLine = (inputText as NSString).lineRange(for: NSRange(location: utf16Cursor, length: 0))
+            XCTAssertTrue(
+                folded.allSatisfy { NSIntersectionRange($0, activeLine).length == 0 },
+                "Case \(testCase.id): the cursor line must not fold syntax, folded [\(describe(folded))]"
             )
         }
+    }
+
+    /// Maximal runs of characters whose attributes satisfy `matches`.
+    private func syntaxTokenRuns(
+        in storage: NSTextStorage,
+        where matches: ([NSAttributedString.Key: Any]) -> Bool
+    ) -> [NSRange] {
+        var runs: [NSRange] = []
+        storage.enumerateAttributes(in: NSRange(location: 0, length: storage.length)) { attributes, range, _ in
+            guard matches(attributes) else { return }
+            if let last = runs.last, NSMaxRange(last) == range.location {
+                runs[runs.count - 1] = NSUnionRange(last, range)
+            } else {
+                runs.append(range)
+            }
+        }
+        return runs
     }
 }

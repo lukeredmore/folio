@@ -181,7 +181,7 @@ fn test_shared_cursor_edit_behavior_specs() {
 fn test_shared_fold_reveal_behavior_specs() {
     let json = load_spec_json();
     let cases = parse_flat_objects_in_section(&json, "fold_reveal_cases");
-    assert_eq!(cases.len(), 2);
+    assert!(!cases.is_empty(), "Expected shared fold_reveal_cases");
 
     for case in &cases {
         let id = &case["id"];
