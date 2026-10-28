@@ -213,22 +213,10 @@ extension HybridMarkdownEditorRepresentable {
 
         private func performRestyle(textView: HybridMarkdownTextView, storage: NSTextStorage) {
             let sel = textView.selectedRange()
-            let contentWidth = currentContentWidth(for: textView)
-            let baseDir = viewModel.currentFileURL?.deletingLastPathComponent() ?? viewModel.workspaceFolderURL
+            let parameters = styleParameters(for: textView)
+            let contentWidth = parameters.containerWidth
 
-            let analysis = MarkdownLiveStyler.applyStyles(
-                to: storage,
-                theme: viewModel.theme,
-                typography: viewModel.typography,
-                sourceCodeMode: viewModel.sourceCodeMode,
-                focusMode: viewModel.focusMode,
-                selectedRange: sel,
-                containerWidth: contentWidth,
-                prettyMode: viewModel.prettyModeEnabled,
-                baseDirectoryURL: baseDir,
-                textAlignment: viewModel.textAlignment.nsAlignment,
-                fileURL: viewModel.currentFileURL
-            )
+            let analysis = MarkdownLiveStyler.applyStyles(to: storage, parameters: parameters, selectedRange: sel)
 
             // Clear any spellchecker squiggles on code/math/table decorations
             if let lm = textView.layoutManager {
