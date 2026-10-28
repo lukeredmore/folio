@@ -19,11 +19,13 @@ final class LaTeXUserEnvironmentFoldingTests: XCTestCase {
         \\end{document}
         """
 
+    /// A folded line keeps a fixed line height of a few points.
     private func isFolded(_ storage: NSTextStorage, line: String) -> Bool {
         let location = (storage.string as NSString).range(of: line).location
         XCTAssertNotEqual(location, NSNotFound, line)
-        let font = storage.attribute(.font, at: location, effectiveRange: nil) as? NSFont
-        return (font?.pointSize ?? 12) < 3
+        let style = storage.attribute(.paragraphStyle, at: location, effectiveRange: nil) as? NSParagraphStyle
+        let maxHeight = style?.maximumLineHeight ?? 0
+        return maxHeight > 0 && maxHeight < 8
     }
 
     func testEnvironmentBoundaryAndIndexLinesFold() {
