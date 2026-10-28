@@ -51,7 +51,6 @@ swift_test(
 swift_format_test(
     name = "swift_format",
     srcs = glob([
-        "Package.swift",
         "Sources/**/*.swift",
         "Tests/**/*.swift",
     ]) + ["//macos/FolioApp:swift_srcs"],
