@@ -192,3 +192,24 @@ fn test_known_commands_are_not_prose_macro_candidates() {
         .iter()
         .any(|s| s.kind == LatexInlineSpanKind::HiddenMeta && s.cmd == "index"));
 }
+
+fn inline_math(text: &str) -> Vec<String> {
+    scan_latex_inlines(text)
+        .into_iter()
+        .filter(|s| s.kind == LatexInlineSpanKind::InlineMath)
+        .map(|s| slice(text, s.full_loc, s.full_len))
+        .collect()
+}
+
+#[test]
+fn test_inline_math_continues_across_one_line_break() {
+    assert_eq!(
+        inline_math("\\retval{$\\cos\n  a$}, $b$"),
+        ["$\\cos\n  a$", "$b$"]
+    );
+    assert!(
+        inline_math("$a\n  \nb$").is_empty(),
+        "a blank line ends the paragraph and the math"
+    );
+    assert!(inline_math("$a\n").is_empty());
+}

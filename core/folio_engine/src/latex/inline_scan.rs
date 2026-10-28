@@ -106,7 +106,7 @@ fn try_scan_dollar(
         return None;
     }
     let mut j = i + 1;
-    while j < end && bytes[j] != b'\n' {
+    while j < end && !ends_paragraph(bytes, j, end) {
         if bytes[j] == b'$'
             && !matches!(bytes[j - 1], b'\\' | b'$')
             && bytes.get(j + 1) != Some(&b'$')
@@ -127,6 +127,19 @@ fn try_scan_dollar(
         j += 1;
     }
     None
+}
+
+/// True when `bytes[j]` is a line break that a blank line follows, which ends a TeX paragraph
+/// and so any inline math. A single line break, inside a multi-line macro call, does not.
+fn ends_paragraph(bytes: &[u8], j: usize, end: usize) -> bool {
+    if bytes[j] != b'\n' {
+        return false;
+    }
+    let mut k = j + 1;
+    while k < end && matches!(bytes[k], b' ' | b'\t' | b'\r') {
+        k += 1;
+    }
+    k >= end || bytes[k] == b'\n'
 }
 
 fn try_scan_braced(
