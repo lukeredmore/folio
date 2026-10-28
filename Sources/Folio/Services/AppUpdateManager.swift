@@ -145,6 +145,11 @@ public final class AppUpdateManager: ObservableObject {
     }
 
     public func downloadAndInstallUpdate(_ manifest: ReleaseManifest) async {
+        // A dev build must never replace an installed release app.
+        guard !isRunningDevBuild else {
+            status = .error("Dev builds do not install updates.")
+            return
+        }
         guard let dmgURL = URL(string: manifest.dmgURL) else {
             status = .error("Invalid DMG download URL: \(manifest.dmgURL)")
             return

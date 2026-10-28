@@ -217,8 +217,7 @@ extension FolioMediaImageCache {
             .compactMap { String(format: "%02x", $0) }
             .joined()
             .prefix(24)
-        let mediaDir = FileManager.default.temporaryDirectory
-            .appendingPathComponent("folio-remote-media", isDirectory: true)
+        let mediaDir = FolioAppIdentity.current.remoteMediaDirectory(in: FileManager.default.temporaryDirectory)
         try? FileManager.default.createDirectory(at: mediaDir, withIntermediateDirectories: true)
         let tempFileURL = mediaDir.appendingPathComponent("video-\(digest).\(ext)")
         do {

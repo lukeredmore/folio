@@ -2,7 +2,7 @@ import Foundation
 import os
 
 /// Editor work that is timed with an `OSSignposter` interval.
-/// Intervals appear in Instruments under subsystem `app.folio.macos`, category `editor`.
+/// Intervals appear in Instruments under the bundle ID subsystem, category `editor`.
 enum EditorPerfPhase: String, CaseIterable, Sendable {
     case restyle
     case applyStyles
@@ -14,7 +14,7 @@ enum EditorPerfPhase: String, CaseIterable, Sendable {
     case diagramRender
     case mediaDecode
 
-    static let signposter = OSSignposter(subsystem: "app.folio.macos", category: "editor")
+    static let signposter = OSSignposter(subsystem: FolioAppIdentity.current.signpostSubsystem, category: "editor")
 
     var signpostName: StaticString {
         switch self {

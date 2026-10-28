@@ -74,7 +74,7 @@ public final class RemoteWorkspaceManager: ObservableObject {
             let cachesDir =
                 FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first
                 ?? FileManager.default.temporaryDirectory
-            self.mirrorRootURL = cachesDir.appendingPathComponent("FolioRemoteMirrors", isDirectory: true)
+            self.mirrorRootURL = FolioAppIdentity.current.remoteMirrorRootURL(in: cachesDir)
         }
 
         try? FileManager.default.createDirectory(at: self.mirrorRootURL, withIntermediateDirectories: true)
