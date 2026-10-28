@@ -27,24 +27,40 @@ extension LaTeXMacroExpander {
     }
 
     /// Replaces `#1`...`#9` in `replacement` with `args` in one pass, so argument text is never
-    /// substituted again, and drops empty scripts left behind.
+    /// substituted again, and drops empty scripts left behind. In TeX `\selectfont#1` ends the
+    /// control word before the argument, so a space keeps the two apart when the argument starts
+    /// with a letter.
     static func substituteArguments(_ args: [String], into replacement: String) -> String {
         guard replacement.contains("#") else { return replacement }
         let chars = Array(replacement)
-        var expanded = ""
+        var expanded: [Character] = []
         var idx = 0
         while idx < chars.count {
             if chars[idx] == "#", idx + 1 < chars.count, let digit = chars[idx + 1].wholeNumberValue,
                 digit >= 1, digit <= args.count
             {
-                expanded += args[digit - 1]
+                let arg = args[digit - 1]
+                if arg.first?.isLetter == true && endsWithControlWord(expanded) { expanded.append(" ") }
+                expanded += arg
                 idx += 2
                 continue
             }
             expanded.append(chars[idx])
             idx += 1
         }
-        return expanded.replacingOccurrences(of: "^{}", with: "").replacingOccurrences(of: "_{}", with: "")
+        return String(expanded).replacingOccurrences(of: "^{}", with: "").replacingOccurrences(of: "_{}", with: "")
+    }
+
+    private static func endsWithControlWord(_ chars: [Character]) -> Bool {
+        var idx = chars.count - 1
+        while idx >= 0 && chars[idx].isLetter { idx -= 1 }
+        guard idx >= 0, idx < chars.count - 1, chars[idx] == "\\" else { return false }
+        var backslashes = 0
+        while idx >= 0 && chars[idx] == "\\" {
+            backslashes += 1
+            idx -= 1
+        }
+        return backslashes % 2 == 1
     }
 
     static func extractTag(from text: String) -> (String, String?) {
