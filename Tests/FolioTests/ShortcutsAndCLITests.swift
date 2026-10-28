@@ -53,11 +53,7 @@ final class ShortcutsAndCLITests: XCTestCase {
     }
 
     func testToggleQuickOpenResetsQueryAndTogglesModal() {
-        let suiteName = "FolioTests.QuickOpen.\(UUID().uuidString)"
-        let defaults = UserDefaults(suiteName: suiteName)!
-        defer { defaults.removePersistentDomain(forName: suiteName) }
-
-        let vm = EditorWorkspaceViewModel(userDefaults: defaults)
+        let vm = makeIsolatedViewModel()
         vm.quickOpenQuery = "stale"
         XCTAssertFalse(vm.showQuickOpen)
 
@@ -69,16 +65,51 @@ final class ShortcutsAndCLITests: XCTestCase {
         XCTAssertFalse(vm.showQuickOpen)
     }
 
+    func testShiftShiftAndEscapeKeyEventsDriveQuickOpenThroughTheEventMonitor() throws {
+        let vm = makeIsolatedViewModel()
+        let monitor = DoubleShiftEventMonitorAccessor.Coordinator(viewModel: vm)
+        let leftShift: UInt16 = 56
+        func send(_ type: NSEvent.EventType, _ flags: NSEvent.ModifierFlags, keyCode: UInt16, at time: TimeInterval) throws -> NSEvent? {
+            let characters = type == .flagsChanged ? "" : (keyCode == 53 ? "\u{1b}" : "a")
+            let event = try XCTUnwrap(NSEvent.keyEvent(
+                with: type,
+                location: .zero,
+                modifierFlags: flags,
+                timestamp: time,
+                windowNumber: 0,
+                context: nil,
+                characters: characters,
+                charactersIgnoringModifiers: characters,
+                isARepeat: false,
+                keyCode: keyCode
+            ))
+            return monitor.processMonitoredEvent(event)
+        }
+
+        _ = try send(.flagsChanged, [.shift], keyCode: leftShift, at: 10.00)
+        _ = try send(.flagsChanged, [], keyCode: leftShift, at: 10.08)
+        _ = try send(.flagsChanged, [.shift], keyCode: leftShift, at: 10.22)
+        XCTAssertFalse(vm.showQuickOpen, "One Shift tap does not open Quick Open")
+        _ = try send(.flagsChanged, [], keyCode: leftShift, at: 10.30)
+        XCTAssertTrue(vm.showQuickOpen, "Shift-Shift opens Quick Open")
+
+        XCTAssertNil(try send(.keyDown, [], keyCode: 53, at: 11.00), "Escape is consumed while Quick Open is open")
+        XCTAssertFalse(vm.showQuickOpen, "Escape closes Quick Open")
+
+        _ = try send(.flagsChanged, [.shift], keyCode: leftShift, at: 12.00)
+        _ = try send(.flagsChanged, [], keyCode: leftShift, at: 12.08)
+        XCTAssertNotNil(try send(.keyDown, [], keyCode: 0, at: 12.15), "Typing passes through the monitor")
+        _ = try send(.flagsChanged, [.shift], keyCode: leftShift, at: 12.22)
+        _ = try send(.flagsChanged, [], keyCode: leftShift, at: 12.30)
+        XCTAssertFalse(vm.showQuickOpen, "A key typed between the Shift taps cancels Shift-Shift")
+    }
+
     // MARK: - `folio` CLI Setup & Path Opening
 
     func testFolioCLIInstallOnFirstLaunchAndHelpExecution() throws {
-        let suiteName = "FolioTests.CLI.\(UUID().uuidString)"
-        let defaults = UserDefaults(suiteName: suiteName)!
-        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let defaults = isolatedDefaults()
 
-        let tempBinDir = FileManager.default.temporaryDirectory
-            .appendingPathComponent("folio-cli-bin-\(UUID().uuidString)", isDirectory: true)
-        defer { try? FileManager.default.removeItem(at: tempBinDir) }
+        let tempBinDir = try makeTemporaryDirectory("folio-cli").appendingPathComponent("bin", isDirectory: true)
 
         let installedURL = FolioCLIManager.shared.setupCLIOnFirstLaunchIfNeeded(
             candidateBinDirs: [tempBinDir],
@@ -114,19 +145,12 @@ final class ShortcutsAndCLITests: XCTestCase {
             ["/tmp/example.md", "/work/relative/notes.md"]
         )
 
-        let suiteName = "FolioTests.CLIOpen.\(UUID().uuidString)"
-        let defaults = UserDefaults(suiteName: suiteName)!
-        defer { defaults.removePersistentDomain(forName: suiteName) }
-
-        let tempWorkspace = FileManager.default.temporaryDirectory
-            .appendingPathComponent("folio-cli-open-\(UUID().uuidString)", isDirectory: true)
-        try FileManager.default.createDirectory(at: tempWorkspace, withIntermediateDirectories: true)
-        defer { try? FileManager.default.removeItem(at: tempWorkspace) }
+        let tempWorkspace = try makeTemporaryDirectory("folio-cli-open")
 
         let fileURL = tempWorkspace.appendingPathComponent("hello.md")
         try "# Hello CLI\n".write(to: fileURL, atomically: true, encoding: .utf8)
 
-        let vm = EditorWorkspaceViewModel(userDefaults: defaults)
+        let vm = makeIsolatedViewModel()
         vm.openPathFromCLI(fileURL.path)
         XCTAssertEqual(vm.currentFileURL?.standardizedFileURL, fileURL.standardizedFileURL)
         XCTAssertEqual(vm.markdownText, "# Hello CLI\n")
@@ -139,18 +163,14 @@ final class ShortcutsAndCLITests: XCTestCase {
         XCTAssertEqual(vm.currentFileURL?.standardizedFileURL, newFileURL.standardizedFileURL)
     }
 
-    // MARK: - Document Find (`Cmd+F`) & Find and Replace (`Cmd+R`)
+    // MARK: - Document Find and Replace actions (menu items bound to Cmd+F and Cmd+R)
 
-    func testDocumentFindAndReplaceWorkflows() {
-        let suiteName = "FolioTests.DocFind.\(UUID().uuidString)"
-        let defaults = UserDefaults(suiteName: suiteName)!
-        defer { defaults.removePersistentDomain(forName: suiteName) }
-
-        let vm = EditorWorkspaceViewModel(userDefaults: defaults)
+    func testDocumentFindActionsSeedQueryNavigateAndReplace() {
+        let vm = makeIsolatedViewModel()
         vm.markdownText = "Alpha beta alpha GAMMA alpha"
         vm.currentSelectedRange = NSRange(location: 0, length: 5) // "Alpha"
 
-        // Cmd+F opens Find without Replace controls and seeds from selection
+        // Find opens without Replace controls and seeds the query from the selection
         vm.openDocumentFind(withReplace: false)
         XCTAssertTrue(vm.showFindReplaceBar)
         XCTAssertFalse(vm.showDocumentReplaceControls)
@@ -165,7 +185,7 @@ final class ShortcutsAndCLITests: XCTestCase {
         vm.findPreviousInDocument()
         XCTAssertEqual(vm.currentSelectedRange, NSRange(location: 0, length: 5))
 
-        // Cmd+R opens Find and Replace controls
+        // Find and Replace shows the Replace controls
         vm.openDocumentFind(withReplace: true)
         XCTAssertTrue(vm.showFindReplaceBar)
         XCTAssertTrue(vm.showDocumentReplaceControls)
@@ -178,34 +198,27 @@ final class ShortcutsAndCLITests: XCTestCase {
         XCTAssertEqual(vm.markdownText, "Omega beta Omega GAMMA Omega")
     }
 
-    // MARK: - Workspace Find (`Cmd+Shift+F`) & Replace (`Cmd+Shift+R`)
+    // MARK: - Workspace search actions (menu items bound to Cmd+Shift+F and Cmd+Shift+R)
 
-    func testWorkspaceFindAndReplaceAcrossAllFiles() throws {
-        let suiteName = "FolioTests.WorkspaceFind.\(UUID().uuidString)"
-        let defaults = UserDefaults(suiteName: suiteName)!
-        defer { defaults.removePersistentDomain(forName: suiteName) }
-
-        let tempDir = FileManager.default.temporaryDirectory
-            .appendingPathComponent("folio-ws-replace-\(UUID().uuidString)", isDirectory: true)
-        try FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
-        defer { try? FileManager.default.removeItem(at: tempDir) }
+    func testWorkspaceSearchActionsFindAndReplaceAcrossAllFiles() throws {
+        let tempDir = try makeTemporaryDirectory("folio-ws-replace")
 
         let fileA = tempDir.appendingPathComponent("a.md")
         let fileB = tempDir.appendingPathComponent("b.md")
         try "Project oldName overview\nSecond oldName line\n".write(to: fileA, atomically: true, encoding: .utf8)
         try "Notes for oldName release\n".write(to: fileB, atomically: true, encoding: .utf8)
 
-        let vm = EditorWorkspaceViewModel(userDefaults: defaults)
+        let vm = makeIsolatedViewModel()
         vm.loadWorkspaceFolder(tempDir)
         vm.openFile(at: fileA)
 
-        // Cmd+Shift+F opens workspace search without replace
+        // Find in Files opens workspace search without replace
         vm.openWorkspaceSearch(withReplace: false)
         XCTAssertTrue(vm.showSidebar)
         XCTAssertEqual(vm.activeSidebarTab, .search)
         XCTAssertFalse(vm.showWorkspaceReplace)
 
-        // Cmd+Shift+R opens workspace search with replace enabled
+        // Find and Replace in Files enables replace
         vm.openWorkspaceSearch(withReplace: true)
         XCTAssertTrue(vm.showWorkspaceReplace)
 
@@ -225,25 +238,13 @@ final class ShortcutsAndCLITests: XCTestCase {
     // MARK: - Pasting Any Path in Quick Open File Search
 
     func testQuickOpenPasteAnyPathAndOpen() throws {
-        let suiteName = "FolioTests.QuickOpenPath.\(UUID().uuidString)"
-        let defaults = UserDefaults(suiteName: suiteName)!
-        defer { defaults.removePersistentDomain(forName: suiteName) }
-
-        let tempDir = FileManager.default.temporaryDirectory
-            .appendingPathComponent("folio-quickopen-path-\(UUID().uuidString)", isDirectory: true)
-        let outsideDir = FileManager.default.temporaryDirectory
-            .appendingPathComponent("folio-outside-\(UUID().uuidString)", isDirectory: true)
-        try FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
-        try FileManager.default.createDirectory(at: outsideDir, withIntermediateDirectories: true)
-        defer {
-            try? FileManager.default.removeItem(at: tempDir)
-            try? FileManager.default.removeItem(at: outsideDir)
-        }
+        let tempDir = try makeTemporaryDirectory("folio-quickopen-path")
+        let outsideDir = try makeTemporaryDirectory("folio-outside")
 
         let externalFile = outsideDir.appendingPathComponent("external note.md")
         try "Line 1\nLine 2\nLine 3\n".write(to: externalFile, atomically: true, encoding: .utf8)
 
-        let vm = EditorWorkspaceViewModel(userDefaults: defaults)
+        let vm = makeIsolatedViewModel()
         vm.loadWorkspaceFolder(tempDir)
 
         // 1. Pasting an external file path (even quoted or with :line suffix) opens it and jumps to line
@@ -280,11 +281,7 @@ final class ShortcutsAndCLITests: XCTestCase {
     // MARK: - Window Mouse Event Delivery & Sidebar Toggle Regression
 
     func testMainWindowMouseEventsAndSidebarToggleRegression() throws {
-        let suiteName = "FolioTests.WindowHitTest.\(UUID().uuidString)"
-        let defaults = UserDefaults(suiteName: suiteName)!
-        defer { defaults.removePersistentDomain(forName: suiteName) }
-
-        let vm = EditorWorkspaceViewModel(userDefaults: defaults)
+        let vm = makeIsolatedViewModel()
         vm.markdownText = "# Title\n\nFirst paragraph line.\n\nSecond paragraph line.\n"
         vm.showSidebar = true
 
