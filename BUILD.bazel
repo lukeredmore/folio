@@ -69,23 +69,17 @@ sh_binary(
 
 alias(
     name = "folio_zed_extension",
-    actual = "//zed/folio_zed_extension:extension_bundle",
+    actual = "//zed/folio_zed_extension:archive",
 )
 
-sh_binary(
-    name = "package_folio_dmg",
-    srcs = ["scripts/package_dmg.sh"],
-    data = [
-        "build_app.sh",
-        ":FolioApp",
-        "//core/folio_engine:Cargo.toml",
-    ],
+alias(
+    name = "install_zed_extension",
+    actual = "//zed/folio_zed_extension:install",
+    tags = ["manual"],
 )
 
-sh_binary(
-    name = "package_zed_extension",
-    srcs = ["zed/package_extension.sh"],
-    data = [
-        ":folio_zed_extension",
-    ],
+alias(
+    name = "FolioDmg",
+    actual = "//macos/FolioApp:FolioDmg",
+    tags = ["manual"],
 )

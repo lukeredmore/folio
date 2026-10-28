@@ -1,15 +1,10 @@
+load("@rules_pkg//pkg:tar.bzl", "pkg_tar")
+load("@rules_python//python:defs.bzl", "py_test")
 load("@rules_rust//rust:defs.bzl", "rust_library", "rust_test", "rustfmt_test")
+load("@rules_shell//shell:sh_binary.bzl", "sh_binary")
+load("//tools/release:defs.bzl", "opt_files", "zed_extension_manifest")
 
 package(default_visibility = ["//visibility:public"])
-
-filegroup(
-    name = "extension_bundle",
-    srcs = [
-        "extension.toml",
-        "languages/markdown/config.toml",
-        "languages/markdown/outline.scm",
-    ],
-)
 
 rust_library(
     name = "folio_zed_extension",
@@ -49,4 +44,51 @@ rustfmt_test(
         ":" + src.removeprefix("tst/").removesuffix(".rs")
         for src in EXTENSION_TESTS
     ],
+)
+
+zed_extension_manifest(
+    name = "stamped_manifest",
+    src = "extension.toml",
+)
+
+# The folio-markdown-outline.tar.gz archive that ships in GitHub Releases.
+pkg_tar(
+    name = "archive",
+    out = "folio-markdown-outline.tar.gz",
+    extension = "tar.gz",
+    files = {
+        ":stamped_manifest": "extension.toml",
+        "//zed/folio_zed_extension/wasm:extension_wasm": "extension.wasm",
+        "languages/markdown/config.toml": "languages/markdown/config.toml",
+        "languages/markdown/outline.scm": "languages/markdown/outline.scm",
+    },
+    mode = "0644",
+)
+
+py_test(
+    name = "archive_test",
+    srcs = ["tst/archive_test.py"],
+    args = [
+        "$(rootpath :archive)",
+        "$(rootpath extension.toml)",
+    ],
+    data = [
+        "extension.toml",
+        ":archive",
+    ],
+)
+
+opt_files(
+    name = "archive_opt",
+    srcs = [":archive"],
+    tags = ["manual"],
+)
+
+# bazel run //zed/folio_zed_extension:install
+sh_binary(
+    name = "install",
+    srcs = ["install.sh"],
+    args = ["$(rootpath :archive_opt)"],
+    data = [":archive_opt"],
+    tags = ["manual"],
 )

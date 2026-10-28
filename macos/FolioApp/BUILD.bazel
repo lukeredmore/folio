@@ -1,6 +1,6 @@
 load("@build_bazel_rules_apple//apple:macos.bzl", "macos_application")
 load("@build_bazel_rules_swift//swift:swift.bzl", "swift_library")
-load("//tools/release:defs.bzl", "folio_info_plist")
+load("//tools/release:defs.bzl", "folio_dmg", "folio_info_plist")
 
 package(default_visibility = ["//visibility:public"])
 
@@ -67,4 +67,13 @@ macos_application(
     deps = [
         ":FolioAppMainLib",
     ],
+)
+
+# Build with --config=release for the stamped, optimized release disk image.
+folio_dmg(
+    name = "FolioDmg",
+    out = "Folio.dmg",
+    app = ":FolioApp",
+    tags = ["manual"],
+    volume_name = "Folio",
 )
