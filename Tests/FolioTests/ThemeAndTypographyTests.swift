@@ -14,14 +14,26 @@ final class ThemeAndTypographyTests: XCTestCase {
         XCTAssertEqual(stats.selectedCharacters, 11)
     }
 
-    func testAllSixEditorThemes() {
-        XCTAssertEqual(EditorTheme.allCases.count, 6)
+    func testBuiltInThemesMatchTheirDarkFlagAndKeepTextReadable() {
+        XCTAssertEqual(EditorTheme.allCases.map(\.id), EditorTheme.builtInThemes.map(\.id))
+        XCTAssertEqual(Set(EditorTheme.allCases.map(\.id)).count, EditorTheme.allCases.count, "Theme IDs are unique")
         for theme in EditorTheme.allCases {
-            XCTAssertGreaterThan(theme.baseFontSize, 12)
-            XCTAssertGreaterThan(theme.maxWriteWidth, 600)
+            let background = Self.relativeLuminance(theme.editorBackground)
+            let text = Self.relativeLuminance(theme.text)
+            XCTAssertEqual(theme.isDark, background < text, "\(theme.id): isDark must match its colors")
+            let contrast = (max(background, text) + 0.05) / (min(background, text) + 0.05)
+            XCTAssertGreaterThanOrEqual(contrast, 4.5, "\(theme.id): body text needs WCAG AA contrast")
         }
         XCTAssertTrue(EditorTheme.midnight.isDark)
         XCTAssertFalse(EditorTheme.daylight.isDark)
+    }
+
+    /// WCAG 2 relative luminance of an sRGB color.
+    private static func relativeLuminance(_ color: ThemeColorRGBA) -> Double {
+        func linear(_ channel: Double) -> Double {
+            channel <= 0.04045 ? channel / 12.92 : pow((channel + 0.055) / 1.055, 2.4)
+        }
+        return 0.2126 * linear(color.r) + 0.7152 * linear(color.g) + 0.0722 * linear(color.b)
     }
 
     func testTypographySettingsCustomization() {

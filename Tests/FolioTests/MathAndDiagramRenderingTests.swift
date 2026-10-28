@@ -6,9 +6,7 @@ final class MathAndDiagramRenderingTests: XCTestCase {
 
     func testLaTeXMathRendererLayoutAndDecorations() {
         let box = LaTeXMathRenderer.layoutWithFallbackEngine(#"\nabla \cdot \mathbf{E} = \frac{\rho}{\varepsilon_0}"#, baseFontSize: 18, isDisplayStyle: true)
-        XCTAssertGreaterThan(box.width, 60)
-        XCTAssertGreaterThan(box.ascent, 12)
-        XCTAssertGreaterThan(box.descent, 6)
+        assertMathMetrics(box, width: 90.5, ascent: 26.19, descent: 20.25, "Engine layout of Gauss's law")
 
         let sample = """
         First line here.
@@ -44,9 +42,8 @@ final class MathAndDiagramRenderingTests: XCTestCase {
 
     func testCoreEngineFFIIntegration() {
         let ffiBox = LaTeXMathRenderer.layoutLatex(#"\nabla \cdot \mathbf{E} = \frac{\rho}{\varepsilon_0}"#, baseFontSize: 18, isDisplayStyle: true)
-        XCTAssertGreaterThan(ffiBox.width, 60)
-        XCTAssertGreaterThan(ffiBox.ascent, 12)
-        XCTAssertGreaterThan(ffiBox.descent, 6)
+        XCTAssertTrue(ffiBox.usesNativeOpenTypeMath)
+        assertMathMetrics(ffiBox, width: 95, ascent: 24, descent: 21, "SwiftMath layout of Gauss's law")
 
         let plain = LaTeXMathRenderer.plainTextSummary(of: #"\frac{\alpha}{\beta}"#)
         XCTAssertTrue(plain.contains("α"))
@@ -158,9 +155,12 @@ final class MathAndDiagramRenderingTests: XCTestCase {
                 _ = LaTeXMathRenderer.layoutWithFallbackEngine(supers, baseFontSize: 16, isDisplayStyle: true)
             }
         }
-        XCTAssertGreaterThan(box1.width, 0)
-        XCTAssertGreaterThan(box4.width, 0)
+        // Input the parser rejects (nesting limit, double superscript, unbalanced braces) degrades to plain text.
+        assertPlainTextFallback(box1, for: deepBraces, baseFontSize: 16)
+        assertPlainTextFallback(box2, for: deepSupers, baseFontSize: 16)
+        assertPlainTextFallback(box3, for: strayClosingBraces, baseFontSize: 16)
+        assertPlainTextFallback(box4, for: leftWithRightArrow, baseFontSize: 16)
+        XCTAssertEqual(LaTeXMathRenderer.plainTextSummary(of: deepBraces), "x+1")
         XCTAssertTrue(summary4.contains("→"))
-        _ = (box2, box3)
     }
 }
