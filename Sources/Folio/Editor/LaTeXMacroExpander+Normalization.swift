@@ -12,48 +12,39 @@ extension LaTeXMacroExpander {
         while i < chars.count {
             if chars[i] == "\\" {
                 let (cmd, afterCmd) = readControlWord(chars, at: i)
-                if let def = macros[cmd], def.operatorText == nil {
-                    var idx = afterCmd
-                    var args: [String] = []
-                    if let defaultOpt = def.defaultFirstArg, def.argCount > 0 {
-                        let probe = skipSpaces(chars, from: idx)
-                        if let (optVal, afterOpt) = readBracketGroup(chars, at: probe) {
-                            args.append(optVal)
-                            idx = afterOpt
-                        } else {
-                            args.append(defaultOpt)
-                        }
-                    }
-                    var allFound = true
-                    while args.count < def.argCount {
-                        let probe = skipSpaces(chars, from: idx)
-                        if let (argVal, afterArg) = readMacroArgument(chars, at: probe) {
-                            args.append(argVal)
-                            idx = afterArg
-                        } else {
-                            allFound = false
-                            break
-                        }
-                    }
-                    if allFound {
-                        var expanded = def.replacement
-                        for (argIdx, argVal) in args.enumerated() {
-                            expanded = expanded.replacingOccurrences(of: "#\(argIdx + 1)", with: argVal)
-                        }
-                        expanded =
-                            expanded
-                            .replacingOccurrences(of: "^{}", with: "")
-                            .replacingOccurrences(of: "_{}", with: "")
-                        out.append(expanded)
-                        i = idx
-                        continue
-                    }
+                if let def = macros[cmd], def.operatorText == nil,
+                    let (args, end) = readArguments(for: def, in: chars, from: afterCmd)
+                {
+                    out.append(substituteArguments(args, into: def.replacement))
+                    i = end
+                    continue
                 }
             }
             out.append(chars[i])
             i += 1
         }
         return out
+    }
+
+    /// Replaces `#1`...`#9` in `replacement` with `args` in one pass, so argument text is never
+    /// substituted again, and drops empty scripts left behind.
+    static func substituteArguments(_ args: [String], into replacement: String) -> String {
+        guard replacement.contains("#") else { return replacement }
+        let chars = Array(replacement)
+        var expanded = ""
+        var idx = 0
+        while idx < chars.count {
+            if chars[idx] == "#", idx + 1 < chars.count, let digit = chars[idx + 1].wholeNumberValue,
+                digit >= 1, digit <= args.count
+            {
+                expanded += args[digit - 1]
+                idx += 2
+                continue
+            }
+            expanded.append(chars[idx])
+            idx += 1
+        }
+        return expanded.replacingOccurrences(of: "^{}", with: "").replacingOccurrences(of: "_{}", with: "")
     }
 
     static func extractTag(from text: String) -> (String, String?) {

@@ -8,6 +8,12 @@ public struct LaTeXMacroDefinition: Equatable, Hashable, Sendable {
     public let replacement: String
     public let operatorText: String?
     public let operatorHasLimits: Bool
+    /// Delimited parameter text of a `\def`, or nil when every parameter is undelimited.
+    public let parameterText: LaTeXParameterText?
+    /// True for `\newenvironment`. `name` is then `environmentKey(_:)` of the environment,
+    /// `replacement` is the begin code, and `environmentEnd` is the end code.
+    public let isEnvironment: Bool
+    public let environmentEnd: String?
 
     public init(
         name: String,
@@ -15,7 +21,10 @@ public struct LaTeXMacroDefinition: Equatable, Hashable, Sendable {
         defaultFirstArg: String? = nil,
         replacement: String,
         operatorText: String? = nil,
-        operatorHasLimits: Bool = false
+        operatorHasLimits: Bool = false,
+        parameterText: LaTeXParameterText? = nil,
+        isEnvironment: Bool = false,
+        environmentEnd: String? = nil
     ) {
         self.name = name
         self.argCount = argCount
@@ -23,6 +32,14 @@ public struct LaTeXMacroDefinition: Equatable, Hashable, Sendable {
         self.replacement = replacement
         self.operatorText = operatorText
         self.operatorHasLimits = operatorHasLimits
+        self.parameterText = parameterText
+        self.isEnvironment = isEnvironment
+        self.environmentEnd = environmentEnd
+    }
+
+    /// Dictionary key of a user-defined environment. It cannot collide with a control word.
+    public static func environmentKey(_ environmentName: String) -> String {
+        "\\begin{\(environmentName)}"
     }
 }
 
@@ -119,6 +136,7 @@ public enum LaTeXMacroExpander {
                 || text.contains("\\providecommand")
                 || text.contains("\\DeclareMathOperator")
                 || text.contains("\\def")
+                || text.contains("environment{")
         else {
             return text
         }
@@ -194,22 +212,18 @@ public enum LaTeXMacroExpander {
             )
 
         case "\\def":
-            var idx = skipSpaces(chars, from: afterCmd)
-            let (rawName, afterName) = readControlWord(chars, at: idx)
-            guard rawName.count > 1 else { return nil }
-            idx = afterName
-            var argCount = 0
-            while idx + 1 < chars.count && chars[idx] == "#" {
-                if let digit = chars[idx + 1].wholeNumberValue, digit == argCount + 1 {
-                    argCount = digit
-                    idx += 2
-                } else {
-                    break
-                }
-            }
-            idx = skipSpaces(chars, from: idx)
-            guard let (body, afterBody) = readBracedGroup(chars, at: idx) else { return nil }
-            return (LaTeXMacroDefinition(name: rawName, argCount: argCount, replacement: body), afterBody)
+            let (rawName, afterName) = readControlWord(chars, at: skipSpaces(chars, from: afterCmd))
+            guard rawName.count > 1,
+                let (argCount, parameterText, bodyStart) = parseDefParameterText(chars, from: afterName),
+                let (body, afterBody) = readBracedGroup(chars, at: bodyStart)
+            else { return nil }
+            return (
+                LaTeXMacroDefinition(name: rawName, argCount: argCount, replacement: body, parameterText: parameterText),
+                afterBody
+            )
+
+        case "\\newenvironment", "\\renewenvironment":
+            return parseEnvironmentDefinition(chars, after: afterCmd)
 
         default:
             return nil
