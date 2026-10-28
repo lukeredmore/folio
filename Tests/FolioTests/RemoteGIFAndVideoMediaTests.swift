@@ -69,10 +69,7 @@ final class RemoteGIFAndVideoMediaTests: XCTestCase {
         XCTAssertEqual(decoded.frames.count, 2)
         XCTAssertEqual(decoded.totalDuration, 0.4, accuracy: 0.02)
 
-        let tempDir = FileManager.default.temporaryDirectory
-            .appendingPathComponent("folio-gif-test-\(UUID().uuidString)", isDirectory: true)
-        try FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
-        defer { try? FileManager.default.removeItem(at: tempDir) }
+        let tempDir = try makeTemporaryDirectory("folio-gif-test")
 
         let gifFile = tempDir.appendingPathComponent("spinner.gif")
         try gifData.write(to: gifFile)
@@ -101,10 +98,7 @@ final class RemoteGIFAndVideoMediaTests: XCTestCase {
         let mp4Data = makeSyntheticMP4ContainerData()
         XCTAssertTrue(FolioMediaImageCache.looksLikeVideoData(mp4Data))
 
-        let tempDir = FileManager.default.temporaryDirectory
-            .appendingPathComponent("folio-video-test-\(UUID().uuidString)", isDirectory: true)
-        try FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
-        defer { try? FileManager.default.removeItem(at: tempDir) }
+        let tempDir = try makeTemporaryDirectory("folio-video-test")
 
         let mp4File = tempDir.appendingPathComponent("demo.mp4")
         try mp4Data.write(to: mp4File)

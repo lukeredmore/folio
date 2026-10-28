@@ -139,7 +139,7 @@ final class LaTeXDocumentStylingAndMathCrashTests: XCTestCase {
         \\end{document}
         """
 
-        let vm = EditorWorkspaceViewModel()
+        let vm = makeIsolatedViewModel()
         vm.markdownText = letterTeX
         let printView = vm.makePrintView()
         guard let lm = printView.layoutManager else {

@@ -7,17 +7,7 @@ final class ExtremeScaleSyncAndMergeTests: XCTestCase {
 
     @MainActor
     func testExtremeMultiHunkConflictGranularResolutionAndRapidExternalStreaming() throws {
-        let suiteName = "com.folio.tests.multihunkstream.\(UUID().uuidString)"
-        guard let testDefaults = UserDefaults(suiteName: suiteName) else {
-            XCTFail("Failed to create isolated UserDefaults suite")
-            return
-        }
-        defer { testDefaults.removePersistentDomain(forName: suiteName) }
-
-        let tempDir = FileManager.default.temporaryDirectory
-            .appendingPathComponent("FolioMultiHunkStreamTest-\(UUID().uuidString)", isDirectory: true)
-        try FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
-        defer { try? FileManager.default.removeItem(at: tempDir) }
+        let tempDir = try makeTemporaryDirectory("FolioMultiHunkStreamTest")
 
         let fileURL = tempDir.appendingPathComponent("MultiHunk.md")
         let baseDoc = [
@@ -33,7 +23,7 @@ final class ExtremeScaleSyncAndMergeTests: XCTestCase {
         ].joined(separator: "\n")
         try baseDoc.write(to: fileURL, atomically: true, encoding: .utf8)
 
-        let vm = EditorWorkspaceViewModel(userDefaults: testDefaults)
+        let vm = makeIsolatedViewModel()
 
         vm.autoSaveDelay = 0
         vm.openFile(at: fileURL)
@@ -114,23 +104,13 @@ final class ExtremeScaleSyncAndMergeTests: XCTestCase {
 
     @MainActor
     func testExtremeScale1000StepInfiniteUndoRedoAnd5000LineThreeWayMergePerformance() throws {
-        let suiteName = "com.folio.tests.extremescale.\(UUID().uuidString)"
-        guard let testDefaults = UserDefaults(suiteName: suiteName) else {
-            XCTFail("Failed to create isolated UserDefaults suite")
-            return
-        }
-        defer { testDefaults.removePersistentDomain(forName: suiteName) }
-
-        let tempDir = FileManager.default.temporaryDirectory
-            .appendingPathComponent("FolioExtremeScaleTest-\(UUID().uuidString)", isDirectory: true)
-        try FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
-        defer { try? FileManager.default.removeItem(at: tempDir) }
+        let tempDir = try makeTemporaryDirectory("FolioExtremeScaleTest")
 
         // PART 1: 1,000-step infinite undo & redo stress test with live autosave on every step
         let stressFile = tempDir.appendingPathComponent("Stress1000.md")
         try "Step 0".write(to: stressFile, atomically: true, encoding: .utf8)
 
-        let vm = EditorWorkspaceViewModel(userDefaults: testDefaults)
+        let vm = makeIsolatedViewModel()
 
         vm.autoSaveDelay = 0
         vm.openFile(at: stressFile)

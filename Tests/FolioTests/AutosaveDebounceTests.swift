@@ -41,18 +41,10 @@ final class AutosaveDebounceTests: XCTestCase {
 
     private var tempDir: URL!
     private var defaults: UserDefaults!
-    private var suiteName = ""
 
     override func setUp() async throws {
-        tempDir = FileManager.default.temporaryDirectory.appendingPathComponent("FolioDebounce-\(UUID().uuidString)", isDirectory: true)
-        try FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
-        suiteName = "com.folio.tests.debounce.\(UUID().uuidString)"
-        defaults = UserDefaults(suiteName: suiteName)
-    }
-
-    override func tearDown() async throws {
-        defaults.removePersistentDomain(forName: suiteName)
-        try? FileManager.default.removeItem(at: tempDir)
+        tempDir = try makeTemporaryDirectory("FolioDebounce")
+        defaults = isolatedDefaults()
     }
 
     private func makeFile(_ name: String, _ content: String) throws -> URL {
@@ -71,7 +63,7 @@ final class AutosaveDebounceTests: XCTestCase {
 
     func testRapidEditsAreWrittenOnceAfterTheQuietPeriod() throws {
         let file = try makeFile("a.md", "start")
-        let vm = EditorWorkspaceViewModel(userDefaults: defaults)
+        let vm = makeIsolatedViewModel(defaults: defaults)
         vm.autoSaveDelay = 0.2
         vm.openFile(at: file)
 
@@ -93,7 +85,7 @@ final class AutosaveDebounceTests: XCTestCase {
     func testSwitchingFilesFlushesThePendingAutosave() throws {
         let fileA = try makeFile("a.md", "A")
         let fileB = try makeFile("b.md", "B")
-        let vm = EditorWorkspaceViewModel(userDefaults: defaults)
+        let vm = makeIsolatedViewModel(defaults: defaults)
         vm.autoSaveDelay = 5
         vm.openFile(at: fileA)
         vm.handleEditorTextEdited("A edited", selectedRange: NSRange(location: 8, length: 0))
@@ -104,7 +96,7 @@ final class AutosaveDebounceTests: XCTestCase {
 
     func testAppTerminationFlushesThePendingAutosave() throws {
         let file = try makeFile("a.md", "A")
-        let vm = EditorWorkspaceViewModel(userDefaults: defaults)
+        let vm = makeIsolatedViewModel(defaults: defaults)
         vm.autoSaveDelay = 5
         vm.openFile(at: file)
         vm.handleEditorTextEdited("A before quit", selectedRange: NSRange(location: 13, length: 0))
@@ -114,7 +106,7 @@ final class AutosaveDebounceTests: XCTestCase {
 
     func testManualSaveCancelsThePendingAutosave() throws {
         let file = try makeFile("a.md", "A")
-        let vm = EditorWorkspaceViewModel(userDefaults: defaults)
+        let vm = makeIsolatedViewModel(defaults: defaults)
         vm.autoSaveDelay = 5
         vm.openFile(at: file)
         vm.handleEditorTextEdited("A saved", selectedRange: NSRange(location: 7, length: 0))

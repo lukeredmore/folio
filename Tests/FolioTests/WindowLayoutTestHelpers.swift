@@ -10,12 +10,10 @@ final class HostedMainWindow {
     let window: NSWindow
     let hostingView: NSHostingView<MainWindowView>
     private(set) var tabWindow: NSWindow?
-    private let defaultsSuite: String
 
-    init(showSidebar: Bool, markdown: String) throws {
-        defaultsSuite = "com.folio.tests.tabbar.\(UUID().uuidString)"
-        let defaults = try XCTUnwrap(UserDefaults(suiteName: defaultsSuite))
-        viewModel = EditorWorkspaceViewModel(userDefaults: defaults)
+    /// `viewModel` must come from `XCTestCase.makeIsolatedViewModel()`.
+    init(viewModel: EditorWorkspaceViewModel, showSidebar: Bool, markdown: String) {
+        self.viewModel = viewModel
         viewModel.autoSaveEnabled = false
         viewModel.showSidebar = showSidebar
         viewModel.markdownText = markdown
@@ -76,7 +74,6 @@ final class HostedMainWindow {
     func close() {
         tabWindow?.orderOut(nil)
         window.orderOut(nil)
-        UserDefaults().removePersistentDomain(forName: defaultsSuite)
     }
 
     /// Window-coordinate frame of the `LayoutRegionMarker` view with `identifier`, if it is on screen.

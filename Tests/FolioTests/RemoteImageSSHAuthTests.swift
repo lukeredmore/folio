@@ -25,10 +25,7 @@ final class RemoteImageSSHAuthTests: XCTestCase {
         XCTAssertTrue(FolioMediaImageCache.isSSHFamilyURL(scpURL))
         XCTAssertTrue(FolioMediaImageCache.isSSHFamilyURL(sshURL))
 
-        let tempDir = FileManager.default.temporaryDirectory
-            .appendingPathComponent("folio-ssh-key-test-\(UUID().uuidString)", isDirectory: true)
-        try FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
-        defer { try? FileManager.default.removeItem(at: tempDir) }
+        let tempDir = try makeTemporaryDirectory("folio-ssh-key-test")
 
         let keyFile = tempDir.appendingPathComponent("id_ed25519")
         let pubFile = tempDir.appendingPathComponent("id_ed25519.pub")
@@ -86,9 +83,7 @@ final class RemoteImageSSHAuthTests: XCTestCase {
 
     @MainActor
     func testViewModelSSHAuthSyncAndPersistence() throws {
-        let suiteName = "FolioTests.RemoteImageSSHAuth.\(UUID().uuidString)"
-        let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
-        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let defaults = isolatedDefaults()
 
         let mount = RemoteMountSpec(
             host: "corp-media.example.com",
@@ -99,6 +94,7 @@ final class RemoteImageSSHAuthTests: XCTestCase {
             identityFile: "/tmp/test_id_ed25519"
         )
         let manager = RemoteWorkspaceManager(
+            mirrorBaseDirectory: try makeTemporaryDirectory("FolioMirror"),
             userDefaults: defaults,
             mountsDefaultsKey: "FolioTests.Mounts.\(UUID().uuidString)"
         )

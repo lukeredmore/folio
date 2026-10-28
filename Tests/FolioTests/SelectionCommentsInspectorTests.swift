@@ -62,11 +62,7 @@ final class SelectionCommentsInspectorTests: XCTestCase {
     }
 
     func testInspectorSidebarButtonsHitTestAndClickActions() throws {
-        let suiteName = "com.folio.tests.comments.inspector.\(UUID().uuidString)"
-        let testDefaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
-        defer { testDefaults.removePersistentDomain(forName: suiteName) }
-
-        let vm = EditorWorkspaceViewModel(userDefaults: testDefaults)
+        let vm = makeIsolatedViewModel()
         vm.autoSaveEnabled = false
         let doc = """
         # Architecture Review
@@ -212,11 +208,7 @@ final class SelectionCommentsInspectorTests: XCTestCase {
     }
 
     func testScrollAndCursorMovementDoNotBroadcastRedundantViewModelChanges() throws {
-        let suiteName = "com.folio.tests.comments.lag.\(UUID().uuidString)"
-        let testDefaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
-        defer { testDefaults.removePersistentDomain(forName: suiteName) }
-
-        let vm = EditorWorkspaceViewModel(userDefaults: testDefaults)
+        let vm = makeIsolatedViewModel()
         vm.autoSaveEnabled = false
         let paragraph = "We should migrate the **renderer pipeline** to use `MTLSharedEvent` synchronization across passes.\n\n"
         let doc = "# Performance Audit\n\n" + String(repeating: paragraph, count: 30)
@@ -275,10 +267,6 @@ final class SelectionCommentsInspectorTests: XCTestCase {
     }
 
     func testOpeningFileInSystemTmpDoesNotScanOrWatchTmpRoot() throws {
-        let suiteName = "com.folio.tests.comments.tmpguard.\(UUID().uuidString)"
-        let testDefaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
-        defer { testDefaults.removePersistentDomain(forName: suiteName) }
-
         XCTAssertTrue(EditorWorkspaceViewModel.isSystemTemporaryRootDirectory(URL(fileURLWithPath: "/tmp")))
         XCTAssertTrue(EditorWorkspaceViewModel.isSystemTemporaryRootDirectory(URL(fileURLWithPath: "/private/tmp")))
 
@@ -286,7 +274,7 @@ final class SelectionCommentsInspectorTests: XCTestCase {
         try "# Temp Doc\n\nHello world.\n".write(to: tmpFile, atomically: true, encoding: .utf8)
         defer { try? FileManager.default.removeItem(at: tmpFile) }
 
-        let vm = EditorWorkspaceViewModel(userDefaults: testDefaults)
+        let vm = makeIsolatedViewModel()
         vm.workspaceFolderURL = nil
         vm.openPathFromCLI(tmpFile.path)
 

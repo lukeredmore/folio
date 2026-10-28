@@ -7,28 +7,16 @@ final class AutosaveAndUndoHistoryTests: XCTestCase {
 
     @MainActor
     func testAutomaticAutosaveAndInfiniteUndoRedoAcrossEditsAndRelaunches() throws {
-        let suiteName = "com.folio.tests.infiniteundo.\(UUID().uuidString)"
-        guard let testDefaults = UserDefaults(suiteName: suiteName) else {
-            XCTFail("Failed to create isolated UserDefaults suite")
-            return
-        }
-        defer {
-            testDefaults.removePersistentDomain(forName: suiteName)
-        }
+        let testDefaults = isolatedDefaults()
 
-        let tempDir = FileManager.default.temporaryDirectory
-            .appendingPathComponent("FolioInfiniteUndoTest-\(UUID().uuidString)", isDirectory: true)
-        try FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
-        defer {
-            try? FileManager.default.removeItem(at: tempDir)
-        }
+        let tempDir = try makeTemporaryDirectory("FolioInfiniteUndoTest")
 
         let fileA = tempDir.appendingPathComponent("NoteA.md")
         let fileB = tempDir.appendingPathComponent("NoteB.md")
         try "Line 0".write(to: fileA, atomically: true, encoding: .utf8)
         try "Initial B".write(to: fileB, atomically: true, encoding: .utf8)
 
-        let vm = EditorWorkspaceViewModel(userDefaults: testDefaults)
+        let vm = makeIsolatedViewModel(defaults: testDefaults)
 
         vm.autoSaveDelay = 0
         vm.openFolder(at: tempDir)
@@ -82,7 +70,7 @@ final class AutosaveAndUndoHistoryTests: XCTestCase {
         XCTAssertEqual(try String(contentsOf: fileA, encoding: .utf8), expectedAt10)
 
         // Relaunch EditorWorkspaceViewModel and verify both undo (10) and redo (15) stacks persisted
-        let relaunchedVM = EditorWorkspaceViewModel(userDefaults: testDefaults)
+        let relaunchedVM = makeIsolatedViewModel(defaults: testDefaults)
         relaunchedVM.autoSaveDelay = 0
         XCTAssertEqual(relaunchedVM.currentFileURL?.standardizedFileURL, fileA.standardizedFileURL)
         XCTAssertEqual(relaunchedVM.currentUndoStack.count, 10)
@@ -95,24 +83,14 @@ final class AutosaveAndUndoHistoryTests: XCTestCase {
 
     @MainActor
     func testEdgeCaseMidDocumentKeystrokeCoalescingAndUnicodeSurrogateCursorAnchoring() throws {
-        let suiteName = "com.folio.tests.coalesceunicode.\(UUID().uuidString)"
-        guard let testDefaults = UserDefaults(suiteName: suiteName) else {
-            XCTFail("Failed to create isolated UserDefaults suite")
-            return
-        }
-        defer { testDefaults.removePersistentDomain(forName: suiteName) }
-
-        let tempDir = FileManager.default.temporaryDirectory
-            .appendingPathComponent("FolioCoalesceUnicodeTest-\(UUID().uuidString)", isDirectory: true)
-        try FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
-        defer { try? FileManager.default.removeItem(at: tempDir) }
+        let tempDir = try makeTemporaryDirectory("FolioCoalesceUnicodeTest")
 
         let fileURL = tempDir.appendingPathComponent("MiddleTyping.md")
         // File ends with a trailing newline while user types in the middle on line 2
         let initial = "# Header\n\n\nFooter line\n"
         try initial.write(to: fileURL, atomically: true, encoding: .utf8)
 
-        let vm = EditorWorkspaceViewModel(userDefaults: testDefaults)
+        let vm = makeIsolatedViewModel()
 
         vm.autoSaveDelay = 0
         vm.openFile(at: fileURL)

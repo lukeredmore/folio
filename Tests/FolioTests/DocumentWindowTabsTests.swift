@@ -6,35 +6,29 @@ import XCTest
 @MainActor
 final class DocumentWindowTabsTests: XCTestCase {
 
-    private var suiteName = ""
     private var defaults: UserDefaults!
+    private var mirrorURL: URL!
     private var folderURL: URL!
     private var alphaURL: URL!
     private var betaURL: URL!
 
     override func setUp() async throws {
-        suiteName = "com.folio.tests.tabs.\(UUID().uuidString)"
-        defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
-        folderURL = FileManager.default.temporaryDirectory
-            .appendingPathComponent("FolioTabs_\(UUID().uuidString)", isDirectory: true)
-        try FileManager.default.createDirectory(at: folderURL, withIntermediateDirectories: true)
+        defaults = isolatedDefaults()
+        mirrorURL = try makeTemporaryDirectory("FolioTabsMirror")
+        folderURL = try makeTemporaryDirectory("FolioTabs")
         alphaURL = folderURL.appendingPathComponent("alpha.md")
         betaURL = folderURL.appendingPathComponent("beta.md")
         try "# Alpha\n\nFirst.\n".write(to: alphaURL, atomically: true, encoding: .utf8)
         try "# Beta\n\nSecond.\n".write(to: betaURL, atomically: true, encoding: .utf8)
     }
 
-    override func tearDown() async throws {
-        defaults.removePersistentDomain(forName: suiteName)
-        try? FileManager.default.removeItem(at: folderURL)
-    }
-
     private func makeRegistry() -> DocumentWindowRegistry {
-        DocumentWindowRegistry(userDefaults: defaults)
+        let manager = RemoteWorkspaceManager(mirrorBaseDirectory: mirrorURL, userDefaults: defaults)
+        return DocumentWindowRegistry(userDefaults: defaults, remoteWorkspaceManager: manager)
     }
 
     func testFirstWindowRestoresGlobalSessionAndNewTabStartsUntitled() {
-        let legacy = EditorWorkspaceViewModel(userDefaults: defaults)
+        let legacy = makeIsolatedViewModel(defaults: defaults)
         legacy.loadWorkspaceFolder(folderURL)
         legacy.openFile(at: alphaURL)
 

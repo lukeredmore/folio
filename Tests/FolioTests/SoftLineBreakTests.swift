@@ -181,13 +181,11 @@ final class SoftLineBreakTests: XCTestCase {
     }
 
     func testSourceLineWidthSettingPersists() {
-        let suite = "com.folio.tests.sourcewidth.\(UUID().uuidString)"
-        let defaults = UserDefaults(suiteName: suite)!
-        defer { defaults.removePersistentDomain(forName: suite) }
+        let defaults = isolatedDefaults()
 
-        let vm = EditorWorkspaceViewModel(userDefaults: defaults)
+        let vm = makeIsolatedViewModel(defaults: defaults)
         XCTAssertEqual(vm.sourceLineWidth, MarkdownSourceReflow.defaultWidth)
         vm.sourceLineWidth = 0
-        XCTAssertEqual(EditorWorkspaceViewModel(userDefaults: defaults).sourceLineWidth, 0)
+        XCTAssertEqual(makeIsolatedViewModel(defaults: defaults).sourceLineWidth, 0)
     }
 }

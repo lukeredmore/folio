@@ -6,15 +6,11 @@ final class LaTeXPerformanceTests: XCTestCase {
 
     @MainActor
     func testProfileShowcaseOperations() throws {
-        let showcaseURL = URL(fileURLWithPath: #filePath)
-            .deletingLastPathComponent()
-            .deletingLastPathComponent()
-            .deletingLastPathComponent()
-            .appendingPathComponent("examples/latex_paper_showcase.tex")
+        let showcaseURL = try copyOfExample("latex_paper_showcase.tex", companions: ["references.bib"])
         let tex = try String(contentsOf: showcaseURL, encoding: .utf8)
         let baseDir = showcaseURL.deletingLastPathComponent()
 
-        let vm = EditorWorkspaceViewModel()
+        let vm = makeIsolatedViewModel()
         vm.currentFileURL = showcaseURL
         vm.workspaceFolderURL = baseDir
         vm.markdownText = tex

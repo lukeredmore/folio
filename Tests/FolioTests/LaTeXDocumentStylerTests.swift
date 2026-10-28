@@ -92,9 +92,7 @@ final class LaTeXDocumentStylerTests: XCTestCase {
     }
 
     func testTheoremsEquationsAndExternalBibTeXCitations() throws {
-        let tempDir = FileManager.default.temporaryDirectory.appendingPathComponent("folio_latex_test_\(UUID().uuidString)")
-        try FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
-        defer { try? FileManager.default.removeItem(at: tempDir) }
+        let tempDir = try makeTemporaryDirectory("folio_latex_test")
 
         let bibContent = """
         @article{vaswani2017,
@@ -175,9 +173,9 @@ final class LaTeXDocumentStylerTests: XCTestCase {
     }
 
     @MainActor
-    func testLaTeXModeFormattingActions() {
-        let vm = EditorWorkspaceViewModel()
-        vm.currentFileURL = URL(fileURLWithPath: "/tmp/paper.tex")
+    func testLaTeXModeFormattingActions() throws {
+        let vm = makeIsolatedViewModel()
+        vm.currentFileURL = try makeTemporaryDirectory().appendingPathComponent("paper.tex")
         vm.markdownText = "Hello world"
 
         let textStorage = NSTextStorage(string: "Hello world")

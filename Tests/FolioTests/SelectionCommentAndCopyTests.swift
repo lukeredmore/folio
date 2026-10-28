@@ -6,10 +6,8 @@ import XCTest
 @MainActor
 final class SelectionCommentAndCopyTests: XCTestCase {
 
-    private func makeIsolatedViewModel() -> EditorWorkspaceViewModel {
-        let suiteName = "FolioSelectionCommentTests.\(UUID().uuidString)"
-        let defaults = UserDefaults(suiteName: suiteName)!
-        let vm = EditorWorkspaceViewModel(userDefaults: defaults)
+    private func makeViewModelWithoutAutosave() -> EditorWorkspaceViewModel {
+        let vm = makeIsolatedViewModel()
         vm.autoSaveEnabled = false
         return vm
     }
@@ -133,7 +131,7 @@ final class SelectionCommentAndCopyTests: XCTestCase {
     }
 
     func testViewModelCommentLifecycleBatchCopyAndTooltipAnchor() {
-        let vm = makeIsolatedViewModel()
+        let vm = makeViewModelWithoutAutosave()
         let doc = """
         # Design Doc
 
@@ -196,10 +194,7 @@ final class SelectionCommentAndCopyTests: XCTestCase {
     }
 
     func testCompanionCommentsFileAutosaveReloadAndCleanup() throws {
-        let tempDir = FileManager.default.temporaryDirectory
-            .appendingPathComponent("FolioCompanionCommentsTest_\(UUID().uuidString)", isDirectory: true)
-        try FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
-        defer { try? FileManager.default.removeItem(at: tempDir) }
+        let tempDir = try makeTemporaryDirectory("FolioCompanionCommentsTest")
 
         let docURL = tempDir.appendingPathComponent("Architecture.md")
         let expectedCompanionURL = tempDir.appendingPathComponent("Architecture.comments.folio.md")
@@ -214,7 +209,7 @@ final class SelectionCommentAndCopyTests: XCTestCase {
         """
         try docText.write(to: docURL, atomically: true, encoding: .utf8)
 
-        let vm = makeIsolatedViewModel()
+        let vm = makeViewModelWithoutAutosave()
         vm.autoSaveEnabled = true
         vm.autoSaveDelay = 0
         vm.workspaceFolderURL = tempDir
@@ -239,7 +234,7 @@ final class SelectionCommentAndCopyTests: XCTestCase {
         XCTAssertTrue(diskCompanion.contains("Expose this in the public benchmark harness."))
 
         // Re-opening the document in a fresh ViewModel should restore all comments from <filename>.comments.folio.md
-        let vmReloaded = makeIsolatedViewModel()
+        let vmReloaded = makeViewModelWithoutAutosave()
         vmReloaded.autoSaveEnabled = true
         vmReloaded.autoSaveDelay = 0
         vmReloaded.workspaceFolderURL = tempDir
@@ -263,7 +258,7 @@ final class SelectionCommentAndCopyTests: XCTestCase {
     }
 
     func testSelectionDirectionDetectionAndVerticalTooltipAlignment() {
-        let vm = makeIsolatedViewModel()
+        let vm = makeViewModelWithoutAutosave()
         let doc = "First line of prose.\nSecond line of prose.\nThird line of prose."
         vm.markdownText = doc
 
@@ -304,7 +299,7 @@ final class SelectionCommentAndCopyTests: XCTestCase {
     }
 
     func testRightSidebarAndClickableHighlightedCommentRanges() {
-        let vm = makeIsolatedViewModel()
+        let vm = makeViewModelWithoutAutosave()
         let doc = "First paragraph here.\n\nCommented target phrase in middle.\n\nFinal paragraph below."
         vm.markdownText = doc
         let nsDoc = doc as NSString

@@ -18,11 +18,7 @@ final class FolioUILagProfileTests: XCTestCase {
 
     @MainActor
     func testNativeSidebarAndBottomBarHeightAlignment() throws {
-        let suiteName = "com.folio.tests.alignment.\(UUID().uuidString)"
-        let testDefaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
-        defer { testDefaults.removePersistentDomain(forName: suiteName) }
-
-        let vm = EditorWorkspaceViewModel(userDefaults: testDefaults)
+        let vm = makeIsolatedViewModel()
         vm.showSidebar = true
         let hostingView = NSHostingView(rootView: MainWindowView(viewModel: vm))
         let window = NSWindow(
