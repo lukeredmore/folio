@@ -5,6 +5,7 @@ load("//tools:swift_format.bzl", "swift_format_test")
 package(default_visibility = ["//visibility:public"])
 
 exports_files([
+    "MODULE.bazel",
     "clippy.toml",
     "rustfmt.toml",
 ])
