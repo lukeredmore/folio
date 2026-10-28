@@ -31,6 +31,7 @@ public struct HybridMarkdownEditorRepresentable: NSViewRepresentable {
         layoutManager.delegate = context.coordinator.softLineBreakLayoutDelegate
         textStorage.addLayoutManager(layoutManager)
         context.coordinator.observePerfEdits(of: textStorage)
+        context.coordinator.observeTextEdits(of: textStorage)
 
         let textContainer = WideBlockTextContainer(containerSize: NSSize(width: 800, height: CGFloat.greatestFiniteMagnitude))
         textContainer.widthTracksTextView = false
@@ -160,7 +161,7 @@ public struct HybridMarkdownEditorRepresentable: NSViewRepresentable {
                 textView.window?.makeFirstResponder(textView)
                 textView.setSelectedRange(targetRange)
                 textView.scrollRangeToVisible(targetRange)
-                context.coordinator.restyle(textView: textView)
+                context.coordinator.restyle(textView: textView, incremental: true)
             }
         }
     }

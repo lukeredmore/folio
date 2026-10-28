@@ -98,6 +98,11 @@ public final class HybridMarkdownTextView: NSTextView {
         coord?.restyle(textView: self)
     }
 
+    public override func unmarkText() {
+        super.unmarkText()
+        editorCoordinator?.restyleAfterMarkedText(textView: self)
+    }
+
     public override func breakUndoCoalescing() {
         super.breakUndoCoalescing()
         workspaceViewModel?.breakUndoCoalescing()

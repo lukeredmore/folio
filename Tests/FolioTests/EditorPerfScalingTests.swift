@@ -9,7 +9,6 @@ import XCTest
 final class EditorPerfScalingTests: XCTestCase {
     private static let smallLines = 200
     private static let largeLines = 1600
-    private static let fullRestyleCause = "full-document restyle per keystroke"
 
     private func withHarness<T>(lines: Int, _ body: (EditorHarness) throws -> T) throws -> T {
         let harness = try EditorHarness(lineCount: lines)
@@ -45,13 +44,11 @@ final class EditorPerfScalingTests: XCTestCase {
         PerfReport.record("charactersRestyledPerKey_1600", report)
 
         let restyled = measured.delta.charactersRestyled
-        XCTExpectFailure("Known gap: \(Self.fullRestyleCause). Remove this wrapper when fixed.", strict: true) {
-            XCTAssertLessThanOrEqual(
-                restyled,
-                measured.block,
-                "a keystroke restyled \(restyled) characters; the edited block has \(measured.block)"
-            )
-        }
+        XCTAssertLessThanOrEqual(
+            restyled,
+            measured.block,
+            "a keystroke restyled \(restyled) characters; the edited block has \(measured.block)"
+        )
     }
 
     func testKeystrokeCostScaling() throws {
@@ -68,9 +65,7 @@ final class EditorPerfScalingTests: XCTestCase {
         let detail = String(format: "%.2f ms -> %.2f ms (%.2fx for 8x lines)", small * 1000, large * 1000, ratio)
 
         XCTAssertLessThan(ratio, 12, "keystroke cost grew superlinearly with document size: \(detail)")
-        XCTExpectFailure("Known gap: \(Self.fullRestyleCause). Remove this wrapper when fixed.", strict: true) {
-            XCTAssertLessThan(ratio, 2, "keystroke cost must not depend on document size: \(detail)")
-        }
+        XCTAssertLessThan(ratio, 2, "keystroke cost must not depend on document size: \(detail)")
     }
 
     /// No keystroke in a burst may take far longer than a typical keystroke on the same

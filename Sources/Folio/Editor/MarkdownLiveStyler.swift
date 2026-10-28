@@ -103,242 +103,88 @@ public final class MarkdownLiveStyler {
         textAlignment: NSTextAlignment = .natural,
         fileURL: URL? = nil
     ) -> MarkdownDocumentAnalysis {
-        let typography = typography ?? theme.typography
+        let parameters = MarkdownStyleParameters(
+            theme: theme,
+            typography: typography ?? theme.typography,
+            sourceCodeMode: sourceCodeMode,
+            focusMode: focusMode,
+            containerWidth: containerWidth,
+            prettyMode: prettyMode,
+            baseDirectoryURL: baseDirectoryURL,
+            textAlignment: textAlignment,
+            fileURL: fileURL
+        )
+        return styleDocument(storage, parameters: parameters, selectedRange: selectedRange).analysis
+    }
+
+    /// Restyles the whole document. Markdown documents styled outside source mode also get a
+    /// record for `restyleIncrementally`.
+    static func styleDocument(
+        _ storage: NSTextStorage,
+        parameters: MarkdownStyleParameters,
+        selectedRange: NSRange
+    ) -> MarkdownStyleResult {
         let string = storage.string
-        if LaTeXLiveStyler.isLaTeXOrBibTeXDocument(string, fileURL: fileURL) {
-            return LaTeXLiveStyler.applyStyles(
+        let fullRange = NSRange(location: 0, length: (string as NSString).length)
+        if LaTeXLiveStyler.isLaTeXOrBibTeXDocument(string, fileURL: parameters.fileURL) {
+            let analysis = LaTeXLiveStyler.applyStyles(
                 to: storage,
-                theme: theme,
-                typography: typography,
-                textAlignment: textAlignment,
-                sourceCodeMode: sourceCodeMode,
-                prettyMode: prettyMode,
-                focusMode: focusMode,
+                theme: parameters.theme,
+                typography: parameters.typography,
+                textAlignment: parameters.textAlignment,
+                sourceCodeMode: parameters.sourceCodeMode,
+                prettyMode: parameters.prettyMode,
+                focusMode: parameters.focusMode,
                 selectedRange: selectedRange,
-                containerWidth: containerWidth,
-                baseDirectoryURL: baseDirectoryURL,
-                fileURL: fileURL
+                containerWidth: parameters.containerWidth,
+                baseDirectoryURL: parameters.baseDirectoryURL,
+                fileURL: parameters.fileURL
             )
+            return MarkdownStyleResult(analysis: analysis, record: nil, restyledRanges: [fullRange])
         }
         let span = EditorPerfPhase.applyStyles.begin()
         defer { span.end() }
-        let nsString = string as NSString
-        let fullLength = nsString.length
         LaTeXBlockStyleCache.invalidate()
-        guard fullLength > 0 else { return MarkdownDocumentAnalysis(headings: [], decorations: []) }
+        guard fullRange.length > 0 else {
+            return MarkdownStyleResult(analysis: MarkdownDocumentAnalysis(headings: [], decorations: []), record: nil, restyledRanges: [])
+        }
 
-        let fullRange = NSRange(location: 0, length: fullLength)
+        let sourceCodeMode = parameters.sourceCodeMode
         let wasSourceMode = storage.attribute(LaTeXBlockStyleCache.sourceModePassAttributeKey, at: 0, effectiveRange: nil) != nil
         let wasLaTeX = storage.attribute(LaTeXBlockStyleCache.styledPassAttributeKey, at: 0, effectiveRange: nil) != nil
-        let activeLineRange = nsString.lineRange(for: NSRange(location: min(selectedRange.location, fullLength), length: 0))
+        let documentMacros = documentMacros(in: string, sourceCodeMode: sourceCodeMode)
+        LaTeXMathRenderer.setDocumentMacros(documentMacros)
+        let ast = sourceCodeMode ? MarkdownStyleAST.empty : parseStyleAST(string)
+
         storage.beginEditing()
-
-        let effectiveBaseSize = theme.baseFontSize * typography.fontSizeScale
-        let effectiveContainerWidth = containerWidth > 200 ? containerWidth : typography.maxColumnWidth
-
-        let baseParagraph = NSMutableParagraphStyle()
-        baseParagraph.lineHeightMultiple = typography.lineHeightMultiple
-        baseParagraph.lineSpacing = typography.lineSpacing
-        baseParagraph.paragraphSpacing = max(4.0, typography.paragraphSpacing * 0.65)
-        if !sourceCodeMode { baseParagraph.tailIndent = effectiveContainerWidth }
-
-        let baseFont = sourceCodeMode ? theme.codeFont(size: effectiveBaseSize) : theme.bodyFont(size: effectiveBaseSize)
-        let baseColor = theme.textNSColor
-        var mdBaseAttrs: [NSAttributedString.Key: Any] = [
-            .font: baseFont,
-            .foregroundColor: baseColor,
-            .paragraphStyle: baseParagraph,
-            .kern: sourceCodeMode ? 0.0 : typography.characterSpacing
-        ]
-        if sourceCodeMode {
-            mdBaseAttrs[LaTeXBlockStyleCache.sourceModePassAttributeKey] = true
-        }
-        storage.setAttributes(mdBaseAttrs, range: fullRange)
-
-        var headings: [OutlineHeading] = []
-        var decorations: [LineDecoration] = []
-        let docMacros = (!sourceCodeMode && string.contains("\\")) ? LaTeXMacroExpander.extractDocumentMacros(from: string) : [:]
-        LaTeXMathRenderer.setDocumentMacros(docMacros)
-
-        let specAST = sourceCodeMode ? (blocks: [CmarkAstBlock](), inlines: [CmarkAstInline]()) : parseSpecAST(string)
-        var indentedCodeBlockLines = Set<Int>()
-        for block in specAST.blocks where block.kind == 2 && (block.flags & 1) == 0 && block.startLine > 0 && block.endLine >= block.startLine {
-            indentedCodeBlockLines.formUnion(block.startLine...block.endLine)
-        }
-        var astLinksByLine: [Int: [CmarkAstInline]] = [:]
-        for inl in specAST.inlines where (inl.kind == 5 || inl.kind == 6) && inl.endLine >= inl.startLine && inl.startLine > 0 {
-            astLinksByLine[inl.startLine, default: []].append(inl)
-        }
-        var lineRecords: [Int: LineRecord] = [:]
-        var proseLineKinds: [Int: ProseLineKind] = [:]
-        var multiLineParagraphLines = Set<Int>()
-        for block in specAST.blocks where block.kind == 8 && block.startLine > 0 && block.endLine > block.startLine {
-            multiLineParagraphLines.formUnion(block.startLine...block.endLine)
-        }
-        var deferredProseInline: [DeferredInlineStyle] = []
-
-        var inCodeFence = false
-        var currentFenceChar: Character = "`"
-        var currentFenceLength: Int = 3
-        var currentFenceLanguage = ""
-        var fenceContainer = CodeFenceContainer()
-        var previousListTextIndent: CGFloat? = nil
-        var lineNumber = 1
-        var index = 0
-
-        while index < fullLength {
-            let lineRange = nsString.lineRange(for: NSRange(location: index, length: 0))
-            let contentRange = strippedLineContentRange(nsString: nsString, lineRange: lineRange)
-            let lineText = nsString.substring(with: contentRange)
-            let isActiveLine = isLineActive(lineRange: lineRange, activeLineRange: activeLineRange, selectedRange: selectedRange)
-            let dimFactor: CGFloat = (focusMode && !isActiveLine) ? 0.30 : 1.0
-            lineRecords[lineNumber] = (lineRange, contentRange, lineText, isActiveLine, dimFactor)
-
-            if sourceCodeMode {
-                styleSourceCodeLine(in: storage, lineText: lineText, contentRange: contentRange, lineNumber: lineNumber, effectiveBaseSize: effectiveBaseSize, baseColor: baseColor, theme: theme, dimFactor: dimFactor, headings: &headings)
-                index = NSMaxRange(lineRange); lineNumber += 1; continue
-            }
-
-            let trimmedLine = lineText.trimmingCharacters(in: .whitespaces)
-
-            // 1. Code Fence (``` or ~~~ with up to 3 leading spaces)
-            if !inCodeFence, let fenceMatch = codeFenceOpenRegex.firstMatch(in: string, options: [], range: contentRange) {
-                let markerStr = nsString.substring(with: fenceMatch.range(at: 1))
-                let infoStr = nsString.substring(with: fenceMatch.range(at: 2)).trimmingCharacters(in: .whitespaces)
-                let fenceChar = markerStr.first ?? "`"
-                if !(fenceChar == "`" && infoStr.contains("`")) {
-                    let lang = infoStr.split(whereSeparator: { $0.isWhitespace }).first.map(String.init) ?? ""
-                    let lowerLang = lang.lowercased()
-                    if prettyMode && (lowerLang == "mermaid" || lowerLang == "svg"),
-                       let step = tryStyleDiagramCodeFence(in: storage, nsString: nsString, fullLength: fullLength, lineRange: lineRange, contentRange: contentRange, lineText: lineText, isActiveLine: isActiveLine, activeLineRange: activeLineRange, selectedRange: selectedRange, fenceChar: fenceChar, openFenceLen: markerStr.count, lowerLang: lowerLang, theme: theme, typography: typography, effectiveBaseSize: effectiveBaseSize, effectiveContainerWidth: effectiveContainerWidth, focusMode: focusMode, decorations: &decorations) {
-                        previousListTextIndent = nil; index = step.nextIndex; lineNumber += step.lineDelta; continue
-                    }
-                    inCodeFence = true; currentFenceChar = fenceChar
-                    fenceContainer = CodeFenceContainer(strippedSpaces: lineText.prefix(while: { $0 == " " }).count, indent: previousListTextIndent ?? 0)
-                    currentFenceLength = markerStr.count; currentFenceLanguage = lowerLang; previousListTextIndent = nil
-                    styleCodeFenceDelimiterLine(in: storage, lineRange: lineRange, contentRange: contentRange, container: fenceContainer, isClosing: false, isActiveLine: isActiveLine, theme: theme, typography: typography, effectiveBaseSize: effectiveBaseSize, effectiveContainerWidth: effectiveContainerWidth, dimFactor: dimFactor)
-                    decorations.append(LineDecoration(lineRange: lineRange, kind: .codeFenceStart(language: lang)))
-                    index = NSMaxRange(lineRange); lineNumber += 1; continue
-                }
-            } else if inCodeFence {
-                let leadingSpaces = lineText.prefix(while: { $0 == " " }).count
-                let afterLeading = String(lineText.dropFirst(leadingSpaces))
-                let fenceRun = afterLeading.prefix(while: { $0 == currentFenceChar })
-                let restAfterFence = afterLeading.dropFirst(fenceRun.count).trimmingCharacters(in: .whitespaces)
-                if leadingSpaces <= 3 + fenceContainer.strippedSpaces && fenceRun.count >= currentFenceLength && restAfterFence.isEmpty {
-                    inCodeFence = false; currentFenceLanguage = ""
-                    styleCodeFenceDelimiterLine(in: storage, lineRange: lineRange, contentRange: contentRange, container: fenceContainer, isClosing: true, isActiveLine: isActiveLine, theme: theme, typography: typography, effectiveBaseSize: effectiveBaseSize, effectiveContainerWidth: effectiveContainerWidth, dimFactor: dimFactor)
-                    decorations.append(LineDecoration(lineRange: lineRange, kind: .codeFenceEnd))
-                } else {
-                    styleCodeFenceBodyLine(in: storage, lineRange: lineRange, contentRange: contentRange, container: fenceContainer, language: currentFenceLanguage, theme: theme, effectiveBaseSize: effectiveBaseSize, effectiveContainerWidth: effectiveContainerWidth, dimFactor: dimFactor, decorations: &decorations)
-                }
-                index = NSMaxRange(lineRange); lineNumber += 1; continue
-            }
-
-            // 1a. CommonMark Indented Code Block
-            if indentedCodeBlockLines.contains(lineNumber) && (!trimmedLine.isEmpty || lineText.hasPrefix("    ") || lineText.hasPrefix("\t")) {
-                previousListTextIndent = nil
-                styleCodeFenceBodyLine(in: storage, lineRange: lineRange, contentRange: contentRange, language: nil, theme: theme, effectiveBaseSize: effectiveBaseSize, effectiveContainerWidth: effectiveContainerWidth, dimFactor: dimFactor, decorations: &decorations)
-                index = NSMaxRange(lineRange); lineNumber += 1; continue
-            }
-
-            // 1b. Blank line outside code fence
-            if trimmedLine.isEmpty {
-                previousListTextIndent = nil
-                styleBlankLine(in: storage, lineRange: lineRange, contentRange: contentRange, isActiveLine: isActiveLine, effectiveBaseSize: effectiveBaseSize, effectiveContainerWidth: effectiveContainerWidth)
-                index = NSMaxRange(lineRange); lineNumber += 1; continue
-            }
-
-            // 2. Display Math Block ($$ ... $$)
-            if trimmedLine.hasPrefix("$$") {
-                previousListTextIndent = nil
-                let step = styleDisplayMathBlock(in: storage, nsString: nsString, fullLength: fullLength, lineRange: lineRange, contentRange: contentRange, lineText: lineText, trimmedLine: trimmedLine, isActiveLine: isActiveLine, activeLineRange: activeLineRange, selectedRange: selectedRange, theme: theme, effectiveBaseSize: effectiveBaseSize, effectiveContainerWidth: effectiveContainerWidth, focusMode: focusMode, decorations: &decorations)
-                index = step.nextIndex; lineNumber += step.lineDelta; continue
-            }
-
-            // 2b. Standalone Raw <svg ...> ... </svg> Block
-            let lowerTrimmedLine = trimmedLine.lowercased()
-            if lowerTrimmedLine.hasPrefix("<svg") {
-                previousListTextIndent = nil
-                if let step = tryStyleRawSVGBlock(in: storage, nsString: nsString, fullLength: fullLength, lineRange: lineRange, contentRange: contentRange, lineText: lineText, lowerTrimmedLine: lowerTrimmedLine, isActiveLine: isActiveLine, activeLineRange: activeLineRange, selectedRange: selectedRange, theme: theme, typography: typography, effectiveBaseSize: effectiveBaseSize, effectiveContainerWidth: effectiveContainerWidth, focusMode: focusMode, prettyMode: prettyMode, decorations: &decorations) {
-                    index = step.nextIndex; lineNumber += step.lineDelta; continue
-                }
-            }
-
-            // 3. Horizontal Rule (--- / *** / ___)
-            if contentRange.length >= 3, hrRegex.firstMatch(in: string, options: [], range: contentRange) != nil {
-                previousListTextIndent = nil
-                styleHorizontalRuleLine(in: storage, lineRange: lineRange, contentRange: contentRange, isActiveLine: isActiveLine, theme: theme, typography: typography, effectiveContainerWidth: effectiveContainerWidth, dimFactor: dimFactor, decorations: &decorations)
-                index = NSMaxRange(lineRange); lineNumber += 1; continue
-            }
-
-            // 4. ATX Heading (# .. ######)
-            if let match = headingRegex.firstMatch(in: string, options: [], range: contentRange),
-               match.range(at: 3).location != NSNotFound || match.range(at: 2).length == contentRange.length - match.range(at: 1).length {
-                previousListTextIndent = nil
-                styleATXHeadingLine(in: storage, string: string, nsString: nsString, match: match, lineRange: lineRange, contentRange: contentRange, lineNumber: lineNumber, isActiveLine: isActiveLine, theme: theme, typography: typography, effectiveContainerWidth: effectiveContainerWidth, dimFactor: dimFactor, prettyMode: prettyMode, baseDirectoryURL: baseDirectoryURL, headings: &headings, decorations: &decorations)
-                index = NSMaxRange(lineRange); lineNumber += 1; continue
-            }
-
-            // 5. Blockquote (> ...)
-            if let match = blockquoteRegex.firstMatch(in: string, options: [], range: contentRange) {
-                previousListTextIndent = nil
-                styleBlockquoteLine(in: storage, string: string, nsString: nsString, match: match, lineRange: lineRange, lineNumber: lineNumber, isActiveLine: isActiveLine, theme: theme, typography: typography, effectiveBaseSize: effectiveBaseSize, effectiveContainerWidth: effectiveContainerWidth, dimFactor: dimFactor, prettyMode: prettyMode, baseDirectoryURL: baseDirectoryURL, multiLineParagraphLines: multiLineParagraphLines, proseLineKinds: &proseLineKinds, deferredProseInline: &deferredProseInline, decorations: &decorations)
-                index = NSMaxRange(lineRange); lineNumber += 1; continue
-            }
-
-            // 6. GFM Table Block
-            if let step = tryStyleTableBlock(in: storage, string: string, nsString: nsString, fullLength: fullLength, startIndex: index, contentRange: contentRange, activeLineRange: activeLineRange, selectedRange: selectedRange, theme: theme, typography: typography, effectiveContainerWidth: effectiveContainerWidth, focusMode: focusMode, prettyMode: prettyMode, baseDirectoryURL: baseDirectoryURL, decorations: &decorations) {
-                previousListTextIndent = nil; index = step.nextIndex; lineNumber += step.lineDelta; continue
-            }
-
-            // 7. Task List (- [ ] / - [x] / 1. [x])
-            if let match = taskListRegex.firstMatch(in: string, options: [], range: contentRange) {
-                previousListTextIndent = styleTaskListLine(in: storage, string: string, nsString: nsString, match: match, lineRange: lineRange, lineNumber: lineNumber, isActiveLine: isActiveLine, baseFont: baseFont, baseColor: baseColor, theme: theme, typography: typography, effectiveBaseSize: effectiveBaseSize, effectiveContainerWidth: effectiveContainerWidth, dimFactor: dimFactor, prettyMode: prettyMode, baseDirectoryURL: baseDirectoryURL, multiLineParagraphLines: multiLineParagraphLines, proseLineKinds: &proseLineKinds, deferredProseInline: &deferredProseInline, decorations: &decorations)
-                index = NSMaxRange(lineRange); lineNumber += 1; continue
-            }
-
-            // 8. Unordered / Ordered Lists
-            if let match = unorderedListRegex.firstMatch(in: string, options: [], range: contentRange) ??
-                orderedListRegex.firstMatch(in: string, options: [], range: contentRange) {
-                previousListTextIndent = styleStandardListLine(in: storage, string: string, nsString: nsString, match: match, lineRange: lineRange, contentRange: contentRange, lineNumber: lineNumber, isActiveLine: isActiveLine, baseFont: baseFont, baseColor: baseColor, theme: theme, typography: typography, effectiveBaseSize: effectiveBaseSize, effectiveContainerWidth: effectiveContainerWidth, dimFactor: dimFactor, prettyMode: prettyMode, baseDirectoryURL: baseDirectoryURL, multiLineParagraphLines: multiLineParagraphLines, proseLineKinds: &proseLineKinds, deferredProseInline: &deferredProseInline, decorations: &decorations)
-                index = NSMaxRange(lineRange); lineNumber += 1; continue
-            }
-
-            // 9. Setext Heading
-            if let nextIdx = tryStyleSetextHeadingBlock(in: storage, string: string, nsString: nsString, fullLength: fullLength, lineRange: lineRange, contentRange: contentRange, trimmedLine: trimmedLine, lineNumber: lineNumber, isActiveLine: isActiveLine, activeLineRange: activeLineRange, selectedRange: selectedRange, theme: theme, typography: typography, effectiveContainerWidth: effectiveContainerWidth, focusMode: focusMode, prettyMode: prettyMode, baseDirectoryURL: baseDirectoryURL, headings: &headings, decorations: &decorations) {
-                previousListTextIndent = nil; index = nextIdx; lineNumber += 2; continue
-            }
-
-            // 10b. CommonMark Link Reference Definition ([label]: url "title")
-            if previousListTextIndent == nil,
-               let refDefMatch = linkRefDefRegex.firstMatch(in: string, options: [], range: contentRange) {
-                styleLinkReferenceDefinitionLine(in: storage, refDefMatch: refDefMatch, contentRange: contentRange, isActiveLine: isActiveLine, theme: theme, effectiveBaseSize: effectiveBaseSize, dimFactor: dimFactor)
-                index = NSMaxRange(lineRange); lineNumber += 1; continue
-            }
-
-            // Default paragraph line (or indented list continuation line)
-            styleDefaultParagraphOrListContinuationLine(in: storage, string: string, nsString: nsString, lineRange: lineRange, contentRange: contentRange, lineNumber: lineNumber, isActiveLine: isActiveLine, baseFont: baseFont, baseColor: baseColor, theme: theme, typography: typography, effectiveContainerWidth: effectiveContainerWidth, dimFactor: dimFactor, prettyMode: prettyMode, baseDirectoryURL: baseDirectoryURL, multiLineParagraphLines: multiLineParagraphLines, previousListTextIndent: &previousListTextIndent, proseLineKinds: &proseLineKinds, deferredProseInline: &deferredProseInline, decorations: &decorations)
-            index = NSMaxRange(lineRange); lineNumber += 1
-        }
-
-        applySoftLineBreaks(to: storage, blocks: specAST.blocks, lineRecords: lineRecords, proseLineKinds: proseLineKinds)
-        applyDeferredProseInlineStyles(
-            in: storage, string: string, fullLength: fullLength, deferredProseInline: deferredProseInline,
-            lineRecords: lineRecords, theme: theme, prettyMode: prettyMode,
-            baseDirectoryURL: baseDirectoryURL, decorations: &decorations
-        )
-        applyAstResolvedLinks(
-            in: storage, nsString: nsString, fullLength: fullLength, astLinksByLine: astLinksByLine,
-            lineRecords: lineRecords, theme: theme, prettyMode: prettyMode,
-            baseDirectoryURL: baseDirectoryURL, decorations: &decorations
-        )
-
-        applyProseAlignment(textAlignment, to: storage, lineRecords: lineRecords, proseLineKinds: proseLineKinds)
+        let pass = MarkdownStylePass(storage: storage, parameters: parameters, selectedRange: selectedRange, ast: ast)
+        storage.setAttributes(pass.baseAttributes, range: fullRange)
+        pass.styleLines(from: 0, lineNumber: 1, to: fullRange.length)
+        pass.finish()
         storage.endEditing()
         if wasSourceMode != sourceCodeMode || wasLaTeX {
             LaTeXBlockStyleCache.invalidateLayoutManagers(for: storage, fullRange: fullRange)
         }
-        return MarkdownDocumentAnalysis(headings: headings, decorations: decorations)
+        let record = sourceCodeMode ? nil : MarkdownStyleRecord(
+            text: pass.nsString,
+            parameters: parameters,
+            selectedRange: selectedRange,
+            ast: ast,
+            documentMacros: documentMacros,
+            checkpoints: pass.checkpoints,
+            decorations: pass.decorations,
+            headings: pass.headings
+        )
+        return MarkdownStyleResult(analysis: pass.analysis, record: record, restyledRanges: [fullRange])
+    }
+
+    /// Macros that `\newcommand` and similar definitions anywhere in the document declare for math.
+    static func documentMacros(in string: String, sourceCodeMode: Bool) -> [String: LaTeXMacroDefinition] {
+        (!sourceCodeMode && string.contains("\\")) ? LaTeXMacroExpander.extractDocumentMacros(from: string) : [:]
+    }
+
+    static func parseStyleAST(_ string: String) -> MarkdownStyleAST {
+        let parsed = parseSpecAST(string)
+        return MarkdownStyleAST(blocks: parsed.blocks, inlines: parsed.inlines)
     }
 }
