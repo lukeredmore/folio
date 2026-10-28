@@ -35,7 +35,7 @@ final class EditorPerfScalingTests: XCTestCase {
             let before = harness.counters
             harness.type("q")
             let delta = harness.counters.delta(since: before)
-            let block = editedBlockLength(in: harness.text, line: line)
+            let block = harness.blockLength(containingLine: line)
             return (delta: delta, block: block, document: (harness.text as NSString).length)
         }
         var report = PerfReport.values(measured.delta)
@@ -96,16 +96,5 @@ final class EditorPerfScalingTests: XCTestCase {
         let detail = String(format: "max stall %.0f ms, median key %.0f ms", maxStall * 1000, median * 1000)
         XCTAssertLessThan(maxStall, 4 * median, "one keystroke stalled far longer than a typical one: \(detail)")
         XCTAssertLessThan(maxStall, 2.0, "main thread hung during a 50-key burst: \(detail)")
-    }
-
-    /// Length of the run of non-blank lines that contains `line`.
-    private func editedBlockLength(in text: String, line: Int) -> Int {
-        let lines = text.components(separatedBy: "\n")
-        var first = line
-        let isBlank = { (index: Int) in lines[index].trimmingCharacters(in: .whitespaces).isEmpty }
-        while first > 0 && !isBlank(first - 1) { first -= 1 }
-        var last = line
-        while last + 1 < lines.count && !isBlank(last + 1) { last += 1 }
-        return lines[first...last].reduce(0) { $0 + ($1 as NSString).length + 1 }
     }
 }

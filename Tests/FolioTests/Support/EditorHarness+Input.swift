@@ -13,8 +13,12 @@ extension EditorHarness {
         "a": 0, "s": 1, "d": 2, "f": 3, "h": 4, "g": 5, "z": 6, "x": 7, "c": 8, "v": 9,
         "b": 11, "q": 12, "w": 13, "e": 14, "r": 15, "y": 16, "t": 17, "1": 18, "2": 19,
         "3": 20, "4": 21, "6": 22, "5": 23, "9": 25, "7": 26, "8": 28, "0": 29, "o": 31,
-        "u": 32, "i": 34, "p": 35, "l": 37, "j": 38, "k": 40, "n": 45, "m": 46, " ": 49
+        "u": 32, "i": 34, "p": 35, "l": 37, "j": 38, "k": 40, "n": 45, "m": 46, " ": 49,
+        "-": 27, "]": 30, "[": 33, "`": 50, "#": 20, "$": 21, "|": 42
     ]
+
+    /// Characters that `type(_:)` sends with the Shift modifier, as on a US keyboard.
+    private static let shiftedCharacters: Set<Character> = ["#", "$", "|"]
 
     enum Arrow {
         case left
@@ -27,19 +31,24 @@ extension EditorHarness {
         }
     }
 
-    /// Types lowercase letters, digits, and spaces, one key at a time. Drains the run loop
-    /// until idle after each key.
+    /// Types lowercase letters, digits, spaces, and the Markdown punctuation in `keyCodes`, one
+    /// key at a time. Drains the run loop until idle after each key.
     func type(_ text: String) {
         for character in text {
             guard let keyCode = Self.keyCodes[character] else {
                 preconditionFailure("EditorHarness.type does not support \(character.debugDescription)")
             }
-            sendKey(keyCode: keyCode, characters: String(character))
+            let modifiers: NSEvent.ModifierFlags = Self.shiftedCharacters.contains(character) ? [.shift] : []
+            sendKey(keyCode: keyCode, characters: String(character), modifiers: modifiers)
         }
     }
 
     func pressReturn() {
         sendKey(keyCode: 36, characters: "\r")
+    }
+
+    func pressBackspace() {
+        sendKey(keyCode: 51, characters: "\u{7f}")
     }
 
     func press(_ arrow: Arrow) {

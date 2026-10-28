@@ -60,6 +60,26 @@ enum PerfFixtures {
         return Workspace(directory: directory, fileURL: fileURL, document: document)
     }
 
+    /// Copies `examples/<name>` and `examples/assets` into a new temporary directory, so edits
+    /// never touch the checked-in example.
+    static func makeWorkspace(copyingExample name: String) throws -> Workspace {
+        let fm = FileManager.default
+        let examples = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .appendingPathComponent("examples", isDirectory: true)
+        let directory = fm.temporaryDirectory
+            .appendingPathComponent("FolioExample-\(UUID().uuidString)", isDirectory: true)
+        try fm.createDirectory(at: directory, withIntermediateDirectories: true)
+        try fm.copyItem(at: examples.appendingPathComponent("assets"), to: directory.appendingPathComponent("assets"))
+        let fileURL = directory.appendingPathComponent(name)
+        try fm.copyItem(at: examples.appendingPathComponent(name), to: fileURL)
+        let markdown = try String(contentsOf: fileURL, encoding: .utf8)
+        return Workspace(directory: directory, fileURL: fileURL, document: Document(markdown: markdown, paragraphLines: []))
+    }
+
     private static let sectionLineCount = sectionLines(1).count
 
     private static func sectionLines(_ n: Int) -> [String] {

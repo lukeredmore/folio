@@ -46,8 +46,13 @@ final class EditorHarness {
     var workspaceCounters: WorkspacePerfCounters { viewModel.perfCounters }
     var text: String { textView.string }
 
-    init(lineCount: Int, size: NSSize = NSSize(width: 1500, height: 1000)) throws {
-        workspace = try PerfFixtures.makeWorkspace(lineCount: lineCount)
+    convenience init(lineCount: Int, size: NSSize = NSSize(width: 1500, height: 1000)) throws {
+        try self.init(workspace: PerfFixtures.makeWorkspace(lineCount: lineCount), size: size)
+    }
+
+    /// Opens `workspace.fileURL`. The harness removes the workspace in `tearDown()`.
+    init(workspace: PerfFixtures.Workspace, size: NSSize = NSSize(width: 1500, height: 1000)) throws {
+        self.workspace = workspace
         defaultsSuiteName = "app.folio.tests.perf.\(UUID().uuidString)"
         defaults = try XCTUnwrap(UserDefaults(suiteName: defaultsSuiteName))
         viewModel = EditorWorkspaceViewModel(userDefaults: defaults)
@@ -159,6 +164,23 @@ final class EditorHarness {
             location = NSMaxRange(nsText.lineRange(for: NSRange(location: location, length: 0)))
         }
         return location
+    }
+
+    /// Number of lines in the editor text.
+    var lineCount: Int {
+        text.components(separatedBy: "\n").count
+    }
+
+    /// Length of the run of non-blank lines that contains the zero-based `line`, counting one
+    /// newline per line.
+    func blockLength(containingLine line: Int) -> Int {
+        let lines = text.components(separatedBy: "\n")
+        var first = line
+        let isBlank = { (index: Int) in lines[index].trimmingCharacters(in: .whitespaces).isEmpty }
+        while first > 0 && !isBlank(first - 1) { first -= 1 }
+        var last = line
+        while last + 1 < lines.count && !isBlank(last + 1) { last += 1 }
+        return lines[first...last].reduce(0) { $0 + ($1 as NSString).length + 1 }
     }
 
     func lineText(_ line: Int) -> String {
