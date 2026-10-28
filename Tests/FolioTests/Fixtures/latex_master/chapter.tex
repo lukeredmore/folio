@@ -13,6 +13,16 @@ Use \Opt{mode} or \Opt[fast]{mode}, with \Heavy{bold words} and \Mono{mono words
 
 Math stays math: \Many{$x_i$} and $\alpha + \beta$.
 
-Unsupported: \Layout{spaced} and \Spin{} stay as source.
+Layout only: \Layout{spaced} shows its argument, and \Spin{} stays as source.
+
+\ENTRY{\Stack{(\Kw{open} \Arg{
+      file})\\
+    (\Kw{close} \Arg{file})}{.}}
+{
+  Opens or closes \Arg{file}. Returns
+  \Ret{\Yes} on success.
+}
+
+\ENTRY{(\Choice{\Kw{read}\\ \Kw{write}}{\}} \Arg{stream})} {Moves bytes.}
 
 \end{ENTRIES}

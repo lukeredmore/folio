@@ -105,6 +105,8 @@ extension LaTeXLiveStyler {
         let optArg: String? = cls.has_opt_arg ? (cls.opt_arg.map { String(cString: $0) }) : nil
         let openBraceLoc = contentRange.location + Int(cls.open_len) - 1
         guard let closeBraceLoc = findMatchingCloseBrace(in: nsString, openBraceLocation: openBraceLoc, fullLength: fullLength) else {
+            // The line stays prose only while no later text closes the brace.
+            LaTeXBlockStyleCache.noteContext(NSRange(location: lineRange.location, length: fullLength - lineRange.location))
             return nil
         }
         let tpl = analyzeMacroTemplate(def: def, optArg: optArg, docIndex: docIndex, theme: theme, effectiveBaseSize: effectiveBaseSize)

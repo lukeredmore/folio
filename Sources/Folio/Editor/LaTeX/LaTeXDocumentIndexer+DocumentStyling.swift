@@ -226,18 +226,26 @@ extension LaTeXDocumentIndex {
             return NSColor(srgbRed: 0.50, green: 0.50, blue: 0.52, alpha: 1.0)
         case "black":
             return fallbackTheme.textNSColor
+        case let other where other.contains("gray") || other.contains("grey"):
+            // Unknown grays, such as a cover color that a file outside the project defines.
+            return NSColor(srgbRed: 0.62, green: 0.62, blue: 0.64, alpha: 1.0)
         default:
             return fallbackTheme.linkNSColor
         }
     }
 
-    func isBlankBlockRedundant(range: NSRange, in nsString: NSString, fullLength: Int) -> Bool {
+    /// True when a blank block adds no space, because a section, glue, or the body start is
+    /// next to it. `context` is set to the text the check read: the next line and the lines
+    /// before the block up to the first one with content.
+    func isBlankBlockRedundant(range: NSRange, in nsString: NSString, fullLength: Int, context: inout NSRange) -> Bool {
+        context = range
         let bodyStart = preambleRange.map { NSMaxRange($0) } ?? 0
         if range.location <= bodyStart || NSMaxRange(range) >= fullLength {
             return true
         }
         // Check following line
         let nextLR = nsString.lineRange(for: NSRange(location: NSMaxRange(range), length: 0))
+        context = NSUnionRange(context, nextLR)
         let nextCR = MarkdownLiveStyler.strippedLineContentRange(nsString: nsString, lineRange: nextLR)
         let nextTrimmed = nsString.substring(with: nextCR).trimmingCharacters(in: .whitespaces)
         if Self.isVerticalGlueOrSectionLine(nextTrimmed) || nextTrimmed.hasPrefix("%") {
@@ -248,6 +256,7 @@ extension LaTeXDocumentIndex {
         var checkedImmediatePrev = false
         while prevPos > bodyStart {
             let prevLR = nsString.lineRange(for: NSRange(location: prevPos - 1, length: 0))
+            context = NSUnionRange(context, prevLR)
             let prevCR = MarkdownLiveStyler.strippedLineContentRange(nsString: nsString, lineRange: prevLR)
             let prevTrimmed = nsString.substring(with: prevCR).trimmingCharacters(in: .whitespaces)
             if !checkedImmediatePrev {
@@ -322,7 +331,9 @@ extension LaTeXLiveStyler {
             )
         }
         let isBlockActive = anyActive || NSIntersectionRange(fullBlockRange, selectedRange).length > 0
-        let redundant = docIndex.isBlankBlockRedundant(range: fullBlockRange, in: nsString, fullLength: fullLength)
+        var context = fullBlockRange
+        let redundant = docIndex.isBlankBlockRedundant(range: fullBlockRange, in: nsString, fullLength: fullLength, context: &context)
+        LaTeXBlockStyleCache.noteContext(context)
         let parskip = max(2.0, docIndex.effectiveParagraphSpacing(baseSize: effectiveBaseSize, fallback: typography))
         let lineH: CGFloat =
             (!isBlockActive && prettyMode)

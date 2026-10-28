@@ -17,6 +17,8 @@ struct EditorPerfCounters: Equatable, Sendable {
     /// File-system operations (stat, read, directory listing) for LaTeX project files while this
     /// editor was in scope. Typing must not do any.
     var latexFileOperationCount = 0
+    /// LaTeX blocks that a restyle kept from the previous pass instead of styling them again.
+    var latexBlocksReusedCount = 0
     /// Total time of each signposted phase that ran while this editor was in scope.
     var phaseNanoseconds: [EditorPerfPhase: UInt64] = [:]
 }

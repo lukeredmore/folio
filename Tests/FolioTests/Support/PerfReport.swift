@@ -42,6 +42,7 @@ enum PerfReport {
             "parseCount": delta.parseCount,
             "drawCount": delta.drawCount,
             "latexFileOperationCount": delta.latexFileOperationCount,
+            "latexBlocksReusedCount": delta.latexBlocksReusedCount,
             "phaseMillisecondsPerKey": phases
         ]
     }
@@ -57,6 +58,7 @@ extension EditorPerfCounters {
         result.parseCount = parseCount - earlier.parseCount
         result.drawCount = drawCount - earlier.drawCount
         result.latexFileOperationCount = latexFileOperationCount - earlier.latexFileOperationCount
+        result.latexBlocksReusedCount = latexBlocksReusedCount - earlier.latexBlocksReusedCount
         for (phase, nanos) in phaseNanoseconds {
             result.phaseNanoseconds[phase] = nanos &- (earlier.phaseNanoseconds[phase] ?? 0)
         }
