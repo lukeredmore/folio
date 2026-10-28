@@ -17,6 +17,8 @@ private enum LaTeXProseCommand: Sendable {
     case fontSeries
     case fontShape
     case dimension
+    /// Skips a TeX integer such as `-5`, as `\penalty` takes.
+    case integer
 }
 
 private let proseCommands: [String: LaTeXProseCommand] = {
@@ -88,7 +90,8 @@ private let proseCommands: [String: LaTeXProseCommand] = {
         "fontseries": .fontSeries,
         "fontshape": .fontShape,
         "hskip": .dimension,
-        "kern": .dimension
+        "kern": .dimension,
+        "penalty": .integer
     ]
     let sizes: [(String, Double)] = [
         ("tiny", 0.7), ("scriptsize", 0.75), ("footnotesize", 0.85), ("small", 0.92), ("normalsize", 1.0),
@@ -112,11 +115,51 @@ private let proseCommands: [String: LaTeXProseCommand] = {
         "enspace": "\u{2002}", "thinspace": "\u{2009}", "space": " ", "hfill": " ", "hfil": " ",
         "textunderscore": "_", "textless": "<", "textgreater": ">", "slash": "/", "textbullet": "•"
     ]
-    for (name, text) in symbols {
+    for (name, text) in symbols.merging(documentNames, uniquingKeysWith: { first, _ in first }) {
         table[name] = .symbol(text)
     }
     return table
 }()
+
+/// The names that LaTeX classes print, in English.
+private let documentNames: [String: String] = [
+    "contentsname": "Contents", "indexname": "Index", "refname": "References", "bibname": "Bibliography",
+    "figurename": "Figure", "tablename": "Table", "abstractname": "Abstract", "appendixname": "Appendix",
+    "chaptername": "Chapter", "partname": "Part", "listfigurename": "List of Figures", "listtablename": "List of Tables",
+    "proofname": "Proof", "seename": "see", "alsoname": "see also", "ccname": "cc", "enclname": "encl", "pagename": "Page",
+    "headtoname": "To", "glossaryname": "Glossary"
+]
+
+/// Text-mode symbols that the styler draws in prose lines outside macro expansions.
+private let proseLineSymbols: Set<String> = [
+    "ldots", "dots", "textellipsis", "textasciitilde", "textasteriskcentered", "textbar", "textendash", "textemdash",
+    "textquoteleft", "textquoteright", "copyright", "textcopyright", "S", "P", "dag", "ddag", "textunderscore",
+    "textless", "textgreater", "textbullet", "quad", "qquad", "enspace", "thinspace"
+]
+
+extension LaTeXProseMacroExpander {
+    /// Applies the built-in font declaration `name`, such as `itshape` or `large`, to `style`.
+    /// Returns false when `name` is not a declaration.
+    static func applyDeclaration(_ name: String, to style: inout LaTeXProseStyle) -> Bool {
+        guard case .declaration(let change)? = proseCommands[name] else { return false }
+        change(&style)
+        return true
+    }
+
+    /// Applies `\fontfamily`, `\fontseries`, or `\fontshape` with `value` to `style`.
+    static func applyFontSelection(_ name: String, value: String, to style: inout LaTeXProseStyle) {
+        guard let command = proseCommands[name] else { return }
+        Renderer.applyFontSelection(command, value: value.trimmingCharacters(in: .whitespaces), to: &style)
+    }
+
+    /// The text that a built-in command without arguments prints in a prose line, such as
+    /// "Contents" for `\contentsname` or "©" for `\copyright`. Nil for other commands.
+    static func builtinText(forCommand name: String) -> String? {
+        if let text = documentNames[name] { return text }
+        guard proseLineSymbols.contains(name), case .symbol(let text)? = proseCommands[name] else { return nil }
+        return text
+    }
+}
 
 private func resetFont(_ style: inout LaTeXProseStyle) {
     style.bold = false
@@ -196,6 +239,12 @@ extension LaTeXProseMacroExpander.Renderer {
             return end
         case .dimension:
             return Self.skipDimension(chars, from: start)
+        case .integer:
+            var idx = start
+            if idx < chars.count && (chars[idx] == "-" || chars[idx] == "+") { idx += 1 }
+            let digits = idx
+            while idx < chars.count && chars[idx].isNumber { idx += 1 }
+            return idx > digits ? idx : nil
         }
     }
 
@@ -250,7 +299,7 @@ extension LaTeXProseMacroExpander.Renderer {
         return idx
     }
 
-    private static func applyFontSelection(_ command: LaTeXProseCommand, value: String, to style: inout LaTeXProseStyle) {
+    fileprivate static func applyFontSelection(_ command: LaTeXProseCommand, value: String, to style: inout LaTeXProseStyle) {
         switch command {
         case .fontFamily:
             if ["cmtt", "pcr", "lmtt", "txtt", "cmvtt", "zi4"].contains(value) {

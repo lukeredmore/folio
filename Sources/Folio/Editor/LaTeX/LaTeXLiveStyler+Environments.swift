@@ -166,6 +166,7 @@ extension LaTeXLiveStyler {
         prettyMode: Bool,
         focusMode: Bool,
         baseDirectoryURL: URL?,
+        flow: LaTeXFlowState = LaTeXFlowState(),
         decorations: inout [LineDecoration]
     ) -> (nextIndex: Int, lineDelta: Int)? {
         let dimFactor: CGFloat = (focusMode && !isActiveLine) ? 0.30 : 1.0
@@ -194,6 +195,8 @@ extension LaTeXLiveStyler {
         var scanIndex = NSMaxRange(lineRange)
         var scanLineCount = 1
 
+        let openToken = "\\begin{\(envName)}"
+        var depth = 1
         if !trimmedLine.hasSuffix(closeToken) {
             while scanIndex < fullLength {
                 let nextLR = nsString.lineRange(for: NSRange(location: scanIndex, length: 0))
@@ -208,8 +211,11 @@ extension LaTeXLiveStyler {
                 scanIndex = NSMaxRange(nextLR)
                 scanLineCount += 1
                 let nt = nextText.trimmingCharacters(in: .whitespaces)
-                if nt.hasPrefix(closeToken) || nt.hasSuffix(closeToken) {
-                    break
+                if nt.hasPrefix(openToken) && !nt.hasSuffix(closeToken) {
+                    depth += 1
+                } else if nt.hasPrefix(closeToken) || nt.hasSuffix(closeToken) {
+                    depth -= 1
+                    if depth == 0 { break }
                 }
             }
         }
@@ -262,6 +268,7 @@ extension LaTeXLiveStyler {
             }
             styleCenterEnvironmentLines(
                 envLines: envLines,
+                flow: flow,
                 fullBlockRange: fullBlockRange,
                 isBlockActive: isBlockActive,
                 blockDim: blockDim,

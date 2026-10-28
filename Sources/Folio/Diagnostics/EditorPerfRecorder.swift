@@ -10,6 +10,7 @@ final class EditorPerfRecorder: Sendable {
         case parse
         case draw
         case latexFileOperation
+        case latexBlockReused
     }
 
     private struct State: Sendable {
@@ -29,6 +30,7 @@ final class EditorPerfRecorder: Sendable {
             case .parse: state.counters.parseCount += 1
             case .draw: state.counters.drawCount += 1
             case .latexFileOperation: state.counters.latexFileOperationCount += 1
+            case .latexBlockReused: state.counters.latexBlocksReusedCount += 1
             }
         }
     }

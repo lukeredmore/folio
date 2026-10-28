@@ -44,6 +44,7 @@ extension LaTeXLiveStyler {
     ) {
         var charIndex = 0
         var lineNumber = 1
+        var flow = LaTeXFlowState()
 
         // 1. Collapsible Preamble Banner Card (\documentclass ... \begin{document})
         if let preambleRange = docIndex.preambleRange, preambleRange.location == 0, preambleRange.length > 0 {
@@ -56,6 +57,7 @@ extension LaTeXLiveStyler {
                 selectedRange: selectedRange,
                 focusMode: focusMode,
                 session: session,
+                flow: &flow,
                 headings: &headings,
                 decorations: &decorations,
                 recordedBlocks: &recordedBlocks
@@ -165,6 +167,7 @@ extension LaTeXLiveStyler {
                 selectedRange: selectedRange,
                 focusMode: focusMode,
                 session: session,
+                flow: &flow,
                 headings: &headings,
                 decorations: &decorations,
                 recordedBlocks: &recordedBlocks
@@ -178,10 +181,12 @@ extension LaTeXLiveStyler {
             let blockStartLine = lineNumber
             let hStart = headings.count
             let dStart = decorations.count
+            let entryFlow = flow
             let lineRange = nsString.lineRange(for: NSRange(location: charIndex, length: 0))
             if session != nil {
                 LaTeXBlockStyleCache.resetAttributes(in: storage, range: lineRange)
             }
+            LaTeXBlockStyleCache.currentBlockContext = nil
             let contentRange = MarkdownLiveStyler.strippedLineContentRange(nsString: nsString, lineRange: lineRange)
             let lineText = nsString.substring(with: contentRange)
             let trimmed = lineText.trimmingCharacters(in: .whitespaces)
@@ -191,9 +196,16 @@ extension LaTeXLiveStyler {
                 selectedRange: selectedRange
             )
             let dimFactor: CGFloat = (focusMode && !isActive) ? 0.30 : 1.0
+            let code = String(LaTeXFileFacts.stripComment(Substring(trimmed))).trimmingCharacters(in: .whitespaces)
+            let layout = LaTeXLayoutLine.analyze(code, macros: docIndex.documentMacros)
+            let flowFont = flow.isDefault ? baseFont : proseFont(for: flow.style, baseFont: baseFont, docIndex: docIndex, theme: theme)
+            var advance: (nextIndex: Int, lineDelta: Int)
+            // Blocks from the block and environment stylers record whether any of their lines is
+            // active; the other paths style one line by its own activity.
+            var recordsBlockActivity = false
 
-            // \begin{document} / \end{document} and standalone layout/conditional wrapper lines
-            if isFoldableLayoutBoundaryLine(trimmed) {
+            if isFoldableLayoutBoundaryLine(trimmed) || (layout.isLayoutOnly && !layout.drawsRule) {
+                // \begin{document}, \end{document}, and lines that hold only layout commands
                 styleDocumentBoundaryLine(
                     in: storage,
                     lineRange: lineRange,
@@ -206,23 +218,31 @@ extension LaTeXLiveStyler {
                     effectiveContainerWidth: effectiveContainerWidth,
                     dimFactor: dimFactor
                 )
-                recordedBlocks.append(
-                    LaTeXBlockStyleCache.CachedBlock(
-                        range: lineRange,
-                        startLineNumber: blockStartLine,
-                        lineCount: 1,
-                        isActive: isActive,
-                        dimFactor: dimFactor,
-                        headings: [],
-                        decorations: []
-                    ))
-                charIndex = NSMaxRange(lineRange)
-                lineNumber += 1
-                continue
-            }
-
-            // Multi-line or specialized LaTeX environments & blocks
-            if let advance = tryStyleLaTeXBlockOrEnvironment(
+                advance = (NSMaxRange(lineRange), 1)
+            } else if layout.isLayoutOnly {
+                styleRuleLine(
+                    in: storage, lineRange: lineRange, contentRange: contentRange, isActive: isActive, prettyMode: prettyMode,
+                    theme: theme, dimFactor: dimFactor, decorations: &decorations
+                )
+                advance = (NSMaxRange(lineRange), 1)
+            } else if let definitionEnd = multiLineDefinitionEnd(lineRange: lineRange, code: code, nsString: nsString) {
+                advance = styleDefinitionBlock(
+                    NSRange(location: lineRange.location, length: definitionEnd - lineRange.location),
+                    in: storage, nsString: nsString, activeLineRange: activeLineRange, selectedRange: selectedRange,
+                    theme: theme, prettyMode: prettyMode, focusMode: focusMode, effectiveBaseSize: effectiveBaseSize,
+                    effectiveContainerWidth: effectiveContainerWidth
+                )
+                recordsBlockActivity = true
+            } else if let blockEnd = multiLineCallBlockEnd(lineRange: lineRange, trimmed: trimmed, code: code, nsString: nsString, docIndex: docIndex) {
+                advance = styleMultiLineCallBlock(
+                    NSRange(location: lineRange.location, length: blockEnd - lineRange.location),
+                    in: storage, string: string, nsString: nsString, activeLineRange: activeLineRange,
+                    selectedRange: selectedRange, docIndex: docIndex, theme: theme, baseFont: flowFont,
+                    flowStyle: flow.style, prettyMode: prettyMode, focusMode: focusMode,
+                    baseDirectoryURL: baseDirectoryURL, decorations: &decorations
+                )
+                recordsBlockActivity = true
+            } else if let blockAdvance = tryStyleLaTeXBlockOrEnvironment(
                 in: storage,
                 string: string,
                 nsString: nsString,
@@ -246,60 +266,141 @@ extension LaTeXLiveStyler {
                 focusMode: focusMode,
                 dimFactor: dimFactor,
                 baseDirectoryURL: baseDirectoryURL,
+                flow: flow,
                 headings: &headings,
                 decorations: &decorations
             ) {
-                let blockRange = NSRange(location: blockStartChar, length: advance.nextIndex - blockStartChar)
-                let blockActive = LaTeXBlockStyleCache.isBlockActive(
-                    range: blockRange,
-                    activeLineRange: activeLineRange,
-                    selectedRange: selectedRange
+                advance = blockAdvance
+                recordsBlockActivity = true
+            } else {
+                // Standard prose line with LaTeX inline styling
+                styleFlowParagraph(in: storage, lineRange: lineRange, font: flowFont, flow: flow, baseFont: baseFont)
+                styleLaTeXInlineContent(
+                    in: storage,
+                    string: string,
+                    nsString: nsString,
+                    range: contentRange,
+                    lineRange: lineRange,
+                    baseFont: flowFont,
+                    isActiveLine: isActive,
+                    docIndex: docIndex,
+                    theme: theme,
+                    dimFactor: dimFactor,
+                    prettyMode: prettyMode,
+                    baseDirectoryURL: baseDirectoryURL,
+                    flowStyle: flow.style,
+                    decorations: &decorations
                 )
-                let blockDim: CGFloat = (focusMode && !blockActive) ? 0.30 : 1.0
-                recordedBlocks.append(
-                    LaTeXBlockStyleCache.CachedBlock(
-                        range: blockRange,
-                        startLineNumber: blockStartLine,
-                        lineCount: advance.lineDelta,
-                        isActive: blockActive,
-                        dimFactor: blockDim,
-                        headings: Array(headings[hStart...]),
-                        decorations: Array(decorations[dStart...])
-                    ))
-                charIndex = advance.nextIndex
-                lineNumber += advance.lineDelta
-                continue
+                advance = (NSMaxRange(lineRange), 1)
+            }
+            if advance.lineDelta == 1 {
+                flow.apply(layout.effects, documentFontSize: docIndex.documentStyle.documentFontSizePt ?? 10)
             }
 
-            // Standard prose line with LaTeX inline styling
-            styleLaTeXInlineContent(
-                in: storage,
-                string: string,
-                nsString: nsString,
-                range: contentRange,
-                lineRange: lineRange,
-                baseFont: baseFont,
-                isActiveLine: isActive,
-                docIndex: docIndex,
-                theme: theme,
-                dimFactor: dimFactor,
-                prettyMode: prettyMode,
-                baseDirectoryURL: baseDirectoryURL,
-                decorations: &decorations
+            let blockRange = NSRange(location: blockStartChar, length: advance.nextIndex - blockStartChar)
+            let blockActive = LaTeXBlockStyleCache.isBlockActive(
+                range: blockRange,
+                activeLineRange: activeLineRange,
+                selectedRange: selectedRange
             )
-
+            let blockDim: CGFloat = (focusMode && !blockActive) ? 0.30 : 1.0
             recordedBlocks.append(
                 LaTeXBlockStyleCache.CachedBlock(
-                    range: lineRange,
+                    range: blockRange,
                     startLineNumber: blockStartLine,
-                    lineCount: 1,
-                    isActive: isActive,
-                    dimFactor: dimFactor,
+                    lineCount: advance.lineDelta,
+                    isActive: recordsBlockActivity ? blockActive : isActive,
+                    dimFactor: recordsBlockActivity ? blockDim : dimFactor,
                     headings: Array(headings[hStart...]),
-                    decorations: Array(decorations[dStart...])
+                    decorations: Array(decorations[dStart...]),
+                    context: LaTeXBlockStyleCache.currentBlockContext,
+                    entryFlow: entryFlow,
+                    exitFlow: flow
                 ))
-            charIndex = NSMaxRange(lineRange)
-            lineNumber += 1
+            charIndex = advance.nextIndex
+            lineNumber += advance.lineDelta
+        }
+    }
+
+    /// The end of a multi-line macro call that starts on the line, or nil. Lines that other
+    /// stylers own, such as sections, environments, and block-shaped macros (a line that is only
+    /// `\name{`), are not probed.
+    private static func multiLineCallBlockEnd(
+        lineRange: NSRange,
+        trimmed: String,
+        code: String,
+        nsString: NSString,
+        docIndex: LaTeXDocumentIndex
+    ) -> Int? {
+        guard code.contains("\\"), !trimmed.hasPrefix("$$"), !trimmed.hasPrefix("\\["),
+            docIndex.lineSectionNumbers[lineRange.location] == nil
+        else { return nil }
+        if code.hasPrefix("\\") {
+            let chars = Array(code)
+            let (word, after) = LaTeXMacroExpander.readControlWord(chars, at: 0)
+            let name = String(word.dropFirst())
+            if multiLineProbeExcludedCommands.contains(name) || name.hasPrefix("if") { return nil }
+            var bodyStart = after < chars.count && chars[after] == "*" ? after + 1 : after
+            if let (_, afterOption) = LaTeXMacroExpander.readBracketGroup(chars, at: bodyStart) { bodyStart = afterOption }
+            if String(chars[bodyStart...]).trimmingCharacters(in: .whitespaces) == "{", let def = docIndex.documentMacros[word],
+                def.parameterText == nil, def.argCount >= 1
+            {
+                return nil
+            }
+        }
+        let probe = probeMultiLineCall(lineRange: lineRange, nsString: nsString, macros: docIndex.documentMacros)
+        if probe.contextEnd > NSMaxRange(lineRange) {
+            LaTeXBlockStyleCache.noteContext(NSRange(location: lineRange.location, length: probe.contextEnd - lineRange.location))
+        }
+        return probe.blockEnd
+    }
+
+    /// The end of a definition that starts the line and closes on a later line, or nil.
+    private static func multiLineDefinitionEnd(lineRange: NSRange, code: String, nsString: NSString) -> Int? {
+        guard code.hasPrefix("\\") else { return nil }
+        let (word, _) = LaTeXMacroExpander.readControlWord(Array(code.prefix(40)), at: 0)
+        guard LaTeXLayoutCommands.definitionCommands.contains(String(word.dropFirst())) else { return nil }
+        let probe = probeMultiLineDefinition(lineRange: lineRange, nsString: nsString)
+        if probe.contextEnd > NSMaxRange(lineRange) {
+            LaTeXBlockStyleCache.noteContext(NSRange(location: lineRange.location, length: probe.contextEnd - lineRange.location))
+        }
+        return probe.blockEnd
+    }
+
+    private static let multiLineProbeExcludedCommands: Set<String> = [
+        "begin", "end", "item", "input", "include", "title", "author", "date", "caption", "includegraphics", "maketitle",
+        "section", "subsection", "subsubsection", "chapter", "part", "paragraph", "subparagraph", "else", "fi"
+    ]
+
+    /// Applies the font and alignment of the open groups to a prose line.
+    private static func styleFlowParagraph(in storage: NSTextStorage, lineRange: NSRange, font: NSFont, flow: LaTeXFlowState, baseFont: NSFont) {
+        guard !flow.isDefault else { return }
+        if font != baseFont { storage.addAttribute(.font, value: font, range: lineRange) }
+        guard let alignment = flow.alignment,
+            let existing = storage.attribute(.paragraphStyle, at: lineRange.location, effectiveRange: nil) as? NSParagraphStyle,
+            let style = existing.mutableCopy() as? NSMutableParagraphStyle
+        else { return }
+        style.alignment = alignment
+        storage.addAttribute(.paragraphStyle, value: style, range: lineRange)
+    }
+
+    /// A line that only draws `\rule` or `\hrule` bars shows a horizontal rule.
+    private static func styleRuleLine(
+        in storage: NSTextStorage,
+        lineRange: NSRange,
+        contentRange: NSRange,
+        isActive: Bool,
+        prettyMode: Bool,
+        theme: EditorTheme,
+        dimFactor: CGFloat,
+        decorations: inout [LineDecoration]
+    ) {
+        storage.addAttribute(MKey.noSpellCheck, value: true, range: lineRange)
+        if !isActive && prettyMode {
+            MarkdownLiveStyler.collapseWhitespaceRange(in: storage, range: contentRange)
+            decorations.append(LineDecoration(lineRange: lineRange, kind: .horizontalRule))
+        } else {
+            MarkdownLiveStyler.styleSyntaxToken(in: storage, range: contentRange, isActiveLine: true, theme: theme, dimFactor: dimFactor)
         }
     }
 

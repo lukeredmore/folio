@@ -48,7 +48,9 @@ A `.tex` file uses the macros of its master document. Folio finds the master wit
 2. An Emacs `%%% TeX-master: "name"` local variable. `TeX-master: t` marks the file as its own master.
 3. A `.tex` file with `\documentclass`, in the same directory and then in the parent directory, that `\input`s or `\include`s the file.
 
-Folio reads the master's preamble and the files that the preamble `\input`s when it opens the file, and again when a file in the same directory changes. Typing does not read files. User macros with arguments render as styled text. A macro whose body does layout work, such as `\vspace` or `\settowidth`, shows its source. The cursor line always shows the source.
+Folio reads the master's preamble and the files that the preamble `\input`s when it opens the file, and again when a file in the same directory changes. Typing does not read files.
+
+User macros with arguments render as styled text, also when their arguments continue on later lines (up to 40 lines, and not past a blank line). A macro whose body only does layout, such as `\settowidth` or `\item`, hides its name and braces and shows its arguments, with a separator between them. Macros that lay out `\\`-separated alternatives in an `array` show them stacked, or as `{a | b}` when the array has an opening brace. Lines that hold only layout commands (font switches, spacing, rules, page styles, lengths, and definitions) fold, and their font switches style the lines after them until the group or environment ends. The cursor line, or every line of the macro call that holds the cursor, shows the source.
 
 ### Included macOS App Themes
 1. **Daylight** (`#ffffff` background, `#4183C4` links, SF Pro / Helvetica Neue)

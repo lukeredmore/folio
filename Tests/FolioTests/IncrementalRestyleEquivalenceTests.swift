@@ -38,16 +38,38 @@ final class IncrementalRestyleEquivalenceTests: XCTestCase {
         try runEdits("perf_200", workspace: PerfFixtures.makeWorkspace(lineCount: 200), seed: 0x5EED_0003)
     }
 
-    private func runEdits(_ name: String, workspace: PerfFixtures.Workspace, seed: UInt64) throws {
+    /// The LaTeX styler reuses cached blocks. Multi-line macro calls, layout lines, and font
+    /// switches make a block depend on text before and after it, so edits that open or close a
+    /// call on another line must restyle it.
+    func testLaTeXMultiLineCallEditsMatchFullRestyle() throws {
+        LaTeXProjectContext.removeAll()
+        defer { LaTeXProjectContext.removeAll() }
+        let directory = try makeTemporaryDirectory("LaTeXEquivalence").appendingPathComponent("project")
+        try FileManager.default.copyItem(at: LaTeXProjectFixtures.fixtureDirectory, to: directory)
+        let fileURL = directory.appendingPathComponent("chapter.tex")
+        let text = try String(contentsOf: fileURL, encoding: .utf8)
+        let workspace = PerfFixtures.Workspace(directory: directory, fileURL: fileURL, document: PerfFixtures.Document(markdown: text, paragraphLines: []))
+        let delta = try runEdits("latex_master_chapter", workspace: workspace, seed: 0x5EED_0004, syntax: EditOperationGenerator.latexSyntax)
+        XCTAssertGreaterThan(delta?.latexBlocksReusedCount ?? 0, 0, "the edits must exercise reuse of cached blocks")
+    }
+
+    /// Runs the edits and returns the counters for them, or nil when a check failed.
+    @discardableResult
+    private func runEdits(
+        _ name: String,
+        workspace: PerfFixtures.Workspace,
+        seed: UInt64,
+        syntax: [String] = EditOperationGenerator.markdownSyntax
+    ) throws -> EditorPerfCounters? {
         let harness = try EditorHarness(workspace: workspace)
         defer { harness.tearDown() }
         settleBackgroundRenders(harness)
         if let mismatch = RestyleEquivalenceOracle.firstMismatch(in: harness) {
             XCTFail("\(name): the initial restyle differs from a full restyle: \(mismatch)")
-            return
+            return nil
         }
 
-        var generator = EditOperationGenerator(seed: seed)
+        var generator = EditOperationGenerator(seed: seed, blockSyntax: syntax)
         var history: [EditOperation] = []
         var fullRestyleReasons: [String: Int] = [:]
         let before = harness.counters
@@ -68,7 +90,7 @@ final class IncrementalRestyleEquivalenceTests: XCTestCase {
                     \(name): seed \(String(seed, radix: 16)), operation \(index) (\(operation)) left the \
                     editor different from a full restyle: \(mismatch). Last operations: \(recent)
                     """)
-                return
+                return nil
             }
         }
         let delta = harness.counters.delta(since: before)
@@ -80,8 +102,10 @@ final class IncrementalRestyleEquivalenceTests: XCTestCase {
                 "restyleCount": delta.restyleCount,
                 "fullRangeRestyleCount": delta.fullRangeRestyleCount,
                 "charactersRestyled": delta.charactersRestyled,
-                "operationsWithFullRestyleByLastReason": fullRestyleReasons
+                "operationsWithFullRestyleByLastReason": fullRestyleReasons,
+                "latexBlocksReusedCount": delta.latexBlocksReusedCount
             ])
+        return delta
     }
 
     /// Diagram renders finish in the background and trigger a restyle. Waiting for them keeps
@@ -128,10 +152,16 @@ struct EditOperationGenerator {
     private var random: SplitMix64
     private var pending: [EditOperation] = []
     private static let letters = Array("abcdefghijklmnopqrstuvwxyz0123456789 ")
-    private static let blockSyntax = ["```", "$$", "|", "- ", "# ", "[ ] ", "[k]", "[k]: /k", "    "]
+    static let markdownSyntax = ["```", "$$", "|", "- ", "# ", "[ ] ", "[k]", "[k]: /k", "    "]
+    /// Opens and closes macro calls on other lines, and adds layout lines and font switches.
+    static let latexSyntax = [
+        "\\ENTRY{", "}", "{", "\\\\", "%", "\\Kw{", "\\itshape ", "\\begin{center}", "\\end{center}", "\\Stack{", "\\vfill", "$"
+    ]
+    private let blockSyntax: [String]
 
-    init(seed: UInt64) {
+    init(seed: UInt64, blockSyntax: [String] = Self.markdownSyntax) {
         random = SplitMix64(seed: seed)
+        self.blockSyntax = blockSyntax
     }
 
     @MainActor
@@ -148,7 +178,7 @@ struct EditOperationGenerator {
         case 40..<54:
             return .backspace
         case 54..<84:
-            let syntax = Self.blockSyntax.randomElement(using: &random) ?? "- "
+            let syntax = blockSyntax.randomElement(using: &random) ?? "- "
             guard Bool.random(using: &random) else { return .type(syntax) }
             pending.append(.type(syntax))
             return .moveCursor(line: currentLine(in: harness), column: 0)

@@ -112,10 +112,14 @@ extension LaTeXProseMacroExpander {
         /// Output so far. `emit` merges adjacent text with the same style, so the segment cap
         /// counts style runs, not characters.
         var segments: [LaTeXProseSegment] = []
+        /// How many math segments enclose this renderer. Text macros inside math are rendered by
+        /// a nested renderer, and this bounds the nesting.
+        let mathNesting: Int
 
-        init(macros: [String: LaTeXMacroDefinition], limits: Limits) {
+        init(macros: [String: LaTeXMacroDefinition], limits: Limits, mathNesting: Int = 0) {
             self.macros = macros
             self.limits = limits
+            self.mathNesting = mathNesting
             expandedBudget = limits.maxExpandedCharacters
         }
 
@@ -144,6 +148,11 @@ extension LaTeXProseMacroExpander {
                 // Inside a body, TeX skips the spaces after a control word. A call on the source
                 // line keeps them, so the line's visible spacing does not change.
                 end = LaTeXMacroExpander.skipSpaces(chars, from: end)
+            }
+            if let layout = LaTeXArrayAlternatives.parse(def.replacement) {
+                expandedBudget -= args.reduce(0) { $0 + $1.count }
+                guard expandedBudget >= 0, renderArrayAlternatives(layout, args: args, style: style ?? LaTeXProseStyle(), depth: depth) else { return nil }
+                return end
             }
             let body = LaTeXMacroExpander.substituteArguments(args, into: def.replacement)
             expandedBudget -= body.count
@@ -238,7 +247,7 @@ extension LaTeXProseMacroExpander {
                     continue
                 }
                 if chars[p] == "$" {
-                    segments.append(.math(String(chars[(idx + 1)..<p]), style))
+                    appendMath(String(chars[(idx + 1)..<p]), style: style)
                     return p + 1
                 }
                 p += 1
@@ -247,7 +256,7 @@ extension LaTeXProseMacroExpander {
         }
 
         mutating func appendMath(_ latex: String, style: LaTeXProseStyle) {
-            segments.append(.math(latex, style))
+            segments.append(.math(mathWithTextMacrosReplaced(latex), style))
         }
 
         mutating func appendLineBreak() {

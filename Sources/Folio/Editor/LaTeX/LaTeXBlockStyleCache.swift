@@ -26,6 +26,14 @@ enum LaTeXBlockStyleCache {
         let dimFactor: CGFloat
         let headings: [OutlineHeading]
         let decorations: [LineDecoration]
+        /// The text that styling the block read, which can extend past `range`: a probe for a
+        /// multi-line call reads ahead, and a blank block checks its neighbors.
+        var context: NSRange?
+        /// The group and font state before and after the block.
+        var entryFlow = LaTeXFlowState()
+        var exitFlow = LaTeXFlowState()
+
+        var contextRange: NSRange { context.map { NSUnionRange($0, range) } ?? range }
     }
 
     struct StorageEntry {
@@ -46,12 +54,23 @@ enum LaTeXBlockStyleCache {
         let numberingUnchanged: Bool
     }
 
-    nonisolated(unsafe) private static var lastEntry: StorageEntry?
+    /// The last session of each recently styled storage, so styling another storage, such as a
+    /// print or reference copy, does not discard the editor's session.
+    nonisolated(unsafe) private static var entries: [ObjectIdentifier: StorageEntry] = [:]
+    private static let maxEntries = 4
     nonisolated(unsafe) static var activeBaseAttributes: [NSAttributedString.Key: Any] = [:]
     nonisolated(unsafe) static var pendingGlyphInvalidationRanges: [NSRange] = []
+    /// Text read while styling the current block, beyond the block itself. See
+    /// `CachedBlock.context`.
+    nonisolated(unsafe) static var currentBlockContext: NSRange?
+
+    /// Records that styling the current block read `range`.
+    static func noteContext(_ range: NSRange) {
+        currentBlockContext = currentBlockContext.map { NSUnionRange($0, range) } ?? range
+    }
 
     static func invalidate() {
-        lastEntry = nil
+        entries.removeAll()
     }
 
     static func collapseInternalNewlines(in storage: NSTextStorage, nsString: NSString, range: NSRange) {
@@ -92,7 +111,7 @@ enum LaTeXBlockStyleCache {
         docIndex: LaTeXDocumentIndex,
         docMacros: [String: LaTeXMacroDefinition]
     ) -> (entry: StorageEntry, diff: DiffWindow)? {
-        guard let entry = lastEntry,
+        guard let entry = entries[ObjectIdentifier(storage)],
             entry.storage === storage,
             entry.config == config,
             entry.docMacros == docMacros
@@ -158,7 +177,11 @@ enum LaTeXBlockStyleCache {
         for b in blocks {
             map[b.range.location] = b
         }
-        lastEntry = StorageEntry(
+        entries = entries.filter { $0.value.storage != nil }
+        if entries.count >= maxEntries && entries[ObjectIdentifier(storage)] == nil {
+            entries.removeAll()
+        }
+        entries[ObjectIdentifier(storage)] = StorageEntry(
             storage: storage,
             config: config,
             string: string,
@@ -172,8 +195,10 @@ enum LaTeXBlockStyleCache {
     static func isBlockActive(range: NSRange, activeLineRange: NSRange, selectedRange: NSRange) -> Bool {
         if NSIntersectionRange(range, activeLineRange).length > 0 { return true }
         if selectedRange.length > 0, NSIntersectionRange(range, selectedRange).length > 0 { return true }
+        // The active line decides, as the editor restyles only when it changes: a cursor at the
+        // start of the line after a block does not activate the block.
         if selectedRange.location >= range.location && selectedRange.location <= NSMaxRange(range)
-            && activeLineRange.location >= range.location && activeLineRange.location <= NSMaxRange(range)
+            && activeLineRange.location >= range.location && activeLineRange.location < NSMaxRange(range)
         {
             return true
         }
@@ -189,6 +214,7 @@ enum LaTeXBlockStyleCache {
         selectedRange: NSRange,
         focusMode: Bool,
         session: (entry: StorageEntry, diff: DiffWindow)?,
+        flow: inout LaTeXFlowState,
         headings: inout [OutlineHeading],
         decorations: inout [LineDecoration],
         recordedBlocks: inout [CachedBlock]
@@ -196,8 +222,9 @@ enum LaTeXBlockStyleCache {
         guard let (entry, diff) = session else { return nil }
 
         if diff.isSameString || charIndex < diff.commonPrefixLen {
+            // The text before a block here is unchanged, so its entry flow state is too.
             guard let prev = entry.blocksByStart[charIndex] else { return nil }
-            if !diff.isSameString && NSMaxRange(prev.range) >= diff.commonPrefixLen {
+            if !diff.isSameString && NSMaxRange(prev.contextRange) >= diff.commonPrefixLen {
                 return nil
             }
             guard !prev.isActive else { return nil }
@@ -209,12 +236,16 @@ enum LaTeXBlockStyleCache {
             headings.append(contentsOf: prev.headings)
             decorations.append(contentsOf: prev.decorations)
             recordedBlocks.append(prev)
+            flow = prev.exitFlow
+            EditorPerfScope.recorder?.increment(.latexBlockReused)
             return (NSMaxRange(prev.range), prev.lineCount)
         }
 
         if charIndex > diff.suffixStartInNew && diff.numberingUnchanged {
             let oldStart = charIndex - diff.charDelta
-            guard let prev = entry.blocksByStart[oldStart], !prev.isActive else { return nil }
+            guard let prev = entry.blocksByStart[oldStart], !prev.isActive, prev.entryFlow == flow,
+                prev.contextRange.location + diff.charDelta > diff.suffixStartInNew
+            else { return nil }
             let shiftedRange = NSRange(location: charIndex, length: prev.range.length)
             guard NSMaxRange(shiftedRange) <= fullLength else { return nil }
             let nowActive = isBlockActive(range: shiftedRange, activeLineRange: activeLineRange, selectedRange: selectedRange)
@@ -241,11 +272,16 @@ enum LaTeXBlockStyleCache {
                 isActive: false,
                 dimFactor: newDim,
                 headings: shiftedHeadings,
-                decorations: shiftedDecorations
+                decorations: shiftedDecorations,
+                context: prev.context.map { shiftRange($0, by: diff.charDelta) },
+                entryFlow: prev.entryFlow,
+                exitFlow: prev.exitFlow
             )
             headings.append(contentsOf: shiftedHeadings)
             decorations.append(contentsOf: shiftedDecorations)
             recordedBlocks.append(shiftedBlock)
+            flow = prev.exitFlow
+            EditorPerfScope.recorder?.increment(.latexBlockReused)
             return (NSMaxRange(shiftedRange), prev.lineCount)
         }
 

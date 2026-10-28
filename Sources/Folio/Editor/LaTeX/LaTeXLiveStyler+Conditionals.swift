@@ -55,6 +55,7 @@ extension LaTeXLiveStyler {
 
     static func styleCenterEnvironmentLines(
         envLines: [(lineRange: NSRange, contentRange: NSRange, text: String, isActive: Bool)],
+        flow entryFlow: LaTeXFlowState = LaTeXFlowState(),
         fullBlockRange: NSRange,
         isBlockActive: Bool,
         blockDim: CGFloat,
@@ -73,6 +74,10 @@ extension LaTeXLiveStyler {
     ) {
         var condStack: [(cond: Bool, inElse: Bool)] = []
         var collapsedLineRanges: [NSRange] = []
+        let documentFontSize = docIndex.documentStyle.documentFontSizePt ?? 10
+        var flow = entryFlow
+        flow.apply([.beginEnvironment("center")], documentFontSize: documentFontSize)
+        let wrappers = LaTeXLayoutCommands.flowWrapperEnvironments.union(["center"])
 
         for (i, el) in envLines.enumerated() {
             let isBoundary = (i == 0 || (i == envLines.count - 1 && envLines.count > 1))
@@ -98,6 +103,20 @@ extension LaTeXLiveStyler {
                 isDirective = true
             }
             let branchEnabled = condStack.allSatisfy { $0.inElse ? !$0.cond : $0.cond }
+            let code = String(LaTeXFileFacts.stripComment(Substring(trimmed))).trimmingCharacters(in: .whitespaces)
+            let layout = LaTeXLayoutLine.analyze(code, macros: docIndex.documentMacros, wrappers: wrappers)
+            if branchEnabled && !isDirective && layout.isLayoutOnly && layout.drawsRule && !isBlockActive && prettyMode {
+                MarkdownLiveStyler.collapseWhitespaceRange(in: storage, range: el.contentRange)
+                storage.addAttribute(MKey.noSpellCheck, value: true, range: el.lineRange)
+                decorations.append(LineDecoration(lineRange: el.lineRange, kind: .horizontalRule))
+                continue
+            }
+            if branchEnabled && !isDirective && layout.isLayoutOnly {
+                // Nested wrappers, font switches, and spacing print nothing; the switches style
+                // the lines after them.
+                flow.apply(layout.effects, documentFontSize: documentFontSize)
+                isDirective = true
+            }
             if isDirective || !branchEnabled {
                 styleCollapsedOrDimmedConditionalLine(
                     in: storage, lineRange: el.lineRange, contentRange: el.contentRange,
@@ -117,18 +136,25 @@ extension LaTeXLiveStyler {
             pStyle.lineSpacing = docIndex.effectiveLineSpacing(fallback: typography)
             pStyle.paragraphSpacing = max(3.0, typography.paragraphSpacing * 0.5)
             pStyle.tailIndent = effectiveContainerWidth
+            let lineFont = flow.style == LaTeXProseStyle() ? baseFont : proseFont(for: flow.style, baseFont: baseFont, docIndex: docIndex, theme: theme)
             storage.addAttributes(
                 [
-                    .font: baseFont,
+                    .font: lineFont,
                     .foregroundColor: theme.textNSColor.withAlphaComponent(blockDim),
                     .paragraphStyle: pStyle
                 ], range: el.lineRange)
+            if !el.isActive && prettyMode {
+                // Source indentation would push centered text off center.
+                let indent = el.text.prefix { $0 == " " || $0 == "\t" }.utf16.count
+                MarkdownLiveStyler.collapseWhitespaceRange(in: storage, range: NSRange(location: el.contentRange.location, length: indent))
+            }
             styleLaTeXInlineContent(
                 in: storage, string: string, nsString: nsString, range: el.contentRange,
-                lineRange: el.lineRange, baseFont: baseFont, isActiveLine: el.isActive,
+                lineRange: el.lineRange, baseFont: lineFont, isActiveLine: el.isActive,
                 docIndex: docIndex, theme: theme, dimFactor: blockDim, prettyMode: prettyMode,
-                baseDirectoryURL: baseDirectoryURL, decorations: &decorations
+                baseDirectoryURL: baseDirectoryURL, flowStyle: flow.style, decorations: &decorations
             )
+            flow.apply(layout.effects, documentFontSize: documentFontSize)
         }
         collapseContiguousLineRuns(collapsedLineRanges, in: storage, nsString: nsString)
         LaTeXBlockStyleCache.pendingGlyphInvalidationRanges.append(fullBlockRange)

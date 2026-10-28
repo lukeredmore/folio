@@ -4,20 +4,39 @@ import Foundation
 
 extension LaTeXLiveStyler {
 
-    /// The user macro calls on one line that render as their expansion. Spans that start inside
-    /// an expanded call belong to its arguments, so the styler skips them.
+    /// How the styler shows the `ProseMacroCandidate` spans of a line. Spans that start inside an
+    /// expanded call belong to its arguments, so the styler skips them.
     struct ProseMacroPlan {
         var expansions: [Int: (range: NSRange, segments: [LaTeXProseSegment])] = [:]
-        var coveredRanges: [NSRange] = []
+        /// Source ranges whose spans belong to the planned span with the given index.
+        var coveredRanges: [(owner: Int, range: NSRange)] = []
+        /// Calls drawn transparently: see `LaTeXTransparentMacro`.
+        var transparentCalls: [Int: TransparentCall] = [:]
+        /// Commands that print nothing, with their arguments.
+        var hiddenCommands: [Int: NSRange] = [:]
+        /// Other source that prints nothing, such as the braces of a `{\itshape ..}` group.
+        var hiddenRanges: [NSRange] = []
+        /// Font and alignment declarations, at the document offset where their scope starts.
+        var declarations: [(location: Int, declaration: LaTeXFlowDeclaration)] = []
 
         /// True when the span at `index`, which starts at document offset `location`, lies inside
-        /// an expanded call and is not that call.
+        /// an expanded call or a hidden command and is not that span.
         func hidesSpan(at index: Int, location: Int) -> Bool {
-            expansions[index] == nil && coveredRanges.contains { location >= $0.location && location < NSMaxRange($0) }
+            coveredRanges.contains { $0.owner != index && location >= $0.range.location && location < NSMaxRange($0.range) }
         }
     }
 
-    /// Plans expansions for the `ProseMacroCandidate` spans of a line. `lineText` is the scanned
+    /// A call whose name and argument braces are hidden and whose arguments are styled in place.
+    struct TransparentCall {
+        /// The macro name, with a `*` it consumed.
+        let nameRange: NSRange
+        /// Each argument with its braces, and without them. Nil for a default optional argument.
+        let arguments: [(raw: NSRange, content: NSRange)?]
+        /// Segments to draw before argument `n`; see `LaTeXTransparentMacro.separators`.
+        let separators: [Int: [LaTeXProseSegment]]
+    }
+
+    /// Plans how to show the `ProseMacroCandidate` spans of a line. `lineText` is the scanned
     /// text and starts at document offset `baseLoc`. Planning is off on the active line, which
     /// shows the source.
     static func planProseMacroExpansions(
@@ -28,17 +47,29 @@ extension LaTeXLiveStyler {
         enabled: Bool
     ) -> ProseMacroPlan {
         var plan = ProseMacroPlan()
-        guard enabled, !macros.isEmpty else { return plan }
+        guard enabled else { return plan }
         for idx in 0..<spans.count where spans[idx].kind == 12 {
             let loc = Int(spans[idx].full_loc)
             let docLoc = baseLoc + loc
             guard !plan.hidesSpan(at: idx, location: docLoc), let cmdPtr = spans[idx].cmd else { continue }
-            guard LaTeXProseMacroExpander.definition(forCall: String(cString: cmdPtr), in: macros) != nil,
-                let expansion = LaTeXProseMacroExpander.expandCall(source: lineText.substring(from: loc), macros: macros)
-            else { continue }
-            let range = NSRange(location: docLoc, length: expansion.consumedLength)
-            plan.expansions[idx] = (range, expansion.segments)
-            plan.coveredRanges.append(range)
+            let name = String(cString: cmdPtr)
+            if let (def, consumesStar) = LaTeXProseMacroExpander.definition(forCall: name, in: macros) {
+                if let expansion = LaTeXProseMacroExpander.expandCall(source: lineText.substring(from: loc), macros: macros) {
+                    let range = NSRange(location: docLoc, length: expansion.consumedLength)
+                    plan.expansions[idx] = (range, expansion.segments)
+                    plan.coveredRanges.append((idx, range))
+                } else if let layout = LaTeXTransparentMacro.analyze(def, macros: macros),
+                    let call = transparentCall(def, consumesStar: consumesStar, separators: layout.separators, lineText: lineText, at: loc, baseLoc: baseLoc)
+                {
+                    plan.transparentCalls[idx] = call
+                } else if def.argCount == 0, def.parameterText == nil, LaTeXLayoutLine.printsNothing(def.replacement, macros: macros) {
+                    let span = spans[idx]
+                    let length = span.full_len == span.open_len ? Int(span.full_len) : Int(span.open_len)
+                    plan.hiddenCommands[idx] = NSRange(location: docLoc, length: length)
+                }
+                continue
+            }
+            planBuiltinCandidate(spans[idx], index: idx, name: name, baseLoc: baseLoc, lineText: lineText, into: &plan)
         }
         return plan
     }
@@ -127,7 +158,7 @@ extension LaTeXLiveStyler {
             ))
     }
 
-    private static func renderProseExpansion(
+    static func renderProseExpansion(
         _ segments: [LaTeXProseSegment],
         range: NSRange,
         in storage: NSTextStorage,

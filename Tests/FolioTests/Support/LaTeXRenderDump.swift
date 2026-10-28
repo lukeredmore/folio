@@ -5,6 +5,8 @@ import AppKit
 /// visible characters, skipping collapsed or clear syntax. Runs with font traits are written
 /// `‹traits:text›` (b bold, i italic, tt monospace, u underline, sub, sup). Inline decorations
 /// that replace hidden source are written `⟦...⟧`, with `$...$` for math and `⏎` between lines.
+/// A line that joins the next one, because its line break is drawn as a space or not at all,
+/// ends in ` ↩`.
 enum LaTeXRenderDump {
     static func dump(_ storage: NSTextStorage, decorations: [LineDecoration]) -> String {
         let ns = storage.string as NSString
@@ -23,7 +25,11 @@ enum LaTeXRenderDump {
         var idx = 0
         while idx < ns.length {
             let lineRange = ns.lineRange(for: NSRange(location: idx, length: 0))
-            out += String(format: "%03d| ", lineNumber) + visibleText(storage, ns: ns, lineRange: lineRange, inline: inline) + "\n"
+            let newline = NSMaxRange(lineRange) - 1
+            let joinsNext =
+                newline < ns.length && ns.character(at: newline) == 0x0A
+                && storage.attribute(MarkdownLiveStyler.softLineBreakAttributeKey, at: newline, effectiveRange: nil) != nil
+            out += String(format: "%03d| ", lineNumber) + visibleText(storage, ns: ns, lineRange: lineRange, inline: inline) + (joinsNext ? " ↩" : "") + "\n"
             idx = NSMaxRange(lineRange)
             lineNumber += 1
         }
@@ -124,6 +130,7 @@ enum LaTeXRenderDump {
         case let .headingUnderline(level): return "heading underline level \(level)"
         case let .latexPreambleCard(title, _, _, _): return "preamble card \(title)"
         case let .latexInputCard(path, _, _, _): return "input card \(path)"
+        case .horizontalRule: return "horizontal rule"
         default: return nil
         }
     }

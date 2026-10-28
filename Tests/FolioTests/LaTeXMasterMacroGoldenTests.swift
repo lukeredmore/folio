@@ -38,6 +38,9 @@ final class LaTeXMasterMacroGoldenTests: XCTestCase {
         let cases: [(file: String, cursorLine: Int)] = [
             ("chapter.tex", 0),
             ("chapter.tex", 9),
+            // Inside a multi-line `\ENTRY` call, which shows its source.
+            ("chapter.tex", 18),
+            ("titlepage.tex", 0),
             ("texroot-chapter.tex", 0),
             ("emacs-chapter.tex", 0)
         ]

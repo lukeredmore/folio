@@ -17,15 +17,20 @@ extension LaTeXLiveStyler {
         dimFactor: CGFloat,
         prettyMode: Bool,
         baseDirectoryURL: URL?,
+        flowStyle: LaTeXProseStyle = LaTeXProseStyle(),
         decorations: inout [LineDecoration]
     ) {
         guard range.length > 0 else { return }
         _ = (string, baseDirectoryURL)
         let fontSize = baseFont.pointSize
 
-        // 1. Handle % comments (ignoring escaped \%)
+        // 1. Handle % comments (ignoring escaped \%). A range of several lines, a multi-line
+        // macro call, has a comment on each line; they are hidden and blanked out of the text.
         var effectiveRange = range
-        if let commentStart = findUnescapedPercent(in: nsString, range: range) {
+        var scannedText: String?
+        if nsString.range(of: "\n", options: [], range: range).location != NSNotFound {
+            scannedText = maskLineComments(in: nsString, range: range, storage: storage, hide: !isActiveLine && prettyMode)
+        } else if let commentStart = findUnescapedPercent(in: nsString, range: range) {
             let commentRange = NSRange(location: commentStart, length: NSMaxRange(range) - commentStart)
             storage.addAttribute(MKey.noSpellCheck, value: true, range: commentRange)
             let isWholeLineComment = nsString.substring(
@@ -55,7 +60,7 @@ extension LaTeXLiveStyler {
             effectiveRange = NSRange(location: range.location, length: max(0, commentStart - range.location))
         }
         guard effectiveRange.length > 0 else { return }
-        let lineSub = nsString.substring(with: effectiveRange)
+        let lineSub = scannedText ?? nsString.substring(with: effectiveRange)
         guard lineSub.contains("\\") || lineSub.contains("$") || lineSub.contains("``") || lineSub.contains("''") else {
             return
         }
@@ -76,6 +81,11 @@ extension LaTeXLiveStyler {
             spans: spans, baseLoc: baseLoc, in: storage, nsString: nsString, baseFont: baseFont,
             fontSize: fontSize, isActiveLine: isActiveLine, prettyMode: prettyMode,
             docIndex: docIndex, theme: theme, dimFactor: dimFactor, plan: plan, decorations: &decorations
+        )
+
+        applyInlineDeclarations(
+            plan.declarations, text: lineSub as NSString, baseLoc: baseLoc, lineRange: lineRange, flowStyle: flowStyle,
+            in: storage, baseFont: baseFont, docIndex: docIndex, theme: theme
         )
 
         // Pass 2: Leaf spans (InlineMath, Cite, Ref, HiddenMeta, LogoCmd, TextBackslash, ProseMacro, TexQuote, EscapedChar)
@@ -128,6 +138,18 @@ extension LaTeXLiveStyler {
                     in: storage, range: fullRange, isActiveLine: isActiveLine || !prettyMode,
                     theme: theme, dimFactor: dimFactor
                 )
+            case 12 where plan.transparentCalls[idx] != nil:
+                if let call = plan.transparentCalls[idx] {
+                    styleTransparentCall(
+                        call, in: storage, nsString: nsString, baseFont: baseFont, docIndex: docIndex, theme: theme,
+                        dimFactor: dimFactor, decorations: &decorations
+                    )
+                }
+            case 12 where plan.hiddenCommands[idx] != nil:
+                if let hidden = plan.hiddenCommands[idx] {
+                    storage.addAttribute(MKey.noSpellCheck, value: true, range: hidden)
+                    MarkdownLiveStyler.collapseWhitespaceRange(in: storage, range: hidden)
+                }
             case 12: // ProseMacroCandidate
                 styleProseMacroSpan(
                     sp, expansion: plan.expansions[idx], baseLoc: baseLoc, in: storage, nsString: nsString,
@@ -145,6 +167,37 @@ extension LaTeXLiveStyler {
                 break
             }
         }
+        for hidden in plan.hiddenRanges {
+            MarkdownLiveStyler.collapseWhitespaceRange(in: storage, range: hidden)
+        }
+        if prettyMode && !isActiveLine {
+            styleControlSymbols(text: lineSub as NSString, baseLoc: baseLoc, in: storage, baseFont: baseFont)
+        }
+    }
+
+    /// Hides the `%` comment of each line in `range` and returns the text of `range` with the
+    /// comments blanked out, so it keeps its UTF-16 offsets. The line break after a comment
+    /// prints nothing in TeX, so it is collapsed too.
+    private static func maskLineComments(in nsString: NSString, range: NSRange, storage: NSTextStorage, hide: Bool) -> String {
+        var units = [unichar](repeating: 0, count: range.length)
+        nsString.getCharacters(&units, range: range)
+        var lineStart = range.location
+        while lineStart < NSMaxRange(range) {
+            let lineEnd = nsString.range(of: "\n", options: [], range: NSRange(location: lineStart, length: NSMaxRange(range) - lineStart))
+            let end = lineEnd.location == NSNotFound ? NSMaxRange(range) : lineEnd.location
+            if let commentStart = findUnescapedPercent(in: nsString, range: NSRange(location: lineStart, length: end - lineStart)) {
+                for i in commentStart..<end { units[i - range.location] = 0x20 }
+                storage.addAttribute(MKey.noSpellCheck, value: true, range: NSRange(location: commentStart, length: end - commentStart))
+                if hide {
+                    MarkdownLiveStyler.collapseWhitespaceRange(in: storage, range: NSRange(location: commentStart, length: end - commentStart))
+                    if lineEnd.location != NSNotFound {
+                        storage.addAttribute(MarkdownLiveStyler.collapsedTokenAttributeKey, value: true, range: lineEnd)
+                    }
+                }
+            }
+            lineStart = end + 1
+        }
+        return String(utf16CodeUnits: units, count: units.count)
     }
 
     private static func styleInlineMathSpan(

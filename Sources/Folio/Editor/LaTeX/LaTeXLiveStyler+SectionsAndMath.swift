@@ -33,6 +33,7 @@ extension LaTeXLiveStyler {
         focusMode: Bool,
         dimFactor: CGFloat,
         baseDirectoryURL: URL?,
+        flow: LaTeXFlowState = LaTeXFlowState(),
         headings: inout [OutlineHeading],
         decorations: inout [LineDecoration]
     ) -> (nextIndex: Int, lineDelta: Int)? {
@@ -216,7 +217,7 @@ extension LaTeXLiveStyler {
                 theme: theme, typography: typography, textAlignment: textAlignment, baseFont: baseFont,
                 effectiveBaseSize: effectiveBaseSize, effectiveContainerWidth: effectiveContainerWidth,
                 prettyMode: prettyMode, focusMode: focusMode, baseDirectoryURL: baseDirectoryURL,
-                decorations: &decorations
+                flow: flow, decorations: &decorations
             )
         }
 

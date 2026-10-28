@@ -3,6 +3,15 @@ import Foundation
 /// TeX parameter text of a `\def` that has literal delimiters, such as `\def\IT#1 #2 {...}`.
 /// `leading` must appear right after the macro name. `delimiters[n]` ends argument `n + 1`; an
 /// empty delimiter means that argument is undelimited.
+/// Where one macro argument is in the source characters, and its text.
+struct LaTeXArgumentSpan: Equatable, Sendable {
+    /// The argument with its braces or brackets. Nil for a default optional argument.
+    let raw: Range<Int>?
+    /// The argument without its braces. Nil for a default optional argument.
+    let content: Range<Int>?
+    let value: String
+}
+
 public struct LaTeXParameterText: Equatable, Hashable, Sendable {
     public let leading: String
     public let delimiters: [String]
@@ -116,44 +125,55 @@ extension LaTeXMacroExpander {
     /// them. Undelimited arguments skip spaces and take one token or braced group, without its
     /// braces. A delimited argument takes the text up to its delimiter at brace depth zero; when
     /// that text is one braced group, the braces are removed. The end of `chars` counts as a
-    /// space, because the caller passes a single line and TeX reads a line end as a space.
+    /// space, because TeX reads a line end as a space.
     static func readArguments(
         for def: LaTeXMacroDefinition,
         in chars: [Character],
         from start: Int
     ) -> (args: [String], end: Int)? {
+        guard let (spans, end) = readArgumentSpans(for: def, in: chars, from: start) else { return nil }
+        return (spans.map(\.value), end)
+    }
+
+    /// Reads the arguments as `readArguments` does and also returns where each one is in `chars`.
+    static func readArgumentSpans(
+        for def: LaTeXMacroDefinition,
+        in chars: [Character],
+        from start: Int
+    ) -> (spans: [LaTeXArgumentSpan], end: Int)? {
         if let parameterText = def.parameterText {
             return readDelimitedArguments(parameterText, in: chars, from: start)
         }
         var idx = start
-        var args: [String] = []
+        var spans: [LaTeXArgumentSpan] = []
         if let defaultOpt = def.defaultFirstArg, def.argCount > 0 {
             let probe = skipSpaces(chars, from: idx)
             if let (optVal, afterOpt) = readBracketGroup(chars, at: probe) {
-                args.append(optVal)
+                spans.append(LaTeXArgumentSpan(raw: probe..<afterOpt, content: (probe + 1)..<(afterOpt - 1), value: optVal))
                 idx = afterOpt
             } else {
-                args.append(defaultOpt)
+                spans.append(LaTeXArgumentSpan(raw: nil, content: nil, value: defaultOpt))
             }
         }
-        while args.count < def.argCount {
-            guard let (value, after) = readUndelimitedArgument(chars, at: skipSpaces(chars, from: idx)) else { return nil }
-            args.append(value)
-            idx = after
+        while spans.count < def.argCount {
+            guard let span = readUndelimitedArgument(chars, at: skipSpaces(chars, from: idx)) else { return nil }
+            spans.append(span)
+            idx = span.raw?.upperBound ?? idx
         }
-        return (args, idx)
+        return (spans, idx)
     }
 
-    private static func readUndelimitedArgument(_ chars: [Character], at idx: Int) -> (String, Int)? {
-        guard idx < chars.count, chars[idx] != "}" else { return nil }
-        return readMacroArgument(chars, at: idx)
+    private static func readUndelimitedArgument(_ chars: [Character], at idx: Int) -> LaTeXArgumentSpan? {
+        guard idx < chars.count, chars[idx] != "}", let (value, after) = readMacroArgument(chars, at: idx) else { return nil }
+        let content = chars[idx] == "{" ? (idx + 1)..<(after - 1) : idx..<after
+        return LaTeXArgumentSpan(raw: idx..<after, content: content, value: value)
     }
 
     private static func readDelimitedArguments(
         _ parameterText: LaTeXParameterText,
         in chars: [Character],
         from start: Int
-    ) -> (args: [String], end: Int)? {
+    ) -> (spans: [LaTeXArgumentSpan], end: Int)? {
         // TeX skips spaces after a control word, so the parameter text starts at the next token.
         var idx = skipSpaces(chars, from: start)
         let leading = parameterText.leading.trimmingCharacters(in: .whitespaces)
@@ -161,31 +181,32 @@ extension LaTeXMacroExpander {
             guard let after = matchDelimiter(leading, in: chars, at: idx) else { return nil }
             idx = after
         }
-        var args: [String] = []
+        var spans: [LaTeXArgumentSpan] = []
         for delimiter in parameterText.delimiters {
             if delimiter.isEmpty {
-                guard let (value, after) = readUndelimitedArgument(chars, at: skipSpaces(chars, from: idx)) else { return nil }
-                args.append(value)
-                idx = after
+                guard let span = readUndelimitedArgument(chars, at: skipSpaces(chars, from: idx)) else { return nil }
+                spans.append(span)
+                idx = span.raw?.upperBound ?? idx
                 continue
             }
-            guard let (value, after) = readUntilDelimiter(delimiter, in: chars, from: idx) else { return nil }
-            args.append(value)
+            guard let (span, after) = readUntilDelimiter(delimiter, in: chars, from: idx) else { return nil }
+            spans.append(span)
             idx = after
         }
-        return (args, idx)
+        return (spans, idx)
     }
 
     private static func readUntilDelimiter(
         _ delimiter: String,
         in chars: [Character],
         from start: Int
-    ) -> (String, Int)? {
+    ) -> (LaTeXArgumentSpan, Int)? {
         var depth = 0
         var idx = start
         while idx <= chars.count {
             if depth == 0, let after = matchDelimiter(delimiter, in: chars, at: idx) {
-                return (stripSingleGroup(String(chars[start..<idx])), after)
+                let content = singleGroupContent(chars, in: start..<idx)
+                return (LaTeXArgumentSpan(raw: start..<idx, content: content, value: String(chars[content])), after)
             }
             guard idx < chars.count else { return nil }
             switch chars[idx] {
@@ -236,9 +257,11 @@ extension LaTeXMacroExpander {
         return idx >= 0 && idx < pattern.count - 1 && pattern[idx] == "\\"
     }
 
-    private static func stripSingleGroup(_ text: String) -> String {
-        let chars = Array(text)
-        guard chars.first == "{", let (inner, after) = readBracedGroup(chars, at: 0), after == chars.count else { return text }
-        return inner
+    /// The inside of `range` when it is exactly one braced group, else `range`.
+    private static func singleGroupContent(_ chars: [Character], in range: Range<Int>) -> Range<Int> {
+        guard range.count >= 2, chars[range.lowerBound] == "{",
+            let (_, after) = readBracedGroup(chars, at: range.lowerBound), after == range.upperBound
+        else { return range }
+        return (range.lowerBound + 1)..<(range.upperBound - 1)
     }
 }

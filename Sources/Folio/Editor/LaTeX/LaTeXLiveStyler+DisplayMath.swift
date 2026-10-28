@@ -251,6 +251,9 @@ extension LaTeXLiveStyler {
 
         let endChar = commentLines.last.map { NSMaxRange($0.lineRange) } ?? NSMaxRange(lineRange)
         let fullBlockRange = NSRange(location: lineRange.location, length: endChar - lineRange.location)
+        // The block ends where a line without a comment follows, so it depends on that line.
+        let readEnd = scanIndex < fullLength ? NSMaxRange(nsString.lineRange(for: NSRange(location: scanIndex, length: 0))) : fullLength
+        LaTeXBlockStyleCache.noteContext(NSRange(location: lineRange.location, length: readEnd - lineRange.location))
         if fullBlockRange.length > lineRange.length {
             LaTeXBlockStyleCache.resetAttributes(
                 in: storage,

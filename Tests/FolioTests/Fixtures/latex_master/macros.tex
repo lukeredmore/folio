@@ -11,9 +11,25 @@
 \newcommand{\Yes}{\text{\ttfamily YES}}
 \newcommand{\Ret}[1]{\uline{#1}}
 \def\IT#1 #2 {\Kw{#1}\quad #2}
-% A macro that calls itself, and one with a layout command, both stay as source.
+% A macro that calls itself stays as source. A macro with a layout command shows its argument.
 \newcommand{\Spin}{\Spin}
 \newcommand{\Layout}[1]{\vspace{2pt}#1}
 \newenvironment{ENTRIES}[1]%
   {\begin{list}{}{\setlength{\leftmargin}{#1}}}%
   {\end{list}}
+% A list entry whose body only does layout, as in a two-column reference card.
+\def\startnote{$\triangleright$\hskip1ex}
+\newlength{\EntryWidth}
+\def\ENTRY#1 #2 {%
+  \settowidth{\EntryWidth}{#1}%
+  \item{}#1\hfill\startnote#2%
+}
+% Alternatives stacked in an array, with or without an opening brace.
+\newcommand{\Stack}[2]{\text{\(\!%
+    \left.\begin{array}{l}#1\end{array}\!\right#2%
+    \)}}
+\newcommand{\Choice}[2]{\text{\(%
+    \left\{\begin{array}{l}#1\end{array}\right#2%
+    \)}}
+% A hook that prints nothing.
+\newcommand{\Hook}{\clearpage}

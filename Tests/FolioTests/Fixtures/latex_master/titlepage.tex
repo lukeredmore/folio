@@ -1,0 +1,31 @@
+% Title page of the Widget Shell handbook. main.tex inputs it.
+\renewcommand{\rmdefault}{ptm} %% serif title
+\newlength{\coverwidth}
+\setlength{\coverwidth}{6cm}
+\begin{titlepage}
+  \vspace*{10mm}
+  \begin{center}
+    \begin{minipage}{\coverwidth}
+      \begin{center}
+        \rmfamily\mdseries\itshape\fontsize{20}{0}\selectfont
+        Widget Shell\\
+      \end{center}
+    \end{minipage}
+    \vfill
+    \begin{minipage}{\coverwidth}
+      \sffamily\bfseries
+      Field Guide\/\\[2mm]
+      \rule[3mm]{\textwidth}{1mm}\\
+      \upshape\mdseries Second printing
+    \end{minipage}
+  \end{center}
+  \thispagestyle{empty}
+  \markboth{Widget Shell}{Widget Shell}
+\end{titlepage}
+\section*{\contentsname}
+Printed by \Kw{Widgets}\hfill{\itshape in color}\/, with \copyright\ notes.
+Serif: \renewcommand{\rmdefault}{ptm}set.
+\kern-1pt\hfill\Hook
+\renewenvironment{theindex}%
+  {\begin{list}{}{}}%
+  {\end{list}}

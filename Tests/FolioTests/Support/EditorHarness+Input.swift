@@ -14,11 +14,12 @@ extension EditorHarness {
         "b": 11, "q": 12, "w": 13, "e": 14, "r": 15, "y": 16, "t": 17, "1": 18, "2": 19,
         "3": 20, "4": 21, "6": 22, "5": 23, "9": 25, "7": 26, "8": 28, "0": 29, "o": 31,
         "u": 32, "i": 34, "p": 35, "l": 37, "j": 38, "k": 40, "n": 45, "m": 46, " ": 49,
-        "-": 27, "]": 30, "[": 33, "`": 50, "#": 20, "$": 21, "|": 42, ":": 41, "/": 44
+        "-": 27, "]": 30, "[": 33, "`": 50, "#": 20, "$": 21, "|": 42, ":": 41, "/": 44,
+        "\\": 42, "{": 33, "}": 30, "%": 23
     ]
 
     /// Characters that `type(_:)` sends with the Shift modifier, as on a US keyboard.
-    private static let shiftedCharacters: Set<Character> = ["#", "$", "|", ":"]
+    private static let shiftedCharacters: Set<Character> = ["#", "$", "|", ":", "{", "}", "%"]
 
     enum Arrow {
         case left
@@ -31,14 +32,17 @@ extension EditorHarness {
         }
     }
 
-    /// Types lowercase letters, digits, spaces, and the Markdown punctuation in `keyCodes`, one
-    /// key at a time. Drains the run loop until idle after each key.
+    /// Types letters, digits, spaces, and the Markdown and LaTeX punctuation in `keyCodes`, one
+    /// key at a time. Uppercase letters use the Shift modifier. Drains the run loop until idle
+    /// after each key.
     func type(_ text: String) {
         for character in text {
-            guard let keyCode = Self.keyCodes[character] else {
+            let lowercased = Character(character.lowercased())
+            guard let keyCode = Self.keyCodes[character] ?? (character.isUppercase ? Self.keyCodes[lowercased] : nil) else {
                 preconditionFailure("EditorHarness.type does not support \(character.debugDescription)")
             }
-            let modifiers: NSEvent.ModifierFlags = Self.shiftedCharacters.contains(character) ? [.shift] : []
+            let shifted = Self.shiftedCharacters.contains(character) || character.isUppercase
+            let modifiers: NSEvent.ModifierFlags = shifted ? [.shift] : []
             sendKey(keyCode: keyCode, characters: String(character), modifiers: modifiers)
         }
     }
