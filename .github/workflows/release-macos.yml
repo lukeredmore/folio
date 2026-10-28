@@ -173,7 +173,7 @@ jobs:
           FOLIO_APP_GRAPH_HASH: ${{ steps.graph.outputs.hash }}
           APPLE_CODESIGN_IDENTITY: ${{ steps.codesign.outputs.identity || '-' }}
         run: |
-          RELEASE_FLAGS=(--config=release "--@build_bazel_rules_apple//apple/build_settings:signing_certificate_name=${APPLE_CODESIGN_IDENTITY}")
+          RELEASE_FLAGS=(--config=release "--//tools/release:codesign_identity=${APPLE_CODESIGN_IDENTITY}")
           bazel build "${RELEASE_FLAGS[@]}" //:FolioDmg
           cp "$(bazel cquery "${RELEASE_FLAGS[@]}" --output=files //:FolioDmg)" Folio.dmg
           chmod u+w Folio.dmg

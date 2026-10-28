@@ -1,5 +1,4 @@
-load("@bazel_skylib//lib:selects.bzl", "selects")
-load("@bazel_skylib//rules:common_settings.bzl", "bool_flag")
+load("@bazel_skylib//rules:common_settings.bzl", "bool_flag", "string_flag")
 
 package(default_visibility = ["//visibility:public"])
 
@@ -20,21 +19,9 @@ config_setting(
     flag_values = {":release": "true"},
 )
 
-# True when rules_apple signs ad hoc: no identity, or the "-" pseudo-identity.
-selects.config_setting_group(
-    name = "adhoc_signing",
-    match_any = [
-        ":no_signing_identity",
-        ":dash_signing_identity",
-    ],
-)
-
-config_setting(
-    name = "no_signing_identity",
-    flag_values = {"@build_bazel_rules_apple//apple/build_settings:signing_certificate_name": ""},
-)
-
-config_setting(
-    name = "dash_signing_identity",
-    flag_values = {"@build_bazel_rules_apple//apple/build_settings:signing_certificate_name": "-"},
+# Keychain identity that signs Folio.app and Folio.dmg inside //:FolioDmg.
+# Empty or "-" keeps the ad hoc signature from rules_apple.
+string_flag(
+    name = "codesign_identity",
+    build_setting_default = "",
 )

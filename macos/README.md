@@ -102,7 +102,7 @@ Produces `bazel-bin/macos/FolioApp/Folio.dmg` (compressed `UDZO` disk image cont
 
 ## Code Signing & GitHub Actions Secrets
 
-Nothing sensitive is ever committed to the repository. By default, Bazel signs `Folio.app` ad hoc (`-`). To sign with a certificate from your keychain, add `--@build_bazel_rules_apple//apple/build_settings:signing_certificate_name="<identity>"` to the build. That signs `Folio.app` with the hardened runtime and a timestamp, and signs `Folio.dmg`. CI notarizes and staples the DMG when the notarization secrets are set.
+Nothing sensitive is ever committed to the repository. By default, Bazel signs `Folio.app` ad hoc (`-`). To sign with a certificate from your keychain, build `//:FolioDmg` with `--//tools/release:codesign_identity="<identity>"`. That re-signs the `Folio.app` in the DMG with the hardened runtime and a timestamp, and signs `Folio.dmg`. CI notarizes and staples the DMG when the notarization secrets are set.
 
 To have GitHub Actions sign the app bundles and DMGs with your Apple Developer certificate:
 

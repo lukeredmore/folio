@@ -45,13 +45,6 @@ macos_application(
     },
     bundle_id = "app.folio.macos",
     bundle_name = "Folio",
-    codesignopts = select({
-        "//tools/release:adhoc_signing": [],
-        "//conditions:default": [
-            "--options=runtime",
-            "--timestamp",
-        ],
-    }),
     infoplists = [
         "Info.plist",
         ":StampedInfoPlist",
