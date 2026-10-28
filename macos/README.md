@@ -77,17 +77,18 @@ Every `Folio.app` bundle (including inside `Folio.dmg`) embeds the executable `f
   folio --help / --version
   ```
 
-### 3. Build Stamped `./Folio.app` Bundle
+### 3. Build the Stamped Release `Folio.app` Bundle
 ```bash
-./build_app.sh
-open Folio.app
+bazel build --config=release //:FolioApp
+open bazel-bin/macos/FolioApp/FolioApp_archive-root/Folio.app
 ```
+`--config=release` builds with `-c opt` and stamps `CFBundleVersion` (commit count), `FolioCommitSHA`, `FolioBuildChannel=release`, `FolioEngineVersion` (from `core/folio_engine/Cargo.toml`), and the release icon. Set `FOLIO_VERSION` to override `CFBundleShortVersionString`. To install the `folio` command, use **Folio → Install 'folio' Command in PATH…**.
 
 ### 4. Package Distributable `Folio.dmg`
 ```bash
-./scripts/package_dmg.sh
+bazel build --config=release //:FolioDmg
 ```
-Produces `./Folio.dmg` (compressed `UDZO` disk image containing `Folio.app` with `Contents/Resources/bin/folio` and an `/Applications` drag-and-drop shortcut).
+Produces `bazel-bin/macos/FolioApp/Folio.dmg` (compressed `UDZO` disk image containing `Folio.app` with `Contents/Resources/bin/folio` and an `/Applications` drag-and-drop shortcut). `hdiutil` is not hermetic, so this action runs locally without the Bazel sandbox.
 
 ---
 
@@ -101,7 +102,7 @@ Produces `./Folio.dmg` (compressed `UDZO` disk image containing `Folio.app` with
 
 ## Code Signing & GitHub Actions Secrets
 
-Nothing sensitive is ever committed to the repository. By default, if no signing secrets are present, `build_app.sh` and `build_zed_app.sh` fall back to ad-hoc signing (`-`).
+Nothing sensitive is ever committed to the repository. By default, Bazel signs `Folio.app` ad hoc (`-`). To sign with a certificate from your keychain, add `--@build_bazel_rules_apple//apple/build_settings:signing_certificate_name="<identity>"` to the build. That signs `Folio.app` with the hardened runtime and a timestamp, and signs `Folio.dmg`. CI notarizes and staples the DMG when the notarization secrets are set.
 
 To have GitHub Actions sign the app bundles and DMGs with your Apple Developer certificate:
 

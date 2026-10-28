@@ -32,6 +32,7 @@ To fix formatting:
 ```bash
 bazel run @rules_rust//:rustfmt -- //core/... //zed/...
 git ls-files '*.swift' | xargs xcrun swift-format format --in-place --parallel --configuration .swift-format
+bazel run //tools:buildifier
 ```
 
 Other commands:
@@ -40,7 +41,9 @@ Other commands:
 bazel build //:FolioApp
 bazel run //:FolioApp -- path/to/file.md:10:1
 bazel run //:folio -- path/to/file.md:10:1
-./zed/install_extension.sh
+bazel run //:install_zed_extension
+bazel build --config=release //:FolioDmg //:folio_zed_extension
+bazel run //tools:setup_sourcekit_bsp  # Swift indexing for sourcekit-lsp; see README.md
 ```
 
 Both `bazel run` launchers accept the full `folio` CLI interface (`[path[:line[:column]] ...]`, directories, `.`, `~`, `file://`, `--help`, `--version`) and resolve relative paths against your shell's working directory (`BUILD_WORKING_DIRECTORY`).
