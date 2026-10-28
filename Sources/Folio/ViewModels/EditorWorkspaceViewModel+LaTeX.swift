@@ -62,7 +62,7 @@ extension EditorWorkspaceViewModel {
         isDirty = false
         currentSelectedRange = NSRange(location: 0, length: 0)
         isApplyingInternalStateChange = false
-        userDefaults.set(0, forKey: Self.selectedCursorLocationDefaultsKey)
+        setSessionValue(0, forKey: Self.selectedCursorLocationDefaultsKey)
         stats = DocumentStats.compute(for: markdownText)
         if activeTextView == nil {
             let analysis = MarkdownLiveStyler.applyStyles(

@@ -80,7 +80,7 @@ extension EditorWorkspaceViewModel {
             scheduleAutoSave()
         }
         if !isRestoringState && (!isLiveKeystrokeInProgress || autoSaveDelay <= 0) {
-            userDefaults.set(selectedRange.location, forKey: Self.selectedCursorLocationDefaultsKey)
+            setSessionValue(selectedRange.location, forKey: Self.selectedCursorLocationDefaultsKey)
         }
         let updatedStats = DocumentStats.compute(for: markdownText, selectedRange: selectedRange)
         if stats != updatedStats {

@@ -28,6 +28,14 @@ public struct MainWindowView: View {
         )
     }
 
+    /// Only the active window shows the app-wide update sheet.
+    private var updateSheetBinding: Binding<Bool> {
+        Binding(
+            get: { updateManager.showUpdateSheet && viewModel.presentsAppWideSheets },
+            set: { updateManager.showUpdateSheet = $0 }
+        )
+    }
+
     public var body: some View {
         ZStack {
             NavigationSplitView(columnVisibility: $columnVisibility) {
@@ -162,7 +170,7 @@ public struct MainWindowView: View {
         .sheet(item: $viewModel.expandedDiagram) { diagram in
             DiagramZoomSheet(diagram: diagram)
         }
-        .sheet(isPresented: $updateManager.showUpdateSheet) {
+        .sheet(isPresented: updateSheetBinding) {
             AppUpdateModalView(updateManager: updateManager)
         }
     }
@@ -170,11 +178,15 @@ public struct MainWindowView: View {
 
 @MainActor
 public final class FolioAppDelegate: NSObject, NSApplicationDelegate {
-    public weak var viewModel: EditorWorkspaceViewModel?
-    private var pendingOpenPaths: [String] = []
+    public var registry: DocumentWindowRegistry = .shared
 
     public func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
         true
+    }
+
+    public func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
+        registry.isTerminating = true
+        return .terminateNow
     }
 
     public func application(_ application: NSApplication, open urls: [URL]) {
@@ -187,19 +199,11 @@ public final class FolioAppDelegate: NSObject, NSApplicationDelegate {
         sender.reply(toOpenOrPrint: .success)
     }
 
-    public func drainPendingOpenPaths() -> [String] {
-        let queued = pendingOpenPaths
-        pendingOpenPaths.removeAll()
-        return queued
-    }
-
     private func handleOpenPaths(_ paths: [String]) {
         guard !paths.isEmpty else { return }
-        if let vm = viewModel {
-            vm.openPathsFromCLI(paths)
+        registry.openPaths(paths)
+        if registry.activeViewModel != nil {
             NSApplication.shared.activate(ignoringOtherApps: true)
-        } else {
-            pendingOpenPaths.append(contentsOf: paths)
         }
     }
 }
@@ -209,8 +213,8 @@ public final class FolioAppDelegate: NSObject, NSApplicationDelegate {
 #endif
 public struct FolioApp: App {
     @NSApplicationDelegateAdaptor(FolioAppDelegate.self) var appDelegate
-    @StateObject var viewModel = EditorWorkspaceViewModel()
     @ObservedObject var updateManager = AppUpdateManager.shared
+    private let registry = DocumentWindowRegistry.shared
 
     public init() {
         FolioCLIManager.handleImmediateCLIFlagsIfNeeded()
@@ -219,31 +223,33 @@ public struct FolioApp: App {
     }
 
     public var body: some Scene {
-        WindowGroup("Folio") {
-            MainWindowView(viewModel: viewModel)
-                .frame(minWidth: 720, minHeight: 480)
-                .onAppear {
-                    appDelegate.viewModel = viewModel
-                    NSApplication.shared.activate(ignoringOtherApps: true)
-                    FolioCLIManager.shared.setupCLIOnFirstLaunchIfNeeded(userDefaults: viewModel.userDefaults)
-                    let cliArgs = FolioCLIManager.extractCommandLinePaths(from: ProcessInfo.processInfo.arguments)
-                    let queuedPaths = FolioCLIManager.drainPendingOpenRequests()
-                    let delegatePaths = appDelegate.drainPendingOpenPaths()
-                    let initialPaths = FolioCLIManager.deduplicateCommandLinePaths(cliArgs + queuedPaths + delegatePaths)
-                    viewModel.openPathsFromCLI(initialPaths)
-                    FolioCLIManager.shared.startListeningForCLIOpenSignal { paths in
-                        viewModel.openPathsFromCLI(FolioCLIManager.deduplicateCommandLinePaths(paths))
-                        NSApplication.shared.activate(ignoringOtherApps: true)
-                    }
-                    updateManager.checkForUpdatesOnLaunchIfNeeded()
-                    viewModel.remoteWorkspaceManager.startBackgroundSyncLoop()
-                }
+        WindowGroup("Folio", for: DocumentWindowValue.self) { $value in
+            DocumentWindowRoot(value: value, registry: registry, onAppear: performLaunchSetupIfNeeded)
+        } defaultValue: {
+            DocumentWindowValue()
         }
         .defaultSize(width: 1120, height: 760)
         .windowStyle(.titleBar)
         .windowToolbarStyle(.unified(showsTitle: false))
         .commands {
-            FolioAppCommands(viewModel: viewModel, updateManager: updateManager)
+            FolioCommands(registry: registry, updateManager: updateManager)
         }
+    }
+
+    /// Opens launch paths in the first window and starts app-wide services, once per launch.
+    private func performLaunchSetupIfNeeded(_ viewModel: EditorWorkspaceViewModel) {
+        guard registry.claimLaunchSetup(for: viewModel) else { return }
+        appDelegate.registry = registry
+        NSApplication.shared.activate(ignoringOtherApps: true)
+        FolioCLIManager.shared.setupCLIOnFirstLaunchIfNeeded(userDefaults: registry.userDefaults)
+        let cliArgs = FolioCLIManager.extractCommandLinePaths(from: ProcessInfo.processInfo.arguments)
+        let queuedPaths = FolioCLIManager.drainPendingOpenRequests()
+        registry.openPaths(FolioCLIManager.deduplicateCommandLinePaths(cliArgs + queuedPaths))
+        FolioCLIManager.shared.startListeningForCLIOpenSignal { [registry] paths in
+            registry.openPaths(FolioCLIManager.deduplicateCommandLinePaths(paths))
+            NSApplication.shared.activate(ignoringOtherApps: true)
+        }
+        updateManager.checkForUpdatesOnLaunchIfNeeded()
+        registry.remoteWorkspaceManager.startBackgroundSyncLoop()
     }
 }

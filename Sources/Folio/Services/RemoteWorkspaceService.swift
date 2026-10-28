@@ -18,9 +18,23 @@ public final class RemoteWorkspaceManager: ObservableObject {
     @Published public var fileSyncStatuses: [URL: RemoteFileSyncStatus] = [:]
     @Published public var pendingWriteQueue: [PendingRemoteWrite] = []
 
-    /// Callback invoked whenever a remote mount's mirror directory or file content changes,
-    /// allowing `EditorWorkspaceViewModel` to refresh the file tree and open editor buffer.
-    public var onMirrorUpdated: ((UUID, [URL]) -> Void)?
+    /// Observers called when a remote mount's mirror directory or file content changes.
+    /// Each open document window registers one, so every tab can refresh its tree and buffer.
+    private var mirrorUpdateObservers: [ObjectIdentifier: (owner: WeakOwner, handler: (UUID, [URL]) -> Void)] = [:]
+
+    struct WeakOwner { weak var object: AnyObject? }
+
+    /// Registers `handler` for mirror updates until `owner` is deallocated.
+    public func observeMirrorUpdates(owner: AnyObject, _ handler: @escaping (UUID, [URL]) -> Void) {
+        mirrorUpdateObservers[ObjectIdentifier(owner)] = (WeakOwner(object: owner), handler)
+    }
+
+    func notifyMirrorUpdated(_ mountID: UUID, _ urls: [URL]) {
+        mirrorUpdateObservers = mirrorUpdateObservers.filter { $0.value.owner.object != nil }
+        for observer in mirrorUpdateObservers.values {
+            observer.handler(mountID, urls)
+        }
+    }
 
     public let mirrorRootURL: URL
     public var transport: RemoteFileTransport

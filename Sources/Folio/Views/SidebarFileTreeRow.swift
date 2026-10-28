@@ -12,6 +12,7 @@ struct SidebarArticleRow: View {
     let onSyncMount: (UUID) -> Void
     let onDisconnectMount: (UUID) -> Void
     let onDeleteItem: (URL) -> Void
+    let onOpenInNewTab: (URL) -> Void
     let sshDisplayPath: String?
 
     var body: some View {
@@ -54,7 +55,8 @@ struct SidebarArticleRow: View {
                 onNewLaTeXFileInDirectory: onNewLaTeXFileInDirectory,
                 onSyncMount: onSyncMount,
                 onDisconnectMount: onDisconnectMount,
-                onDeleteItem: onDeleteItem
+                onDeleteItem: onDeleteItem,
+                onOpenInNewTab: onOpenInNewTab
             )
         }
     }
@@ -70,6 +72,7 @@ struct SidebarFileRow: View {
     let onSyncMount: (UUID) -> Void
     let onDisconnectMount: (UUID) -> Void
     let onDeleteItem: (URL) -> Void
+    let onOpenInNewTab: (URL) -> Void
     let sshDisplayPath: String?
 
     private var iconName: String {
@@ -103,7 +106,8 @@ struct SidebarFileRow: View {
                 onNewLaTeXFileInDirectory: onNewLaTeXFileInDirectory,
                 onSyncMount: onSyncMount,
                 onDisconnectMount: onDisconnectMount,
-                onDeleteItem: onDeleteItem
+                onDeleteItem: onDeleteItem,
+                onOpenInNewTab: onOpenInNewTab
             )
         }
     }
@@ -117,8 +121,17 @@ struct SidebarNodeContextMenu: View {
     let onSyncMount: (UUID) -> Void
     let onDisconnectMount: (UUID) -> Void
     let onDeleteItem: (URL) -> Void
+    let onOpenInNewTab: (URL) -> Void
 
     var body: some View {
+        if !node.isDirectory {
+            Button {
+                onOpenInNewTab(node.url)
+            } label: {
+                Label("Open in New Tab", systemImage: "plus.square.on.square")
+            }
+            Divider()
+        }
         if node.isDirectory {
             Button {
                 onNewFileInDirectory(node.url)

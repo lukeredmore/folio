@@ -22,7 +22,7 @@ extension EditorWorkspaceViewModel {
         currentSelectedRange = NSRange(location: 0, length: 0)
         pendingScrollToCharacterLocation = nil
         isApplyingInternalStateChange = false
-        userDefaults.set(0, forKey: Self.selectedCursorLocationDefaultsKey)
+        setSessionValue(0, forKey: Self.selectedCursorLocationDefaultsKey)
         stats = DocumentStats.compute(for: markdownText)
         if let tv = activeTextView {
             tv.applyProgrammaticDocumentText(markdownText, selectedRange: NSRange(location: 0, length: 0))
@@ -101,7 +101,7 @@ extension EditorWorkspaceViewModel {
             pendingScrollToCharacterLocation = nil
             isApplyingInternalStateChange = false
             loadCompanionComments(for: url, documentText: content)
-            userDefaults.set(0, forKey: Self.selectedCursorLocationDefaultsKey)
+            setSessionValue(0, forKey: Self.selectedCursorLocationDefaultsKey)
             stats = DocumentStats.compute(for: content)
             if let tv = activeTextView {
                 tv.applyProgrammaticDocumentText(content, selectedRange: NSRange(location: 0, length: 0))

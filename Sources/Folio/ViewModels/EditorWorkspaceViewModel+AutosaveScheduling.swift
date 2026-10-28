@@ -161,57 +161,33 @@ extension EditorWorkspaceViewModel {
 
     func persistWorkspaceFolder(_ folderURL: URL?) {
         guard !isRestoringState else { return }
-        if let folderURL {
-            userDefaults.set(folderURL.path, forKey: Self.workspaceFolderPathDefaultsKey)
-            if let bookmark = try? folderURL.bookmarkData(
-                options: [],
-                includingResourceValuesForKeys: nil,
-                relativeTo: nil
-            ) {
-                userDefaults.set(bookmark, forKey: Self.workspaceFolderBookmarkDefaultsKey)
-            }
-        } else {
-            userDefaults.removeObject(forKey: Self.workspaceFolderPathDefaultsKey)
-            userDefaults.removeObject(forKey: Self.workspaceFolderBookmarkDefaultsKey)
-        }
+        let bookmark = try? folderURL?.bookmarkData(options: [], includingResourceValuesForKeys: nil, relativeTo: nil)
+        setSessionValue(folderURL?.path, forKey: Self.workspaceFolderPathDefaultsKey)
+        setSessionValue(bookmark, forKey: Self.workspaceFolderBookmarkDefaultsKey)
     }
 
     func persistCurrentFileBookmark() {
         guard !isRestoringState else { return }
-        if let fileURL = currentFileURL {
-            userDefaults.set(fileURL.path, forKey: Self.currentFilePathDefaultsKey)
-            if let bookmark = try? fileURL.bookmarkData(
-                options: [],
-                includingResourceValuesForKeys: nil,
-                relativeTo: nil
-            ) {
-                userDefaults.set(bookmark, forKey: Self.currentFileBookmarkDefaultsKey)
-            }
-        } else {
-            userDefaults.removeObject(forKey: Self.currentFilePathDefaultsKey)
-            userDefaults.removeObject(forKey: Self.currentFileBookmarkDefaultsKey)
-        }
+        let bookmark = try? currentFileURL?.bookmarkData(options: [], includingResourceValuesForKeys: nil, relativeTo: nil)
+        setSessionValue(currentFileURL?.path, forKey: Self.currentFilePathDefaultsKey)
+        setSessionValue(bookmark, forKey: Self.currentFileBookmarkDefaultsKey)
     }
 
     func persistDocumentSessionState() {
         guard !isRestoringState else { return }
-        userDefaults.set(true, forKey: Self.hasSavedDocumentSessionDefaultsKey)
-        userDefaults.set(isDirty, forKey: Self.unsavedBufferIsDirtyDefaultsKey)
-        userDefaults.set(currentSelectedRange.location, forKey: Self.selectedCursorLocationDefaultsKey)
+        setSessionValue(true, forKey: Self.hasSavedDocumentSessionDefaultsKey)
+        setSessionValue(isDirty, forKey: Self.unsavedBufferIsDirtyDefaultsKey)
+        setSessionValue(currentSelectedRange.location, forKey: Self.selectedCursorLocationDefaultsKey)
         if hasUnpersistedUndoChanges {
             persistUndoTimelines()
         }
         if let fileURL = currentFileURL {
-            userDefaults.set(fileURL.path, forKey: Self.currentFilePathDefaultsKey)
-            if isDirty {
-                userDefaults.set(markdownText, forKey: Self.unsavedBufferTextDefaultsKey)
-            } else {
-                userDefaults.removeObject(forKey: Self.unsavedBufferTextDefaultsKey)
-            }
+            setSessionValue(fileURL.path, forKey: Self.currentFilePathDefaultsKey)
+            setSessionValue(isDirty ? markdownText : nil, forKey: Self.unsavedBufferTextDefaultsKey)
         } else {
-            userDefaults.removeObject(forKey: Self.currentFilePathDefaultsKey)
-            userDefaults.removeObject(forKey: Self.currentFileBookmarkDefaultsKey)
-            userDefaults.set(markdownText, forKey: Self.unsavedBufferTextDefaultsKey)
+            setSessionValue(nil, forKey: Self.currentFilePathDefaultsKey)
+            setSessionValue(nil, forKey: Self.currentFileBookmarkDefaultsKey)
+            setSessionValue(markdownText, forKey: Self.unsavedBufferTextDefaultsKey)
         }
     }
 }

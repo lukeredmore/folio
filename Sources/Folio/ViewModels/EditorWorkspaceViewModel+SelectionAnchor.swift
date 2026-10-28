@@ -51,7 +51,7 @@ extension EditorWorkspaceViewModel {
             currentSelectionDirection = .forward
         }
         if !isRestoringState && autoSaveDelay <= 0 {
-            userDefaults.set(selectedRange.location, forKey: Self.selectedCursorLocationDefaultsKey)
+            setSessionValue(selectedRange.location, forKey: Self.selectedCursorLocationDefaultsKey)
         }
         if selectedRange.length > 0 || stats.selectedCharacters > 0 {
             let updatedStats = DocumentStats.compute(for: markdownText, selectedRange: selectedRange)

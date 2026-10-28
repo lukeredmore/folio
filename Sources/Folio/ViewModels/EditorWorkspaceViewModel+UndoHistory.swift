@@ -11,7 +11,7 @@ extension EditorWorkspaceViewModel {
         if let url {
             return url.standardizedFileURL.path
         }
-        return "__UNTITLED_SCRATCHPAD__"
+        return windowSessionKey("__UNTITLED_SCRATCHPAD__")
     }
 
     public var currentUndoStack: [DocumentUndoEntry] {
@@ -238,7 +238,7 @@ extension EditorWorkspaceViewModel {
         currentSelectedRange = clampedRange
         reconcileSelectionComments(from: previousText, to: targetText)
         updateSelectionTooltipAnchor(for: clampedRange)
-        userDefaults.set(clampedRange.location, forKey: Self.selectedCursorLocationDefaultsKey)
+        setSessionValue(clampedRange.location, forKey: Self.selectedCursorLocationDefaultsKey)
         stats = DocumentStats.compute(for: targetText, selectedRange: clampedRange)
 
         if let tv = activeTextView {

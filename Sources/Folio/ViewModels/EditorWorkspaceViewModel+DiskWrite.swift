@@ -32,6 +32,7 @@ extension EditorWorkspaceViewModel {
             if remoteWorkspaceManager.isRemoteURL(url) {
                 enqueueRemoteUpload(content, to: url)
             }
+            windowRegistry?.fileWasWritten(url, content: content, by: self)
         } catch {
             NSSound.beep()
         }
