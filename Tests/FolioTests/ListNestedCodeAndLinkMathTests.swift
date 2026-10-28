@@ -25,8 +25,8 @@ final class ListNestedCodeAndLinkMathTests: XCTestCase {
 
     func testDollarSignsInsideLinkDestinationsDoNotRenderMath() {
         let url = "https://console.aws.amazon.com/cloudwatch/home#logsV2:logs-insights$3FqueryDetail$3D~(end~0)"
-        let (_, analysis) = style("2. Find the errors: [errors (Prod)](\(url)) · [Beta](\(url)).\n\nTail\n")
-        XCTAssertEqual(inlineMath(analysis), [], "`$` in a link URL must stay literal")
+        let (_, analysis) = style("2. Find the errors: [errors (Prod)](\(url)) · [Beta](\(url)) for $x$.\n\nTail\n")
+        XCTAssertEqual(inlineMath(analysis), ["x"], "`$` in a link URL must stay literal; math outside the link renders")
     }
 
     func testDollarFollowedByDigitDoesNotCloseMath() {

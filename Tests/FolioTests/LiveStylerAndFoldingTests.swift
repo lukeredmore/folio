@@ -69,6 +69,10 @@ final class LiveStylerAndFoldingTests: XCTestCase {
         let bg = storage.attribute(.backgroundColor, at: proseRange.location, effectiveRange: nil) as? NSColor
         XCTAssertNil(bg, "Prose outside backtick spans must not receive inline code background color")
         XCTAssertNotEqual(fg, EditorTheme.daylight.inlineCodeNSColor, "Prose outside backtick spans must not receive red inline code color")
+
+        let codeLocation = (sample as NSString).range(of: "[link](url)").location
+        let codeFg = storage.attribute(.foregroundColor, at: codeLocation, effectiveRange: nil) as? NSColor
+        XCTAssertEqual(codeFg, EditorTheme.daylight.inlineCodeNSColor, "The backtick span itself is styled as inline code")
     }
 
     func testCodeFenceLanguageSwitchChangesHighlighting() {

@@ -264,6 +264,9 @@ final class SelectionCommentsInspectorTests: XCTestCase {
             0,
             "Moving the insertion point without a text selection must emit 0 objectWillChange notifications"
         )
+
+        vm.updateSelectionStats(selectedRange: NSRange(location: 0, length: 9))
+        XCTAssertGreaterThan(changeCount, 0, "Selecting text does publish, so the counter above is live")
     }
 
     func testOpeningFileInSystemTmpDoesNotScanOrWatchTmpRoot() throws {
@@ -281,5 +284,12 @@ final class SelectionCommentsInspectorTests: XCTestCase {
         XCTAssertEqual(vm.currentFileURL?.standardizedFileURL, tmpFile.standardizedFileURL)
         XCTAssertNil(vm.workspaceFolderURL, "Opening a file directly in /tmp must not promote /tmp to the workspace folder")
         XCTAssertEqual(vm.parentDirWatchDescriptor, -1, "Must not attach a parent directory DispatchSource watcher to /tmp")
+
+        let folder = try makeTemporaryDirectory("folio_tmp_guard")
+        let nestedFile = folder.appendingPathComponent("nested.md")
+        try "# Nested\n".write(to: nestedFile, atomically: true, encoding: .utf8)
+        vm.openPathFromCLI(nestedFile.path)
+        XCTAssertEqual(vm.workspaceFolderURL?.standardizedFileURL, folder.standardizedFileURL, "A normal folder becomes the workspace")
+        XCTAssertNotEqual(vm.parentDirWatchDescriptor, -1, "A normal folder gets a parent directory watcher")
     }
 }
