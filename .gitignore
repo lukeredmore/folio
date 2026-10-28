@@ -14,3 +14,5 @@ bazel-*
 target/
 third_party/cmark_gfm/
 third_party/markdown_spec/
+.bsp/
+.sourcekit-lsp/

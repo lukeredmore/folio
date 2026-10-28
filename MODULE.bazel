@@ -67,3 +67,17 @@ use_repo(crate, "crates", "crates_wasm")
 
 upstream = use_extension("//third_party:upstream_deps.bzl", "upstream_deps")
 use_repo(upstream, "cmark_gfm", "markdown_spec", "swift_math")
+
+# Editor indexing: sourcekit-lsp talks to Bazel through sourcekit-bazel-bsp.
+# The prebuilt binary avoids the module's default SwiftPM build, which needs network access.
+bazel_dep(name = "sourcekit_bazel_bsp", version = "0.8.3", dev_dependency = True)
+
+http_archive = use_repo_rule("@bazel_tools//tools/build_defs/repo:http.bzl", "http_archive")
+
+http_archive(
+    name = "sourcekit_bazel_bsp_prebuilt",
+    build_file_content = 'exports_files(["sourcekit-bazel-bsp", "sourcekit-lsp"])',
+    dev_dependency = True,
+    sha256 = "c9329c4a95126f60fbdc576561ae66b4bc9354b3e2f059e128d1e3a386529bfc",
+    url = "https://github.com/spotify/sourcekit-bazel-bsp/releases/download/0.8.3/sourcekit-bazel-bsp-0.8.3-darwin.zip",
+)

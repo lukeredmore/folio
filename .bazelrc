@@ -32,3 +32,14 @@ build:ci --action_env=CI=true
 build:release --compilation_mode=opt
 build:release --//tools/release:release=true
 build:release --workspace_status_command=tools/release/workspace_status.sh
+
+# Editor indexing builds that sourcekit-bazel-bsp runs (set up with `bazel run //tools:setup_sourcekit_bsp`).
+common:index_build --features=swift.index_while_building
+common:index_build --features=swift.use_global_index_store
+common:index_build --features=swift.emit_swiftsourceinfo
+common:index_build --experimental_convenience_symlinks=ignore
+common:index_build --show_result=0
+common:index_build --noshow_progress
+common:index_build --noannounce_rc
+common:index_build --curses=no
+common:index_build --color=no

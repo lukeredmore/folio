@@ -1,4 +1,6 @@
 load("@buildifier_prebuilt//:rules.bzl", "buildifier", "buildifier_test")
+load("@rules_shell//shell:sh_binary.bzl", "sh_binary")
+load("@sourcekit_bazel_bsp//rules:setup_sourcekit_bsp.bzl", "setup_sourcekit_bsp")
 
 package(default_visibility = ["//visibility:public"])
 
@@ -31,4 +33,28 @@ buildifier(
     exclude_patterns = BUILDIFIER_EXCLUDE_PATTERNS,
     lint_mode = "fix",
     mode = "fix",
+)
+
+# bazel run //tools:setup_sourcekit_bsp
+# Writes .bsp/ and .sourcekit-lsp/ so sourcekit-lsp indexes the Swift sources through Bazel.
+sh_binary(
+    name = "setup_sourcekit_bsp",
+    srcs = ["setup_sourcekit_bsp.sh"],
+    args = ["$(rootpath :sourcekit_bsp_config)"],
+    data = [":sourcekit_bsp_config"],
+    tags = ["manual"],
+)
+
+setup_sourcekit_bsp(
+    name = "sourcekit_bsp_config",
+    apple_support_repo_name = "build_bazel_apple_support",
+    files_to_watch = [
+        "Sources/**/*.swift",
+        "macos/**/*.swift",
+        "core/folio_engine/include/*.h",
+    ],
+    index_flags = ["config=index_build"],
+    sourcekit_bazel_bsp = "@sourcekit_bazel_bsp_prebuilt//:sourcekit-bazel-bsp",
+    tags = ["manual"],
+    targets = ["//macos/FolioApp:FolioApp"],
 )

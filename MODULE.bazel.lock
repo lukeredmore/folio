@@ -148,6 +148,8 @@
     "https://bcr.bazel.build/modules/rules_swift/2.1.1/MODULE.bazel": "494900a80f944fc7aa61500c2073d9729dff0b764f0e89b824eb746959bc1046",
     "https://bcr.bazel.build/modules/rules_swift/2.4.0/MODULE.bazel": "1639617eb1ede28d774d967a738b4a68b0accb40650beadb57c21846beab5efd",
     "https://bcr.bazel.build/modules/rules_swift/2.4.0/source.json": "a6577f57f9febbdc015a01f2a8f3487422032f134d6c61d18ed8e8ca3b9acc7c",
+    "https://bcr.bazel.build/modules/sourcekit_bazel_bsp/0.8.3/MODULE.bazel": "a28cd6eca59c264fccd6878471a7562cf2ce1c69d4034ef3288d651555d8dafa",
+    "https://bcr.bazel.build/modules/sourcekit_bazel_bsp/0.8.3/source.json": "f39da9ab26a1cdf2fa6dce428b7775d7e86baeb279f0d9f77e03057c75ee4c8c",
     "https://bcr.bazel.build/modules/stardoc/0.5.1/MODULE.bazel": "1a05d92974d0c122f5ccf09291442580317cdd859f07a8655f1db9a60374f9f8",
     "https://bcr.bazel.build/modules/stardoc/0.5.3/MODULE.bazel": "c7f6948dae6999bf0db32c1858ae345f112cacf98f174c7a8bb707e41b974f1c",
     "https://bcr.bazel.build/modules/stardoc/0.7.0/MODULE.bazel": "05e3d6d30c099b6770e97da986c53bd31844d7f13d41412480ea265ac9e8079c",
@@ -320,7 +322,7 @@
           "@@//zed/folio_zed_extension/Cargo.toml": "804c0b58aa5296c8336f42d74da604fd4d82788039d219a07fc175554e987272",
           "@@//Cargo.lock": "0277a9e271f7d647446595d8844fc97c5adb0800fdf69e28c5b2f10cd7fc6c57",
           "@@//core/folio_engine/Cargo.toml": "e12f5670f2ff5b8e14f79d003d7324562e87365fc30e41e15c3ccd15c6909afd",
-          "@@//MODULE.bazel": "b4f76b2eb220d7baeb4e8da3cb3978df5580dc909434da2c93e0ac2933e7dc59",
+          "@@//MODULE.bazel": "d9e27a33c076c29661077e4901f633cceb545a2b4a09228acedd80b35ea78ade",
           "@@rules_rust~~rust_host_tools~rust_host_tools//rust_host_tools": "ENOENT"
         },
         "recordedDirentsInputs": {},
