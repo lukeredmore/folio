@@ -25,7 +25,7 @@ final class SelectionCommentAndCopyTests: XCTestCase {
         XCTAssertNil(pasteboard.data(forType: .rtf))
     }
 
-    func testCopyFormattedStripsSyntaxAndWritesRichTextAndHTML() {
+    func testCopyFormattedStripsSyntaxAndWritesRichTextAndHTML() throws {
         let doc = """
         # Architecture Overview
 
@@ -52,8 +52,12 @@ final class SelectionCommentAndCopyTests: XCTestCase {
         XCTAssertFalse(plain.contains("https://example.com"), "Plain text should strip link URL syntax")
         XCTAssertTrue(plain.contains("• First bullet"), "Unordered list markers should copy as bullets: \(plain)")
 
-        let rtfData = pasteboard.data(forType: .rtf)
-        XCTAssertNotNil(rtfData, "Copy Formatted must provide RTF data on pasteboard")
+        let rtfData = try XCTUnwrap(pasteboard.data(forType: .rtf), "Copy Formatted must provide RTF data on pasteboard")
+        let rich = try XCTUnwrap(NSAttributedString(rtf: rtfData, documentAttributes: nil))
+        XCTAssertTrue(rich.string.contains("Here is bold, italic, code, and Folio."), "RTF text drops the syntax: \(rich.string)")
+        let boldLocation = (rich.string as NSString).range(of: "bold").location
+        let boldFont = try XCTUnwrap(rich.attribute(.font, at: boldLocation, effectiveRange: nil) as? NSFont)
+        XCTAssertTrue(boldFont.fontDescriptor.symbolicTraits.contains(.bold), "RTF keeps **bold** as a bold font")
 
         let htmlString = pasteboard.string(forType: .html) ?? ""
         XCTAssertTrue(htmlString.contains("<h1>Architecture Overview</h1>"), "HTML should include semantic heading: \(htmlString)")

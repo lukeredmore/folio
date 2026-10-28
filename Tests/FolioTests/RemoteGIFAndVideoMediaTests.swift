@@ -63,6 +63,12 @@ final class RemoteGIFAndVideoMediaTests: XCTestCase {
         return Data(bytes)
     }
 
+    private func centerColor(of image: NSImage?) throws -> NSColor {
+        let cgImage = try XCTUnwrap(image?.cgImage(forProposedRect: nil, context: nil, hints: nil))
+        let rep = NSBitmapImageRep(cgImage: cgImage)
+        return try XCTUnwrap(rep.colorAt(x: rep.pixelsWide / 2, y: rep.pixelsHigh / 2)?.usingColorSpace(.sRGB))
+    }
+
     func testAnimatedGIFDecodingAndRemoteFrameCycling() throws {
         let gifData = try makeTwoFrameGIFData()
         let decoded = try XCTUnwrap(FolioMediaImageCache.decodeAnimatedFrames(from: gifData))
@@ -88,20 +94,31 @@ final class RemoteGIFAndVideoMediaTests: XCTestCase {
         let frame1 = FolioMediaImageCache.shared.animatedFrame(for: remoteURL, at: 0.25)
         XCTAssertTrue(frame0.isAnimated)
         XCTAssertTrue(frame1.isAnimated)
-        XCTAssertNotNil(frame0.image)
-        XCTAssertNotNil(frame1.image)
-        XCTAssertFalse(frame0.image === frame1.image, "Expected distinct NSImage frames at t=0.05s vs t=0.25s")
+        let firstColor = try centerColor(of: frame0.image)
+        let secondColor = try centerColor(of: frame1.image)
+        XCTAssertGreaterThan(firstColor.redComponent, firstColor.blueComponent + 0.3, "t=0.05s shows the red first frame")
+        XCTAssertGreaterThan(secondColor.blueComponent, secondColor.redComponent + 0.3, "t=0.25s shows the blue second frame")
+    }
+
+    @MainActor
+    func testVideoWithoutDecodableFramesGetsThePosterThumbnail() throws {
+        let mp4File = try makeTemporaryDirectory("folio-video-poster").appendingPathComponent("empty.mp4")
+        try makeSyntheticMP4ContainerData().write(to: mp4File)
+        let poster = try XCTUnwrap(FolioMediaImageCache.extractVideoThumbnail(from: mp4File))
+        XCTAssertEqual(poster.size, NSSize(width: 480, height: 270))
     }
 
     @MainActor
     func testRemoteVideoThumbnailExtractionAndInlinePlaybackOnClick() throws {
-        let mp4Data = makeSyntheticMP4ContainerData()
-        XCTAssertTrue(FolioMediaImageCache.looksLikeVideoData(mp4Data))
+        XCTAssertTrue(FolioMediaImageCache.looksLikeVideoData(makeSyntheticMP4ContainerData()))
 
         let tempDir = try makeTemporaryDirectory("folio-video-test")
 
         let mp4File = tempDir.appendingPathComponent("demo.mp4")
-        try mp4Data.write(to: mp4File)
+        try writeSolidColorVideo(to: mp4File, width: 64, height: 36, red: 220, green: 30, blue: 30)
+        XCTAssertTrue(FolioMediaImageCache.looksLikeVideoData(try Data(contentsOf: mp4File)))
+        let localThumb = try XCTUnwrap(FolioMediaImageCache.extractVideoThumbnail(from: mp4File))
+        XCTAssertEqual(localThumb.size, NSSize(width: 64, height: 36), "Decoding on the main thread returns the first frame")
 
         let remoteVideoURL = "https://cdn.example.test/videos/demo.mp4"
         FolioMediaImageCache.shared.curlCommandPrefix = "cat '\(mp4File.path)' #"
@@ -109,8 +126,12 @@ final class RemoteGIFAndVideoMediaTests: XCTestCase {
         _ = FolioMediaImageCache.shared.image(for: remoteVideoURL)
         XCTAssertTrue(FolioMediaImageCache.shared.waitUntilRemoteFetchesIdle(timeout: 5.0))
 
-        let thumb = FolioMediaImageCache.shared.image(for: remoteVideoURL)
-        XCTAssertNotNil(thumb, "Remote video should produce a valid thumbnail NSImage")
+        let thumb = try XCTUnwrap(FolioMediaImageCache.shared.image(for: remoteVideoURL))
+        XCTAssertEqual(thumb.size, NSSize(width: 64, height: 36), "The thumbnail is the decoded first frame, not the poster")
+        let thumbColor = try centerColor(of: thumb)
+        XCTAssertEqual(thumbColor.redComponent, 220.0 / 255.0, accuracy: 0.1)
+        XCTAssertEqual(thumbColor.greenComponent, 30.0 / 255.0, accuracy: 0.1)
+        XCTAssertEqual(thumbColor.blueComponent, 30.0 / 255.0, accuracy: 0.1)
         XCTAssertTrue(FolioMediaImageCache.shared.isKnownVideo(for: remoteVideoURL))
 
         let playableURL = try XCTUnwrap(FolioMediaImageCache.shared.playableVideoURL(for: remoteVideoURL))
