@@ -88,20 +88,13 @@ final class CLILauncherAndBazelRunTests: XCTestCase {
     }
 
     func testCLIOpenUpdatesMountedTextViewAndNavigatesToLineAndColumn() throws {
-        let suiteName = "FolioTests.CLIMountedLineNav.\(UUID().uuidString)"
-        let defaults = UserDefaults(suiteName: suiteName)!
-        defer { defaults.removePersistentDomain(forName: suiteName) }
-
-        let tempDir = FileManager.default.temporaryDirectory
-            .appendingPathComponent("folio-cli-line-nav-\(UUID().uuidString)", isDirectory: true)
-        try FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
-        defer { try? FileManager.default.removeItem(at: tempDir) }
+        let tempDir = try makeTemporaryDirectory("folio-cli-line-nav")
 
         let docURL = tempDir.appendingPathComponent("sample.md")
         let content = "# Heading\nSecond line text\nThird line target here\nFourth line\n"
         try content.write(to: docURL, atomically: true, encoding: .utf8)
 
-        let vm = EditorWorkspaceViewModel(userDefaults: defaults)
+        let vm = makeIsolatedViewModel()
         let hostingView = NSHostingView(rootView: MainWindowView(viewModel: vm))
         let window = NSWindow(
             contentRect: NSRect(x: 0, y: 0, width: 900, height: 600),
@@ -128,8 +121,7 @@ final class CLILauncherAndBazelRunTests: XCTestCase {
     }
 
     func testCLIScriptSymlinkResolutionAndLineSuffixWithoutBogusFileTouch() throws {
-        let tempRoot = FileManager.default.temporaryDirectory
-            .appendingPathComponent("folio-cli-symlink-\(UUID().uuidString)", isDirectory: true)
+        let tempRoot = try makeTemporaryDirectory("folio-cli-symlink")
         let fakeAppMacOS = tempRoot
             .appendingPathComponent("Folio.app/Contents/MacOS", isDirectory: true)
         let fakeAppBin = tempRoot
@@ -144,7 +136,6 @@ final class CLILauncherAndBazelRunTests: XCTestCase {
         try FileManager.default.createDirectory(at: fakeAppBin, withIntermediateDirectories: true)
         try FileManager.default.createDirectory(at: binDir, withIntermediateDirectories: true)
         try FileManager.default.createDirectory(at: workDir, withIntermediateDirectories: true)
-        defer { try? FileManager.default.removeItem(at: tempRoot) }
 
         // Create a mock Folio executable inside Folio.app/Contents/MacOS/Folio for --foreground
         let mockFolioAppBin = fakeAppMacOS.appendingPathComponent("Folio")

@@ -7,9 +7,7 @@ final class WorkspaceAndPersistenceTests: XCTestCase {
 
     @MainActor
     func testFilesViewerHidesNonMarkdownFiles() throws {
-        let tempDir = FileManager.default.temporaryDirectory.appendingPathComponent("FolioFilterTest_\(UUID().uuidString)", isDirectory: true)
-        try FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
-        defer { try? FileManager.default.removeItem(at: tempDir) }
+        let tempDir = try makeTemporaryDirectory("FolioFilterTest")
 
         // Create Markdown files, non-Markdown files (.swift, .yaml, .json), and an empty/code-only subdir
         let readmeURL = tempDir.appendingPathComponent("README.md")
@@ -34,11 +32,7 @@ final class WorkspaceAndPersistenceTests: XCTestCase {
         try "struct Helper {}".write(to: helperSwiftURL, atomically: true, encoding: .utf8)
         try "struct App {}".write(to: appSwiftURL, atomically: true, encoding: .utf8)
 
-        let defaultsSuiteName = "com.folio.tests.filter.\(UUID().uuidString)"
-        let testDefaults = UserDefaults(suiteName: defaultsSuiteName)!
-        defer { testDefaults.removePersistentDomain(forName: defaultsSuiteName) }
-
-        let vm = EditorWorkspaceViewModel(userDefaults: testDefaults)
+        let vm = makeIsolatedViewModel()
 
         vm.autoSaveDelay = 0
         vm.loadWorkspaceFolder(tempDir)
@@ -64,23 +58,20 @@ final class WorkspaceAndPersistenceTests: XCTestCase {
 
     @MainActor
     func testWorkspaceFolderAndSessionStatePersistenceAcrossLaunches() throws {
-        let tempDir = FileManager.default.temporaryDirectory.appendingPathComponent("FolioPersistenceTest_\(UUID().uuidString)", isDirectory: true)
+        let tempDir = try makeTemporaryDirectory("FolioPersistenceTest")
         let subfolderDir = tempDir.appendingPathComponent("Subfolder", isDirectory: true)
         try FileManager.default.createDirectory(at: subfolderDir, withIntermediateDirectories: true)
-        defer { try? FileManager.default.removeItem(at: tempDir) }
 
         let fileA = tempDir.appendingPathComponent("Alpha.md")
         let fileB = subfolderDir.appendingPathComponent("Beta.md")
         try "# Alpha Heading\nFirst document body.\n\n## Alpha Subheading\nDetails here.".write(to: fileA, atomically: true, encoding: .utf8)
         try "# Beta Heading\nSecond document in subfolder.".write(to: fileB, atomically: true, encoding: .utf8)
 
-        let defaultsSuiteName = "com.folio.tests.persistence.\(UUID().uuidString)"
-        let testDefaults = UserDefaults(suiteName: defaultsSuiteName)!
-        defer { testDefaults.removePersistentDomain(forName: defaultsSuiteName) }
+        let testDefaults = isolatedDefaults()
 
         // 1. Launch #1: Configure workspace folder, open file, sidebar state, collapsed folders, theme, and editor modes
         do {
-            let vm1 = EditorWorkspaceViewModel(userDefaults: testDefaults)
+            let vm1 = makeIsolatedViewModel(defaults: testDefaults)
             vm1.autoSaveDelay = 0
             vm1.loadWorkspaceFolder(tempDir)
             vm1.openFile(at: fileA)
@@ -101,7 +92,7 @@ final class WorkspaceAndPersistenceTests: XCTestCase {
 
         // 2. Launch #2: Verify full state restoration from UserDefaults
         do {
-            let vm2 = EditorWorkspaceViewModel(userDefaults: testDefaults)
+            let vm2 = makeIsolatedViewModel(defaults: testDefaults)
             vm2.autoSaveDelay = 0
             XCTAssertEqual(vm2.workspaceFolderURL?.standardizedFileURL, tempDir.standardizedFileURL)
             XCTAssertEqual(Set(vm2.flatMarkdownFiles.map(\.name)), ["Alpha.md", "Beta.md"])
@@ -138,7 +129,7 @@ final class WorkspaceAndPersistenceTests: XCTestCase {
 
         // 3. Launch #3: Verify auto-saved file and its undo history are restored intact across relaunch
         do {
-            let vm3 = EditorWorkspaceViewModel(userDefaults: testDefaults)
+            let vm3 = makeIsolatedViewModel(defaults: testDefaults)
             vm3.autoSaveDelay = 0
             XCTAssertEqual(vm3.currentFileURL?.standardizedFileURL, fileB.standardizedFileURL)
             XCTAssertEqual(vm3.markdownText, "# Beta Heading\nAuto-saved edit across relaunch!")
@@ -156,7 +147,7 @@ final class WorkspaceAndPersistenceTests: XCTestCase {
 
         // 4. Launch #4: Verify untitled draft session is restored intact
         do {
-            let vm4 = EditorWorkspaceViewModel(userDefaults: testDefaults)
+            let vm4 = makeIsolatedViewModel(defaults: testDefaults)
             vm4.autoSaveDelay = 0
             XCTAssertNil(vm4.currentFileURL)
             XCTAssertEqual(vm4.markdownText, "# Scratchpad Draft\nRemember this untitled note on relaunch.")
@@ -172,7 +163,7 @@ final class WorkspaceAndPersistenceTests: XCTestCase {
         // 5. Delete the workspace folder on disk and verify Launch #5 falls back gracefully without crashing
         try FileManager.default.removeItem(at: tempDir)
         do {
-            let vm5 = EditorWorkspaceViewModel(userDefaults: testDefaults)
+            let vm5 = makeIsolatedViewModel(defaults: testDefaults)
             vm5.autoSaveDelay = 0
             XCTAssertNotEqual(vm5.workspaceFolderURL?.standardizedFileURL, tempDir.standardizedFileURL)
             XCTAssertNil(vm5.currentFileURL)
@@ -188,11 +179,7 @@ final class WorkspaceAndPersistenceTests: XCTestCase {
 
     @MainActor
     func testMainWindowMouseClickPlacesCursorAndTogglesSidebarThroughEventQueue() throws {
-        let suiteName = "com.folio.tests.windowMouse.\(UUID().uuidString)"
-        let testDefaults = UserDefaults(suiteName: suiteName)!
-        defer { testDefaults.removePersistentDomain(forName: suiteName) }
-
-        let vm = EditorWorkspaceViewModel(userDefaults: testDefaults)
+        let vm = makeIsolatedViewModel()
         vm.autoSaveDelay = 0
         vm.markdownText = "# Heading Line\n\nSecond paragraph with clickable text.\n\nThird paragraph at bottom.\n"
         vm.showSidebar = true
@@ -309,7 +296,7 @@ final class WorkspaceAndPersistenceTests: XCTestCase {
 
     @MainActor
     func testProfileSidebarResizeAnimationLatency() throws {
-        let vm = EditorWorkspaceViewModel()
+        let vm = makeIsolatedViewModel()
         let hosting = NSHostingView(rootView: HybridMarkdownEditorRepresentable(viewModel: vm))
         hosting.frame = NSRect(x: 0, y: 0, width: 1000, height: 700)
         hosting.layoutSubtreeIfNeeded()

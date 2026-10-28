@@ -175,11 +175,9 @@ final class RemoteImageUrlAndAuthTests: XCTestCase {
         let server = try XCTUnwrap(LocalLoopbackAuthHTTPServer())
         defer { server.stop() }
 
-        let suiteName = "FolioTests.RemoteImageAuth.\(UUID().uuidString)"
-        let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
-        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let defaults = isolatedDefaults()
 
-        let viewModel = EditorWorkspaceViewModel(userDefaults: defaults)
+        let viewModel = makeIsolatedViewModel(defaults: defaults)
         XCTAssertEqual(viewModel.mediaCurlCommandPrefix, "curl")
 
         let publicBadgeURL = "http://127.0.0.1:\(server.port)/public/badge"
@@ -246,7 +244,7 @@ final class RemoteImageUrlAndAuthTests: XCTestCase {
         XCTAssertTrue(renderedURLs.contains("http://127.0.0.1:\(server.port)/restricted/chart.png"))
 
         // 5. Verify restoring a new ViewModel reads the persisted curl prefix from UserDefaults
-        let restoredVM = EditorWorkspaceViewModel(userDefaults: defaults)
+        let restoredVM = makeIsolatedViewModel(defaults: defaults)
         XCTAssertEqual(restoredVM.mediaCurlCommandPrefix, "curl -b \"folio_session=secret_token_42\"")
     }
 }

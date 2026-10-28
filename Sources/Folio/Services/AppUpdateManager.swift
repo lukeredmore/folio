@@ -25,13 +25,21 @@ public final class AppUpdateManager: ObservableObject {
     @AppStorage(AppUpdateManager.lastInstalledUpdateTokenKey) public var lastInstalledUpdateToken: String = ""
 
     public let currentVersion: AppVersionInfo
+    private let userDefaults: UserDefaults
 
     public var isRunningDevBuild: Bool {
         currentVersion.isDevBuild
     }
 
-    public init(currentVersion: AppVersionInfo = .current()) {
+    public init(currentVersion: AppVersionInfo = .current(), userDefaults: UserDefaults = .standard) {
         self.currentVersion = currentVersion
+        self.userDefaults = userDefaults
+        _autoCheckForUpdates = AppStorage(wrappedValue: true, "folio.autoCheckForUpdates", store: userDefaults)
+        _lastInstalledUpdateToken = AppStorage(
+            wrappedValue: "",
+            Self.lastInstalledUpdateTokenKey,
+            store: userDefaults
+        )
     }
 
     /// Evaluates whether a remote release manifest is newer than the currently running build.
@@ -179,7 +187,7 @@ public final class AppUpdateManager: ObservableObject {
                 for: resolvedVersion,
                 remote: manifest
             )
-            UserDefaults.standard.synchronize()
+            userDefaults.synchronize()
 
             guard scheduledSwap else {
                 status = .upToDate(currentVersion)

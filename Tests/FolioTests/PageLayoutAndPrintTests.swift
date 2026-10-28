@@ -58,24 +58,19 @@ final class PageLayoutAndPrintTests: XCTestCase {
     }
 
     func testSettingsPersist() {
-        let suite = "com.folio.tests.page.\(UUID().uuidString)"
-        let defaults = UserDefaults(suiteName: suite)!
-        defer { defaults.removePersistentDomain(forName: suite) }
-        let vm = EditorWorkspaceViewModel(userDefaults: defaults)
+        let defaults = isolatedDefaults()
+        let vm = makeIsolatedViewModel(defaults: defaults)
         XCTAssertEqual(vm.textAlignment, .left)
         XCTAssertEqual(vm.printPaperSize, .letter)
         vm.textAlignment = .justified
         vm.printPaperSize = .a4
-        let reloaded = EditorWorkspaceViewModel(userDefaults: defaults)
+        let reloaded = makeIsolatedViewModel(defaults: defaults)
         XCTAssertEqual(reloaded.textAlignment, .justified)
         XCTAssertEqual(reloaded.printPaperSize, .a4)
     }
 
     func testPrintViewUsesPaperWidthAndRendersEverything() throws {
-        let suite = "com.folio.tests.print.\(UUID().uuidString)"
-        let defaults = UserDefaults(suiteName: suite)!
-        defer { defaults.removePersistentDomain(forName: suite) }
-        let vm = EditorWorkspaceViewModel(userDefaults: defaults)
+        let vm = makeIsolatedViewModel()
         let diagram = "flowchart LR\n    Seed\(UUID().uuidString.prefix(6)) --> Bed"
         vm.markdownText = "# Plan\n\nSome **bold** words.\n\n```mermaid\n\(diagram)\n```\n\n" + sample
 
@@ -96,10 +91,7 @@ final class PageLayoutAndPrintTests: XCTestCase {
     }
 
     func testDarkThemesPrintWithTheLightTheme() {
-        let suite = "com.folio.tests.printtheme.\(UUID().uuidString)"
-        let defaults = UserDefaults(suiteName: suite)!
-        defer { defaults.removePersistentDomain(forName: suite) }
-        let vm = EditorWorkspaceViewModel(userDefaults: defaults)
+        let vm = makeIsolatedViewModel()
         vm.theme = .midnight
         XCTAssertTrue(vm.theme.isDark)
         XCTAssertFalse(vm.printTheme.isDark)
@@ -115,10 +107,7 @@ final class PageLayoutAndPrintTests: XCTestCase {
         let tallCard = NSRect(x: 0, y: 100, width: 400, height: 900)
         XCTAssertEqual(HybridMarkdownTextView.pageBottom(600, pageTop: 0, pageHeight: page, limit: 0, avoiding: [tallCard]), 600, "A card taller than a page is split")
 
-        let suite = "com.folio.tests.paginate.\(UUID().uuidString)"
-        let defaults = UserDefaults(suiteName: suite)!
-        defer { defaults.removePersistentDomain(forName: suite) }
-        let vm = EditorWorkspaceViewModel(userDefaults: defaults)
+        let vm = makeIsolatedViewModel()
         vm.markdownText = "# Plan\n\nIntro.\n\n```mermaid\nflowchart LR\n    Seed --> Sprout --> Bed\n```\n\nAfter."
         let view = vm.makePrintView(paper: .letter)
         let printed = try XCTUnwrap(view.unbreakableBlockRects().first)
@@ -193,12 +182,9 @@ final class PageLayoutAndPrintTests: XCTestCase {
         XCTAssertEqual(commentDoc.leftMargin ?? 0, 36.0, accuracy: 0.5)
     }
 
-    func testPrintViewRespectsLaTeXDocumentGeometryAndCollapsesPreamble() {
-        let suite = "com.folio.tests.latexprint.\(UUID().uuidString)"
-        let defaults = UserDefaults(suiteName: suite)!
-        defer { defaults.removePersistentDomain(forName: suite) }
-        let vm = EditorWorkspaceViewModel(userDefaults: defaults)
-        vm.currentFileURL = URL(fileURLWithPath: "/tmp/paper.tex")
+    func testPrintViewRespectsLaTeXDocumentGeometryAndCollapsesPreamble() throws {
+        let vm = makeIsolatedViewModel()
+        vm.currentFileURL = try makeTemporaryDirectory().appendingPathComponent("paper.tex")
         vm.markdownText = """
         \\documentclass[11pt,a4paper]{article}
         \\usepackage[margin=1in]{geometry}

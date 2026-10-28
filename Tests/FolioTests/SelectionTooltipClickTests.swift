@@ -45,11 +45,7 @@ final class SelectionTooltipClickTests: XCTestCase {
     }
 
     func testTooltipButtonsNeverUnderlapTitlebarAndReceiveRealMouseClicks() throws {
-        let suiteName = "com.folio.tests.comments.tooltip.click.\(UUID().uuidString)"
-        let testDefaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
-        defer { testDefaults.removePersistentDomain(forName: suiteName) }
-
-        let vm = EditorWorkspaceViewModel(userDefaults: testDefaults)
+        let vm = makeIsolatedViewModel()
         vm.autoSaveEnabled = false
         let doc = """
         # Selection Comments & Inspector Sidebar Demo

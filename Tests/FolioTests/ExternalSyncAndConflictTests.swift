@@ -7,27 +7,13 @@ final class ExternalSyncAndConflictTests: XCTestCase {
 
     @MainActor
     func testLiveExternalFileAutoUpdateInPlaceAndAtomicWithVisualNoticeAndUndo() throws {
-        let suiteName = "com.folio.tests.externalupdate.\(UUID().uuidString)"
-        guard let testDefaults = UserDefaults(suiteName: suiteName) else {
-            XCTFail("Failed to create isolated UserDefaults suite")
-            return
-        }
-        defer {
-            testDefaults.removePersistentDomain(forName: suiteName)
-        }
-
-        let tempDir = FileManager.default.temporaryDirectory
-            .appendingPathComponent("FolioExternalUpdateTest-\(UUID().uuidString)", isDirectory: true)
-        try FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
-        defer {
-            try? FileManager.default.removeItem(at: tempDir)
-        }
+        let tempDir = try makeTemporaryDirectory("FolioExternalUpdateTest")
 
         let fileURL = tempDir.appendingPathComponent("LiveDoc.md")
         let initialText = "# Live Document\n\nParagraph one.\n\nParagraph two."
         try initialText.write(to: fileURL, atomically: true, encoding: .utf8)
 
-        let vm = EditorWorkspaceViewModel(userDefaults: testDefaults)
+        let vm = makeIsolatedViewModel()
 
         vm.autoSaveDelay = 0
         vm.openFile(at: fileURL)
@@ -60,21 +46,7 @@ final class ExternalSyncAndConflictTests: XCTestCase {
 
     @MainActor
     func testThreeWayAutoMergeAndInteractiveConflictResolution() throws {
-        let suiteName = "com.folio.tests.conflictmerge.\(UUID().uuidString)"
-        guard let testDefaults = UserDefaults(suiteName: suiteName) else {
-            XCTFail("Failed to create isolated UserDefaults suite")
-            return
-        }
-        defer {
-            testDefaults.removePersistentDomain(forName: suiteName)
-        }
-
-        let tempDir = FileManager.default.temporaryDirectory
-            .appendingPathComponent("FolioConflictMergeTest-\(UUID().uuidString)", isDirectory: true)
-        try FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
-        defer {
-            try? FileManager.default.removeItem(at: tempDir)
-        }
+        let tempDir = try makeTemporaryDirectory("FolioConflictMergeTest")
 
         let fileURL = tempDir.appendingPathComponent("Collab.md")
         let baseText = [
@@ -88,7 +60,7 @@ final class ExternalSyncAndConflictTests: XCTestCase {
         ].joined(separator: "\n")
         try baseText.write(to: fileURL, atomically: true, encoding: .utf8)
 
-        let vm = EditorWorkspaceViewModel(userDefaults: testDefaults)
+        let vm = makeIsolatedViewModel()
 
         vm.autoSaveDelay = 0
         vm.openFile(at: fileURL)
@@ -184,23 +156,13 @@ final class ExternalSyncAndConflictTests: XCTestCase {
 
     @MainActor
     func testEdgeCaseEmptyFileTruncationsNewlinesAndIdempotentConcurrentEdits() throws {
-        let suiteName = "com.folio.tests.edgecases.\(UUID().uuidString)"
-        guard let testDefaults = UserDefaults(suiteName: suiteName) else {
-            XCTFail("Failed to create isolated UserDefaults suite")
-            return
-        }
-        defer { testDefaults.removePersistentDomain(forName: suiteName) }
-
-        let tempDir = FileManager.default.temporaryDirectory
-            .appendingPathComponent("FolioEdgeCasesTest-\(UUID().uuidString)", isDirectory: true)
-        try FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
-        defer { try? FileManager.default.removeItem(at: tempDir) }
+        let tempDir = try makeTemporaryDirectory("FolioEdgeCasesTest")
 
         // 1. Initially empty file ("") modified both externally and locally -> must detect conflict!
         let emptyFile = tempDir.appendingPathComponent("EmptyStart.md")
         try "".write(to: emptyFile, atomically: true, encoding: .utf8)
 
-        let vm = EditorWorkspaceViewModel(userDefaults: testDefaults)
+        let vm = makeIsolatedViewModel()
 
         vm.autoSaveDelay = 0
         vm.openFile(at: emptyFile)

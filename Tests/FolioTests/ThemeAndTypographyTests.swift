@@ -70,16 +70,14 @@ final class ThemeAndTypographyTests: XCTestCase {
 
     @MainActor
     func testExtensibleThemeSystemAndTypographyDefaults() throws {
-        let defaultsSuiteName = "com.folio.tests.themes.\(UUID().uuidString)"
-        let testDefaults = UserDefaults(suiteName: defaultsSuiteName)!
-        defer { testDefaults.removePersistentDomain(forName: defaultsSuiteName) }
+        let testDefaults = isolatedDefaults()
 
         // 1. Default presets are available as built-in themes
         XCTAssertEqual(EditorTheme.builtInThemes.map(\.name), [
             "Daylight", "Midnight", "Parchment", "Editorial", "Classic", "Modernist"
         ])
 
-        let vm1 = EditorWorkspaceViewModel(userDefaults: testDefaults)
+        let vm1 = makeIsolatedViewModel(defaults: testDefaults)
         XCTAssertEqual(vm1.theme, .daylight)
         XCTAssertEqual(vm1.typography, .default)
         XCTAssertFalse(vm1.isCurrentThemeModified)
@@ -125,7 +123,7 @@ final class ThemeAndTypographyTests: XCTestCase {
         XCTAssertFalse(vm1.isCurrentThemeModified)
 
         // 4. Verify persistence of custom themes and active theme across launches
-        let vm2 = EditorWorkspaceViewModel(userDefaults: testDefaults)
+        let vm2 = makeIsolatedViewModel(defaults: testDefaults)
         XCTAssertEqual(vm2.customThemes.count, 1)
         XCTAssertEqual(vm2.theme, savedTheme)
         XCTAssertEqual(vm2.theme.bodyFontFamily, "Avenir Next")

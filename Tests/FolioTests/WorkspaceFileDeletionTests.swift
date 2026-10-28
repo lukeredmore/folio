@@ -5,25 +5,17 @@ import XCTest
 @MainActor
 final class WorkspaceFileDeletionTests: XCTestCase {
 
-    private func makeWorkspace() throws -> (vm: EditorWorkspaceViewModel, dir: URL, cleanup: () -> Void) {
-        let dir = FileManager.default.temporaryDirectory
-            .appendingPathComponent("FolioDeletionTest-\(UUID().uuidString)", isDirectory: true)
-        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+    private func makeWorkspace() throws -> (vm: EditorWorkspaceViewModel, dir: URL) {
+        let dir = try makeTemporaryDirectory("FolioDeletionTest")
         try "# Existing\n\nBody".write(to: dir.appendingPathComponent("Existing.md"), atomically: true, encoding: .utf8)
-        let suite = "com.folio.tests.deletion.\(UUID().uuidString)"
-        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
-        let vm = EditorWorkspaceViewModel(userDefaults: defaults)
+        let vm = makeIsolatedViewModel()
         vm.autoSaveDelay = 0
         vm.openFolder(at: dir)
-        return (vm, dir, {
-            try? FileManager.default.removeItem(at: dir)
-            defaults.removePersistentDomain(forName: suite)
-        })
+        return (vm, dir)
     }
 
     func testUntouchedNewFileIsDeletedWhenSwitchingAway() throws {
-        let (vm, dir, cleanup) = try makeWorkspace()
-        defer { cleanup() }
+        let (vm, dir) = try makeWorkspace()
         let untitled = dir.appendingPathComponent("Untitled.md")
 
         vm.createNewFileInWorkspace(in: dir)
@@ -35,8 +27,7 @@ final class WorkspaceFileDeletionTests: XCTestCase {
     }
 
     func testRepeatedNewFileDoesNotAccumulateUntitledCopies() throws {
-        let (vm, dir, cleanup) = try makeWorkspace()
-        defer { cleanup() }
+        let (vm, dir) = try makeWorkspace()
 
         vm.createNewFileInWorkspace(in: dir)
         vm.createNewFileInWorkspace(in: dir)
@@ -47,8 +38,7 @@ final class WorkspaceFileDeletionTests: XCTestCase {
     }
 
     func testEditedNewFileIsKept() throws {
-        let (vm, dir, cleanup) = try makeWorkspace()
-        defer { cleanup() }
+        let (vm, dir) = try makeWorkspace()
         let untitled = dir.appendingPathComponent("Untitled.md")
 
         vm.createNewFileInWorkspace(in: dir)
@@ -59,8 +49,7 @@ final class WorkspaceFileDeletionTests: XCTestCase {
     }
 
     func testUntouchedNewLaTeXFileIsDeletedOnNewDocument() throws {
-        let (vm, dir, cleanup) = try makeWorkspace()
-        defer { cleanup() }
+        let (vm, dir) = try makeWorkspace()
         let untitled = dir.appendingPathComponent("Untitled.tex")
 
         vm.createNewLaTeXFileInWorkspace(in: dir)
@@ -84,12 +73,8 @@ final class WorkspaceFileDeletionTests: XCTestCase {
     }
 
     func testDeleteRemoteFileRemovesHostCopyAndMirror() async throws {
-        let tempRoot = FileManager.default.temporaryDirectory.appendingPathComponent("FolioRemoteDelete_\(UUID().uuidString)", isDirectory: true)
-        try FileManager.default.createDirectory(at: tempRoot, withIntermediateDirectories: true)
-        defer { try? FileManager.default.removeItem(at: tempRoot) }
-        let suite = "com.folio.tests.remote-delete.\(UUID().uuidString)"
-        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
-        defer { defaults.removePersistentDomain(forName: suite) }
+        let tempRoot = try makeTemporaryDirectory("FolioRemoteDelete")
+        let defaults = isolatedDefaults()
 
         let transport = MockRemoteTransport()
         let spec = try RemoteMountSpec.parse(connectionString: "luke@devbox:/home/luke/notes", targetKind: .folder)

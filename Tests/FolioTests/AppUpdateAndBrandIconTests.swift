@@ -65,7 +65,7 @@ final class AppUpdateAndBrandIconTests: XCTestCase {
         XCTAssertFalse(AppUpdateManager.isUpdateAvailable(current: devBuild, remote: rollingNewerBuild))
         XCTAssertFalse(AppUpdateManager.isUpdateAvailable(current: devBuild, remote: semverBump))
 
-        let devManager = AppUpdateManager(currentVersion: devBuild)
+        let devManager = AppUpdateManager(currentVersion: devBuild, userDefaults: isolatedDefaults())
         devManager.autoCheckForUpdates = true
         devManager.checkForUpdatesOnLaunchIfNeeded()
         await devManager.checkForUpdates(userInitiated: false)
@@ -73,8 +73,7 @@ final class AppUpdateAndBrandIconTests: XCTestCase {
         XCTAssertFalse(devManager.showUpdateSheet)
 
         // 5. Verify SHA-256 helper
-        let tempFile = FileManager.default.temporaryDirectory.appendingPathComponent("folio-sha-test-\(UUID().uuidString)")
-        defer { try? FileManager.default.removeItem(at: tempFile) }
+        let tempFile = try makeTemporaryDirectory("folio-sha-test").appendingPathComponent("Folio.dmg")
         try Data("folio-dmg-payload".utf8).write(to: tempFile)
         // SHA-256("folio-dmg-payload") = cd80ba81532451cedacbba4d7bd7e97a01150151ba665f29cda50bd46018ea1e
         XCTAssertTrue(try AppUpdateManager.verifySHA256(

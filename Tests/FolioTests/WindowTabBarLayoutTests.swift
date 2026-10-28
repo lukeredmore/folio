@@ -79,7 +79,7 @@ final class WindowTabBarLayoutTests: XCTestCase {
     func testTabbedWindowKeepsBannersAndFirstLineBelowTabBar() throws {
         for showSidebar in [true, false] {
             let state = showSidebar ? "tabbed, sidebar open" : "tabbed, sidebar closed"
-            let hosted = try HostedMainWindow(showSidebar: showSidebar, markdown: sampleDocument)
+            let hosted = HostedMainWindow(viewModel: makeIsolatedViewModel(), showSidebar: showSidebar, markdown: sampleDocument)
             defer { hosted.close() }
             let untabbedSafeTop = hosted.window.contentLayoutRect.maxY
 
@@ -104,7 +104,7 @@ final class WindowTabBarLayoutTests: XCTestCase {
     func testUntabbedWindowKeepsBannersBelowToolbarAndCanvasFullBleed() throws {
         for showSidebar in [true, false] {
             let state = showSidebar ? "untabbed, sidebar open" : "untabbed, sidebar closed"
-            let hosted = try HostedMainWindow(showSidebar: showSidebar, markdown: sampleDocument)
+            let hosted = HostedMainWindow(viewModel: makeIsolatedViewModel(), showSidebar: showSidebar, markdown: sampleDocument)
             defer { hosted.close() }
             XCTAssertFalse(hosted.window.tabGroup?.isTabBarVisible ?? false, "\(state): no tab bar expected")
 
@@ -125,7 +125,7 @@ final class WindowTabBarLayoutTests: XCTestCase {
     }
 
     func testUpdateTooltipTakesClicksWithoutBlockingEditor() throws {
-        let hosted = try HostedMainWindow(showSidebar: true, markdown: sampleDocument)
+        let hosted = HostedMainWindow(viewModel: makeIsolatedViewModel(), showSidebar: true, markdown: sampleDocument)
         defer { hosted.close() }
         hosted.showExternalUpdateNotice()
         let textView = try XCTUnwrap(hosted.viewModel.activeTextView)
@@ -142,7 +142,7 @@ final class WindowTabBarLayoutTests: XCTestCase {
     }
 
     func testCommentsPillStaysInToolbarRowWithTabBar() throws {
-        let hosted = try HostedMainWindow(showSidebar: false, markdown: sampleDocument)
+        let hosted = HostedMainWindow(viewModel: makeIsolatedViewModel(), showSidebar: false, markdown: sampleDocument)
         defer { hosted.close() }
         let range = (sampleDocument as NSString).range(of: "48k lines")
         hosted.viewModel.addOrUpdateSelectionComment("Count again.", for: range)
@@ -176,7 +176,7 @@ final class WindowTabBarLayoutTests: XCTestCase {
     }
 
     func testRemovingSecondTabRestoresFullBleedCanvas() throws {
-        let hosted = try HostedMainWindow(showSidebar: true, markdown: sampleDocument)
+        let hosted = HostedMainWindow(viewModel: makeIsolatedViewModel(), showSidebar: true, markdown: sampleDocument)
         defer { hosted.close() }
         hosted.addSecondTab()
         let scrollView = try XCTUnwrap(hosted.viewModel.activeTextView?.enclosingScrollView)

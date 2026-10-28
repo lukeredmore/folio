@@ -70,16 +70,13 @@ final class RemoteWorkspaceTests: XCTestCase {
 
     @MainActor
     func testRemoteWorkspaceFolderAndFileMountUnifiedTreeAndSelfHealingSync() async throws {
-        let tempRoot = FileManager.default.temporaryDirectory.appendingPathComponent("FolioRemoteTest_\(UUID().uuidString)", isDirectory: true)
+        let tempRoot = try makeTemporaryDirectory("FolioRemoteTest")
         let localWorkspaceDir = tempRoot.appendingPathComponent("LocalNotes", isDirectory: true)
         let mirrorBaseDir = tempRoot.appendingPathComponent("Mirrors", isDirectory: true)
         try FileManager.default.createDirectory(at: localWorkspaceDir, withIntermediateDirectories: true)
         try FileManager.default.createDirectory(at: mirrorBaseDir, withIntermediateDirectories: true)
-        defer { try? FileManager.default.removeItem(at: tempRoot) }
 
-        let defaultsSuiteName = "com.folio.tests.remote.\(UUID().uuidString)"
-        let testDefaults = UserDefaults(suiteName: defaultsSuiteName)!
-        defer { testDefaults.removePersistentDomain(forName: defaultsSuiteName) }
+        let testDefaults = isolatedDefaults()
 
         // Create a local file
         let localFileURL = localWorkspaceDir.appendingPathComponent("local_todo.md")
