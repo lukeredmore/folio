@@ -161,6 +161,21 @@ extension FolioMediaImageCache {
         return false
     }
 
+    /// Waits for `generator` to decode the frame at `time`. Returns nil when it cannot.
+    private static func decodedFrame(from generator: AVAssetImageGenerator, at time: CMTime) -> CGImage? {
+        final class DecodedFrame: @unchecked Sendable {
+            var image: CGImage?
+        }
+        let frame = DecodedFrame()
+        let decoded = DispatchSemaphore(value: 0)
+        generator.generateCGImageAsynchronously(for: time) { image, _, _ in
+            frame.image = image
+            decoded.signal()
+        }
+        decoded.wait()
+        return frame.image
+    }
+
     /// Extracts a thumbnail frame from a local video file URL using `AVAssetImageGenerator`,
     /// falling back to a synthesized 16:9 poster frame if the container has no decodable frame in the current environment.
     public static func extractVideoThumbnail(from fileURL: URL) -> NSImage? {
@@ -176,7 +191,7 @@ extension FolioMediaImageCache {
             CMTime.zero
         ]
         for time in candidateTimes {
-            if let cgImg = try? generator.copyCGImage(at: time, actualTime: nil) {
+            if let cgImg = decodedFrame(from: generator, at: time) {
                 return NSImage(cgImage: cgImg, size: NSSize(width: cgImg.width, height: cgImg.height))
             }
         }
