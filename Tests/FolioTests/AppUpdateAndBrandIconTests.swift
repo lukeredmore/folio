@@ -76,31 +76,33 @@ final class AppUpdateAndBrandIconTests: XCTestCase {
         let tempFile = try makeTemporaryDirectory("folio-sha-test").appendingPathComponent("Folio.dmg")
         try Data("folio-dmg-payload".utf8).write(to: tempFile)
         // SHA-256("folio-dmg-payload") = cd80ba81532451cedacbba4d7bd7e97a01150151ba665f29cda50bd46018ea1e
-        XCTAssertTrue(try AppUpdateManager.verifySHA256(
-            fileURL: tempFile,
-            expectedHex: "cd80ba81532451cedacbba4d7bd7e97a01150151ba665f29cda50bd46018ea1e"
-        ))
-        XCTAssertFalse(try AppUpdateManager.verifySHA256(
-            fileURL: tempFile,
-            expectedHex: "0000000000000000000000000000000000000000000000000000000000000000"
-        ))
+        XCTAssertTrue(
+            try AppUpdateManager.verifySHA256(
+                fileURL: tempFile,
+                expectedHex: "cd80ba81532451cedacbba4d7bd7e97a01150151ba665f29cda50bd46018ea1e"
+            ))
+        XCTAssertFalse(
+            try AppUpdateManager.verifySHA256(
+                fileURL: tempFile,
+                expectedHex: "0000000000000000000000000000000000000000000000000000000000000000"
+            ))
 
         // 6. Parse GitHub Releases REST API payload directly (no external JSON file needed)
         let ghReleasePayload = """
-        {
-          "tag_name": "latest",
-          "name": "Folio v1.0.0 (Build #15 — 9f8e7d6)",
-          "published_at": "2026-10-18T20:15:00Z",
-          "body": "Automated rolling macOS build.\\n\\n<!-- folio-release: {\\"version\\":\\"1.0.0\\",\\"build_number\\":15,\\"commit_sha\\":\\"9f8e7d6\\",\\"engine_version\\":\\"0.1.0\\",\\"published_at\\":\\"2026-10-18T20:15:00Z\\",\\"dmg_url\\":\\"https://github.com/lukeredmore/folio/releases/latest/download/Folio.dmg\\",\\"dmg_sha256\\":\\"cd80ba81532451cedacbba4d7bd7e97a01150151ba665f29cda50bd46018ea1e\\",\\"notes\\":\\"feat: rolling update\\"} -->",
-          "assets": [
             {
-              "name": "Folio.dmg",
-              "browser_download_url": "https://github.com/lukeredmore/folio/releases/latest/download/Folio.dmg",
-              "digest": "sha256:cd80ba81532451cedacbba4d7bd7e97a01150151ba665f29cda50bd46018ea1e"
+              "tag_name": "latest",
+              "name": "Folio v1.0.0 (Build #15 — 9f8e7d6)",
+              "published_at": "2026-10-18T20:15:00Z",
+              "body": "Automated rolling macOS build.\\n\\n<!-- folio-release: {\\"version\\":\\"1.0.0\\",\\"build_number\\":15,\\"commit_sha\\":\\"9f8e7d6\\",\\"engine_version\\":\\"0.1.0\\",\\"published_at\\":\\"2026-10-18T20:15:00Z\\",\\"dmg_url\\":\\"https://github.com/lukeredmore/folio/releases/latest/download/Folio.dmg\\",\\"dmg_sha256\\":\\"cd80ba81532451cedacbba4d7bd7e97a01150151ba665f29cda50bd46018ea1e\\",\\"notes\\":\\"feat: rolling update\\"} -->",
+              "assets": [
+                {
+                  "name": "Folio.dmg",
+                  "browser_download_url": "https://github.com/lukeredmore/folio/releases/latest/download/Folio.dmg",
+                  "digest": "sha256:cd80ba81532451cedacbba4d7bd7e97a01150151ba665f29cda50bd46018ea1e"
+                }
+              ]
             }
-          ]
-        }
-        """.data(using: .utf8)!
+            """.data(using: .utf8)!
 
         let parsed = try ReleaseManifest.fromGitHubReleaseAPI(data: ghReleasePayload)
         XCTAssertEqual(parsed.version, "1.0.0")
@@ -163,7 +165,7 @@ final class AppUpdateAndBrandIconTests: XCTestCase {
                 bundlePath: "/Applications/Folio.app",
                 infoDictionary: [
                     "FolioBuildChannel": "release",
-                    "FolioCommitSHA": "54b4d68",
+                    "FolioCommitSHA": "54b4d68"
                 ],
                 environment: [:]
             )
@@ -174,7 +176,7 @@ final class AppUpdateAndBrandIconTests: XCTestCase {
             FolioBrandIcon.isRunningDevBuild(
                 bundlePath: "/Applications/Folio.app",
                 infoDictionary: [
-                    "FolioCommitSHA": "54b4d68",
+                    "FolioCommitSHA": "54b4d68"
                 ],
                 environment: [:]
             )
@@ -186,7 +188,7 @@ final class AppUpdateAndBrandIconTests: XCTestCase {
                 bundlePath: "/Applications/Folio.app",
                 infoDictionary: [
                     "FolioBuildChannel": "dev",
-                    "FolioCommitSHA": "dev",
+                    "FolioCommitSHA": "dev"
                 ],
                 environment: [:]
             )
@@ -202,7 +204,8 @@ final class AppUpdateAndBrandIconTests: XCTestCase {
         )
         XCTAssertTrue(
             FolioBrandIcon.isRunningDevBuild(
-                bundlePath: "/private/var/tmp/_bazel_user/hash/execroot/_main/bazel-out/darwin_arm64-fastbuild/bin/macos/FolioApp/FolioApp_archive-root/Folio.app",
+                bundlePath:
+                    "/private/var/tmp/_bazel_user/hash/execroot/_main/bazel-out/darwin_arm64-fastbuild/bin/macos/FolioApp/FolioApp_archive-root/Folio.app",
                 infoDictionary: ["FolioBuildChannel": "release", "FolioCommitSHA": "54b4d68"],
                 environment: [:]
             )
@@ -238,9 +241,10 @@ final class AppUpdateAndBrandIconTests: XCTestCase {
         let devImage = FolioBrandIcon.makeAppIconImage(pixelSize: 128, isDark: false, isDevBuild: true)
 
         guard let releaseTIFF = releaseImage.tiffRepresentation,
-              let devTIFF = devImage.tiffRepresentation,
-              let releaseRep = NSBitmapImageRep(data: releaseTIFF),
-              let devRep = NSBitmapImageRep(data: devTIFF) else {
+            let devTIFF = devImage.tiffRepresentation,
+            let releaseRep = NSBitmapImageRep(data: releaseTIFF),
+            let devRep = NSBitmapImageRep(data: devTIFF)
+        else {
             XCTFail("Expected bitmap representations for rendered app icons")
             return
         }

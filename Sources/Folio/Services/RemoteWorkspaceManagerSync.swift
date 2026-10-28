@@ -92,12 +92,13 @@ extension RemoteWorkspaceManager {
 
         // 2. Enqueue or update pending write
         pendingWriteQueue.removeAll(where: { $0.localFileURL == stdURL })
-        pendingWriteQueue.append(PendingRemoteWrite(
-            mountID: mount.id,
-            relativePath: relativePath,
-            localFileURL: stdURL,
-            queuedAt: Date()
-        ))
+        pendingWriteQueue.append(
+            PendingRemoteWrite(
+                mountID: mount.id,
+                relativePath: relativePath,
+                localFileURL: stdURL,
+                queuedAt: Date()
+            ))
 
         // 3. Attempt immediate push via transport
         do {

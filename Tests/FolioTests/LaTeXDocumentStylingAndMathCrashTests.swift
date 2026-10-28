@@ -9,7 +9,7 @@ final class LaTeXDocumentStylingAndMathCrashTests: XCTestCase {
             (#"-4x^2y,\quad 7xy^2,\quad 9x^2y,\quad -3xy^2,\quad 5x^2,\quad -2x^2y"#, 396, 16, 4),
             (#"\boxed{-4x^2y,\ 9x^2y,\ -2x^2y}"#, 190, 19.5, 7.5),
             (#"\boxed{7xy^2,\ -3xy^2}."#, 131.5, 19.5, 7.5),
-            (#"a,\ -b,\quad +c,\; -d"#, 145, 14, 4),
+            (#"a,\ -b,\quad +c,\; -d"#, 145, 14, 4)
         ]
         for expr in swiftMathExpressions {
             let box = LaTeXMathRenderer.layoutLatex(expr.latex, baseFontSize: 16.0, isDisplayStyle: true)
@@ -26,21 +26,21 @@ final class LaTeXDocumentStylingAndMathCrashTests: XCTestCase {
 
     func testCodeSpecifiedStylingOverridesThemeAndFallsBackWhenAbsent() {
         let styledTeX = """
-        \\documentclass[12pt,letterpaper]{article}
-        \\usepackage{fontspec}
-        \\usepackage{setspace}
-        \\setmainfont{Times New Roman}
-        \\setstretch{1.08}
-        \\setlength{\\parindent}{0pt}
-        \\setlength{\\parskip}{0.75em}
-        \\definecolor{AnswerColor}{RGB}{0,90,180}
-        \\begin{document}
-        \\section*{Section Header}
-        Body paragraph text in Times New Roman.
+            \\documentclass[12pt,letterpaper]{article}
+            \\usepackage{fontspec}
+            \\usepackage{setspace}
+            \\setmainfont{Times New Roman}
+            \\setstretch{1.08}
+            \\setlength{\\parindent}{0pt}
+            \\setlength{\\parskip}{0.75em}
+            \\definecolor{AnswerColor}{RGB}{0,90,180}
+            \\begin{document}
+            \\section*{Section Header}
+            Body paragraph text in Times New Roman.
 
-        {\\color{AnswerColor}\\textbf{Solution:} Worked step.}
-        \\end{document}
-        """
+            {\\color{AnswerColor}\\textbf{Solution:} Worked step.}
+            \\end{document}
+            """
 
         var customTheme = EditorTheme.daylight
         customTheme.bodyFontFamily = "Avenir Next"
@@ -89,11 +89,11 @@ final class LaTeXDocumentStylingAndMathCrashTests: XCTestCase {
 
         // Fallback test: when no font/stretch/spacing is specified in code, theme styling is used
         let unstyledTeX = """
-        \\documentclass{article}
-        \\begin{document}
-        Fallback theme paragraph text.
-        \\end{document}
-        """
+            \\documentclass{article}
+            \\begin{document}
+            Fallback theme paragraph text.
+            \\end{document}
+            """
         let fallbackStorage = NSTextStorage(string: unstyledTeX)
         _ = LaTeXLiveStyler.applyStyles(
             to: fallbackStorage,
@@ -116,33 +116,33 @@ final class LaTeXDocumentStylingAndMathCrashTests: XCTestCase {
             commentBlock += "% Comment line \(i)\n"
         }
         let letterTeX = """
-        \\documentclass[12pt]{article}
-        \\usepackage[margin=1in]{geometry}
-        \\usepackage{setspace}
-        \\setstretch{1.05}
-        \\setlength{\\parindent}{0pt}
-        \\setlength{\\parskip}{0.75em}
-        \\newcommand{\\letterdate}{August 21, 2026}
-        \\newcommand{\\sendername}{Luke Redmore}
-        \\newcommand{\\senderaddress}{1109 N. Clayton St.\\\\Wilmington, DE 19806}
-        \\newcommand{\\senderemail}{lukeredmore@gmail.com}
-        \\begin{document}
+            \\documentclass[12pt]{article}
+            \\usepackage[margin=1in]{geometry}
+            \\usepackage{setspace}
+            \\setstretch{1.05}
+            \\setlength{\\parindent}{0pt}
+            \\setlength{\\parskip}{0.75em}
+            \\newcommand{\\letterdate}{August 21, 2026}
+            \\newcommand{\\sendername}{Luke Redmore}
+            \\newcommand{\\senderaddress}{1109 N. Clayton St.\\\\Wilmington, DE 19806}
+            \\newcommand{\\senderemail}{lukeredmore@gmail.com}
+            \\begin{document}
 
-        \(commentBlock)
-        \\letterdate
+            \(commentBlock)
+            \\letterdate
 
-        \\vspace{1em}
-        \\sendername\\\\
-        \\senderaddress\\\\
-        \\senderemail
+            \\vspace{1em}
+            \\sendername\\\\
+            \\senderaddress\\\\
+            \\senderemail
 
-        \\vspace{1em}
-        Delaware Department of Transportation\\\\
-        Toll Operations / E-ZPass Customer Service Center\\\\
-        P.O. Box 52598\\\\
-        New Castle, DE 19720
-        \\end{document}
-        """
+            \\vspace{1em}
+            Delaware Department of Transportation\\\\
+            Toll Operations / E-ZPass Customer Service Center\\\\
+            P.O. Box 52598\\\\
+            New Castle, DE 19720
+            \\end{document}
+            """
 
         let vm = makeIsolatedViewModel()
         vm.markdownText = letterTeX
@@ -169,41 +169,41 @@ final class LaTeXDocumentStylingAndMathCrashTests: XCTestCase {
         func makeWorksheetTeX(answersTrue: Bool) -> String {
             let toggle = answersTrue ? "\\answerstrue % <-- CHANGE THIS TO \\answersfalse" : "\\answersfalse"
             return """
-            \\documentclass[11pt]{article}
-            \\definecolor{AnswerColor}{RGB}{0,90,180}
-            \\newif\\ifanswers
-            \(toggle)
-            \\newcommand{\\workspace}[2][1.05in]{%
+                \\documentclass[11pt]{article}
+                \\definecolor{AnswerColor}{RGB}{0,90,180}
+                \\newif\\ifanswers
+                \(toggle)
+                \\newcommand{\\workspace}[2][1.05in]{%
+                    \\ifanswers
+                        \\vspace{2pt}
+                        {\\color{AnswerColor}\\textbf{Solution:} #2}
+                        \\vspace{8pt}
+                    \\else
+                        \\vspace{#1}
+                    \\fi
+                }
+                \\newcommand{\\sectiontitle}[1]{%
+                    \\newpage
+                    \\section*{#1}
+                }
+                \\begin{document}
+                \\begin{center}
+                {\\LARGE\\bfseries Simplifying Expressions}\\\\[4pt]
                 \\ifanswers
-                    \\vspace{2pt}
-                    {\\color{AnswerColor}\\textbf{Solution:} #2}
-                    \\vspace{8pt}
+                {\\normalsize\\color{AnswerColor}\\textbf{ANSWER KEY -- Worked Solutions}}
                 \\else
-                    \\vspace{#1}
+                {\\normalsize Practice Version}
                 \\fi
-            }
-            \\newcommand{\\sectiontitle}[1]{%
-                \\newpage
-                \\section*{#1}
-            }
-            \\begin{document}
-            \\begin{center}
-            {\\LARGE\\bfseries Simplifying Expressions}\\\\[4pt]
-            \\ifanswers
-            {\\normalsize\\color{AnswerColor}\\textbf{ANSWER KEY -- Worked Solutions}}
-            \\else
-            {\\normalsize Practice Version}
-            \\fi
-            \\end{center}
-            \\sectiontitle{Part II -- Exponents}
-            \\workspace[0.75in]{
-            Group by matching variable parts:
-            \\[
-            (-4 + 9 - 2)x^2y = \\boxed{3x^2y}
-            \\]
-            }
-            \\end{document}
-            """
+                \\end{center}
+                \\sectiontitle{Part II -- Exponents}
+                \\workspace[0.75in]{
+                Group by matching variable parts:
+                \\[
+                (-4 + 9 - 2)x^2y = \\boxed{3x^2y}
+                \\]
+                }
+                \\end{document}
+                """
         }
 
         let trueTeX = makeWorksheetTeX(answersTrue: true)
@@ -228,25 +228,29 @@ final class LaTeXDocumentStylingAndMathCrashTests: XCTestCase {
         let secTitleLoc = trueNS.range(of: "Part II").location
         let secTitleFont = trueStorage.attribute(.font, at: secTitleLoc, effectiveRange: nil) as? NSFont
         XCTAssertGreaterThan(secTitleFont?.pointSize ?? 0, 14.0)
-        XCTAssertTrue(trueAnalysis.decorations.contains(where: {
-            if case .headingUnderline(let level) = $0.kind { return level == 1 }
-            return false
-        }))
+        XCTAssertTrue(
+            trueAnalysis.decorations.contains(where: {
+                if case .headingUnderline(let level) = $0.kind { return level == 1 }
+                return false
+            }))
 
         let groupByLoc = trueNS.range(of: "Group by matching").location
         let mathOpenLoc = trueNS.range(of: "(-4 + 9 - 2)").location
-        let wsColor = (trueStorage.attribute(MarkdownLiveStyler.customColorAttributeKey, at: groupByLoc, effectiveRange: nil) as? NSColor)?.usingColorSpace(.sRGB)
-        let mathColor = (trueStorage.attribute(MarkdownLiveStyler.customColorAttributeKey, at: mathOpenLoc, effectiveRange: nil) as? NSColor)?.usingColorSpace(.sRGB)
+        let wsColor = (trueStorage.attribute(MarkdownLiveStyler.customColorAttributeKey, at: groupByLoc, effectiveRange: nil) as? NSColor)?.usingColorSpace(
+            .sRGB)
+        let mathColor = (trueStorage.attribute(MarkdownLiveStyler.customColorAttributeKey, at: mathOpenLoc, effectiveRange: nil) as? NSColor)?.usingColorSpace(
+            .sRGB)
         XCTAssertEqual(Double(wsColor?.blueComponent ?? 0), 180.0 / 255.0, accuracy: 0.02)
         XCTAssertEqual(Double(mathColor?.blueComponent ?? 0), 180.0 / 255.0, accuracy: 0.02)
         let mathFg = trueStorage.attribute(.foregroundColor, at: mathOpenLoc, effectiveRange: nil) as? NSColor
         XCTAssertEqual(mathFg, NSColor.clear, "Inactive display math lines inside \\workspace must stay NSColor.clear")
-        XCTAssertTrue(trueAnalysis.decorations.contains(where: {
-            if case .latexInlineText(let text, _, _, _) = $0.kind {
-                return text == "Solution:"
-            }
-            return false
-        }))
+        XCTAssertTrue(
+            trueAnalysis.decorations.contains(where: {
+                if case .latexInlineText(let text, _, _, _) = $0.kind {
+                    return text == "Solution:"
+                }
+                return false
+            }))
 
         let falseTeX = makeWorksheetTeX(answersTrue: false)
         let falseStorage = NSTextStorage(string: falseTeX)
@@ -260,14 +264,18 @@ final class LaTeXDocumentStylingAndMathCrashTests: XCTestCase {
             containerWidth: 700
         )
         let falseNS = falseTeX as NSString
-        XCTAssertEqual(falseStorage.attribute(MarkdownLiveStyler.collapsedTokenAttributeKey, at: falseNS.range(of: "ANSWER KEY").location, effectiveRange: nil) as? Bool, true)
-        XCTAssertNil(falseStorage.attribute(MarkdownLiveStyler.collapsedTokenAttributeKey, at: falseNS.range(of: "Practice Version").location, effectiveRange: nil))
+        XCTAssertEqual(
+            falseStorage.attribute(MarkdownLiveStyler.collapsedTokenAttributeKey, at: falseNS.range(of: "ANSWER KEY").location, effectiveRange: nil) as? Bool,
+            true)
+        XCTAssertNil(
+            falseStorage.attribute(MarkdownLiveStyler.collapsedTokenAttributeKey, at: falseNS.range(of: "Practice Version").location, effectiveRange: nil))
         let wsOpenLoc = falseNS.range(of: "\\workspace[0.75in]{").location
         let wsPStyle = falseStorage.attribute(.paragraphStyle, at: wsOpenLoc, effectiveRange: nil) as? NSParagraphStyle
         XCTAssertEqual(Double(wsPStyle?.minimumLineHeight ?? 0), 54.0, accuracy: 0.5)
-        XCTAssertFalse(falseAnalysis.decorations.contains(where: {
-            if case .mathBlockRendered = $0.kind { return true }
-            return false
-        }))
+        XCTAssertFalse(
+            falseAnalysis.decorations.contains(where: {
+                if case .mathBlockRendered = $0.kind { return true }
+                return false
+            }))
     }
 }

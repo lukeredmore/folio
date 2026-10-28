@@ -117,11 +117,12 @@ extension LaTeXLiveStyler {
             pStyle.lineSpacing = docIndex.effectiveLineSpacing(fallback: typography)
             pStyle.paragraphSpacing = max(3.0, typography.paragraphSpacing * 0.5)
             pStyle.tailIndent = effectiveContainerWidth
-            storage.addAttributes([
-                .font: baseFont,
-                .foregroundColor: theme.textNSColor.withAlphaComponent(blockDim),
-                .paragraphStyle: pStyle
-            ], range: el.lineRange)
+            storage.addAttributes(
+                [
+                    .font: baseFont,
+                    .foregroundColor: theme.textNSColor.withAlphaComponent(blockDim),
+                    .paragraphStyle: pStyle
+                ], range: el.lineRange)
             styleLaTeXInlineContent(
                 in: storage, string: string, nsString: nsString, range: el.contentRange,
                 lineRange: el.lineRange, baseFont: baseFont, isActiveLine: el.isActive,
@@ -252,14 +253,16 @@ extension LaTeXLiveStyler {
             pStyle.paragraphSpacingBefore = 0
             pStyle.tailIndent = effectiveContainerWidth
             MarkdownLiveStyler.collapseWhitespaceRange(in: storage, range: contentRange)
-            storage.addAttributes([
-                .font: NSFont.systemFont(ofSize: 0.1),
-                .foregroundColor: NSColor.clear,
-                .paragraphStyle: pStyle
-            ], range: lineRange)
+            storage.addAttributes(
+                [
+                    .font: NSFont.systemFont(ofSize: 0.1),
+                    .foregroundColor: NSColor.clear,
+                    .paragraphStyle: pStyle
+                ], range: lineRange)
         } else {
             let font = isDirective ? theme.codeFont(size: effectiveBaseSize * 0.86) : baseFont
-            let color = isDirective
+            let color =
+                isDirective
                 ? theme.markdownTokenNSColor.withAlphaComponent(0.85 * dimFactor)
                 : theme.secondaryTextNSColor.withAlphaComponent(0.65 * dimFactor)
             storage.addAttributes([.font: font, .foregroundColor: color], range: contentRange)

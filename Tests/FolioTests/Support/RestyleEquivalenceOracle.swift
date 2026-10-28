@@ -51,10 +51,10 @@ enum RestyleEquivalenceOracle {
                 let key = keys.first { !isEqual(actualAttributes[$0], expectedAttributes[$0]) }
                 let range = NSRange(location: location, length: end - location)
                 return """
-                attribute \(key?.rawValue ?? "?") differs in \(describe(range, in: actual.string)): \
-                editor has \(describe(key.flatMap { actualAttributes[$0] })), \
-                full restyle has \(describe(key.flatMap { expectedAttributes[$0] }))
-                """
+                    attribute \(key?.rawValue ?? "?") differs in \(describe(range, in: actual.string)): \
+                    editor has \(describe(key.flatMap { actualAttributes[$0] })), \
+                    full restyle has \(describe(key.flatMap { expectedAttributes[$0] }))
+                    """
             }
             location = end
         }
@@ -68,14 +68,15 @@ enum RestyleEquivalenceOracle {
         text: String
     ) -> String? {
         guard actual != expected else { return nil }
-        let index = zip(actual, expected).enumerated().first { $0.element.0 != $0.element.1 }?.offset
+        let index =
+            zip(actual, expected).enumerated().first { $0.element.0 != $0.element.1 }?.offset
             ?? min(actual.count, expected.count)
         let actualItem = index < actual.count ? String(describing: actual[index]) : "nothing"
         let expectedItem = index < expected.count ? String(describing: expected[index]) : "nothing"
         return """
-        \(name) \(index) differs (editor has \(actual.count), full restyle has \(expected.count)): \
-        editor has \(actualItem), full restyle has \(expectedItem)
-        """
+            \(name) \(index) differs (editor has \(actual.count), full restyle has \(expected.count)): \
+            editor has \(actualItem), full restyle has \(expectedItem)
+            """
     }
 
     private static func isEqual(_ lhs: Any?, _ rhs: Any?) -> Bool {

@@ -9,14 +9,18 @@ extension EditorWorkspaceViewModel {
     public static let printMarginsDefaultsKey = "Folio.PrintMargins.v1"
 
     func restorePageLayoutSettings(from defaults: UserDefaults) {
-        textAlignment = defaults.string(forKey: Self.textAlignmentDefaultsKey)
+        textAlignment =
+            defaults.string(forKey: Self.textAlignmentDefaultsKey)
             .flatMap(EditorTextAlignment.init(rawValue:)) ?? .left
-        printPaperSize = defaults.string(forKey: Self.printPaperSizeDefaultsKey)
+        printPaperSize =
+            defaults.string(forKey: Self.printPaperSizeDefaultsKey)
             .flatMap(PrintPaperSize.init(rawValue:)) ?? .letter
-        printOrientation = defaults.string(forKey: Self.printOrientationDefaultsKey)
+        printOrientation =
+            defaults.string(forKey: Self.printOrientationDefaultsKey)
             .flatMap(PrintOrientation.init(rawValue:)) ?? .portrait
         if let data = defaults.data(forKey: Self.printMarginsDefaultsKey),
-           let decoded = try? JSONDecoder().decode(PrintPageMargins.self, from: data) {
+            let decoded = try? JSONDecoder().decode(PrintPageMargins.self, from: data)
+        {
             printMargins = decoded
         } else {
             printMargins = .default

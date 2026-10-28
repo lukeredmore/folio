@@ -38,7 +38,8 @@ extension LaTeXLiveStyler {
         defer { ot_engine_free_macro_template_analysis(analysis) }
 
         let colorName = analysis.color_name.map { String(cString: $0) } ?? ""
-        let resolvedColor: NSColor? = colorName.isEmpty
+        let resolvedColor: NSColor? =
+            colorName.isEmpty
             ? nil
             : docIndex.resolveColor(named: colorName, fallbackTheme: theme)
 
@@ -72,8 +73,9 @@ extension LaTeXLiveStyler {
                 while idx < fullLength && nsString.character(at: idx) != 0x0A { idx += 1 }
                 continue
             }
-            if ch == 0x7B { depth += 1 }
-            else if ch == 0x7D {
+            if ch == 0x7B {
+                depth += 1
+            } else if ch == 0x7D {
                 depth -= 1
                 if depth == 0 { return idx }
             }
@@ -127,11 +129,12 @@ extension LaTeXLiveStyler {
                 pStyle.paragraphSpacingBefore = level == 1 ? 16.0 : (level == 2 ? 12.0 : 8.0)
                 pStyle.paragraphSpacing = level <= 2 ? 10.0 : 6.0
                 pStyle.tailIndent = effectiveContainerWidth
-                storage.addAttributes([
-                    .font: lineFont,
-                    .foregroundColor: (tpl.color ?? theme.headingNSColor).withAlphaComponent(dimFactor),
-                    .paragraphStyle: pStyle
-                ], range: lineRange)
+                storage.addAttributes(
+                    [
+                        .font: lineFont,
+                        .foregroundColor: (tpl.color ?? theme.headingNSColor).withAlphaComponent(dimFactor),
+                        .paragraphStyle: pStyle
+                    ], range: lineRange)
                 if level <= 2 && prettyMode && !isActiveLine {
                     decorations.append(LineDecoration(lineRange: lineRange, kind: .headingUnderline(level: level)))
                 }
@@ -183,10 +186,11 @@ extension LaTeXLiveStyler {
             MarkdownLiveStyler.collapseWhitespaceRange(
                 in: storage, range: NSRange(location: fullBlockRange.location, length: max(0, fullBlockRange.length - 1))
             )
-            storage.addAttributes([
-                .font: NSFont.systemFont(ofSize: 0.1), .foregroundColor: NSColor.clear,
-                .paragraphStyle: pStyle, MKey.noSpellCheck: true
-            ], range: fullBlockRange)
+            storage.addAttributes(
+                [
+                    .font: NSFont.systemFont(ofSize: 0.1), .foregroundColor: NSColor.clear,
+                    .paragraphStyle: pStyle, MKey.noSpellCheck: true
+                ], range: fullBlockRange)
             LaTeXBlockStyleCache.collapseInternalNewlines(in: storage, nsString: nsString, range: fullBlockRange)
             LaTeXBlockStyleCache.pendingGlyphInvalidationRanges.append(fullBlockRange)
             return (NSMaxRange(fullBlockRange), lineCount)
@@ -238,9 +242,10 @@ extension LaTeXLiveStyler {
                 in: storage, nsString: nsString, fullRange: range, width: labelW,
                 ascent: boldFont.ascender, descent: -boldFont.descender
             )
-            decorations.append(LineDecoration(
-                lineRange: range, kind: .latexInlineText(text: label, font: boldFont, range: range, dimFactor: dimFactor)
-            ))
+            decorations.append(
+                LineDecoration(
+                    lineRange: range, kind: .latexInlineText(text: label, font: boldFont, range: range, dimFactor: dimFactor)
+                ))
         } else if isInlinePrefix {
             MarkdownLiveStyler.styleSyntaxToken(in: storage, range: range, isActiveLine: isActive || !prettyMode, theme: theme, dimFactor: dimFactor)
         } else {

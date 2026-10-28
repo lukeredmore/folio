@@ -114,7 +114,8 @@ extension EditorWorkspaceViewModel {
         if let savedPath = defaults.string(forKey: pathKey), !savedPath.isEmpty {
             var isDir: ObjCBool = false
             if fm.fileExists(atPath: savedPath, isDirectory: &isDir),
-               isDir.boolValue == requireDirectory {
+                isDir.boolValue == requireDirectory
+            {
                 if let bookmarkData = defaults.data(forKey: bookmarkKey) {
                     var isStale = false
                     if let bookmarkedURL = try? URL(
@@ -140,14 +141,16 @@ extension EditorWorkspaceViewModel {
             ) {
                 var isDir: ObjCBool = false
                 if fm.fileExists(atPath: bookmarkedURL.path, isDirectory: &isDir),
-                   isDir.boolValue == requireDirectory {
+                    isDir.boolValue == requireDirectory
+                {
                     _ = bookmarkedURL.startAccessingSecurityScopedResource()
                     if isStale,
-                       let freshData = try? bookmarkedURL.bookmarkData(
-                           options: [],
-                           includingResourceValuesForKeys: nil,
-                           relativeTo: nil
-                       ) {
+                        let freshData = try? bookmarkedURL.bookmarkData(
+                            options: [],
+                            includingResourceValuesForKeys: nil,
+                            relativeTo: nil
+                        )
+                    {
                         defaults.set(freshData, forKey: bookmarkKey)
                     }
                     defaults.set(bookmarkedURL.path, forKey: pathKey)

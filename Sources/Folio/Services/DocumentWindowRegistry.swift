@@ -85,7 +85,8 @@ public final class DocumentWindowRegistry: ObservableObject {
         entries[id]?.observers = [becameKey, willClose]
 
         if let parent = pendingTabParents.removeValue(forKey: id)?.window, parent !== window,
-           parent.tabGroup?.windows.contains(window) != true {
+            parent.tabGroup?.windows.contains(window) != true
+        {
             parent.addTabbedWindow(window, ordered: .above)
             window.makeKeyAndOrderFront(nil)
         }
@@ -151,7 +152,8 @@ public final class DocumentWindowRegistry: ObservableObject {
     private func openWindowForPendingPathsIfNeeded() {
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { [weak self] in
             guard let self, !self.pendingOpenPaths.isEmpty, self.viewModels.isEmpty,
-                  let openWindow = self.openWindowAction else { return }
+                let openWindow = self.openWindowAction
+            else { return }
             openWindow(value: DocumentWindowValue())
         }
     }

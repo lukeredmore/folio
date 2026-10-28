@@ -87,7 +87,7 @@ extension EditorWorkspaceViewModel {
         hasSavedDocumentSessionDefaultsKey,
         selectedCursorLocationDefaultsKey,
         workspaceFolderPathDefaultsKey,
-        workspaceFolderBookmarkDefaultsKey,
+        workspaceFolderBookmarkDefaultsKey
     ]
 
     // MARK: - Window Lifecycle
@@ -158,16 +158,17 @@ extension EditorWorkspaceViewModel {
         if let textView = activeTextView {
             textView.applyProgrammaticDocumentText(content, selectedRange: selection)
         } else {
-            headings = MarkdownLiveStyler.applyStyles(
-                to: NSTextStorage(string: content),
-                theme: theme,
-                typography: typography,
-                sourceCodeMode: sourceCodeMode,
-                focusMode: focusMode,
-                selectedRange: selection,
-                baseDirectoryURL: url.deletingLastPathComponent(),
-                fileURL: url
-            ).headings
+            headings =
+                MarkdownLiveStyler.applyStyles(
+                    to: NSTextStorage(string: content),
+                    theme: theme,
+                    typography: typography,
+                    sourceCodeMode: sourceCodeMode,
+                    focusMode: focusMode,
+                    selectedRange: selection,
+                    baseDirectoryURL: url.deletingLastPathComponent(),
+                    fileURL: url
+                ).headings
         }
         refreshUndoRedoAvailability()
         persistDocumentSessionState()
@@ -177,9 +178,10 @@ extension EditorWorkspaceViewModel {
     /// Comments are saved without a text write, so `syncFromSiblingTab` alone would miss them.
     func refreshFromSiblingTabs() {
         guard let url = currentFileURL, let registry = windowRegistry,
-              registry.viewModels.contains(where: { $0 !== self && $0.isShowing(url) }),
-              activeConflict == nil, markdownText == lastSavedDiskContent, !hasPendingAutoSave,
-              let diskContent = try? String(contentsOf: url, encoding: .utf8) else { return }
+            registry.viewModels.contains(where: { $0 !== self && $0.isShowing(url) }),
+            activeConflict == nil, markdownText == lastSavedDiskContent, !hasPendingAutoSave,
+            let diskContent = try? String(contentsOf: url, encoding: .utf8)
+        else { return }
         syncFromSiblingTab(wrote: diskContent, to: url)
         let showsSidebar = showCommentsSidebar
         let selectedComment = activeCommentID

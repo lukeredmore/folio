@@ -52,14 +52,16 @@ extension MarkdownLiveStyler {
 
         proseLineKinds[lineNumber] = .listItem
         let boxFont = NSFont.monospacedSystemFont(ofSize: effectiveBaseSize * 0.92, weight: .bold)
-        storage.addAttributes([
-            .font: boxFont,
-            .foregroundColor: (isChecked ? theme.linkNSColor : theme.secondaryTextNSColor).withAlphaComponent(dimFactor),
-            .kern: 0.0
-        ], range: boxRange)
+        storage.addAttributes(
+            [
+                .font: boxFont,
+                .foregroundColor: (isChecked ? theme.linkNSColor : theme.secondaryTextNSColor).withAlphaComponent(dimFactor),
+                .kern: 0.0
+            ], range: boxRange)
 
         let syntaxFont = NSFont.monospacedSystemFont(ofSize: max(11.0, theme.baseFontSize * 0.85), weight: .regular)
-        let activePrefixW = isActiveLine
+        let activePrefixW =
+            isActiveLine
             ? (nsString.substring(with: bulletPrefixRange) as NSString).size(withAttributes: [.font: syntaxFont]).width
             : 0.0
 
@@ -84,18 +86,20 @@ extension MarkdownLiveStyler {
         }
 
         if isChecked {
-            storage.addAttributes([
-                .strikethroughStyle: NSUnderlineStyle.single.rawValue,
-                .foregroundColor: theme.secondaryTextNSColor.withAlphaComponent(0.75 * dimFactor)
-            ], range: textRange)
+            storage.addAttributes(
+                [
+                    .strikethroughStyle: NSUnderlineStyle.single.rawValue,
+                    .foregroundColor: theme.secondaryTextNSColor.withAlphaComponent(0.75 * dimFactor)
+                ], range: textRange)
         } else if dimFactor < 1.0 {
             storage.addAttribute(.foregroundColor, value: baseColor.withAlphaComponent(dimFactor), range: textRange)
         }
 
         if multiLineParagraphLines.contains(lineNumber) && proseLineKinds[lineNumber] != nil {
-            deferredProseInline.append(DeferredInlineStyle(
-                line: lineNumber, range: textRange, baseFont: baseFont, isActive: isActiveLine, dimFactor: dimFactor
-            ))
+            deferredProseInline.append(
+                DeferredInlineStyle(
+                    line: lineNumber, range: textRange, baseFont: baseFont, isActive: isActiveLine, dimFactor: dimFactor
+                ))
         } else {
             styleInlineMarkdown(
                 in: storage,
@@ -155,7 +159,8 @@ extension MarkdownLiveStyler {
         let markerFont = theme.bodyFont(size: effectiveBaseSize, bold: true)
         let markerStr = nsString.substring(with: markerSymbolRange) as NSString
         let markerW = markerStr.size(withAttributes: [.font: markerFont]).width
-        let leadW = isActiveLine && leadingWSRange.length > 0
+        let leadW =
+            isActiveLine && leadingWSRange.length > 0
             ? (nsString.substring(with: leadingWSRange) as NSString).size(withAttributes: [.font: markerFont]).width
             : 0.0
 
@@ -168,20 +173,22 @@ extension MarkdownLiveStyler {
         listPara.tailIndent = effectiveContainerWidth
         storage.addAttribute(.paragraphStyle, value: listPara, range: lineRange)
 
-        storage.addAttributes([
-            .font: markerFont,
-            .foregroundColor: (!isActiveLine && !isOrdered)
-                ? NSColor.clear
-                : theme.linkNSColor.withAlphaComponent(dimFactor),
-            .kern: 0.0
-        ], range: markerSymbolRange)
+        storage.addAttributes(
+            [
+                .font: markerFont,
+                .foregroundColor: (!isActiveLine && !isOrdered)
+                    ? NSColor.clear
+                    : theme.linkNSColor.withAlphaComponent(dimFactor),
+                .kern: 0.0
+            ], range: markerSymbolRange)
 
         if !isActiveLine {
             if !isOrdered {
-                decorations.append(LineDecoration(
-                    lineRange: lineRange,
-                    kind: .listBullet(range: markerSymbolRange, dimFactor: dimFactor)
-                ))
+                decorations.append(
+                    LineDecoration(
+                        lineRange: lineRange,
+                        kind: .listBullet(range: markerSymbolRange, dimFactor: dimFactor)
+                    ))
             }
             if leadingWSRange.length > 0 {
                 collapseWhitespaceRange(in: storage, range: leadingWSRange)
@@ -192,10 +199,11 @@ extension MarkdownLiveStyler {
                 storage.addAttribute(.kern, value: desiredGap, range: NSRange(location: postMarkerWSRange.location, length: 1))
             }
         } else {
-            storage.addAttributes([
-                .font: markerFont,
-                .foregroundColor: theme.linkNSColor.withAlphaComponent(dimFactor)
-            ], range: NSRange(location: leadingWSRange.location, length: NSMaxRange(postMarkerWSRange) - leadingWSRange.location))
+            storage.addAttributes(
+                [
+                    .font: markerFont,
+                    .foregroundColor: theme.linkNSColor.withAlphaComponent(dimFactor)
+                ], range: NSRange(location: leadingWSRange.location, length: NSMaxRange(postMarkerWSRange) - leadingWSRange.location))
             if !isOrdered && markerStr.isEqual(to: "*") {
                 storage.addAttribute(.baselineOffset, value: -effectiveBaseSize * 0.14, range: markerSymbolRange)
             }
@@ -211,9 +219,10 @@ extension MarkdownLiveStyler {
         }
 
         if multiLineParagraphLines.contains(lineNumber) && proseLineKinds[lineNumber] != nil {
-            deferredProseInline.append(DeferredInlineStyle(
-                line: lineNumber, range: bodyRange, baseFont: baseFont, isActive: isActiveLine, dimFactor: dimFactor
-            ))
+            deferredProseInline.append(
+                DeferredInlineStyle(
+                    line: lineNumber, range: bodyRange, baseFont: baseFont, isActive: isActiveLine, dimFactor: dimFactor
+                ))
         } else {
             styleInlineMarkdown(
                 in: storage,
@@ -248,15 +257,17 @@ extension MarkdownLiveStyler {
         let prefixLen = (labelRange.location - contentRange.location) + labelRange.length + 2 // includes `]:`
         let prefixRange = NSRange(location: contentRange.location, length: min(contentRange.length, prefixLen))
 
-        storage.addAttributes([
-            .font: theme.codeFont(size: max(11.0, effectiveBaseSize * 0.86)),
-            .foregroundColor: theme.markdownTokenNSColor.withAlphaComponent((isActiveLine ? 0.90 : 0.65) * dimFactor)
-        ], range: prefixRange)
-        storage.addAttributes([
-            .font: theme.codeFont(size: max(11.0, effectiveBaseSize * 0.86)),
-            .foregroundColor: theme.linkNSColor.withAlphaComponent((isActiveLine ? 0.95 : 0.75) * dimFactor),
-            .underlineStyle: NSUnderlineStyle.single.rawValue
-        ], range: destRange)
+        storage.addAttributes(
+            [
+                .font: theme.codeFont(size: max(11.0, effectiveBaseSize * 0.86)),
+                .foregroundColor: theme.markdownTokenNSColor.withAlphaComponent((isActiveLine ? 0.90 : 0.65) * dimFactor)
+            ], range: prefixRange)
+        storage.addAttributes(
+            [
+                .font: theme.codeFont(size: max(11.0, effectiveBaseSize * 0.86)),
+                .foregroundColor: theme.linkNSColor.withAlphaComponent((isActiveLine ? 0.95 : 0.75) * dimFactor),
+                .underlineStyle: NSUnderlineStyle.single.rawValue
+            ], range: destRange)
     }
 
     static func styleDefaultParagraphOrListContinuationLine(
@@ -282,9 +293,11 @@ extension MarkdownLiveStyler {
         decorations: inout [LineDecoration]
     ) {
         if let listIndent = previousListTextIndent,
-           let leadMatch = leadingSpaceRegex.firstMatch(in: string, options: [], range: contentRange),
-           indentationColumnCount(nsString: nsString, range: leadMatch.range) >= 2 {
-            let leadW = isActiveLine && leadMatch.range.length > 0
+            let leadMatch = leadingSpaceRegex.firstMatch(in: string, options: [], range: contentRange),
+            indentationColumnCount(nsString: nsString, range: leadMatch.range) >= 2
+        {
+            let leadW =
+                isActiveLine && leadMatch.range.length > 0
                 ? (nsString.substring(with: leadMatch.range) as NSString).size(withAttributes: [.font: baseFont]).width
                 : 0.0
             if !isActiveLine && leadMatch.range.length > 0 {
@@ -308,9 +321,10 @@ extension MarkdownLiveStyler {
         }
 
         if multiLineParagraphLines.contains(lineNumber) && proseLineKinds[lineNumber] != nil {
-            deferredProseInline.append(DeferredInlineStyle(
-                line: lineNumber, range: contentRange, baseFont: baseFont, isActive: isActiveLine, dimFactor: dimFactor
-            ))
+            deferredProseInline.append(
+                DeferredInlineStyle(
+                    line: lineNumber, range: contentRange, baseFont: baseFont, isActive: isActiveLine, dimFactor: dimFactor
+                ))
         } else {
             styleInlineMarkdown(
                 in: storage,

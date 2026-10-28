@@ -123,10 +123,10 @@ public struct PrintPageMargins: Equatable, Codable, Sendable {
         self.init(top: uniform, bottom: uniform, left: uniform, right: uniform)
     }
 
-    public static let narrow = PrintPageMargins(uniform: 36)   // 0.50 in
+    public static let narrow = PrintPageMargins(uniform: 36) // 0.50 in
     public static let `default` = PrintPageMargins(uniform: PrintPaperSize.margin) // 0.75 in
-    public static let normal = PrintPageMargins(uniform: 72)   // 1.00 in
-    public static let wide = PrintPageMargins(uniform: 90)     // 1.25 in
+    public static let normal = PrintPageMargins(uniform: 72) // 1.00 in
+    public static let wide = PrintPageMargins(uniform: 90) // 1.25 in
 
     public var isUniform: Bool {
         abs(top - bottom) < 0.5 && abs(top - left) < 0.5 && abs(top - right) < 0.5

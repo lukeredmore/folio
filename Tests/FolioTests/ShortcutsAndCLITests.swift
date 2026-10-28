@@ -13,24 +13,28 @@ final class ShortcutsAndCLITests: XCTestCase {
         var detector = DoubleShiftDetector(maxHoldDuration: 0.35, maxDoubleTapInterval: 0.40)
 
         // First Shift down + up
-        XCTAssertFalse(detector.handleFlagsChanged(
-            modifierFlags: [.shift],
-            timestamp: 10.00
-        ))
-        XCTAssertFalse(detector.handleFlagsChanged(
-            modifierFlags: [],
-            timestamp: 10.08
-        ))
+        XCTAssertFalse(
+            detector.handleFlagsChanged(
+                modifierFlags: [.shift],
+                timestamp: 10.00
+            ))
+        XCTAssertFalse(
+            detector.handleFlagsChanged(
+                modifierFlags: [],
+                timestamp: 10.08
+            ))
 
         // Second Shift down + up within 0.40s
-        XCTAssertFalse(detector.handleFlagsChanged(
-            modifierFlags: [.shift],
-            timestamp: 10.22
-        ))
-        XCTAssertTrue(detector.handleFlagsChanged(
-            modifierFlags: [],
-            timestamp: 10.30
-        ))
+        XCTAssertFalse(
+            detector.handleFlagsChanged(
+                modifierFlags: [.shift],
+                timestamp: 10.22
+            ))
+        XCTAssertTrue(
+            detector.handleFlagsChanged(
+                modifierFlags: [],
+                timestamp: 10.30
+            ))
     }
 
     func testDoubleShiftDetectorCancelsOnInterveningKeyOrModifier() {
@@ -71,18 +75,19 @@ final class ShortcutsAndCLITests: XCTestCase {
         let leftShift: UInt16 = 56
         func send(_ type: NSEvent.EventType, _ flags: NSEvent.ModifierFlags, keyCode: UInt16, at time: TimeInterval) throws -> NSEvent? {
             let characters = type == .flagsChanged ? "" : (keyCode == 53 ? "\u{1b}" : "a")
-            let event = try XCTUnwrap(NSEvent.keyEvent(
-                with: type,
-                location: .zero,
-                modifierFlags: flags,
-                timestamp: time,
-                windowNumber: 0,
-                context: nil,
-                characters: characters,
-                charactersIgnoringModifiers: characters,
-                isARepeat: false,
-                keyCode: keyCode
-            ))
+            let event = try XCTUnwrap(
+                NSEvent.keyEvent(
+                    with: type,
+                    location: .zero,
+                    modifierFlags: flags,
+                    timestamp: time,
+                    windowNumber: 0,
+                    context: nil,
+                    characters: characters,
+                    charactersIgnoringModifiers: characters,
+                    isARepeat: false,
+                    keyCode: keyCode
+                ))
             return monitor.processMonitoredEvent(event)
         }
 
@@ -301,28 +306,30 @@ final class ShortcutsAndCLITests: XCTestCase {
         // (which raises NSInternalInconsistencyException in AppKit and aborts all mouse clicks in the app).
         let monitorCoordinator = DoubleShiftEventMonitorAccessor.Coordinator(viewModel: vm)
         let clickPoint = NSPoint(x: 600, y: 500)
-        let mouseDown = try XCTUnwrap(NSEvent.mouseEvent(
-            with: .leftMouseDown,
-            location: clickPoint,
-            modifierFlags: [],
-            timestamp: ProcessInfo.processInfo.systemUptime,
-            windowNumber: window.windowNumber,
-            context: nil,
-            eventNumber: 1,
-            clickCount: 1,
-            pressure: 1.0
-        ))
-        let rightMouseDown = try XCTUnwrap(NSEvent.mouseEvent(
-            with: .rightMouseDown,
-            location: clickPoint,
-            modifierFlags: [],
-            timestamp: ProcessInfo.processInfo.systemUptime,
-            windowNumber: window.windowNumber,
-            context: nil,
-            eventNumber: 2,
-            clickCount: 1,
-            pressure: 1.0
-        ))
+        let mouseDown = try XCTUnwrap(
+            NSEvent.mouseEvent(
+                with: .leftMouseDown,
+                location: clickPoint,
+                modifierFlags: [],
+                timestamp: ProcessInfo.processInfo.systemUptime,
+                windowNumber: window.windowNumber,
+                context: nil,
+                eventNumber: 1,
+                clickCount: 1,
+                pressure: 1.0
+            ))
+        let rightMouseDown = try XCTUnwrap(
+            NSEvent.mouseEvent(
+                with: .rightMouseDown,
+                location: clickPoint,
+                modifierFlags: [],
+                timestamp: ProcessInfo.processInfo.systemUptime,
+                windowNumber: window.windowNumber,
+                context: nil,
+                eventNumber: 2,
+                clickCount: 1,
+                pressure: 1.0
+            ))
         XCTAssertTrue(monitorCoordinator.processMonitoredEvent(mouseDown) === mouseDown)
         XCTAssertTrue(monitorCoordinator.processMonitoredEvent(rightMouseDown) === rightMouseDown)
 

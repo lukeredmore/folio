@@ -92,7 +92,8 @@ extension MarkdownLiveStyler {
 
     static func isTableSeparatorRow(nsString: NSString, contentRange: NSRange) -> Bool {
         guard let parsed = parseTableRowCells(nsString: nsString, contentRange: contentRange),
-              !parsed.cells.isEmpty else {
+            !parsed.cells.isEmpty
+        else {
             return false
         }
         for cell in parsed.cells {
@@ -161,11 +162,12 @@ extension MarkdownLiveStyler {
             let leadingRange = NSRange(location: startLoc, length: max(0, contentStart - startLoc))
             let cellRange = NSRange(location: contentStart, length: max(0, contentEnd - contentStart))
             let trailingRange = NSRange(location: contentEnd, length: max(0, nextPipePos - contentEnd))
-            cells.append(ParsedTableCell(
-                leadingDelimiterRange: leadingRange,
-                contentRange: cellRange,
-                trailingSpacesRange: trailingRange
-            ))
+            cells.append(
+                ParsedTableCell(
+                    leadingDelimiterRange: leadingRange,
+                    contentRange: cellRange,
+                    trailingSpacesRange: trailingRange
+                ))
         }
 
         let closingRange: NSRange
@@ -208,7 +210,8 @@ extension MarkdownLiveStyler {
             scanIndex = NSMaxRange(nextLR)
             scanLines += 1
         }
-        let hasValidTableStructure = tableRows.count >= 2 && tableRows.contains(where: { $0.isSeparator })
+        let hasValidTableStructure =
+            tableRows.count >= 2 && tableRows.contains(where: { $0.isSeparator })
             || (tableRows.count == 1 && nsString.substring(with: tableRows[0].contentRange).trimmingCharacters(in: .whitespaces).hasPrefix("|"))
         guard hasValidTableStructure else { return nil }
         styleTableBlock(

@@ -18,7 +18,8 @@ extension MarkdownLiveStyler {
         var runStart = 0
         for i in deferredProseInline.indices {
             let item = deferredProseInline[i]
-            let continuesRun = i + 1 < deferredProseInline.count
+            let continuesRun =
+                i + 1 < deferredProseInline.count
                 && deferredProseInline[i + 1].line == item.line + 1
                 && lineRecords[item.line].map { rec in
                     NSMaxRange(rec.contentRange) < fullLength
@@ -95,8 +96,9 @@ extension MarkdownLiveStyler {
                     guard joined else { continue }
                 }
                 guard let docStart = documentOffset(lineRecords[link.startLine], byteColumn: link.startColumn - 1),
-                      let docEnd = documentOffset(lineRecords[link.endLine], byteColumn: link.endColumn),
-                      docEnd > docStart else {
+                    let docEnd = documentOffset(lineRecords[link.endLine], byteColumn: link.endColumn),
+                    docEnd > docStart
+                else {
                     continue
                 }
                 let docRange = NSRange(location: docStart, length: docEnd - docStart)
@@ -151,18 +153,19 @@ extension MarkdownLiveStyler {
                         let targetH = display.isLoaded ? max(26.0, display.size.height + 10.0) : 52.0
                         reserveMediaCardHeight(in: storage, lineRange: rec.lineRange, targetHeight: targetH)
                         collapseWhitespaceRange(in: storage, range: docRange)
-                        decorations.append(LineDecoration(
-                            lineRange: rec.lineRange,
-                            kind: .imageRendered(
-                                url: link.url,
-                                alt: altStr,
-                                fullRange: docRange,
-                                explicitWidth: nil,
-                                explicitHeight: nil,
-                                baseDirectoryURL: baseDirectoryURL,
-                                dimFactor: rec.dimFactor
-                            )
-                        ))
+                        decorations.append(
+                            LineDecoration(
+                                lineRange: rec.lineRange,
+                                kind: .imageRendered(
+                                    url: link.url,
+                                    alt: altStr,
+                                    fullRange: docRange,
+                                    explicitWidth: nil,
+                                    explicitHeight: nil,
+                                    baseDirectoryURL: baseDirectoryURL,
+                                    dimFactor: rec.dimFactor
+                                )
+                            ))
                     } else {
                         applyAttributesToVisibleCharacters(
                             in: storage,
@@ -173,7 +176,8 @@ extension MarkdownLiveStyler {
                             ]
                         )
                         styleSyntaxToken(in: storage, range: openSyntaxRange, isActiveLine: rec.isActive || !prettyMode, theme: theme, dimFactor: rec.dimFactor)
-                        styleSyntaxToken(in: storage, range: trailingSyntaxRange, isActiveLine: rec.isActive || !prettyMode, theme: theme, dimFactor: rec.dimFactor)
+                        styleSyntaxToken(
+                            in: storage, range: trailingSyntaxRange, isActiveLine: rec.isActive || !prettyMode, theme: theme, dimFactor: rec.dimFactor)
                     }
                 } else if !spanText.hasPrefix("<") {
                     // GFM extended bare autolink (e.g. www.example.com, https://example.com)
@@ -205,13 +209,15 @@ extension MarkdownLiveStyler {
         for block in blocks where block.kind == 8 && block.endLine > block.startLine && block.startLine > 0 {
             for ln in block.startLine..<block.endLine {
                 guard let rec = lineRecords[ln],
-                      canJoinProseLines(proseLineKinds[ln], proseLineKinds[ln + 1]),
-                      !endsWithHardLineBreak(rec.lineText) else {
+                    canJoinProseLines(proseLineKinds[ln], proseLineKinds[ln + 1]),
+                    !endsWithHardLineBreak(rec.lineText)
+                else {
                     continue
                 }
                 let newlineLocation = NSMaxRange(rec.contentRange)
                 guard newlineLocation < NSMaxRange(rec.lineRange),
-                      nsString.character(at: newlineLocation) == 10 else {
+                    nsString.character(at: newlineLocation) == 10
+                else {
                     continue
                 }
                 // TextKit lays out the joined paragraph with the style of its first source line.
@@ -303,8 +309,8 @@ extension MarkdownLiveStyler {
     }
 
     static func isLineActive(lineRange: NSRange, activeLineRange: NSRange, selectedRange: NSRange) -> Bool {
-        return NSIntersectionRange(lineRange, activeLineRange).length > 0 ||
-            (selectedRange.location == lineRange.location + lineRange.length && lineRange.location == activeLineRange.location)
+        return NSIntersectionRange(lineRange, activeLineRange).length > 0
+            || (selectedRange.location == lineRange.location + lineRange.length && lineRange.location == activeLineRange.location)
     }
 
     static func indentationColumnCount(nsString: NSString, range: NSRange) -> Int {

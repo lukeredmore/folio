@@ -111,8 +111,9 @@ extension EditorWorkspaceViewModel {
         let nsStr = markdownText as NSString
         let sel = currentSelectedRange
         if sel.length > 0,
-           NSMaxRange(sel) <= nsStr.length,
-           nsStr.substring(with: sel).caseInsensitiveCompare(findQuery) == .orderedSame {
+            NSMaxRange(sel) <= nsStr.length,
+            nsStr.substring(with: sel).caseInsensitiveCompare(findQuery) == .orderedSame
+        {
             withUndoMetadata(origin: .findReplace, summary: "Replace") {
                 markdownText = nsStr.replacingCharacters(in: sel, with: replaceQuery)
                 currentSelectedRange = NSRange(location: sel.location + (replaceQuery as NSString).length, length: 0)
@@ -239,8 +240,7 @@ extension EditorWorkspaceViewModel {
         let currentStdURL = currentFileURL?.standardizedFileURL
         let matchStdURL = match.fileURL.standardizedFileURL
 
-        if (currentFileURL == nil && match.fileURL.path == "/Untitled.md") ||
-            (currentStdURL != nil && matchStdURL == currentStdURL) {
+        if (currentFileURL == nil && match.fileURL.path == "/Untitled.md") || (currentStdURL != nil && matchStdURL == currentStdURL) {
             let nsStr = markdownText as NSString
             guard NSMaxRange(match.matchRangeInFile) <= nsStr.length else { return }
             let updated = regex.stringByReplacingMatches(

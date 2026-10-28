@@ -21,7 +21,8 @@ public struct ThemeColorRGBA: Equatable, Hashable, Codable, Sendable {
     }
 
     public init(nsColor: NSColor) {
-        let converted = nsColor.usingColorSpace(.sRGB)
+        let converted =
+            nsColor.usingColorSpace(.sRGB)
             ?? nsColor.usingColorSpace(.deviceRGB)
             ?? nsColor
         var red: CGFloat = 0
@@ -40,7 +41,8 @@ public struct ThemeColorRGBA: Equatable, Hashable, Codable, Sendable {
         let trimmed = hex.trimmingCharacters(in: .whitespacesAndNewlines)
             .replacingOccurrences(of: "#", with: "")
         guard trimmed.count == 6 || trimmed.count == 8,
-              let value = UInt64(trimmed, radix: 16) else {
+            let value = UInt64(trimmed, radix: 16)
+        else {
             return nil
         }
         if trimmed.count == 6 {
@@ -191,8 +193,7 @@ public struct EditorTheme: Identifiable, Equatable, Hashable, Codable, Sendable 
 
     public init?(rawValue: String) {
         if let match = Self.builtInThemes.first(where: {
-            $0.id.caseInsensitiveCompare(rawValue) == .orderedSame ||
-            $0.name.caseInsensitiveCompare(rawValue) == .orderedSame
+            $0.id.caseInsensitiveCompare(rawValue) == .orderedSame || $0.name.caseInsensitiveCompare(rawValue) == .orderedSame
         }) {
             self = match
         } else {

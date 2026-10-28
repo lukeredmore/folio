@@ -16,7 +16,8 @@ extension FolioBrandIcon {
         cg.translateBy(x: 0, y: canvasSize)
         cg.scaleBy(x: 1, y: -1)
 
-        let marginRatio: CGFloat = includeMacOSMargin
+        let marginRatio: CGFloat =
+            includeMacOSMargin
             ? (canvasSize <= 32 ? (56.0 / 1024.0) : (100.0 / 1024.0))
             : 0.0
         let squircleOrigin = canvasSize * marginRatio
@@ -53,7 +54,8 @@ extension FolioBrandIcon {
         cg.clip()
 
         let colorSpace = CGColorSpace(name: CGColorSpace.sRGB)!
-        let bgColors = (isDark
+        let bgColors =
+            (isDark
             ? [srgb(30, 36, 43, 1.0).cgColor, srgb(17, 20, 25, 1.0).cgColor]
             : [srgb(245, 242, 235, 1.0).cgColor, srgb(226, 221, 208, 1.0).cgColor]) as CFArray
         let locations: [CGFloat] = [0.0, 1.0]
@@ -171,10 +173,11 @@ extension FolioBrandIcon {
         cg.saveGState()
         cg.addPath(badgePath)
         cg.clip()
-        let badgeColors = [
-            srgb(249, 115, 22, 1.0).cgColor,
-            srgb(217, 56, 15, 1.0).cgColor,
-        ] as CFArray
+        let badgeColors =
+            [
+                srgb(249, 115, 22, 1.0).cgColor,
+                srgb(217, 56, 15, 1.0).cgColor
+            ] as CFArray
         if let gradient = CGGradient(colorsSpace: colorSpace, colors: badgeColors, locations: [0.0, 1.0]) {
             cg.drawLinearGradient(
                 gradient,
@@ -202,7 +205,7 @@ extension FolioBrandIcon {
         let attributes: [NSAttributedString.Key: Any] = [
             .font: font,
             .foregroundColor: srgb(255, 255, 255, 1.0),
-            .kern: 1.2,
+            .kern: 1.2
         ]
         let attrString = NSAttributedString(string: "DEV", attributes: attributes)
         let line = CTLineCreateWithAttributedString(attrString)

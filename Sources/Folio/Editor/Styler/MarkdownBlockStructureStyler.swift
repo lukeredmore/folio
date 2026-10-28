@@ -57,12 +57,13 @@ extension MarkdownLiveStyler {
         let titleText = titleRange.location != NSNotFound ? nsString.substring(with: titleRange) : ""
 
         if !titleText.isEmpty {
-            headings.append(OutlineHeading(
-                level: level,
-                title: titleText,
-                characterLocation: contentRange.location,
-                lineNumber: lineNumber
-            ))
+            headings.append(
+                OutlineHeading(
+                    level: level,
+                    title: titleText,
+                    characterLocation: contentRange.location,
+                    lineNumber: lineNumber
+                ))
         }
 
         let hFont = theme.headingFont(level: level, scale: typography.fontSizeScale)
@@ -86,12 +87,13 @@ extension MarkdownLiveStyler {
             hPara.paragraphSpacing = 4.0 * hScale
         }
 
-        storage.addAttributes([
-            .font: hFont,
-            .foregroundColor: theme.headingNSColor.withAlphaComponent(dimFactor),
-            .paragraphStyle: hPara,
-            .kern: typography.headingCharacterSpacing
-        ], range: lineRange)
+        storage.addAttributes(
+            [
+                .font: hFont,
+                .foregroundColor: theme.headingNSColor.withAlphaComponent(dimFactor),
+                .paragraphStyle: hPara,
+                .kern: typography.headingCharacterSpacing
+            ], range: lineRange)
 
         let prefixEnd = spaceRange.location != NSNotFound ? NSMaxRange(spaceRange) : NSMaxRange(hashesRange)
         let prefixRange = NSRange(location: leadingRange.location, length: prefixEnd - leadingRange.location)
@@ -180,29 +182,32 @@ extension MarkdownLiveStyler {
 
         // Support ATX headings nested inside blockquotes (e.g. `> ### Note`)
         if bodyRange.length > 0,
-           let innerHeading = headingRegex.firstMatch(in: string, options: [], range: bodyRange),
-           innerHeading.range(at: 3).location != NSNotFound {
+            let innerHeading = headingRegex.firstMatch(in: string, options: [], range: bodyRange),
+            innerHeading.range(at: 3).location != NSNotFound
+        {
             let hLevel = min(6, max(1, innerHeading.range(at: 2).length))
             bqFont = theme.headingFont(level: hLevel, scale: typography.fontSizeScale)
             bqColor = theme.headingNSColor.withAlphaComponent(dimFactor)
             let innerPrefixEnd = NSMaxRange(innerHeading.range(at: 3))
             let innerPrefixRange = NSRange(location: bodyRange.location, length: innerPrefixEnd - bodyRange.location)
             inlineRange = innerHeading.range(at: 4)
-            storage.addAttributes([
-                .font: bqFont,
-                .foregroundColor: bqColor,
-                .paragraphStyle: bqPara,
-                .kern: typography.headingCharacterSpacing
-            ], range: lineRange)
+            storage.addAttributes(
+                [
+                    .font: bqFont,
+                    .foregroundColor: bqColor,
+                    .paragraphStyle: bqPara,
+                    .kern: typography.headingCharacterSpacing
+                ], range: lineRange)
             styleSyntaxToken(in: storage, range: innerPrefixRange, isActiveLine: isActiveLine, theme: theme, dimFactor: dimFactor)
         } else {
             proseLineKinds[lineNumber] = .blockquote(nestLevel: nestLevel)
-            storage.addAttributes([
-                .font: bqFont,
-                .foregroundColor: bqColor,
-                .paragraphStyle: bqPara,
-                .kern: typography.characterSpacing
-            ], range: lineRange)
+            storage.addAttributes(
+                [
+                    .font: bqFont,
+                    .foregroundColor: bqColor,
+                    .paragraphStyle: bqPara,
+                    .kern: typography.characterSpacing
+                ], range: lineRange)
         }
 
         styleSyntaxToken(
@@ -214,9 +219,10 @@ extension MarkdownLiveStyler {
         )
 
         if multiLineParagraphLines.contains(lineNumber) && proseLineKinds[lineNumber] != nil {
-            deferredProseInline.append(DeferredInlineStyle(
-                line: lineNumber, range: inlineRange, baseFont: bqFont, isActive: isActiveLine, dimFactor: dimFactor
-            ))
+            deferredProseInline.append(
+                DeferredInlineStyle(
+                    line: lineNumber, range: inlineRange, baseFont: bqFont, isActive: isActiveLine, dimFactor: dimFactor
+                ))
         } else {
             styleInlineMarkdown(
                 in: storage,
@@ -273,12 +279,13 @@ extension MarkdownLiveStyler {
 
         let titleText = trimmedLine
         if !titleText.isEmpty {
-            headings.append(OutlineHeading(
-                level: level,
-                title: titleText,
-                characterLocation: contentRange.location,
-                lineNumber: lineNumber
-            ))
+            headings.append(
+                OutlineHeading(
+                    level: level,
+                    title: titleText,
+                    characterLocation: contentRange.location,
+                    lineNumber: lineNumber
+                ))
         }
 
         let hFont = theme.headingFont(level: level, scale: typography.fontSizeScale)
@@ -290,12 +297,13 @@ extension MarkdownLiveStyler {
         hPara.paragraphSpacing = (typography.showHeadingUnderlines ? (level == 1 ? 14.0 : 12.0) : 8.0) * hScale
         hPara.tailIndent = effectiveContainerWidth
 
-        storage.addAttributes([
-            .font: hFont,
-            .foregroundColor: theme.headingNSColor.withAlphaComponent(setextDim),
-            .paragraphStyle: hPara,
-            .kern: typography.headingCharacterSpacing
-        ], range: lineRange)
+        storage.addAttributes(
+            [
+                .font: hFont,
+                .foregroundColor: theme.headingNSColor.withAlphaComponent(setextDim),
+                .paragraphStyle: hPara,
+                .kern: typography.headingCharacterSpacing
+            ], range: lineRange)
 
         if typography.showHeadingUnderlines {
             decorations.append(LineDecoration(lineRange: lineRange, kind: .headingUnderline(level: level)))

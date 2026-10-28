@@ -261,7 +261,8 @@ final class MarkdownStylePass {
 
         // 4. ATX Heading (# .. ######)
         if let match = Styler.headingRegex.firstMatch(in: string, options: [], range: contentRange),
-           match.range(at: 3).location != NSNotFound || match.range(at: 2).length == contentRange.length - match.range(at: 1).length {
+            match.range(at: 3).location != NSNotFound || match.range(at: 2).length == contentRange.length - match.range(at: 1).length
+        {
             state.previousListTextIndent = nil
             Styler.styleATXHeadingLine(
                 in: storage, string: string, nsString: nsString, match: match, lineRange: lineRange,
@@ -314,8 +315,9 @@ final class MarkdownStylePass {
         }
 
         // 8. Unordered / Ordered Lists
-        if let match = Styler.unorderedListRegex.firstMatch(in: string, options: [], range: contentRange) ??
-            Styler.orderedListRegex.firstMatch(in: string, options: [], range: contentRange) {
+        if let match = Styler.unorderedListRegex.firstMatch(in: string, options: [], range: contentRange)
+            ?? Styler.orderedListRegex.firstMatch(in: string, options: [], range: contentRange)
+        {
             state.previousListTextIndent = Styler.styleStandardListLine(
                 in: storage, string: string, nsString: nsString, match: match, lineRange: lineRange,
                 contentRange: contentRange, lineNumber: lineNumber, isActiveLine: isActiveLine,
@@ -343,7 +345,8 @@ final class MarkdownStylePass {
 
         // 10b. CommonMark Link Reference Definition ([label]: url "title")
         if state.previousListTextIndent == nil,
-           let refDefMatch = Styler.linkRefDefRegex.firstMatch(in: string, options: [], range: contentRange) {
+            let refDefMatch = Styler.linkRefDefRegex.firstMatch(in: string, options: [], range: contentRange)
+        {
             Styler.styleLinkReferenceDefinitionLine(
                 in: storage, refDefMatch: refDefMatch, contentRange: contentRange, isActiveLine: isActiveLine,
                 theme: theme, effectiveBaseSize: effectiveBaseSize, dimFactor: dimFactor
@@ -382,14 +385,15 @@ final class MarkdownStylePass {
         let lang = infoStr.split(whereSeparator: { $0.isWhitespace }).first.map(String.init) ?? ""
         let lowerLang = lang.lowercased()
         if prettyMode && (lowerLang == "mermaid" || lowerLang == "svg"),
-           let step = Styler.tryStyleDiagramCodeFence(
-            in: storage, nsString: nsString, fullLength: fullLength, lineRange: lineRange,
-            contentRange: contentRange, lineText: lineText, isActiveLine: isActiveLine,
-            activeLineRange: activeLineRange, selectedRange: selectedRange, fenceChar: fenceChar,
-            openFenceLen: markerStr.count, lowerLang: lowerLang, theme: theme, typography: typography,
-            effectiveBaseSize: effectiveBaseSize, effectiveContainerWidth: effectiveContainerWidth,
-            focusMode: focusMode, decorations: &decorations.lines
-           ) {
+            let step = Styler.tryStyleDiagramCodeFence(
+                in: storage, nsString: nsString, fullLength: fullLength, lineRange: lineRange,
+                contentRange: contentRange, lineText: lineText, isActiveLine: isActiveLine,
+                activeLineRange: activeLineRange, selectedRange: selectedRange, fenceChar: fenceChar,
+                openFenceLen: markerStr.count, lowerLang: lowerLang, theme: theme, typography: typography,
+                effectiveBaseSize: effectiveBaseSize, effectiveContainerWidth: effectiveContainerWidth,
+                focusMode: focusMode, decorations: &decorations.lines
+            )
+        {
             state.previousListTextIndent = nil
             return step
         }

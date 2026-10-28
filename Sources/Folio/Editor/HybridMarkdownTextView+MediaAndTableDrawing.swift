@@ -102,7 +102,8 @@ extension HybridMarkdownTextView {
         case let .imageRendered(url, alt, fullRange, explicitWidth, explicitHeight, baseDirectoryURL, dimFactor):
             let lineFrag = layoutManager.lineFragmentRect(forGlyphAt: glyphRange.location, effectiveRange: nil)
             let imgGlyphIdx = layoutManager.glyphIndexForCharacter(at: fullRange.location)
-            let glyphX = (imgGlyphIdx != NSNotFound && imgGlyphIdx < layoutManager.numberOfGlyphs)
+            let glyphX =
+                (imgGlyphIdx != NSNotFound && imgGlyphIdx < layoutManager.numberOfGlyphs)
                 ? layoutManager.location(forGlyphAt: imgGlyphIdx).x
                 : 0.0
             let lineKey = dec.lineRange.location
@@ -183,7 +184,8 @@ extension HybridMarkdownTextView {
                 currentTheme.codeBackgroundNSColor.withAlphaComponent(dimFactor).setFill()
                 NSBezierPath(roundedRect: cardRect, xRadius: 7.0, yRadius: 7.0).fill()
 
-                let cardBorder = currentTheme.isDark
+                let cardBorder =
+                    currentTheme.isDark
                     ? NSColor.white.withAlphaComponent(0.10 * dimFactor)
                     : NSColor.black.withAlphaComponent(0.08 * dimFactor)
                 cardBorder.setStroke()
@@ -257,7 +259,8 @@ extension HybridMarkdownTextView {
             NSBezierPath(ovalIn: dotRect).fill()
 
         case .horizontalRule:
-            let hrColor = currentTheme.isDark
+            let hrColor =
+                currentTheme.isDark
                 ? NSColor.white.withAlphaComponent(0.18)
                 : NSColor.black.withAlphaComponent(0.13)
             hrColor.setFill()
@@ -271,22 +274,26 @@ extension HybridMarkdownTextView {
             let effectiveWidth = max(tableWidth, 240.0)
             // Wide tables get their own line fragment (WideBlockTextContainer); draw from its edge.
             let rowFragment = layoutManager.lineFragmentRect(forGlyphAt: glyphRange.location, effectiveRange: nil)
-            let startX = origin.x + rowFragment.minX
+            let startX =
+                origin.x + rowFragment.minX
                 + (tableOffsetX > 0 ? tableOffsetX : max(0.0, floor((min(contentWidth, rowFragment.width) - effectiveWidth) * 0.5)))
             let usedFrag = layoutManager.lineFragmentUsedRect(forGlyphAt: glyphRange.location, effectiveRange: nil)
             let rowY = origin.y + usedFrag.minY
             let rowH = max(isSeparator ? 2.0 : 32.0, usedFrag.height)
             let rowRect = NSRect(x: startX, y: rowY, width: effectiveWidth, height: rowH)
-            let outerBorderColor = currentTheme.isDark
+            let outerBorderColor =
+                currentTheme.isDark
                 ? NSColor.white.withAlphaComponent(0.14)
                 : NSColor.black.withAlphaComponent(0.11)
-            let innerGridColor = currentTheme.isDark
+            let innerGridColor =
+                currentTheme.isDark
                 ? NSColor.white.withAlphaComponent(0.08)
                 : NSColor.black.withAlphaComponent(0.065)
 
             if isSeparator {
                 // Draw crisp horizontal separator line between header and body
-                let headerDividerColor = currentTheme.isDark
+                let headerDividerColor =
+                    currentTheme.isDark
                     ? NSColor.white.withAlphaComponent(0.18)
                     : NSColor.black.withAlphaComponent(0.15)
                 headerDividerColor.setFill()
@@ -301,13 +308,15 @@ extension HybridMarkdownTextView {
 
             // Background tint for header or alternating body rows
             if isHeader {
-                let headerBg = currentTheme.isDark
+                let headerBg =
+                    currentTheme.isDark
                     ? NSColor.white.withAlphaComponent(0.06)
                     : NSColor.black.withAlphaComponent(0.038)
                 headerBg.setFill()
                 rowRect.fill()
             } else if bodyRowIndex % 2 == 1 {
-                let stripeBg = currentTheme.isDark
+                let stripeBg =
+                    currentTheme.isDark
                     ? NSColor.white.withAlphaComponent(0.025)
                     : NSColor.black.withAlphaComponent(0.016)
                 stripeBg.setFill()
@@ -339,7 +348,8 @@ extension HybridMarkdownTextView {
             }
 
         default:
-            drawLaTeXDecoration(dec, glyphRange: glyphRange, layoutManager: layoutManager, textContainer: textContainer, origin: origin, contentWidth: contentWidth)
+            drawLaTeXDecoration(
+                dec, glyphRange: glyphRange, layoutManager: layoutManager, textContainer: textContainer, origin: origin, contentWidth: contentWidth)
         }
     }
 }

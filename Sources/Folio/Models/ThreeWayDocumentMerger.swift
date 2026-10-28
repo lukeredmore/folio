@@ -232,7 +232,11 @@ public enum ThreeWayDocumentMerger {
         var j = 0
 
         while i < localEdits.count || j < externalEdits.count {
-            if i < localEdits.count && (j >= externalEdits.count || (!editsOverlap(localEdits[i].baseRange, externalEdits[j].baseRange) && localEdits[i].baseRange.lowerBound < externalEdits[j].baseRange.lowerBound)) {
+            if i < localEdits.count
+                && (j >= externalEdits.count
+                    || (!editsOverlap(localEdits[i].baseRange, externalEdits[j].baseRange)
+                        && localEdits[i].baseRange.lowerBound < externalEdits[j].baseRange.lowerBound))
+            {
                 let edit = localEdits[i]
                 if edit.baseRange.lowerBound > baseCursor {
                     cleanBuffer.append(contentsOf: baseLines[baseCursor..<edit.baseRange.lowerBound])
@@ -240,7 +244,11 @@ public enum ThreeWayDocumentMerger {
                 cleanBuffer.append(contentsOf: edit.replacement)
                 baseCursor = edit.baseRange.upperBound
                 i += 1
-            } else if j < externalEdits.count && (i >= localEdits.count || (!editsOverlap(localEdits[i].baseRange, externalEdits[j].baseRange) && externalEdits[j].baseRange.lowerBound < localEdits[i].baseRange.lowerBound)) {
+            } else if j < externalEdits.count
+                && (i >= localEdits.count
+                    || (!editsOverlap(localEdits[i].baseRange, externalEdits[j].baseRange)
+                        && externalEdits[j].baseRange.lowerBound < localEdits[i].baseRange.lowerBound))
+            {
                 let edit = externalEdits[j]
                 if edit.baseRange.lowerBound > baseCursor {
                     cleanBuffer.append(contentsOf: baseLines[baseCursor..<edit.baseRange.lowerBound])
@@ -290,14 +298,16 @@ public enum ThreeWayDocumentMerger {
                 } else {
                     flushCleanBuffer()
                     hunkCount += 1
-                    segments.append(.conflict(DocumentConflictHunk(
-                        index: hunkCount,
-                        baseStartLine: max(1, spanStart + 1),
-                        baseLines: Array(baseLines[spanRange]),
-                        localLines: localChunk,
-                        externalLines: externalChunk,
-                        selectedResolution: .keepLocal
-                    )))
+                    segments.append(
+                        .conflict(
+                            DocumentConflictHunk(
+                                index: hunkCount,
+                                baseStartLine: max(1, spanStart + 1),
+                                baseLines: Array(baseLines[spanRange]),
+                                localLines: localChunk,
+                                externalLines: externalChunk,
+                                selectedResolution: .keepLocal
+                            )))
                 }
 
                 baseCursor = spanEnd
@@ -316,14 +326,15 @@ public enum ThreeWayDocumentMerger {
             }
             return .clean(mergedText: mergedLines.joined(separator: "\n"), wasAutoMerged: true)
         } else {
-            return .conflict(DocumentConflict(
-                fileURL: fileURL,
-                baseText: base,
-                localText: local,
-                externalText: external,
-                segments: segments,
-                sourceDescription: sourceDescription
-            ))
+            return .conflict(
+                DocumentConflict(
+                    fileURL: fileURL,
+                    baseText: base,
+                    localText: local,
+                    externalText: external,
+                    segments: segments,
+                    sourceDescription: sourceDescription
+                ))
         }
     }
 }

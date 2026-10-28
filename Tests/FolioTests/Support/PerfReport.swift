@@ -10,7 +10,8 @@ enum PerfReport {
 
     static var outputURL: URL? {
         guard let dir = ProcessInfo.processInfo.environment["TEST_UNDECLARED_OUTPUTS_DIR"],
-              !dir.isEmpty else { return nil }
+            !dir.isEmpty
+        else { return nil }
         return URL(fileURLWithPath: dir, isDirectory: true).appendingPathComponent("perf.json")
     }
 
@@ -18,10 +19,12 @@ enum PerfReport {
         scenarios[scenario] = values
         guard let url = outputURL else { return }
         let payload: [String: Any] = ["schema": 1, "scenarios": scenarios]
-        guard let data = try? JSONSerialization.data(
-            withJSONObject: payload,
-            options: [.prettyPrinted, .sortedKeys]
-        ) else { return }
+        guard
+            let data = try? JSONSerialization.data(
+                withJSONObject: payload,
+                options: [.prettyPrinted, .sortedKeys]
+            )
+        else { return }
         try? data.write(to: url, options: .atomic)
     }
 

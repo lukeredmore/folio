@@ -88,13 +88,14 @@ extension LaTeXMathRenderer {
 
         let box: MathLayoutBox
         if expanded.contains("\\boxed"),
-           let boxedComposite = layoutBoxedSwiftMathUnlocked(
-               expanded,
-               sizeTenths: sizeTenths,
-               baseFontSize: baseFontSize,
-               isDisplayStyle: isDisplayStyle,
-               tag: tag
-           ) {
+            let boxedComposite = layoutBoxedSwiftMathUnlocked(
+                expanded,
+                sizeTenths: sizeTenths,
+                baseFontSize: baseFontSize,
+                isDisplayStyle: isDisplayStyle,
+                tag: tag
+            )
+        {
             box = boxedComposite
         } else if let single = layoutSingleSwiftMathUnlocked(
             expanded,
@@ -123,11 +124,12 @@ extension LaTeXMathRenderer {
         tag: String?
     ) -> MathLayoutBox? {
         guard let mathList = buildMathListUnlocked(from: latex),
-              let mtFont = mtFontUnlocked(sizeTenths: sizeTenths),
-              let displayList = mathList.folioTypeset(
-                  font: mtFont,
-                  style: isDisplayStyle ? .display : .text
-              ) else {
+            let mtFont = mtFontUnlocked(sizeTenths: sizeTenths),
+            let displayList = mathList.folioTypeset(
+                font: mtFont,
+                style: isDisplayStyle ? .display : .text
+            )
+        else {
             return nil
         }
 
@@ -172,7 +174,8 @@ extension LaTeXMathRenderer {
         var foundBoxed = false
         while i < chars.count {
             if chars[i] == "\\",
-               String(chars[i...]).hasPrefix("\\boxed") {
+                String(chars[i...]).hasPrefix("\\boxed")
+            {
                 var j = i + 6
                 while j < chars.count && chars[j].isWhitespace { j += 1 }
                 if j < chars.count && chars[j] == "{" {
@@ -180,8 +183,7 @@ extension LaTeXMathRenderer {
                     var k = j + 1
                     while k < chars.count && depth > 0 {
                         if chars[k] == "\\" { k += 2; continue }
-                        if chars[k] == "{" { depth += 1 }
-                        else if chars[k] == "}" { depth -= 1 }
+                        if chars[k] == "{" { depth += 1 } else if chars[k] == "}" { depth -= 1 }
                         k += 1
                     }
                     if depth == 0 {
@@ -205,13 +207,15 @@ extension LaTeXMathRenderer {
 
         var boxes: [(box: MathLayoutBox, isPunct: Bool)] = []
         for seg in segments {
-            guard let rawBox = layoutSingleSwiftMathUnlocked(
-                seg.text,
-                sizeTenths: sizeTenths,
-                baseFontSize: baseFontSize,
-                isDisplayStyle: isDisplayStyle,
-                tag: nil
-            ) else {
+            guard
+                let rawBox = layoutSingleSwiftMathUnlocked(
+                    seg.text,
+                    sizeTenths: sizeTenths,
+                    baseFontSize: baseFontSize,
+                    isDisplayStyle: isDisplayStyle,
+                    tag: nil
+                )
+            else {
                 return nil
             }
             let finalBox = seg.isBoxed ? wrapInBoxedFrame(rawBox) : rawBox
@@ -282,8 +286,7 @@ extension LaTeXMathRenderer {
                 i += 2
                 continue
             }
-            if chars[i] == "{" { openBraces += 1 }
-            else if chars[i] == "}" { openBraces = max(0, openBraces - 1) }
+            if chars[i] == "{" { openBraces += 1 } else if chars[i] == "}" { openBraces = max(0, openBraces - 1) }
             i += 1
         }
         if openBraces > 0 {
@@ -307,7 +310,7 @@ extension LaTeXMathRenderer {
             ("argmax", "arg max", true), ("Tr", "Tr", false), ("tr", "tr", false),
             ("rank", "rank", false), ("diag", "diag", false), ("sgn", "sgn", false),
             ("cov", "cov", false), ("Var", "Var", false), ("erf", "erf", false),
-            ("erfc", "erfc", false), ("sech", "sech", false), ("csch", "csch", false),
+            ("erfc", "erfc", false), ("sech", "sech", false), ("csch", "csch", false)
         ]
         for (name, val, limits) in largeOps {
             MTMathAtomFactory.add(latexSymbol: name, value: MTMathAtomFactory.operatorWithName(val, limits: limits))
@@ -323,7 +326,7 @@ extension LaTeXMathRenderer {
             ("geqslant", "\u{2A7E}"), ("subsetneq", "\u{228A}"), ("supsetneq", "\u{228B}"),
             ("nleq", "\u{2270}"), ("ngeq", "\u{2271}"), ("vDash", "\u{22A8}"),
             ("vdash", "\u{22A2}"), ("dashv", "\u{22A3}"), ("nvdash", "\u{22AC}"),
-            ("nvDash", "\u{22AD}"), ("bowtie", "\u{22C8}"),
+            ("nvDash", "\u{22AD}"), ("bowtie", "\u{22C8}")
         ]
         for (name, val) in relations {
             MTMathAtomFactory.folioAddSymbol(name, type: .relation, value: val)
@@ -337,7 +340,7 @@ extension LaTeXMathRenderer {
             ("dotso", .ordinary, "\u{2026}"), ("lvert", .open, "|"), ("rvert", .close, "|"),
             ("lVert", .open, "\u{2016}"), ("rVert", .close, "\u{2016}"), ("llbracket", .open, "\u{27E6}"),
             ("rrbracket", .close, "\u{27E7}"), ("diamond", .binaryOperator, "\u{22C4}"),
-            ("triangleleft", .binaryOperator, "\u{25C3}"), ("triangleright", .binaryOperator, "\u{25B9}"),
+            ("triangleleft", .binaryOperator, "\u{25C3}"), ("triangleright", .binaryOperator, "\u{25B9}")
         ]
         for (name, kind, val) in ordinaries {
             MTMathAtomFactory.folioAddSymbol(name, type: kind, value: val)

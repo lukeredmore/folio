@@ -17,7 +17,8 @@ extension HybridMarkdownTextView {
         let safeRange = NSRange(location: clampedLoc, length: clampedLen)
 
         guard let layoutManager = self.layoutManager,
-              let textContainer = self.textContainer else {
+            let textContainer = self.textContainer
+        else {
             let fallbackRect = NSRect(x: 120, y: 80, width: 160, height: 22)
             return SelectionTooltipAnchor(
                 range: safeRange,
@@ -41,7 +42,8 @@ extension HybridMarkdownTextView {
         bounding.size.width = max(16.0, bounding.size.width)
         bounding.size.height = max(18.0, bounding.size.height)
 
-        let headGlyphIndex = resolvedDirection == .backward
+        let headGlyphIndex =
+            resolvedDirection == .backward
             ? glyphRange.location
             : max(glyphRange.location, NSMaxRange(glyphRange) - 1)
         var headBounding = layoutManager.boundingRect(
@@ -55,7 +57,8 @@ extension HybridMarkdownTextView {
 
         if let scrollView = self.enclosingScrollView {
             let clipBounds = scrollView.contentView.bounds
-            let rawViewportSize = clipBounds.size.width > 10 && clipBounds.size.height > 10
+            let rawViewportSize =
+                clipBounds.size.width > 10 && clipBounds.size.height > 10
                 ? clipBounds.size
                 : (scrollView.bounds.size.width > 10 && scrollView.bounds.size.height > 10
                     ? scrollView.bounds.size
@@ -116,10 +119,12 @@ extension HybridMarkdownTextView {
 
         // 1. Visual highlights for lines recently updated externally on disk / remote sync
         if !externalUpdateHighlightRanges.isEmpty {
-            let highlightFill = currentTheme.isDark
+            let highlightFill =
+                currentTheme.isDark
                 ? NSColor.systemGreen.withAlphaComponent(0.14)
                 : NSColor.systemGreen.withAlphaComponent(0.10)
-            let highlightBar = currentTheme.isDark
+            let highlightBar =
+                currentTheme.isDark
                 ? NSColor.systemGreen.withAlphaComponent(0.85)
                 : NSColor.systemGreen.withAlphaComponent(0.75)
 

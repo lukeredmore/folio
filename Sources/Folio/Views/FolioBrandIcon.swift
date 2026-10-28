@@ -46,7 +46,7 @@ public enum FolioBrandIcon {
             "RUNFILES_DIR",
             "JAVA_RUNFILES",
             "TEST_TMPDIR",
-            "TEST_SRCDIR",
+            "TEST_SRCDIR"
         ]
         for key in bazelEnvKeys {
             if let value = environment[key], !value.isEmpty {
@@ -60,7 +60,7 @@ public enum FolioBrandIcon {
             "/_bazel_",
             ".runfiles/",
             "/bazel_temp.",
-            "/worktrees/",
+            "/worktrees/"
         ]
         for marker in devPathMarkers {
             if bundlePath.contains(marker) {

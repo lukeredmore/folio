@@ -86,8 +86,9 @@ public final class FolioMediaImageCache: @unchecked Sendable {
         isDark: Bool = false
     ) -> (size: NSSize, isLoaded: Bool) {
         if let img = image(for: rawSource, baseDirectoryURL: baseDirectoryURL, isDark: isDark),
-           img.size.width > 0,
-           img.size.height > 0 {
+            img.size.width > 0,
+            img.size.height > 0
+        {
             let natW = img.size.width
             let natH = img.size.height
             let aspect = natH / max(1.0, natW)
@@ -171,7 +172,8 @@ public final class FolioMediaImageCache: @unchecked Sendable {
                         if let img = img { storeImage(img, forKey: cacheKey) }
                         return img
                     } else if let data = decoded.data(using: .utf8),
-                              let img = storeAndDecodeImageData(data, forKey: cacheKey) {
+                        let img = storeAndDecodeImageData(data, forKey: cacheKey)
+                    {
                         return img
                     }
                 }
@@ -181,10 +183,12 @@ public final class FolioMediaImageCache: @unchecked Sendable {
 
         // 4. Local file:// URL, ~/path, /absolute/path, or relative path
         if let fileURL = resolveLocalFileURL(from: trimmed, baseDirectoryURL: baseDirectoryURL),
-           FileManager.default.fileExists(atPath: fileURL.path) {
+            FileManager.default.fileExists(atPath: fileURL.path)
+        {
             let ext = fileURL.pathExtension.lowercased()
             if ext == "svg",
-               let rawSVG = try? String(contentsOf: fileURL, encoding: .utf8) {
+                let rawSVG = try? String(contentsOf: fileURL, encoding: .utf8)
+            {
                 let (img, _) = svgImage(for: rawSVG)
                 if let img = img {
                     storeImage(img, forKey: cacheKey)
@@ -198,7 +202,8 @@ public final class FolioMediaImageCache: @unchecked Sendable {
                 }
             }
             if let data = try? Data(contentsOf: fileURL),
-               let img = storeAndDecodeImageData(data, forKey: cacheKey) {
+                let img = storeAndDecodeImageData(data, forKey: cacheKey)
+            {
                 return img
             }
             if let img = NSImage(contentsOf: fileURL) {

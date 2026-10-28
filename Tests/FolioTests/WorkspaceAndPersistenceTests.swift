@@ -232,19 +232,21 @@ final class WorkspaceAndPersistenceTests: XCTestCase {
         func sendLeftClick(at point: NSPoint) throws {
             while NSApp.nextEvent(matching: .any, until: nil, inMode: .default, dequeue: true) != nil {}
             nextEventNumber += 1
-            let down = try XCTUnwrap(NSEvent.mouseEvent(
-                with: .leftMouseDown, location: point, modifierFlags: [],
-                timestamp: ProcessInfo.processInfo.systemUptime,
-                windowNumber: window.windowNumber, context: nil,
-                eventNumber: nextEventNumber, clickCount: 1, pressure: 1.0
-            ))
+            let down = try XCTUnwrap(
+                NSEvent.mouseEvent(
+                    with: .leftMouseDown, location: point, modifierFlags: [],
+                    timestamp: ProcessInfo.processInfo.systemUptime,
+                    windowNumber: window.windowNumber, context: nil,
+                    eventNumber: nextEventNumber, clickCount: 1, pressure: 1.0
+                ))
             nextEventNumber += 1
-            let up = try XCTUnwrap(NSEvent.mouseEvent(
-                with: .leftMouseUp, location: point, modifierFlags: [],
-                timestamp: ProcessInfo.processInfo.systemUptime + 0.01,
-                windowNumber: window.windowNumber, context: nil,
-                eventNumber: nextEventNumber, clickCount: 1, pressure: 0.0
-            ))
+            let up = try XCTUnwrap(
+                NSEvent.mouseEvent(
+                    with: .leftMouseUp, location: point, modifierFlags: [],
+                    timestamp: ProcessInfo.processInfo.systemUptime + 0.01,
+                    windowNumber: window.windowNumber, context: nil,
+                    eventNumber: nextEventNumber, clickCount: 1, pressure: 0.0
+                ))
             NSApp.postEvent(up, atStart: true)
             NSApp.postEvent(down, atStart: true)
             let dequeuedDown = try XCTUnwrap(
@@ -265,12 +267,13 @@ final class WorkspaceAndPersistenceTests: XCTestCase {
         }
 
         // 2. Verify right-click and left-click in editor survive local NSEvent monitors and move the insertion cursor
-        let rightDown = try XCTUnwrap(NSEvent.mouseEvent(
-            with: .rightMouseDown, location: pointInWindow, modifierFlags: [],
-            timestamp: ProcessInfo.processInfo.systemUptime,
-            windowNumber: 0, context: nil,
-            eventNumber: 99, clickCount: 1, pressure: 1.0
-        ))
+        let rightDown = try XCTUnwrap(
+            NSEvent.mouseEvent(
+                with: .rightMouseDown, location: pointInWindow, modifierFlags: [],
+                timestamp: ProcessInfo.processInfo.systemUptime,
+                windowNumber: 0, context: nil,
+                eventNumber: 99, clickCount: 1, pressure: 1.0
+            ))
         NSApp.sendEvent(rightDown)
 
         try sendLeftClick(at: pointInWindow)

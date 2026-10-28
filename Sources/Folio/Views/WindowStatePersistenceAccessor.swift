@@ -67,7 +67,8 @@ struct WindowStatePersistenceAccessor: NSViewRepresentable {
                 root.alphaValue = 0
             }
             if let split = root as? NSSplitView,
-               let svc = split.delegate as? NSSplitViewController {
+                let svc = split.delegate as? NSSplitViewController
+            {
                 for item in svc.splitViewItems {
                     if !item.allowsFullHeightLayout {
                         item.allowsFullHeightLayout = true
@@ -85,7 +86,10 @@ struct WindowStatePersistenceAccessor: NSViewRepresentable {
         static func isRestorableWindowFrame(_ rect: NSRect, for window: NSWindow) -> Bool {
             guard rect.width >= 720, rect.height >= 480 else { return false }
             if let screen = window.screen ?? NSScreen.main,
-               rect.width >= screen.frame.width && rect.height >= screen.visibleFrame.height { return false }
+                rect.width >= screen.frame.width && rect.height >= screen.visibleFrame.height
+            {
+                return false
+            }
             return true
         }
 
@@ -93,8 +97,10 @@ struct WindowStatePersistenceAccessor: NSViewRepresentable {
             guard attachedWindow !== window else { return }
             let nc = NotificationCenter.default
             if let oldWindow = attachedWindow {
-                for name in [NSWindow.didResizeNotification, NSWindow.didMoveNotification,
-                             NSWindow.didEnterFullScreenNotification, NSWindow.didExitFullScreenNotification] {
+                for name in [
+                    NSWindow.didResizeNotification, NSWindow.didMoveNotification,
+                    NSWindow.didEnterFullScreenNotification, NSWindow.didExitFullScreenNotification
+                ] {
                     nc.removeObserver(self, name: name, object: oldWindow)
                 }
             }
@@ -102,7 +108,8 @@ struct WindowStatePersistenceAccessor: NSViewRepresentable {
             configureWindowAppearance(window)
             installFullScreenToolbarMouseMonitorIfNeeded()
             if !window.styleMask.contains(.fullScreen),
-               let savedFrameString = userDefaults.string(forKey: WindowStatePersistenceAccessor.windowFrameDefaultsKey) {
+                let savedFrameString = userDefaults.string(forKey: WindowStatePersistenceAccessor.windowFrameDefaultsKey)
+            {
                 let rect = NSRectFromString(savedFrameString)
                 if Self.isRestorableWindowFrame(rect, for: window) {
                     window.setFrame(rect, display: true)
@@ -118,7 +125,8 @@ struct WindowStatePersistenceAccessor: NSViewRepresentable {
                 guard let self, let window else { return }
                 self.suppressSplitViewTitlebarPocketBackgrounds(in: window.contentView?.superview)
                 guard let splitView = Self.findSplitView(in: window.contentView?.superview),
-                      splitView.autosaveName != nil else { return }
+                    splitView.autosaveName != nil
+                else { return }
                 splitView.autosaveName = nil
             }
         }
@@ -146,8 +154,9 @@ struct WindowStatePersistenceAccessor: NSViewRepresentable {
                 for child in childWindows where String(describing: type(of: child)).contains("ToolbarFullScreenWindow") {
                     let ptInChild = child.convertPoint(fromScreen: screenPt)
                     if let childHit = child.contentView?.superview?.hitTest(ptInChild),
-                       Self.isDescendantOfToolbarItem(childHit),
-                       Self.forwardMouseEvent(event, to: child, locationInTarget: ptInChild) {
+                        Self.isDescendantOfToolbarItem(childHit),
+                        Self.forwardMouseEvent(event, to: child, locationInTarget: ptInChild)
+                    {
                         forwardedToolbarMouseWindow = child
                         return nil
                     }
@@ -161,11 +170,13 @@ struct WindowStatePersistenceAccessor: NSViewRepresentable {
         }
 
         static func forwardMouseEvent(_ event: NSEvent, to targetWindow: NSWindow, locationInTarget: NSPoint) -> Bool {
-            guard let forwarded = NSEvent.mouseEvent(
-                with: event.type, location: locationInTarget, modifierFlags: event.modifierFlags,
-                timestamp: event.timestamp, windowNumber: targetWindow.windowNumber, context: nil,
-                eventNumber: event.eventNumber, clickCount: event.clickCount, pressure: event.pressure
-            ) else { return false }
+            guard
+                let forwarded = NSEvent.mouseEvent(
+                    with: event.type, location: locationInTarget, modifierFlags: event.modifierFlags,
+                    timestamp: event.timestamp, windowNumber: targetWindow.windowNumber, context: nil,
+                    eventNumber: event.eventNumber, clickCount: event.clickCount, pressure: event.pressure
+                )
+            else { return false }
             targetWindow.sendEvent(forwarded)
             return true
         }
@@ -186,7 +197,8 @@ struct WindowStatePersistenceAccessor: NSViewRepresentable {
 
         @objc func windowDidChangeFrame(_ notification: Notification) {
             guard let window = attachedWindow, !window.styleMask.contains(.fullScreen),
-                  Self.isRestorableWindowFrame(window.frame, for: window) else { return }
+                Self.isRestorableWindowFrame(window.frame, for: window)
+            else { return }
             userDefaults.set(NSStringFromRect(window.frame), forKey: WindowStatePersistenceAccessor.windowFrameDefaultsKey)
         }
 
@@ -265,12 +277,14 @@ final class SidebarModeTitlebarAnchorView: NSView {
         })?.view, toggleView.window === window, toggleView.bounds.width > 0 {
             let toggleRect = hostView.convert(toggleView.bounds, from: toggleView)
             let y = round(toggleRect.midY - controlHeight / 2.0)
-            let x: CGFloat = (toggleRect.minX - minAllowedX >= controlWidth + 6.0)
+            let x: CGFloat =
+                (toggleRect.minX - minAllowedX >= controlWidth + 6.0)
                 ? min(toggleRect.minX - controlWidth - 8.0, 255.0 - controlWidth - 8.0)
                 : max(minAllowedX, min(toggleRect.maxX + 8.0, 255.0 - controlWidth - 8.0))
             segmentedControl.frame = NSRect(x: round(x), y: y, width: controlWidth, height: controlHeight)
         } else {
-            let y = hostView === themeFrame
+            let y =
+                hostView === themeFrame
                 ? round(themeFrame.bounds.height - 26.0 - controlHeight / 2.0)
                 : round((hostView.bounds.height - controlHeight) / 2.0)
             segmentedControl.frame = NSRect(x: round(max(minAllowedX, 140.0)), y: y, width: controlWidth, height: controlHeight)
@@ -279,8 +293,9 @@ final class SidebarModeTitlebarAnchorView: NSView {
 
     private static func isLeadingSidebarCollapsed(in root: NSView) -> Bool {
         if let split = root as? NSSplitView,
-           let svc = split.delegate as? NSSplitViewController,
-           let sidebarItem = svc.splitViewItems.first(where: { $0.behavior == .sidebar }) {
+            let svc = split.delegate as? NSSplitViewController,
+            let sidebarItem = svc.splitViewItems.first(where: { $0.behavior == .sidebar })
+        {
             return sidebarItem.isCollapsed
         }
         for child in root.subviews {

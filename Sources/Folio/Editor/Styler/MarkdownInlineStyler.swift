@@ -155,17 +155,19 @@ extension MarkdownLiveStyler {
                 }
 
                 storage.addAttributes(inlineCodeAttrs, range: innerRange)
-                decorations.append(LineDecoration(
-                    lineRange: innerRange,
-                    kind: .inlineCode(range: innerRange, fontSize: codeFontSize, dimFactor: dimFactor)
-                ))
+                decorations.append(
+                    LineDecoration(
+                        lineRange: innerRange,
+                        kind: .inlineCode(range: innerRange, fontSize: codeFontSize, dimFactor: dimFactor)
+                    ))
                 styleSyntaxToken(in: storage, range: openRange, isActiveLine: isActiveLine, theme: theme, dimFactor: dimFactor)
                 styleSyntaxToken(in: storage, range: closeRange, isActiveLine: isActiveLine, theme: theme, dimFactor: dimFactor)
             }
         }
 
         // 2. Inline Math ($E = mc^2$); `$` inside link destinations (e.g. CloudWatch `$3F`) is literal
-        let linkDestinationRanges = nsString.range(of: "$", options: .literal, range: range).location == NSNotFound
+        let linkDestinationRanges =
+            nsString.range(of: "$", options: .literal, range: range).location == NSNotFound
             ? [] : scanMarkdownLinks(nsString: nsString, range: range, isDelimiterProtected: isInCodeOrMath).map(\.trailingSyntaxRange)
         inlineMathRegex.enumerateMatches(in: string, options: [], range: range) { match, _, _ in
             guard let match = match else { return }
@@ -183,12 +185,13 @@ extension MarkdownLiveStyler {
 
             if isActiveLine {
                 let mathMono = theme.codeFont(size: fontSize * 0.90)
-                storage.addAttributes([
-                    .font: mathMono,
-                    .foregroundColor: theme.textNSColor.withAlphaComponent(dimFactor),
-                    .backgroundColor: theme.codeBackgroundNSColor.withAlphaComponent(0.55 * dimFactor),
-                    noSpellCheckAttributeKey: true
-                ], range: innerRange)
+                storage.addAttributes(
+                    [
+                        .font: mathMono,
+                        .foregroundColor: theme.textNSColor.withAlphaComponent(dimFactor),
+                        .backgroundColor: theme.codeBackgroundNSColor.withAlphaComponent(0.55 * dimFactor),
+                        noSpellCheckAttributeKey: true
+                    ], range: innerRange)
                 highlightLaTeXSource(in: storage, range: innerRange, theme: theme, dimFactor: dimFactor)
                 styleSyntaxToken(in: storage, range: openRange, isActiveLine: true, theme: theme, dimFactor: dimFactor)
                 styleSyntaxToken(in: storage, range: closeRange, isActiveLine: true, theme: theme, dimFactor: dimFactor)
@@ -206,28 +209,30 @@ extension MarkdownLiveStyler {
                     descent: mathBox.descent
                 )
 
-                storage.addAttributes([
-                    .font: tinyFont,
-                    .foregroundColor: NSColor.clear,
-                    .kern: 0.0,
-                    inlineMathSpanAttributeKey: spanInfo,
-                    noSpellCheckAttributeKey: true
-                ], range: fullMatchRange)
+                storage.addAttributes(
+                    [
+                        .font: tinyFont,
+                        .foregroundColor: NSColor.clear,
+                        .kern: 0.0,
+                        inlineMathSpanAttributeKey: spanInfo,
+                        noSpellCheckAttributeKey: true
+                    ], range: fullMatchRange)
                 storage.addAttribute(
                     .kern,
                     value: firstCharKern,
                     range: NSRange(location: fullMatchRange.location, length: 1)
                 )
 
-                decorations.append(LineDecoration(
-                    lineRange: fullMatchRange,
-                    kind: .inlineMathRendered(
-                        latex: latexStr,
-                        range: fullMatchRange,
-                        fontSize: fontSize,
-                        dimFactor: dimFactor
-                    )
-                ))
+                decorations.append(
+                    LineDecoration(
+                        lineRange: fullMatchRange,
+                        kind: .inlineMathRendered(
+                            latex: latexStr,
+                            range: fullMatchRange,
+                            fontSize: fontSize,
+                            dimFactor: dimFactor
+                        )
+                    ))
             }
         }
 
@@ -271,18 +276,19 @@ extension MarkdownLiveStyler {
                 let targetH = display.isLoaded ? max(26.0, display.size.height + 10.0) : 52.0
                 reserveMediaCardHeight(in: storage, lineRange: effectiveLineRange, targetHeight: targetH)
                 collapseWhitespaceRange(in: storage, range: link.fullRange)
-                decorations.append(LineDecoration(
-                    lineRange: effectiveLineRange,
-                    kind: .imageRendered(
-                        url: link.url,
-                        alt: altStr,
-                        fullRange: link.fullRange,
-                        explicitWidth: nil,
-                        explicitHeight: nil,
-                        baseDirectoryURL: baseDirectoryURL,
-                        dimFactor: dimFactor
-                    )
-                ))
+                decorations.append(
+                    LineDecoration(
+                        lineRange: effectiveLineRange,
+                        kind: .imageRendered(
+                            url: link.url,
+                            alt: altStr,
+                            fullRange: link.fullRange,
+                            explicitWidth: nil,
+                            explicitHeight: nil,
+                            baseDirectoryURL: baseDirectoryURL,
+                            dimFactor: dimFactor
+                        )
+                    ))
             } else {
                 insertSortedRange(link.openSyntaxRange, into: &protectedDelimiterRanges)
                 insertSortedRange(link.trailingSyntaxRange, into: &protectedDelimiterRanges)

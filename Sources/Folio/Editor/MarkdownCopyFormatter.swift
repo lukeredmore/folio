@@ -72,7 +72,8 @@ public enum MarkdownCopyFormatter {
                 index = NSMaxRange(runRange)
                 // Skip immediately following collapsed post-marker whitespace
                 if index < maxRange,
-                   (storage.attribute(MarkdownLiveStyler.collapsedTokenAttributeKey, at: index, effectiveRange: &effectiveRange) as? Bool) == true {
+                    (storage.attribute(MarkdownLiveStyler.collapsedTokenAttributeKey, at: index, effectiveRange: &effectiveRange) as? Bool) == true
+                {
                     let wsRun = NSIntersectionRange(effectiveRange, safeRange)
                     let wsText = workingNS.substring(with: wsRun)
                     if wsText.allSatisfy({ $0 == " " || $0 == "\t" }) {
@@ -86,7 +87,8 @@ public enum MarkdownCopyFormatter {
                 let runText = workingNS.substring(with: runRange)
                 // Preserve a single space after ordered list markers ("1.") or task checkboxes ("[x]" / "[ ]")
                 if runText.allSatisfy({ $0 == " " || $0 == "\t" }),
-                   result.length > 0 {
+                    result.length > 0
+                {
                     let prevChar = (result.string as NSString).substring(from: result.length - 1)
                     if prevChar == "." || prevChar == ")" || prevChar == "]" {
                         let spaceAttrs = cleanedCopyAttributes(from: attrs, defaultFont: bodyFont, defaultColor: theme.textNSColor)
@@ -207,7 +209,8 @@ public enum MarkdownCopyFormatter {
             ), headingMatch.range(at: 3).location != NSNotFound {
                 let nsLine = line as NSString
                 let level = min(6, max(1, headingMatch.range(at: 2).length))
-                let title = headingMatch.range(at: 4).location != NSNotFound
+                let title =
+                    headingMatch.range(at: 4).location != NSNotFound
                     ? nsLine.substring(with: headingMatch.range(at: 4))
                     : ""
                 htmlParts.append("<h\(level)>\(renderInlineHTML(title))</h\(level)>")
@@ -269,10 +272,11 @@ public enum MarkdownCopyFormatter {
         pasteboard.clearContents()
         let fullAttrRange = NSRange(location: 0, length: attrStr.length)
         if fullAttrRange.length > 0,
-           let rtfData = try? attrStr.data(
-               from: fullAttrRange,
-               documentAttributes: [.documentType: NSAttributedString.DocumentType.rtf]
-           ) {
+            let rtfData = try? attrStr.data(
+                from: fullAttrRange,
+                documentAttributes: [.documentType: NSAttributedString.DocumentType.rtf]
+            )
+        {
             pasteboard.setData(rtfData, forType: .rtf)
         }
         if !html.isEmpty {

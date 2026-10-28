@@ -19,8 +19,9 @@ extension LaTeXDocumentIndexer {
     ) -> (index: LaTeXDocumentIndex, macros: [String: LaTeXMacroDefinition]) {
         cacheLock.lock()
         if lastIndexedString == string,
-           lastIndexedBaseDir == baseDirectoryURL,
-           lastIndexedSourceMode == sourceCodeMode {
+            lastIndexedBaseDir == baseDirectoryURL,
+            lastIndexedSourceMode == sourceCodeMode
+        {
             let idx = lastCachedIndex
             let mac = lastCachedMacros
             cacheLock.unlock()
@@ -28,7 +29,8 @@ extension LaTeXDocumentIndexer {
         }
         cacheLock.unlock()
 
-        var docMacros = (!sourceCodeMode && string.contains("\\"))
+        var docMacros =
+            (!sourceCodeMode && string.contains("\\"))
             ? LaTeXMacroExpander.extractDocumentMacros(from: string)
             : [:]
         let docIndex = buildIndex(
@@ -137,7 +139,8 @@ extension LaTeXDocumentIndexer {
         guard let base = baseDirectoryURL else { return nil }
         let trimmed = path.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return nil }
-        let candidates = trimmed.hasSuffix(".tex")
+        let candidates =
+            trimmed.hasSuffix(".tex")
             ? [trimmed]
             : [trimmed + ".tex", trimmed]
         for c in candidates {
@@ -163,7 +166,8 @@ extension LaTeXDocumentIndexer {
             }
         }
         if urls.isEmpty,
-           let items = try? FileManager.default.contentsOfDirectory(at: base, includingPropertiesForKeys: nil) {
+            let items = try? FileManager.default.contentsOfDirectory(at: base, includingPropertiesForKeys: nil)
+        {
             for item in items where item.pathExtension.lowercased() == "bib" {
                 urls.append(item.standardizedFileURL)
             }
@@ -203,15 +207,16 @@ extension LaTeXDocumentIndexer {
             results.reserveCapacity(count)
             for i in 0..<count {
                 let e = entries[i]
-                results.append(BibTeXEntry(
-                    key: e.key.map { String(cString: $0) } ?? "",
-                    entryType: e.entry_type.map { String(cString: $0) } ?? "",
-                    author: e.author.map { String(cString: $0) } ?? "",
-                    year: e.year.map { String(cString: $0) } ?? "",
-                    title: e.title.map { String(cString: $0) } ?? "",
-                    fileURL: fileURL,
-                    characterLocation: Int(e.utf16_loc)
-                ))
+                results.append(
+                    BibTeXEntry(
+                        key: e.key.map { String(cString: $0) } ?? "",
+                        entryType: e.entry_type.map { String(cString: $0) } ?? "",
+                        author: e.author.map { String(cString: $0) } ?? "",
+                        year: e.year.map { String(cString: $0) } ?? "",
+                        title: e.title.map { String(cString: $0) } ?? "",
+                        fileURL: fileURL,
+                        characterLocation: Int(e.utf16_loc)
+                    ))
             }
             return results
         }

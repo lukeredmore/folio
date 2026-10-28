@@ -6,22 +6,22 @@ import XCTest
 final class PageLayoutAndPrintTests: XCTestCase {
 
     private let sample = """
-    # Heading
+        # Heading
 
-    A prose paragraph that is long enough to wrap onto a second line when the column is narrow.
+        A prose paragraph that is long enough to wrap onto a second line when the column is narrow.
 
-    - A list item with enough words to wrap as well.
+        - A list item with enough words to wrap as well.
 
-    > A quoted line.
+        > A quoted line.
 
-    ```swift
-    let code = 1
-    ```
+        ```swift
+        let code = 1
+        ```
 
-    | A | B |
-    |---|---|
-    | 1 | 2 |
-    """
+        | A | B |
+        |---|---|
+        | 1 | 2 |
+        """
 
     private func alignment(at text: String, in storage: NSTextStorage) -> NSTextAlignment? {
         let location = (storage.string as NSString).range(of: text).location
@@ -87,7 +87,10 @@ final class PageLayoutAndPrintTests: XCTestCase {
             DiagramImageRenderer.shared.image(for: DiagramImageRenderer.Key(kind: .mermaid(isDark: false), source: diagram)),
             "Diagrams are rendered before printing"
         )
-        XCTAssertTrue(view.lineDecorations.contains { if case .mermaidBlockRendered = $0.kind { return true }; return false })
+        XCTAssertTrue(
+            view.lineDecorations.contains {
+                if case .mermaidBlockRendered = $0.kind { return true }; return false
+            })
     }
 
     func testDarkThemesPrintWithTheLightTheme() {
@@ -102,10 +105,13 @@ final class PageLayoutAndPrintTests: XCTestCase {
         let card = NSRect(x: 0, y: 500, width: 400, height: 200)
         let page: CGFloat = 720
         XCTAssertEqual(HybridMarkdownTextView.pageBottom(600, pageTop: 0, pageHeight: page, limit: 0, avoiding: [card]), 500)
-        XCTAssertEqual(HybridMarkdownTextView.pageBottom(480, pageTop: 0, pageHeight: page, limit: 0, avoiding: [card]), 480, "Breaks outside cards are unchanged")
-        XCTAssertEqual(HybridMarkdownTextView.pageBottom(600, pageTop: 0, pageHeight: page, limit: 550, avoiding: [card]), 600, "The break never moves above the limit")
+        XCTAssertEqual(
+            HybridMarkdownTextView.pageBottom(480, pageTop: 0, pageHeight: page, limit: 0, avoiding: [card]), 480, "Breaks outside cards are unchanged")
+        XCTAssertEqual(
+            HybridMarkdownTextView.pageBottom(600, pageTop: 0, pageHeight: page, limit: 550, avoiding: [card]), 600, "The break never moves above the limit")
         let tallCard = NSRect(x: 0, y: 100, width: 400, height: 900)
-        XCTAssertEqual(HybridMarkdownTextView.pageBottom(600, pageTop: 0, pageHeight: page, limit: 0, avoiding: [tallCard]), 600, "A card taller than a page is split")
+        XCTAssertEqual(
+            HybridMarkdownTextView.pageBottom(600, pageTop: 0, pageHeight: page, limit: 0, avoiding: [tallCard]), 600, "A card taller than a page is split")
 
         let vm = makeIsolatedViewModel()
         vm.markdownText = "# Plan\n\nIntro.\n\n```mermaid\nflowchart LR\n    Seed --> Sprout --> Bed\n```\n\nAfter."
@@ -118,13 +124,13 @@ final class PageLayoutAndPrintTests: XCTestCase {
 
     func testDocumentPageLayoutExtractsLaTeXGeometryAndDocumentClass() {
         let tex = """
-        \\documentclass[11pt,a4paper,landscape]{article}
-        \\usepackage[margin=1in,top=1.5in,bottom=2.54cm]{geometry}
-        \\raggedright
-        \\begin{document}
-        Hello world.
-        \\end{document}
-        """
+            \\documentclass[11pt,a4paper,landscape]{article}
+            \\usepackage[margin=1in,top=1.5in,bottom=2.54cm]{geometry}
+            \\raggedright
+            \\begin{document}
+            Hello world.
+            \\end{document}
+            """
         let doc = DocumentPageLayout.extract(from: tex, fileURL: URL(fileURLWithPath: "/tmp/doc.tex"))
         XCTAssertFalse(doc.isEmpty)
         XCTAssertEqual(doc.paperSize, .a4)
@@ -149,20 +155,20 @@ final class PageLayoutAndPrintTests: XCTestCase {
 
     func testDocumentPageLayoutExtractsMarkdownFrontmatterAndComments() {
         let md = """
-        ---
-        title: Quarterly Report
-        paper: legal
-        orientation: landscape
-        margin: 1in
-        margin-left: 1.25in
-        fontsize: 12pt
-        align: justify
-        ---
+            ---
+            title: Quarterly Report
+            paper: legal
+            orientation: landscape
+            margin: 1in
+            margin-left: 1.25in
+            fontsize: 12pt
+            align: justify
+            ---
 
-        # Quarterly Report
+            # Quarterly Report
 
-        Body paragraph.
-        """
+            Body paragraph.
+            """
         let doc = DocumentPageLayout.extract(from: md, fileURL: URL(fileURLWithPath: "/tmp/report.md"))
         XCTAssertFalse(doc.isEmpty)
         XCTAssertEqual(doc.paperSize, .legal)
@@ -174,9 +180,9 @@ final class PageLayoutAndPrintTests: XCTestCase {
         XCTAssertNotNil(doc.metadataRange)
 
         let commentMd = """
-        <!-- page: paper=a4, margin=0.5in -->
-        # Notes
-        """
+            <!-- page: paper=a4, margin=0.5in -->
+            # Notes
+            """
         let commentDoc = DocumentPageLayout.extract(from: commentMd, fileURL: URL(fileURLWithPath: "/tmp/notes.md"))
         XCTAssertEqual(commentDoc.paperSize, .a4)
         XCTAssertEqual(commentDoc.leftMargin ?? 0, 36.0, accuracy: 0.5)
@@ -186,16 +192,16 @@ final class PageLayoutAndPrintTests: XCTestCase {
         let vm = makeIsolatedViewModel()
         vm.currentFileURL = try makeTemporaryDirectory().appendingPathComponent("paper.tex")
         vm.markdownText = """
-        \\documentclass[11pt,a4paper]{article}
-        \\usepackage[margin=1in]{geometry}
-        \\begin{document}
-        \\section{Introduction}
-        Let $x \\in \\mathbb{R}$.
-        \\begin{equation}
-        E = mc^2
-        \\end{equation}
-        \\end{document}
-        """
+            \\documentclass[11pt,a4paper]{article}
+            \\usepackage[margin=1in]{geometry}
+            \\begin{document}
+            \\section{Introduction}
+            Let $x \\in \\mathbb{R}$.
+            \\begin{equation}
+            E = mc^2
+            \\end{equation}
+            \\end{document}
+            """
 
         let resolved = vm.resolvedPrintPageLayout()
         XCTAssertEqual(resolved.paperSize, .a4)
@@ -210,11 +216,15 @@ final class PageLayoutAndPrintTests: XCTestCase {
         let expectedWidth = PrintPaperSize.a4.size.width - 144.0
         XCTAssertEqual(view.frame.width, expectedWidth, accuracy: 0.5)
         XCTAssertFalse(
-            view.lineDecorations.contains { if case .latexPreambleCard = $0.kind { return true }; return false },
+            view.lineDecorations.contains {
+                if case .latexPreambleCard = $0.kind { return true }; return false
+            },
             "Print view should strip the interactive preamble banner card"
         )
         XCTAssertTrue(
-            view.lineDecorations.contains { if case .mathBlockRendered = $0.kind { return true }; return false },
+            view.lineDecorations.contains {
+                if case .mathBlockRendered = $0.kind { return true }; return false
+            },
             "Print view should include rendered LaTeX equations"
         )
         let pdfData = view.dataWithPDF(inside: view.bounds)

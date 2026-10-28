@@ -111,9 +111,11 @@ struct MarkdownRestylePlan {
 
         var shift: MarkdownRestyleShift?
         if let lineEdit {
-            guard let dirty = regions.first(where: {
-                $0.newRange.location <= lineEdit.start && lineEdit.newEnd <= NSMaxRange($0.newRange)
-            }), dirty.newRange.length - dirty.oldRange.length == lineEdit.delta else {
+            guard
+                let dirty = regions.first(where: {
+                    $0.newRange.location <= lineEdit.start && lineEdit.newEnd <= NSMaxRange($0.newRange)
+                }), dirty.newRange.length - dirty.oldRange.length == lineEdit.delta
+            else {
                 return .failure(PlanFailure(.inconsistentEdit))
             }
             shift = MarkdownRestyleShift(
@@ -140,27 +142,31 @@ struct MarkdownRestylePlan {
     private static func makeLineEdit(_ edit: MarkdownTextEdit, old: NSString, new: NSString) -> Result<LineEdit, PlanFailure> {
         let replaced = edit.replacedRange
         guard old.length + edit.changeInLength == new.length, replaced.length >= 0,
-              NSMaxRange(edit.range) <= new.length, NSMaxRange(replaced) <= old.length else {
+            NSMaxRange(edit.range) <= new.length, NSMaxRange(replaced) <= old.length
+        else {
             return .failure(PlanFailure(.inconsistentEdit))
         }
         let oldLines = wholeLines(replaced, in: old)
         let newLines = wholeLines(edit.range, in: new)
         guard oldLines.location == newLines.location,
-              old.length - NSMaxRange(oldLines) == new.length - NSMaxRange(newLines) else {
+            old.length - NSMaxRange(oldLines) == new.length - NSMaxRange(newLines)
+        else {
             return .failure(PlanFailure(.inconsistentEdit))
         }
         let startsDocument = oldLines.location == 0
         if hasBlockContextSyntax(old.substring(with: oldLines), startsDocument: startsDocument)
-            || hasBlockContextSyntax(new.substring(with: newLines), startsDocument: startsDocument) {
+            || hasBlockContextSyntax(new.substring(with: newLines), startsDocument: startsDocument)
+        {
             return .failure(PlanFailure(.blockContextSyntax))
         }
-        return .success(LineEdit(
-            start: newLines.location,
-            oldEnd: NSMaxRange(oldLines),
-            newEnd: NSMaxRange(newLines),
-            delta: edit.changeInLength,
-            lineDelta: lineCount(in: newLines, of: new) - lineCount(in: oldLines, of: old)
-        ))
+        return .success(
+            LineEdit(
+                start: newLines.location,
+                oldEnd: NSMaxRange(oldLines),
+                newEnd: NSMaxRange(newLines),
+                delta: edit.changeInLength,
+                lineDelta: lineCount(in: newLines, of: new) - lineCount(in: oldLines, of: old)
+            ))
     }
 
     /// Lines whose effect can reach past a blank line, so an edit that adds, removes, or changes
@@ -179,7 +185,8 @@ struct MarkdownRestylePlan {
             let content = MarkdownLiveStyler.strippedLineContentRange(nsString: nsText, lineRange: lineRange)
             let trimmed = nsText.substring(with: content).trimmingCharacters(in: .whitespaces)
             if ["```", "~~~", "$$", "<"].contains(where: { trimmed.hasPrefix($0) })
-                || MarkdownLiveStyler.isTableSeparatorRow(nsString: nsText, contentRange: content) {
+                || MarkdownLiveStyler.isTableSeparatorRow(nsString: nsText, contentRange: content)
+            {
                 return true
             }
             if startsDocument && index == 0 && trimmed.hasPrefix("---") {
@@ -256,8 +263,10 @@ struct MarkdownRestylePlan {
     private static func merged(_ regions: [MarkdownRestyleRegion]) -> [MarkdownRestyleRegion] {
         var result: [MarkdownRestyleRegion] = []
         for region in regions.sorted(by: { $0.newRange.location < $1.newRange.location }) {
-            guard var last = result.last, region.newRange.location < NSMaxRange(last.newRange)
-                    || region.newRange == last.newRange else {
+            guard var last = result.last,
+                region.newRange.location < NSMaxRange(last.newRange)
+                    || region.newRange == last.newRange
+            else {
                 result.append(region)
                 continue
             }

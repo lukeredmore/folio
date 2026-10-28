@@ -6,17 +6,17 @@ import XCTest
 final class SoftLineBreakTests: XCTestCase {
 
     private let listSample = """
-    # Beds
+        # Beds
 
-    - North Bed: a raised bed with drip irrigation, and a trellis for climbing
-      beans that depends on morning sun. The trellis supports the peas in spring and the
-      `pole-beans` rotation.
-    - Herb Spiral: the basil, thyme, and oregano plantings.
+        - North Bed: a raised bed with drip irrigation, and a trellis for climbing
+          beans that depends on morning sun. The trellis supports the peas in spring and the
+          `pole-beans` rotation.
+        - Herb Spiral: the basil, thyme, and oregano plantings.
 
-    Plain paragraph line one
-    line two\("  ")
-    line three after a hard break
-    """
+        Plain paragraph line one
+        line two\("  ")
+        line three after a hard break
+        """
 
     private func style(_ text: String, cursor: Int) -> NSTextStorage {
         let storage = NSTextStorage(string: text)
@@ -45,8 +45,9 @@ final class SoftLineBreakTests: XCTestCase {
         let storage = style(listSample, cursor: 0)
         XCTAssertTrue(isSoftBreak(storage, at: newlineLocation(after: "trellis for climbing", in: listSample)))
         XCTAssertTrue(isSoftBreak(storage, at: newlineLocation(after: "spring and the", in: listSample)))
-        XCTAssertFalse(isSoftBreak(storage, at: newlineLocation(after: "rotation.", in: listSample)),
-                       "The newline that ends a list item is a block boundary")
+        XCTAssertFalse(
+            isSoftBreak(storage, at: newlineLocation(after: "rotation.", in: listSample)),
+            "The newline that ends a list item is a block boundary")
         XCTAssertFalse(isSoftBreak(storage, at: newlineLocation(after: "# Beds", in: listSample)))
     }
 
@@ -59,8 +60,9 @@ final class SoftLineBreakTests: XCTestCase {
     func testActiveParagraphStaysJoined() {
         let cursor = (listSample as NSString).range(of: "beans that").location
         let storage = style(listSample, cursor: cursor)
-        XCTAssertTrue(isSoftBreak(storage, at: newlineLocation(after: "trellis for climbing", in: listSample)),
-                      "Entering a paragraph must not add visual line breaks")
+        XCTAssertTrue(
+            isSoftBreak(storage, at: newlineLocation(after: "trellis for climbing", in: listSample)),
+            "Entering a paragraph must not add visual line breaks")
         XCTAssertTrue(isSoftBreak(storage, at: newlineLocation(after: "spring and the", in: listSample)))
         let indentFont = storage.attribute(.font, at: newlineLocation(after: "trellis for climbing", in: listSample) + 1, effectiveRange: nil) as? NSFont
         XCTAssertLessThanOrEqual(indentFont?.pointSize ?? 99, 0.2, "Continuation indentation stays hidden in the active paragraph")

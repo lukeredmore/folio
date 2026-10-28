@@ -16,9 +16,11 @@ public final class FolioCLIManager {
     public init() {}
 
     public static var defaultQueueFileURL: URL {
-        let appSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
+        let appSupport =
+            FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
             ?? FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Library/Application Support")
-        return appSupport
+        return
+            appSupport
             .appendingPathComponent("Folio", isDirectory: true)
             .appendingPathComponent("cli_open_requests.txt")
     }
@@ -56,10 +58,11 @@ public final class FolioCLIManager {
     ) -> URL? {
         let alreadyInstalled = userDefaults.bool(forKey: Self.cliInstalledDefaultsKey)
         if alreadyInstalled,
-           let existingPath = userDefaults.string(forKey: Self.cliInstalledPathDefaultsKey),
-           FileManager.default.isExecutableFile(atPath: existingPath),
-           let content = try? String(contentsOfFile: existingPath, encoding: .utf8),
-           content.contains("resolve_self_app_bundle") {
+            let existingPath = userDefaults.string(forKey: Self.cliInstalledPathDefaultsKey),
+            FileManager.default.isExecutableFile(atPath: existingPath),
+            let content = try? String(contentsOfFile: existingPath, encoding: .utf8),
+            content.contains("resolve_self_app_bundle")
+        {
             return URL(fileURLWithPath: existingPath)
         }
         return installCLI(
@@ -95,7 +98,8 @@ public final class FolioCLIManager {
             let targetURL = dirURL.appendingPathComponent("folio")
             do {
                 if let attrs = try? fm.attributesOfItem(atPath: targetURL.path),
-                   attrs[.type] as? FileAttributeType == .typeSymbolicLink {
+                    attrs[.type] as? FileAttributeType == .typeSymbolicLink
+                {
                     try? fm.removeItem(at: targetURL)
                 }
                 try Data(scriptContent.utf8).write(to: targetURL, options: .atomic)
@@ -121,7 +125,8 @@ public final class FolioCLIManager {
         if let installedURL {
             alert.alertStyle = .informational
             alert.messageText = "Installed 'folio' Command"
-            alert.informativeText = "The 'folio' command-line launcher is installed at \(installedURL.path).\n\nOpen files or folders from your terminal with:\nfolio <path>"
+            alert.informativeText =
+                "The 'folio' command-line launcher is installed at \(installedURL.path).\n\nOpen files or folders from your terminal with:\nfolio <path>"
         } else {
             alert.alertStyle = .warning
             alert.messageText = "Could Not Install 'folio' Command"
@@ -132,11 +137,13 @@ public final class FolioCLIManager {
 
     public static func drainPendingOpenRequests(from queueFileURL: URL = defaultQueueFileURL) -> [String] {
         guard FileManager.default.fileExists(atPath: queueFileURL.path),
-              let content = try? String(contentsOf: queueFileURL, encoding: .utf8) else {
+            let content = try? String(contentsOf: queueFileURL, encoding: .utf8)
+        else {
             return []
         }
         try? FileManager.default.removeItem(at: queueFileURL)
-        return content
+        return
+            content
             .components(separatedBy: .newlines)
             .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
             .filter { !$0.isEmpty }

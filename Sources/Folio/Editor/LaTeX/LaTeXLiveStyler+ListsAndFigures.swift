@@ -28,7 +28,8 @@ extension LaTeXLiveStyler {
         let isQuote = (envName == "quote" || envName == "quotation")
         let isTheoremOrProof = !isAbstract && !isQuote
         let isItalicBody = italicTheoremEnvironments.contains(envName)
-        let bodyFont = isItalicBody
+        let bodyFont =
+            isItalicBody
             ? docIndex.bodyFont(size: effectiveBaseSize, italic: true, fallbackTheme: theme)
             : (isAbstract ? docIndex.bodyFont(size: effectiveBaseSize * 0.95, fallbackTheme: theme) : baseFont)
         let indent: CGFloat = isAbstract ? 28.0 : (isQuote ? 20.0 : 18.0)
@@ -38,7 +39,8 @@ extension LaTeXLiveStyler {
             let isLast = (i == envLines.count - 1 && envLines.count > 1)
 
             if (isFirst || isLast) && !el.isActive && prettyMode {
-                let headerHeight: CGFloat = isFirst
+                let headerHeight: CGFloat =
+                    isFirst
                     ? (isAbstract ? 26.0 : (isTheoremOrProof ? 26.0 : 6.0))
                     : (envName == "proof" ? 10.0 : 6.0)
                 let pStyle = NSMutableParagraphStyle()
@@ -47,12 +49,13 @@ extension LaTeXLiveStyler {
                 pStyle.lineSpacing = 0
                 pStyle.paragraphSpacing = 0
                 pStyle.tailIndent = effectiveContainerWidth
-                storage.addAttributes([
-                    .font: NSFont.systemFont(ofSize: max(2.0, headerHeight * 0.4)),
-                    .foregroundColor: NSColor.clear,
-                    .paragraphStyle: pStyle,
-                    MKey.noSpellCheck: true
-                ], range: el.lineRange)
+                storage.addAttributes(
+                    [
+                        .font: NSFont.systemFont(ofSize: max(2.0, headerHeight * 0.4)),
+                        .foregroundColor: NSColor.clear,
+                        .paragraphStyle: pStyle,
+                        MKey.noSpellCheck: true
+                    ], range: el.lineRange)
                 continue
             }
 
@@ -63,15 +66,17 @@ extension LaTeXLiveStyler {
             pStyle.paragraphSpacing = max(3.0, typography.paragraphSpacing * 0.5)
             pStyle.firstLineHeadIndent = indent
             pStyle.headIndent = indent
-            pStyle.tailIndent = isAbstract
+            pStyle.tailIndent =
+                isAbstract
                 ? max(120.0, effectiveContainerWidth - 28.0)
                 : effectiveContainerWidth
 
-            storage.addAttributes([
-                .font: bodyFont,
-                .foregroundColor: (isQuote ? theme.blockquoteTextNSColor : theme.textNSColor).withAlphaComponent(blockDim),
-                .paragraphStyle: pStyle
-            ], range: el.lineRange)
+            storage.addAttributes(
+                [
+                    .font: bodyFont,
+                    .foregroundColor: (isQuote ? theme.blockquoteTextNSColor : theme.textNSColor).withAlphaComponent(blockDim),
+                    .paragraphStyle: pStyle
+                ], range: el.lineRange)
 
             if (isFirst || isLast) && (el.isActive || !prettyMode) {
                 storage.addAttribute(MKey.noSpellCheck, value: true, range: el.lineRange)
@@ -102,22 +107,24 @@ extension LaTeXLiveStyler {
         let showHeader = !(envLines.first?.isActive ?? false) && prettyMode
         _ = isBlockActive
         if isAbstract {
-            decorations.append(LineDecoration(
-                lineRange: fullBlockRange,
-                kind: .latexAbstractCard(showHeader: showHeader, fullBlockRange: fullBlockRange, dimFactor: blockDim)
-            ))
+            decorations.append(
+                LineDecoration(
+                    lineRange: fullBlockRange,
+                    kind: .latexAbstractCard(showHeader: showHeader, fullBlockRange: fullBlockRange, dimFactor: blockDim)
+                ))
         } else if isTheoremOrProof {
             let header = docIndex.blockTheoremHeaders[envLines[0].lineRange.location]?.header ?? envName.capitalized
-            decorations.append(LineDecoration(
-                lineRange: fullBlockRange,
-                kind: .latexTheoremCard(
-                    header: header,
-                    isProof: envName == "proof",
-                    showHeader: showHeader,
-                    fullBlockRange: fullBlockRange,
-                    dimFactor: blockDim
-                )
-            ))
+            decorations.append(
+                LineDecoration(
+                    lineRange: fullBlockRange,
+                    kind: .latexTheoremCard(
+                        header: header,
+                        isProof: envName == "proof",
+                        showHeader: showHeader,
+                        fullBlockRange: fullBlockRange,
+                        dimFactor: blockDim
+                    )
+                ))
         }
     }
 
@@ -143,7 +150,8 @@ extension LaTeXLiveStyler {
     ) -> (nextIndex: Int, lineDelta: Int)? {
         // 1. \end{itemize|enumerate|description|figure|table|center}
         if let endEnv = LaTeXDocumentIndexer.parseEndEnvironment(trimmedLine),
-           foldOnlyWrapperEnvironments.contains(endEnv) {
+            foldOnlyWrapperEnvironments.contains(endEnv)
+        {
             styleDocumentBoundaryLineHelper(
                 in: storage,
                 lineRange: lineRange,
@@ -252,23 +260,25 @@ extension LaTeXLiveStyler {
                 pStyle.maximumLineHeight = h
                 pStyle.alignment = .center
                 pStyle.tailIndent = effectiveContainerWidth
-                storage.addAttributes([
-                    .font: NSFont.systemFont(ofSize: 10.0),
-                    .foregroundColor: NSColor.clear,
-                    .paragraphStyle: pStyle
-                ], range: lineRange)
-                decorations.append(LineDecoration(
-                    lineRange: lineRange,
-                    kind: .imageRendered(
-                        url: imgPath,
-                        alt: (imgPath as NSString).lastPathComponent,
-                        fullRange: contentRange,
-                        explicitWidth: nil,
-                        explicitHeight: nil,
-                        baseDirectoryURL: baseDirectoryURL,
-                        dimFactor: dimFactor
-                    )
-                ))
+                storage.addAttributes(
+                    [
+                        .font: NSFont.systemFont(ofSize: 10.0),
+                        .foregroundColor: NSColor.clear,
+                        .paragraphStyle: pStyle
+                    ], range: lineRange)
+                decorations.append(
+                    LineDecoration(
+                        lineRange: lineRange,
+                        kind: .imageRendered(
+                            url: imgPath,
+                            alt: (imgPath as NSString).lastPathComponent,
+                            fullRange: contentRange,
+                            explicitWidth: nil,
+                            explicitHeight: nil,
+                            baseDirectoryURL: baseDirectoryURL,
+                            dimFactor: dimFactor
+                        )
+                    ))
             } else {
                 MarkdownLiveStyler.highlightLaTeXSource(in: storage, range: contentRange, theme: theme, dimFactor: dimFactor)
             }
@@ -286,11 +296,12 @@ extension LaTeXLiveStyler {
             pStyle.paragraphSpacingBefore = 4.0
             pStyle.paragraphSpacing = 8.0
             pStyle.tailIndent = effectiveContainerWidth
-            storage.addAttributes([
-                .font: captionFont,
-                .foregroundColor: theme.secondaryTextNSColor.withAlphaComponent(dimFactor),
-                .paragraphStyle: pStyle
-            ], range: lineRange)
+            storage.addAttributes(
+                [
+                    .font: captionFont,
+                    .foregroundColor: theme.secondaryTextNSColor.withAlphaComponent(dimFactor),
+                    .paragraphStyle: pStyle
+                ], range: lineRange)
             MarkdownLiveStyler.styleSyntaxToken(in: storage, range: openRange, isActiveLine: isActiveLine, theme: theme, dimFactor: dimFactor)
             MarkdownLiveStyler.styleSyntaxToken(in: storage, range: closeRange, isActiveLine: isActiveLine, theme: theme, dimFactor: dimFactor)
             styleLaTeXInlineContent(

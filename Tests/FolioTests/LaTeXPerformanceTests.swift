@@ -171,10 +171,12 @@ final class LaTeXPerformanceTests: XCTestCase {
         NSGraphicsContext.restoreGraphicsState()
         let drawMs = (CFAbsoluteTimeGetCurrent() - t2) * 1000.0 / Double(drawIterations)
 
-        print(String(
-            format: "[PROFILE] macroExtract=%.2fms indexBuild=%.2fms styleOnly=%.2fms layoutOnly=%.2fms cursorMove=%.2fms keystroke=%.2fms drawBackground=%.2fms",
-            macroExtractMs, indexBuildMs, styleMs, layoutMs, cursorMs, keystrokeMs, drawMs
-        ))
+        print(
+            String(
+                format:
+                    "[PROFILE] macroExtract=%.2fms indexBuild=%.2fms styleOnly=%.2fms layoutOnly=%.2fms cursorMove=%.2fms keystroke=%.2fms drawBackground=%.2fms",
+                macroExtractMs, indexBuildMs, styleMs, layoutMs, cursorMs, keystrokeMs, drawMs
+            ))
         XCTAssertLessThan(cursorMs, 15.0, "Cursor move latency on showcase document should stay well under 16ms frame budget")
         XCTAssertLessThan(keystrokeMs, 20.0, "Keystroke latency on showcase document should stay responsive")
     }

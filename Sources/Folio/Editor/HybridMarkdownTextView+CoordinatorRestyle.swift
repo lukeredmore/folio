@@ -14,8 +14,9 @@ extension HybridMarkdownEditorRepresentable.Coordinator {
     /// Adds a character edit's `editedRange` to the edits since the last restyle.
     @objc func recordTextEdit(_ notification: Notification) {
         guard let storage = notification.object as? NSTextStorage,
-              storage.editedMask.contains(.editedCharacters),
-              storage.editedRange.location != NSNotFound else { return }
+            storage.editedMask.contains(.editedCharacters),
+            storage.editedRange.location != NSNotFound
+        else { return }
         let range = storage.editedRange
         let delta = storage.changeInLength
         if var edit = pendingTextEdit {

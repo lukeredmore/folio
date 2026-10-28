@@ -12,8 +12,9 @@ extension EditorWorkspaceViewModel {
             if autoSaveEnabled && activeConflict == nil {
                 // Before overwriting disk, verify whether an external process modified the file since our last save
                 if let currentDiskText = try? String(contentsOf: url, encoding: .utf8),
-                   currentDiskText != lastSavedDiskContent,
-                   !recentSelfWrites.contains(currentDiskText) {
+                    currentDiskText != lastSavedDiskContent,
+                    !recentSelfWrites.contains(currentDiskText)
+                {
                     let mergeResult = ThreeWayDocumentMerger.merge(
                         base: lastSavedDiskContent,
                         local: markdownText,
@@ -80,9 +81,10 @@ extension EditorWorkspaceViewModel {
     func flushPendingAutoSaveBeforeSwitchingFile() {
         flushPendingAutoSave()
         guard let url = currentFileURL,
-              activeConflict == nil,
-              autoSaveEnabled,
-              markdownText != lastSavedDiskContent else { return }
+            activeConflict == nil,
+            autoSaveEnabled,
+            markdownText != lastSavedDiskContent
+        else { return }
         performDiskWrite(markdownText, to: url)
     }
 
@@ -100,17 +102,19 @@ extension EditorWorkspaceViewModel {
 
         // Ignore self-writes when no conflict is active and disk matches our buffer
         if activeConflict == nil,
-           diskContent == markdownText,
-           (diskContent == lastSavedDiskContent || recentSelfWrites.contains(diskContent)) {
+            diskContent == markdownText,
+            (diskContent == lastSavedDiskContent || recentSelfWrites.contains(diskContent))
+        {
             lastSavedDiskContent = diskContent
             return
         }
 
         // Also ignore asynchronous watcher echo from an older self-write that we already superseded
         if activeConflict == nil,
-           diskContent != markdownText,
-           recentSelfWrites.contains(diskContent),
-           markdownText == lastSavedDiskContent {
+            diskContent != markdownText,
+            recentSelfWrites.contains(diskContent),
+            markdownText == lastSavedDiskContent
+        {
             return
         }
 

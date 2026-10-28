@@ -209,7 +209,7 @@ public final class FolioAppDelegate: NSObject, NSApplicationDelegate {
 }
 
 #if !FOLIO_NO_MAIN
-@main
+    @main
 #endif
 public struct FolioApp: App {
     @NSApplicationDelegateAdaptor(FolioAppDelegate.self) var appDelegate

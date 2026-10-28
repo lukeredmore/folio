@@ -107,14 +107,16 @@ public final class LaTeXMathRenderer {
                 switch cmd.kind {
                 case 0:
                     let str = cmd.text != nil ? String(cString: cmd.text) : ""
-                    captured.append(.text(
-                        x: CGFloat(cmd.x), y: CGFloat(cmd.y), text: str,
-                        style: MathFontStyle.fromEngineCode(cmd.font_style), fontSize: CGFloat(cmd.font_size)
-                    ))
+                    captured.append(
+                        .text(
+                            x: CGFloat(cmd.x), y: CGFloat(cmd.y), text: str,
+                            style: MathFontStyle.fromEngineCode(cmd.font_style), fontSize: CGFloat(cmd.font_size)
+                        ))
                 case 1:
-                    captured.append(.rule(
-                        x: CGFloat(cmd.x), y: CGFloat(cmd.y), width: CGFloat(cmd.width), height: CGFloat(cmd.height)
-                    ))
+                    captured.append(
+                        .rule(
+                            x: CGFloat(cmd.x), y: CGFloat(cmd.y), width: CGFloat(cmd.width), height: CGFloat(cmd.height)
+                        ))
                 default:
                     break
                 }
@@ -165,24 +167,29 @@ public final class LaTeXMathRenderer {
         let resolved: NSFont
         switch style {
         case .italicVariable:
-            resolved = NSFont(name: "Times New Roman Italic", size: size)
+            resolved =
+                NSFont(name: "Times New Roman Italic", size: size)
                 ?? NSFont(name: "Georgia Italic", size: size)
                 ?? NSFontManager.shared.convert(NSFont.systemFont(ofSize: size), toHaveTrait: .italicFontMask)
         case .romanUpright, .calligraphic, .blackboardBold:
-            resolved = NSFont(name: "Times New Roman", size: size)
+            resolved =
+                NSFont(name: "Times New Roman", size: size)
                 ?? NSFont(name: "Georgia", size: size)
                 ?? NSFont.systemFont(ofSize: size, weight: .regular)
         case .boldUpright:
-            resolved = NSFont(name: "Times New Roman Bold", size: size)
+            resolved =
+                NSFont(name: "Times New Roman Bold", size: size)
                 ?? NSFont(name: "Georgia Bold", size: size)
                 ?? NSFont.systemFont(ofSize: size, weight: .bold)
         case .monospace:
             resolved = NSFont.monospacedSystemFont(ofSize: size * 0.9, weight: .regular)
         case .operatorSymbol:
-            resolved = NSFont(name: "Times New Roman", size: size)
+            resolved =
+                NSFont(name: "Times New Roman", size: size)
                 ?? NSFont.systemFont(ofSize: size, weight: .regular)
         case .bigOperator:
-            resolved = NSFont(name: "Times New Roman", size: size * 1.45)
+            resolved =
+                NSFont(name: "Times New Roman", size: size * 1.45)
                 ?? NSFont.systemFont(ofSize: size * 1.45, weight: .light)
         }
         fontCacheLock.lock()
@@ -237,7 +244,8 @@ extension HybridMarkdownTextView {
         let horizontalPad: CGFloat = 14.0
         let tagReserve: CGFloat = tagSize.width > 0 ? (tagSize.width + 18.0) : 0.0
         let availableMathWidth = max(80.0, contentWidth - horizontalPad * 2.0 - tagReserve)
-        let scale: CGFloat = mathBox.width > availableMathWidth
+        let scale: CGFloat =
+            mathBox.width > availableMathWidth
             ? (availableMathWidth / max(1.0, mathBox.width))
             : 1.0
         let scaledWidth = mathBox.width * scale

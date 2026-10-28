@@ -19,33 +19,36 @@ final class SelectionCommentsInspectorTests: XCTestCase {
 
     private func sendClick(at point: NSPoint, in window: NSWindow) {
         if let themeFrame = window.contentView?.superview,
-           let hit = themeFrame.hitTest(point),
-           String(describing: type(of: hit)).contains("ClippedItemsIndicator") {
+            let hit = themeFrame.hitTest(point),
+            String(describing: type(of: hit)).contains("ClippedItemsIndicator")
+        {
             XCTFail("Refusing to click NSToolbarClippedItemsIndicator at \(point) which would open a modal NSMenu")
             return
         }
-        guard let down = NSEvent.mouseEvent(
-            with: .leftMouseDown,
-            location: point,
-            modifierFlags: [],
-            timestamp: ProcessInfo.processInfo.systemUptime,
-            windowNumber: window.windowNumber,
-            context: nil,
-            eventNumber: 1,
-            clickCount: 1,
-            pressure: 1.0
-        ),
-        let up = NSEvent.mouseEvent(
-            with: .leftMouseUp,
-            location: point,
-            modifierFlags: [],
-            timestamp: ProcessInfo.processInfo.systemUptime + 0.01,
-            windowNumber: window.windowNumber,
-            context: nil,
-            eventNumber: 2,
-            clickCount: 1,
-            pressure: 0.0
-        ) else {
+        guard
+            let down = NSEvent.mouseEvent(
+                with: .leftMouseDown,
+                location: point,
+                modifierFlags: [],
+                timestamp: ProcessInfo.processInfo.systemUptime,
+                windowNumber: window.windowNumber,
+                context: nil,
+                eventNumber: 1,
+                clickCount: 1,
+                pressure: 1.0
+            ),
+            let up = NSEvent.mouseEvent(
+                with: .leftMouseUp,
+                location: point,
+                modifierFlags: [],
+                timestamp: ProcessInfo.processInfo.systemUptime + 0.01,
+                windowNumber: window.windowNumber,
+                context: nil,
+                eventNumber: 2,
+                clickCount: 1,
+                pressure: 0.0
+            )
+        else {
             XCTFail("Failed to construct mouse events")
             return
         }
@@ -65,12 +68,12 @@ final class SelectionCommentsInspectorTests: XCTestCase {
         let vm = makeIsolatedViewModel()
         vm.autoSaveEnabled = false
         let doc = """
-        # Architecture Review
+            # Architecture Review
 
-        We should migrate the **renderer pipeline** to use `MTLSharedEvent` synchronization.
+            We should migrate the **renderer pipeline** to use `MTLSharedEvent` synchronization.
 
-        - [ ] Audit `FolioMediaImageCache` eviction thresholds
-        """
+            - [ ] Audit `FolioMediaImageCache` eviction thresholds
+            """
         vm.markdownText = doc
         let nsDoc = doc as NSString
         let r1 = nsDoc.range(of: "`MTLSharedEvent` synchronization")

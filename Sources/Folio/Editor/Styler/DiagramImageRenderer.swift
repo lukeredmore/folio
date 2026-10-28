@@ -158,7 +158,8 @@ public final class DiagramImageRenderer: @unchecked Sendable {
             svg = MarkdownLiveStyler.normalizeSVG(key.source)
         }
         guard !svg.isEmpty, let data = svg.data(using: .utf8), let image = NSImage(data: data),
-              image.size.width > 0, image.size.height > 0 else {
+            image.size.width > 0, image.size.height > 0
+        else {
             return nil
         }
         return rasterizeVectorImage(image)
@@ -197,7 +198,8 @@ public final class DiagramImageRenderer: @unchecked Sendable {
             height: max(1.0, round(rawRect.size.height))
         )
         let cgCtx = NSGraphicsContext.current?.cgContext
-        let deviceSize = cgCtx?.convertToDeviceSpace(drawRect.size)
+        let deviceSize =
+            cgCtx?.convertToDeviceSpace(drawRect.size)
             ?? NSSize(width: drawRect.width * 2.0, height: drawRect.height * 2.0)
         let pixelW = max(1, Int(abs(round(deviceSize.width))))
         let pixelH = max(1, Int(abs(round(deviceSize.height))))
@@ -232,19 +234,20 @@ public final class DiagramImageRenderer: @unchecked Sendable {
         pixelHeight: Int
     ) -> NSImage {
         guard pixelWidth > 0, pixelHeight > 0,
-              pixelWidth <= 4096, pixelHeight <= 4096,
-              let bitmapRep = NSBitmapImageRep(
-                  bitmapDataPlanes: nil,
-                  pixelsWide: pixelWidth,
-                  pixelsHigh: pixelHeight,
-                  bitsPerSample: 8,
-                  samplesPerPixel: 4,
-                  hasAlpha: true,
-                  isPlanar: false,
-                  colorSpaceName: .deviceRGB,
-                  bytesPerRow: 0,
-                  bitsPerPixel: 0
-              ) else {
+            pixelWidth <= 4096, pixelHeight <= 4096,
+            let bitmapRep = NSBitmapImageRep(
+                bitmapDataPlanes: nil,
+                pixelsWide: pixelWidth,
+                pixelsHigh: pixelHeight,
+                bitsPerSample: 8,
+                samplesPerPixel: 4,
+                hasAlpha: true,
+                isPlanar: false,
+                colorSpaceName: .deviceRGB,
+                bytesPerRow: 0,
+                bitsPerPixel: 0
+            )
+        else {
             return sourceImage
         }
         bitmapRep.size = targetLogicalSize

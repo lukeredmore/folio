@@ -74,7 +74,8 @@ extension EditorWorkspaceViewModel {
         let fm = FileManager.default
         for candidateURL in SelectionComment.candidateCompanionURLs(for: fileURL) {
             if fm.fileExists(atPath: candidateURL.path),
-               let rawCompanion = try? String(contentsOf: candidateURL, encoding: .utf8) {
+                let rawCompanion = try? String(contentsOf: candidateURL, encoding: .utf8)
+            {
                 selectionComments = SelectionComment.parseCompanionMarkdown(
                     rawCompanion,
                     inDocumentText: documentText,
@@ -177,8 +178,9 @@ extension EditorWorkspaceViewModel {
         let trimmedComment = (explicitText ?? activeCommentDraftText)
             .trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmedComment.isEmpty,
-              let range = explicitRange ?? effectiveCommentTargetRange(),
-              range.length > 0 else {
+            let range = explicitRange ?? effectiveCommentTargetRange(),
+            range.length > 0
+        else {
             return nil
         }
 
@@ -274,7 +276,8 @@ extension EditorWorkspaceViewModel {
 
     public func removeSelectionComment(id: UUID) {
         if let removed = selectionComments.first(where: { $0.id == id }),
-           activeCommentDraftRange == removed.range {
+            activeCommentDraftRange == removed.range
+        {
             activeCommentDraftRange = nil
             activeCommentDraftText = ""
         }

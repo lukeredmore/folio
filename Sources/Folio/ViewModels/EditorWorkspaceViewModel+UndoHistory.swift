@@ -123,8 +123,9 @@ extension EditorWorkspaceViewModel {
         let deltaLen = newNS.length - prevNS.length
         let isSingleCharAlphanumeric: Bool = {
             guard deltaLen == 1,
-                  previousSelection.length == 0,
-                  newSelection.length == 0 else { return false }
+                previousSelection.length == 0,
+                newSelection.length == 0
+            else { return false }
             // Determine the UTF-16 index of the newly inserted character (either via cursor advance or diff prefix)
             var insertLoc = newSelection.location - 1
             if insertLoc < 0 || insertLoc >= newNS.length || newSelection.location != previousSelection.location + 1 {
@@ -147,14 +148,15 @@ extension EditorWorkspaceViewModel {
         }()
 
         if allowCoalescing,
-           origin == .userTyping,
-           isSingleCharAlphanumeric,
-           var lastEntry = timeline.undoStack.last,
-           lastEntry.origin == .userTyping,
-           lastEntry.newText == previousText,
-           lastEntry.newSelectedLocation == previousSelection.location,
-           lastEntry.newSelectedLength == 0,
-           now.timeIntervalSince(lastEntry.timestamp) < 0.65 {
+            origin == .userTyping,
+            isSingleCharAlphanumeric,
+            var lastEntry = timeline.undoStack.last,
+            lastEntry.origin == .userTyping,
+            lastEntry.newText == previousText,
+            lastEntry.newSelectedLocation == previousSelection.location,
+            lastEntry.newSelectedLength == 0,
+            now.timeIntervalSince(lastEntry.timestamp) < 0.65
+        {
             lastEntry.newText = newText
             lastEntry.newSelectedLocation = max(0, newSelection.location)
             lastEntry.newSelectedLength = max(0, newSelection.length)
@@ -184,7 +186,8 @@ extension EditorWorkspaceViewModel {
     func updateTopUndoNewSelection(_ selection: NSRange) {
         let key = undoTimelineKey(for: currentFileURL)
         guard var timeline = perFileUndoTimelines[key],
-              !timeline.undoStack.isEmpty else { return }
+            !timeline.undoStack.isEmpty
+        else { return }
         var last = timeline.undoStack[timeline.undoStack.count - 1]
         if last.newText == markdownText {
             last.newSelectedLocation = max(0, selection.location)
@@ -198,7 +201,8 @@ extension EditorWorkspaceViewModel {
     public func undo() {
         let key = undoTimelineKey(for: currentFileURL)
         guard var timeline = perFileUndoTimelines[key],
-              let entry = timeline.undoStack.popLast() else { return }
+            let entry = timeline.undoStack.popLast()
+        else { return }
         timeline.redoStack.append(entry)
         perFileUndoTimelines[key] = timeline
         canCoalesceLiveTyping = false
@@ -214,7 +218,8 @@ extension EditorWorkspaceViewModel {
     public func redo() {
         let key = undoTimelineKey(for: currentFileURL)
         guard var timeline = perFileUndoTimelines[key],
-              let entry = timeline.redoStack.popLast() else { return }
+            let entry = timeline.redoStack.popLast()
+        else { return }
         timeline.undoStack.append(entry)
         perFileUndoTimelines[key] = timeline
         canCoalesceLiveTyping = false

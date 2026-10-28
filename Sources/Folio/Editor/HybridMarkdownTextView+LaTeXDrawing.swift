@@ -26,7 +26,8 @@ extension HybridMarkdownTextView {
             currentTheme.codeBackgroundNSColor.withAlphaComponent(dimFactor).setFill()
             NSBezierPath(roundedRect: cardRect, xRadius: 7.0, yRadius: 7.0).fill()
 
-            let borderCol = currentTheme.isDark
+            let borderCol =
+                currentTheme.isDark
                 ? NSColor.white.withAlphaComponent(0.12 * dimFactor)
                 : NSColor.black.withAlphaComponent(0.09 * dimFactor)
             borderCol.setStroke()
@@ -114,7 +115,8 @@ extension HybridMarkdownTextView {
             blockRect.size.width = contentWidth
 
             let cardRect = blockRect.insetBy(dx: 0, dy: 2.0)
-            let fillCol = isProof
+            let fillCol =
+                isProof
                 ? currentTheme.codeBackgroundNSColor.withAlphaComponent(0.32 * dimFactor)
                 : currentTheme.linkNSColor.withAlphaComponent((currentTheme.isDark ? 0.08 : 0.05) * dimFactor)
             fillCol.setFill()
@@ -126,7 +128,8 @@ extension HybridMarkdownTextView {
             let barRect = NSRect(x: cardRect.minX, y: cardRect.minY + 4.0, width: 3.0, height: max(8.0, cardRect.height - 8.0))
             NSBezierPath(roundedRect: barRect, xRadius: 1.5, yRadius: 1.5).fill()
 
-            let hdrFont = isProof
+            let hdrFont =
+                isProof
                 ? currentTheme.bodyFont(size: effectiveFontSize * 0.95, italic: true, semibold: true)
                 : currentTheme.bodyFont(size: effectiveFontSize * 0.95, bold: true)
             let hdrAttrs: [NSAttributedString.Key: Any] = [
@@ -216,13 +219,15 @@ extension HybridMarkdownTextView {
             (number as NSString).draw(at: NSPoint(x: origin.x, y: drawY), withAttributes: attrs)
 
         case let .latexInlinePill(label, _, _, _, pillRange, fontSize, isCitation, dimFactor):
-            guard let pillRect = computeLaTeXInlinePillRect(
-                pillRange: pillRange,
-                label: label,
-                fontSize: fontSize,
-                layoutManager: layoutManager,
-                origin: origin
-            ) else { return }
+            guard
+                let pillRect = computeLaTeXInlinePillRect(
+                    pillRange: pillRange,
+                    label: label,
+                    fontSize: fontSize,
+                    layoutManager: layoutManager,
+                    origin: origin
+                )
+            else { return }
             let accent = isCitation ? currentTheme.linkNSColor : currentTheme.headingNSColor
             accent.withAlphaComponent((currentTheme.isDark ? 0.18 : 0.12) * dimFactor).setFill()
             NSBezierPath(roundedRect: pillRect, xRadius: 4.5, yRadius: 4.5).fill()
@@ -241,7 +246,8 @@ extension HybridMarkdownTextView {
 
         case let .latexInlineText(text, font, spanRange, dimFactor):
             guard spanRange.location != NSNotFound,
-                  spanRange.location < (self.string as NSString).length else { return }
+                spanRange.location < (self.string as NSString).length
+            else { return }
             let firstGlyph = layoutManager.glyphIndexForCharacter(at: spanRange.location)
             guard firstGlyph != NSNotFound, firstGlyph < layoutManager.numberOfGlyphs else { return }
             let lineFrag = layoutManager.lineFragmentRect(forGlyphAt: firstGlyph, effectiveRange: nil)
@@ -249,7 +255,8 @@ extension HybridMarkdownTextView {
             let baselineY = origin.y + lineFrag.minY + glyphLoc.y
             let drawX = origin.x + lineFrag.minX + glyphLoc.x
             let drawY = baselineY - font.ascender
-            let customInlineColor = self.textStorage?.attribute(MarkdownLiveStyler.customColorAttributeKey, at: spanRange.location, effectiveRange: nil) as? NSColor
+            let customInlineColor =
+                self.textStorage?.attribute(MarkdownLiveStyler.customColorAttributeKey, at: spanRange.location, effectiveRange: nil) as? NSColor
             let attrs: [NSAttributedString.Key: Any] = [
                 .font: font,
                 .foregroundColor: (customInlineColor ?? currentTheme.textNSColor).withAlphaComponent(dimFactor)
@@ -276,7 +283,8 @@ extension HybridMarkdownTextView {
         origin: NSPoint
     ) -> NSRect? {
         guard pillRange.location != NSNotFound,
-              pillRange.location < (self.string as NSString).length else { return nil }
+            pillRange.location < (self.string as NSString).length
+        else { return nil }
         let firstGlyph = layoutManager.glyphIndexForCharacter(at: pillRange.location)
         guard firstGlyph != NSNotFound, firstGlyph < layoutManager.numberOfGlyphs else { return nil }
         let lineFrag = layoutManager.lineFragmentRect(forGlyphAt: firstGlyph, effectiveRange: nil)
@@ -284,11 +292,12 @@ extension HybridMarkdownTextView {
         let baselineY = origin.y + lineFrag.minY + glyphLoc.y
 
         let pillFont = NSFont.systemFont(ofSize: max(10.5, fontSize * 0.82), weight: .medium)
-        let spanInfo = self.textStorage?.attribute(
-            MarkdownLiveStyler.inlineMathSpanAttributeKey,
-            at: pillRange.location,
-            effectiveRange: nil
-        ) as? MarkdownLiveStyler.InlineMathLayoutInfo
+        let spanInfo =
+            self.textStorage?.attribute(
+                MarkdownLiveStyler.inlineMathSpanAttributeKey,
+                at: pillRange.location,
+                effectiveRange: nil
+            ) as? MarkdownLiveStyler.InlineMathLayoutInfo
         let width = spanInfo?.width ?? (ceil((label as NSString).size(withAttributes: [.font: pillFont]).width) + 12.0)
         let height = pillFont.ascender + abs(pillFont.descender) + 3.0
         return NSRect(

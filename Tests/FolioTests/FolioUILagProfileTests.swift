@@ -49,7 +49,8 @@ final class FolioUILagProfileTests: XCTestCase {
         XCTAssertEqual(footerHeight, 30.0, accuracy: 0.5, "Sidebar footer bar height must be 30pt")
         XCTAssertEqual(statusHeight, 30.0, accuracy: 0.5, "StatusBarView height must be 30pt")
         XCTAssertEqual(footerHeight, editorScrollMinY, accuracy: 0.5, "Sidebar footer top edge must align with StatusBarView top edge")
-        XCTAssertEqual(scrollWindowRect.maxY, hostingView.bounds.height, accuracy: 1.0, "Editor scroll view canvas must extend all the way to the top edge of the window")
+        XCTAssertEqual(
+            scrollWindowRect.maxY, hostingView.bounds.height, accuracy: 1.0, "Editor scroll view canvas must extend all the way to the top edge of the window")
         XCTAssertEqual(scrollView.contentInsets.top, 0.0, accuracy: 0.1, "Editor scroll view must not have automatic top content insets")
         XCTAssertFalse(
             scrollView.subviews.contains(where: { String(describing: type(of: $0)).contains("ScrollPocket") }),
@@ -81,13 +82,19 @@ final class FolioUILagProfileTests: XCTestCase {
         RunLoop.current.run(until: Date().addingTimeInterval(0.1))
         hostingView.layoutSubtreeIfNeeded()
         if let toolbar = window.toolbar,
-           let item = toolbar.items.first(where: { $0.itemIdentifier.rawValue == "com.apple.SwiftUI.navigationSplitView.toggleSidebar" }),
-           let v = item.view {
+            let item = toolbar.items.first(where: { $0.itemIdentifier.rawValue == "com.apple.SwiftUI.navigationSplitView.toggleSidebar" }),
+            let v = item.view
+        {
             XCTAssertTrue(WindowStatePersistenceAccessor.Coordinator.isDescendantOfToolbarItem(v))
             let wf = v.convert(v.bounds, to: nil)
             let center = NSPoint(x: wf.midX, y: wf.midY)
-            if let down = NSEvent.mouseEvent(with: .leftMouseDown, location: center, modifierFlags: [], timestamp: ProcessInfo.processInfo.systemUptime, windowNumber: window.windowNumber, context: nil, eventNumber: 1, clickCount: 1, pressure: 1.0),
-               let up = NSEvent.mouseEvent(with: .leftMouseUp, location: center, modifierFlags: [], timestamp: ProcessInfo.processInfo.systemUptime + 0.01, windowNumber: window.windowNumber, context: nil, eventNumber: 2, clickCount: 1, pressure: 0.0) {
+            if let down = NSEvent.mouseEvent(
+                with: .leftMouseDown, location: center, modifierFlags: [], timestamp: ProcessInfo.processInfo.systemUptime, windowNumber: window.windowNumber,
+                context: nil, eventNumber: 1, clickCount: 1, pressure: 1.0),
+                let up = NSEvent.mouseEvent(
+                    with: .leftMouseUp, location: center, modifierFlags: [], timestamp: ProcessInfo.processInfo.systemUptime + 0.01,
+                    windowNumber: window.windowNumber, context: nil, eventNumber: 2, clickCount: 1, pressure: 0.0)
+            {
                 window.sendEvent(down)
                 window.sendEvent(up)
             }
@@ -96,8 +103,9 @@ final class FolioUILagProfileTests: XCTestCase {
         hostingView.layoutSubtreeIfNeeded()
         XCTAssertFalse(vm.showSidebar, "First click on sidebar toolbar button must immediately collapse sidebar")
         if let root = window.contentView?.superview,
-           let splitView = findSubview(of: NSSplitView.self, in: root),
-           let svc = splitView.delegate as? NSSplitViewController {
+            let splitView = findSubview(of: NSSplitView.self, in: root),
+            let svc = splitView.delegate as? NSSplitViewController
+        {
             XCTAssertNil(splitView.autosaveName, "NSSplitView autosaveName must be cleared to prevent conflicting subview frame restoration")
             XCTAssertTrue(svc.splitViewItems.first?.isCollapsed ?? false, "NSSplitViewItem must be collapsed after first click")
         }

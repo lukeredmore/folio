@@ -53,7 +53,8 @@ extension HybridMarkdownEditorRepresentable {
 
         @objc func scrollViewFrameDidChange(_ notification: Notification) {
             guard let scrollView = notification.object as? NSScrollView,
-                  let tv = textView else { return }
+                let tv = textView
+            else { return }
             updateInsets(for: scrollView, textView: tv, theme: viewModel.theme)
             let newContentWidth = currentContentWidth(for: tv)
             if abs(newContentWidth - lastContentWidth) > 0.5 {
@@ -80,7 +81,8 @@ extension HybridMarkdownEditorRepresentable {
         }
 
         func currentContentWidth(for textView: HybridMarkdownTextView) -> CGFloat {
-            let totalWidth = textView.enclosingScrollView?.contentView.bounds.width
+            let totalWidth =
+                textView.enclosingScrollView?.contentView.bounds.width
                 ?? textView.enclosingScrollView?.bounds.width
                 ?? textView.bounds.width
             let maxWrite = viewModel.typography.maxColumnWidth

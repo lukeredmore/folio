@@ -34,7 +34,8 @@ extension HybridMarkdownTextView {
             guard glyphRange.location != NSNotFound else { continue }
             let lineFrag = layoutManager.lineFragmentRect(forGlyphAt: glyphRange.location, effectiveRange: nil)
             let imgGlyphIdx = layoutManager.glyphIndexForCharacter(at: fullRange.location)
-            let glyphX = (imgGlyphIdx != NSNotFound && imgGlyphIdx < layoutManager.numberOfGlyphs)
+            let glyphX =
+                (imgGlyphIdx != NSNotFound && imgGlyphIdx < layoutManager.numberOfGlyphs)
                 ? layoutManager.location(forGlyphAt: imgGlyphIdx).x
                 : 0.0
             let lineKey = dec.lineRange.location
@@ -140,13 +141,14 @@ extension HybridMarkdownTextView {
             let contentWidth = proseColumnWidth > 0 ? proseColumnWidth : fullContentWidth
             for dec in lineDecorations {
                 if case .codeFenceStart(let language) = dec.kind,
-                   let badge = computeCodeFenceBadgeGeometry(
-                       for: dec.lineRange,
-                       language: language,
-                       layoutManager: layoutManager,
-                       origin: origin,
-                       contentWidth: contentWidth
-                   ) {
+                    let badge = computeCodeFenceBadgeGeometry(
+                        for: dec.lineRange,
+                        language: language,
+                        layoutManager: layoutManager,
+                        origin: origin,
+                        contentWidth: contentWidth
+                    )
+                {
                     if badge.pillRect.insetBy(dx: -4.0, dy: -4.0).contains(point) {
                         presentCodeFenceLanguageMenu(
                             for: dec.lineRange,
@@ -253,8 +255,9 @@ extension HybridMarkdownTextView {
         guard !isSourceCodeMode, let storage = textStorage else { return }
         let location = selectedRange().location
         guard location > 0, location <= storage.length,
-              (storage.string as NSString).character(at: location - 1) == 10,
-              storage.attribute(MarkdownLiveStyler.softLineBreakAttributeKey, at: location - 1, effectiveRange: nil) != nil else {
+            (storage.string as NSString).character(at: location - 1) == 10,
+            storage.attribute(MarkdownLiveStyler.softLineBreakAttributeKey, at: location - 1, effectiveRange: nil) != nil
+        else {
             return
         }
         insertText("\n", replacementRange: selectedRange())
@@ -262,9 +265,10 @@ extension HybridMarkdownTextView {
 
     public func centerSelectionIfTypewriter() {
         guard isTypewriterMode,
-              let layoutManager = self.layoutManager,
-              let textContainer = self.textContainer,
-              let scrollView = self.enclosingScrollView else {
+            let layoutManager = self.layoutManager,
+            let textContainer = self.textContainer,
+            let scrollView = self.enclosingScrollView
+        else {
             return
         }
         let sel = self.selectedRange()

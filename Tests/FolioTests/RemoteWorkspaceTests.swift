@@ -53,13 +53,13 @@ final class RemoteWorkspaceTests: XCTestCase {
         let rawContent1 = Data("# Remote Readme\nHello from SSH!\n".utf8).base64EncodedString()
         let rawContent2 = Data("## Subfolder Note\nFast local mirror.".utf8).base64EncodedString()
         let sampleStream = """
-        ===FOLIO_FILE===\tREADME.md\t1729300000
-        \(rawContent1)
-        ===FOLIO_END===
-        ===FOLIO_FILE===\tguides/setup.md\t1729300500
-        \(rawContent2)
-        ===FOLIO_END===
-        """
+            ===FOLIO_FILE===\tREADME.md\t1729300000
+            \(rawContent1)
+            ===FOLIO_END===
+            ===FOLIO_FILE===\tguides/setup.md\t1729300500
+            \(rawContent2)
+            ===FOLIO_END===
+            """
         let entries = SSHRemoteTransport.parseSnapshotOutput(sampleStream)
         XCTAssertEqual(entries.count, 2)
         XCTAssertEqual(entries[0].relativePath, "README.md")
@@ -93,13 +93,17 @@ final class RemoteWorkspaceTests: XCTestCase {
             targetKind: .file
         )
 
-        mockTransport.setRemoteFiles(for: folderSpec.id, files: [
-            "index.md": "# Cloud Index\nWelcome to remote folder sync.",
-            "architecture/design.md": "# Distributed Sync\nFeels like local disk speed."
-        ])
-        mockTransport.setRemoteFiles(for: singleFileSpec.id, files: [
-            "runbook.md": "# Prod Runbook\nAll systems nominal."
-        ])
+        mockTransport.setRemoteFiles(
+            for: folderSpec.id,
+            files: [
+                "index.md": "# Cloud Index\nWelcome to remote folder sync.",
+                "architecture/design.md": "# Distributed Sync\nFeels like local disk speed."
+            ])
+        mockTransport.setRemoteFiles(
+            for: singleFileSpec.id,
+            files: [
+                "runbook.md": "# Prod Runbook\nAll systems nominal."
+            ])
 
         let remoteManager = RemoteWorkspaceManager(
             transport: mockTransport,
@@ -142,8 +146,10 @@ final class RemoteWorkspaceTests: XCTestCase {
 
         // Wait for the async save task to push to MockRemoteTransport
         for _ in 0..<50 {
-            if mockTransport.getRemoteFile(for: folderSpec.id, relativePath: "architecture/design.md") == "# Distributed Sync\nUpdated from native macOS editor!"
-                && remoteManager.syncStatus(forLocalURL: designNode.url) == .synced {
+            if mockTransport.getRemoteFile(for: folderSpec.id, relativePath: "architecture/design.md")
+                == "# Distributed Sync\nUpdated from native macOS editor!"
+                && remoteManager.syncStatus(forLocalURL: designNode.url) == .synced
+            {
                 break
             }
             try await Task.sleep(nanoseconds: 10_000_000)
@@ -196,7 +202,8 @@ final class RemoteWorkspaceTests: XCTestCase {
         mockTransport.simulatedError = nil
         for _ in 0..<100 {
             if remoteManager.connectionStates[folderSpec.id] == .connected
-                && remoteManager.syncStatus(forLocalURL: designNode.url) == .synced {
+                && remoteManager.syncStatus(forLocalURL: designNode.url) == .synced
+            {
                 break
             }
             try await Task.sleep(nanoseconds: 20_000_000)

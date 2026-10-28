@@ -7,13 +7,13 @@ final class MarkdownAstAndTableTests: XCTestCase {
 
     func testComplicatedAndWideTablesDoNotBreakOrShrink() {
         let sample = """
-        Cursor line at top.
+            Cursor line at top.
 
-        | Subsystem | Primary Files | Inline Code & Pipes | Description & Details |
-        | :--- | :--- | :--- | :--- |
-        | **[`architecture/`](./architecture/README.md)** | `core/folio_engine/src/markdown.rs` | `a | b || c` and \\| escaped | Full CommonMark + GFM specification parser with nested spans `<br/>` and wide columns |
-        | **Live Styler** | [`MarkdownLiveStyler.swift`](Sources/Folio/Editor/MarkdownLiveStyler.swift) | `$|x| + |y|$` | Preserves natural column widths and allows horizontal scrolling past the prose canvas width |
-        """
+            | Subsystem | Primary Files | Inline Code & Pipes | Description & Details |
+            | :--- | :--- | :--- | :--- |
+            | **[`architecture/`](./architecture/README.md)** | `core/folio_engine/src/markdown.rs` | `a | b || c` and \\| escaped | Full CommonMark + GFM specification parser with nested spans `<br/>` and wide columns |
+            | **Live Styler** | [`MarkdownLiveStyler.swift`](Sources/Folio/Editor/MarkdownLiveStyler.swift) | `$|x| + |y|$` | Preserves natural column widths and allows horizontal scrolling past the prose canvas width |
+            """
 
         let narrowContainerWidth: CGFloat = 520.0
         let storage = NSTextStorage(string: sample)
@@ -36,7 +36,9 @@ final class MarkdownAstAndTableTests: XCTestCase {
         XCTAssertEqual(tableDecs.count, 4, "All 4 lines of the complicated table must be recognized as a single table block")
         let firstRow = tableDecs[0]
         XCTAssertTrue(firstRow.0, "First row must be header")
-        XCTAssertEqual(firstRow.4.count, 3, "4 columns must produce 3 interior column dividers; pipes inside inline code, math, and escaped \\| must not split extra columns")
+        XCTAssertEqual(
+            firstRow.4.count, 3,
+            "4 columns must produce 3 interior column dividers; pipes inside inline code, math, and escaped \\| must not split extra columns")
         XCTAssertGreaterThan(firstRow.3, narrowContainerWidth, "Wide table must exceed narrow containerWidth instead of shrinking columns")
         XCTAssertEqual(firstRow.2, 0.0, accuracy: 0.01, "Wide table should have 0 horizontal centering offset")
 
@@ -49,12 +51,12 @@ final class MarkdownAstAndTableTests: XCTestCase {
 
     func testWhitespaceNormalizationAndListAlignment() {
         let sample = """
-        Active line at top.
-           Leading spaces and   multiple    internal   spaces.
-        -    Bullet with extra spaces after marker
-          Continuation line under bullet
-        1.    Ordered item with extra spaces
-        """
+            Active line at top.
+               Leading spaces and   multiple    internal   spaces.
+            -    Bullet with extra spaces after marker
+              Continuation line under bullet
+            1.    Ordered item with extra spaces
+            """
         let storage = NSTextStorage(string: sample)
         _ = MarkdownLiveStyler.applyStyles(
             to: storage,
@@ -102,16 +104,16 @@ final class MarkdownAstAndTableTests: XCTestCase {
     @MainActor
     func testCmarkGfmASTLiveBufferStylingParity() {
         let sample = """
-        # Active Line
+            # Active Line
 
-            let indentedCode = 42
-            return indentedCode
+                let indentedCode = 42
+                return indentedCode
 
-        See [Reference Label][docs] and [Collapsed][] and visit www.commonmark.org today.
+            See [Reference Label][docs] and [Collapsed][] and visit www.commonmark.org today.
 
-        [docs]: https://commonmark.org/help
-        [collapsed]: https://github.github.com/gfm/
-        """
+            [docs]: https://commonmark.org/help
+            [collapsed]: https://github.github.com/gfm/
+            """
 
         let storage = NSTextStorage(string: sample)
         let theme = EditorTheme.daylight
@@ -176,7 +178,9 @@ final class MarkdownAstAndTableTests: XCTestCase {
 
         XCTAssertNotNil(activePara)
         XCTAssertNotNil(inactivePara)
-        XCTAssertEqual(activePara?.firstLineHeadIndent, inactivePara?.firstLineHeadIndent, "Active and inactive top-level list items must have identical firstLineHeadIndent")
+        XCTAssertEqual(
+            activePara?.firstLineHeadIndent, inactivePara?.firstLineHeadIndent,
+            "Active and inactive top-level list items must have identical firstLineHeadIndent")
         XCTAssertEqual(activePara?.headIndent, inactivePara?.headIndent, "Active and inactive list items must have identical hanging headIndent")
 
         // Active '*' marker should have negative baselineOffset so it is vertically centered

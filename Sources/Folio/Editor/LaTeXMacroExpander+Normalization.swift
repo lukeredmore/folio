@@ -40,7 +40,8 @@ extension LaTeXMacroExpander {
                         for (argIdx, argVal) in args.enumerated() {
                             expanded = expanded.replacingOccurrences(of: "#\(argIdx + 1)", with: argVal)
                         }
-                        expanded = expanded
+                        expanded =
+                            expanded
                             .replacingOccurrences(of: "^{}", with: "")
                             .replacingOccurrences(of: "_{}", with: "")
                         out.append(expanded)
@@ -104,7 +105,7 @@ extension LaTeXMacroExpander {
             ("gathered", "gather"),
             ("multline*", "gather"),
             ("multline", "gather"),
-            ("smallmatrix", "matrix"),
+            ("smallmatrix", "matrix")
         ]
         for (src, dst) in envRewrites {
             result = result.replacingOccurrences(of: "\\begin{\(src)}", with: "\\begin{\(dst)}")
@@ -122,12 +123,14 @@ extension LaTeXMacroExpander {
             if chars[i] == "\\" {
                 let (cmd, afterCmd) = readControlWord(chars, at: i)
                 if cmd == "\\frac" || cmd == "\\dfrac" || cmd == "\\cfrac" || cmd == "\\tfrac" {
-                    let prefix = (cmd == "\\dfrac" || cmd == "\\cfrac")
+                    let prefix =
+                        (cmd == "\\dfrac" || cmd == "\\cfrac")
                         ? "\\displaystyle\\frac"
                         : (cmd == "\\tfrac" ? "\\textstyle\\frac" : "\\frac")
                     let idx1 = skipSpaces(chars, from: afterCmd)
                     if let (arg1, after1) = readMacroArgument(chars, at: idx1),
-                       let (arg2, after2) = readMacroArgument(chars, at: skipSpaces(chars, from: after1)) {
+                        let (arg2, after2) = readMacroArgument(chars, at: skipSpaces(chars, from: after1))
+                    {
                         let norm1 = normalizeEnvironmentsAndCommands(arg1)
                         let norm2 = normalizeEnvironmentsAndCommands(arg2)
                         out.append("\(prefix){\(norm1)}{\(norm2)}")
@@ -232,10 +235,10 @@ extension LaTeXMacroExpander {
     private static func isDelimiterSizingCommand(_ cmd: String) -> Bool {
         switch cmd {
         case "\\big", "\\Big", "\\bigg", "\\Bigg",
-             "\\bigl", "\\bigr", "\\Bigl", "\\Bigr",
-             "\\biggl", "\\biggr", "\\Biggl", "\\Biggr",
-             "\\bigm", "\\Bigm", "\\biggm", "\\Biggm",
-             "\\middle":
+            "\\bigl", "\\bigr", "\\Bigl", "\\Bigr",
+            "\\biggl", "\\biggr", "\\Biggl", "\\Biggr",
+            "\\bigm", "\\Bigm", "\\biggm", "\\Biggm",
+            "\\middle":
             return true
         default:
             return false
@@ -315,9 +318,11 @@ extension LaTeXMacroExpander {
         var depth = 0
         var idx = start
         while idx < chars.count {
-            if chars[idx] == "{" { depth += 1 }
-            else if chars[idx] == "}" { depth = max(0, depth - 1) }
-            else if chars[idx] == "]" && depth == 0 {
+            if chars[idx] == "{" {
+                depth += 1
+            } else if chars[idx] == "}" {
+                depth = max(0, depth - 1)
+            } else if chars[idx] == "]" && depth == 0 {
                 return (String(chars[(start + 1)..<idx]), idx + 1)
             }
             idx += 1

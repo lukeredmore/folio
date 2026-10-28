@@ -85,18 +85,19 @@ extension MarkdownLiveStyler {
                     }
                     reserveMediaCardHeight(in: storage, lineRange: effectiveLineRange, targetHeight: targetH)
                     collapseWhitespaceRange(in: storage, range: match.range)
-                    decorations.append(LineDecoration(
-                        lineRange: effectiveLineRange,
-                        kind: .imageRendered(
-                            url: src,
-                            alt: alt,
-                            fullRange: match.range,
-                            explicitWidth: widthVal,
-                            explicitHeight: heightVal,
-                            baseDirectoryURL: baseDirectoryURL,
-                            dimFactor: dimFactor
-                        )
-                    ))
+                    decorations.append(
+                        LineDecoration(
+                            lineRange: effectiveLineRange,
+                            kind: .imageRendered(
+                                url: src,
+                                alt: alt,
+                                fullRange: match.range,
+                                explicitWidth: widthVal,
+                                explicitHeight: heightVal,
+                                baseDirectoryURL: baseDirectoryURL,
+                                dimFactor: dimFactor
+                            )
+                        ))
                 } else {
                     styleSyntaxToken(in: storage, range: match.range, isActiveLine: true, theme: theme, dimFactor: dimFactor)
                 }
@@ -132,10 +133,11 @@ extension MarkdownLiveStyler {
                             inlineCodeFontAttributeKey: true
                         ]
                     )
-                    decorations.append(LineDecoration(
-                        lineRange: innerRange,
-                        kind: .kbdPill(range: innerRange, fontSize: kbdFontSize, dimFactor: dimFactor)
-                    ))
+                    decorations.append(
+                        LineDecoration(
+                            lineRange: innerRange,
+                            kind: .kbdPill(range: innerRange, fontSize: kbdFontSize, dimFactor: dimFactor)
+                        ))
                 case "u", "ins":
                     applyAttributesToVisibleCharacters(
                         in: storage,
@@ -143,7 +145,8 @@ extension MarkdownLiveStyler {
                         attributes: [.underlineStyle: NSUnderlineStyle.single.rawValue]
                     )
                 case "mark":
-                    let highlightBg = theme.isDark
+                    let highlightBg =
+                        theme.isDark
                         ? NSColor(srgbRed: 0.55, green: 0.45, blue: 0.12, alpha: 0.55 * dimFactor)
                         : NSColor(srgbRed: 1.0, green: 0.93, blue: 0.45, alpha: 0.65 * dimFactor)
                     applyAttributesToVisibleCharacters(
@@ -196,10 +199,11 @@ extension MarkdownLiveStyler {
                             inlineCodeFontAttributeKey: true
                         ]
                     )
-                    decorations.append(LineDecoration(
-                        lineRange: innerRange,
-                        kind: .inlineCode(range: innerRange, fontSize: codeFontSize, dimFactor: dimFactor)
-                    ))
+                    decorations.append(
+                        LineDecoration(
+                            lineRange: innerRange,
+                            kind: .inlineCode(range: innerRange, fontSize: codeFontSize, dimFactor: dimFactor)
+                        ))
                 default:
                     break
                 }
@@ -298,7 +302,8 @@ extension MarkdownLiveStyler {
 
             insertSortedRange(openRange, into: &protectedDelimiterRanges)
             insertSortedRange(closeRange, into: &protectedDelimiterRanges)
-            let highlightBg = theme.isDark
+            let highlightBg =
+                theme.isDark
                 ? NSColor(srgbRed: 0.55, green: 0.45, blue: 0.12, alpha: 0.55 * dimFactor)
                 : NSColor(srgbRed: 1.0, green: 0.93, blue: 0.45, alpha: 0.65 * dimFactor)
             applyAttributesToVisibleCharacters(

@@ -65,7 +65,8 @@ public struct StatusBarView: View {
                 }
 
                 if let fileURL = viewModel.currentFileURL,
-                   let mount = remoteManager.mount(forLocalURL: fileURL) {
+                    let mount = remoteManager.mount(forLocalURL: fileURL)
+                {
                     remoteStatusIcon(for: fileURL, mount: mount)
                 }
 
@@ -204,7 +205,7 @@ public struct StatusBarView: View {
                 (notice.wasThreeWayMerged
                     ? "Auto-Merged (+\(notice.addedLines)/-\(notice.removedLines))"
                     : "Updated Externally (+\(notice.addedLines)/-\(notice.removedLines))")
-                + " — Click to inspect diff or undo"
+                    + " — Click to inspect diff or undo"
             )
         } else if viewModel.currentFileURL != nil {
             Image(systemName: "checkmark.circle.fill")

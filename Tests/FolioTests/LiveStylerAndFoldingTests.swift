@@ -7,22 +7,22 @@ final class LiveStylerAndFoldingTests: XCTestCase {
 
     func testHeadingAndDecorationExtraction() {
         let sample = """
-        # Main Title
-        Some intro with **bold** and `code`.
+            # Main Title
+            Some intro with **bold** and `code`.
 
-        ## Section Two
-        > A blockquote line
+            ## Section Two
+            > A blockquote line
 
-        ---
+            ---
 
-        ```swift
-        let x = 42
-        ```
+            ```swift
+            let x = 42
+            ```
 
-        | Col A | Col B |
-        | --- | --- |
-        | 1 | 2 |
-        """
+            | Col A | Col B |
+            | --- | --- |
+            | 1 | 2 |
+            """
 
         let storage = NSTextStorage(string: sample)
         let analysis = MarkdownLiveStyler.applyStyles(
@@ -43,16 +43,18 @@ final class LiveStylerAndFoldingTests: XCTestCase {
         XCTAssertTrue(analysis.decorations.contains(where: { $0.kind == .blockquote(nestLevel: 1) }))
         XCTAssertTrue(analysis.decorations.contains(where: { $0.kind == .horizontalRule }))
         XCTAssertTrue(analysis.decorations.contains(where: { $0.kind == .codeFenceStart(language: "swift") }))
-        XCTAssertTrue(analysis.decorations.contains(where: {
-            if case .tableRow(let isHeader, _, let isFirst, _, _, let offsetX, let tableWidth, _) = $0.kind {
-                return isHeader && isFirst && offsetX >= 0 && tableWidth >= 600
-            }
-            return false
-        }))
+        XCTAssertTrue(
+            analysis.decorations.contains(where: {
+                if case .tableRow(let isHeader, _, let isFirst, _, _, let offsetX, let tableWidth, _) = $0.kind {
+                    return isHeader && isFirst && offsetX >= 0 && tableWidth >= 600
+                }
+                return false
+            }))
     }
 
     func testMultiBacktickInlineCodeDoesNotLeakIntoSurroundingText() {
-        let sample = #"> **Seamless Live Rendering**: Place your cursor on any line to reveal and edit its raw Markdown tokens (`#`, `**`, `` ` ``, `[link](url)`). Move the cursor away and the syntax markers collapse cleanly into live typography—with zero WebView overhead."#
+        let sample =
+            #"> **Seamless Live Rendering**: Place your cursor on any line to reveal and edit its raw Markdown tokens (`#`, `**`, `` ` ``, `[link](url)`). Move the cursor away and the syntax markers collapse cleanly into live typography—with zero WebView overhead."#
         let storage = NSTextStorage(string: sample)
         _ = MarkdownLiveStyler.applyStyles(
             to: storage,
@@ -77,17 +79,17 @@ final class LiveStylerAndFoldingTests: XCTestCase {
 
     func testCodeFenceLanguageSwitchChangesHighlighting() {
         let swiftCode = """
-        ```swift
-        def hello():
-            let x = 1
-        ```
-        """
+            ```swift
+            def hello():
+                let x = 1
+            ```
+            """
         let pythonCode = """
-        ```python
-        def hello():
-            let x = 1
-        ```
-        """
+            ```python
+            def hello():
+                let x = 1
+            ```
+            """
         let swiftStorage = NSTextStorage(string: swiftCode)
         _ = MarkdownLiveStyler.applyStyles(
             to: swiftStorage,
@@ -142,12 +144,12 @@ final class LiveStylerAndFoldingTests: XCTestCase {
 
     func testNestedInlineFormattingWhenUnselected() {
         let sample = """
-        First active line with cursor.
-        - **[`architecture/`](./architecture/README.md)** — Core architecture docs
-        - **Bold with `inline_code` and *nested italic* inside**
-        - *Italic with `code_span` and foo_bar_baz underscore*
-        - ***Bold and italic together***
-        """
+            First active line with cursor.
+            - **[`architecture/`](./architecture/README.md)** — Core architecture docs
+            - **Bold with `inline_code` and *nested italic* inside**
+            - *Italic with `code_span` and foo_bar_baz underscore*
+            - ***Bold and italic together***
+            """
         let storage = NSTextStorage(string: sample)
         _ = MarkdownLiveStyler.applyStyles(
             to: storage,
@@ -193,7 +195,9 @@ final class LiveStylerAndFoldingTests: XCTestCase {
         let italicWordLoc = ns.range(of: "foo_bar_baz").location
         let italicFont = storage.attribute(.font, at: italicWordLoc, effectiveRange: nil) as? NSFont
         XCTAssertNotNil(italicFont)
-        XCTAssertTrue(NSFontManager.shared.traits(of: italicFont!).contains(.italicFontMask), "Italic span containing intraword underscores and inline code must be styled italic")
+        XCTAssertTrue(
+            NSFontManager.shared.traits(of: italicFont!).contains(.italicFontMask),
+            "Italic span containing intraword underscores and inline code must be styled italic")
 
         // 4. Verify ***Bold and italic together***
         let tripleLoc = ns.range(of: "Bold and italic together").location
@@ -206,20 +210,20 @@ final class LiveStylerAndFoldingTests: XCTestCase {
 
     func testCommonMarkSetextHeadingsTildeFencesAndEscapes() {
         let sample = """
-        Cursor line.
+            Cursor line.
 
-        Setext Heading 1
-        ================
+            Setext Heading 1
+            ================
 
-        Setext Heading 2
-        ----------------
+            Setext Heading 2
+            ----------------
 
-        ~~~rust
-        fn main() {}
-        ~~~
+            ~~~rust
+            fn main() {}
+            ~~~
 
-        Escaped \\*not italic\\* and autolink <https://example.com/docs>.
-        """
+            Escaped \\*not italic\\* and autolink <https://example.com/docs>.
+            """
         let storage = NSTextStorage(string: sample)
         let analysis = MarkdownLiveStyler.applyStyles(
             to: storage,

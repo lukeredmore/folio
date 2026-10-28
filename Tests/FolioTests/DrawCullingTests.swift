@@ -29,10 +29,12 @@ final class DrawCullingTests: XCTestCase {
     func testCodeFenceSpanCoversWholeBlock() {
         let text = "Intro\n\n```swift\nlet a = 1\nlet b = 2\n```\n\nOutro"
         let textView = makeTextView(text)
-        guard let startIndex = textView.lineDecorations.firstIndex(where: {
-            if case .codeFenceStart = $0.kind { return true }
-            return false
-        }) else {
+        guard
+            let startIndex = textView.lineDecorations.firstIndex(where: {
+                if case .codeFenceStart = $0.kind { return true }
+                return false
+            })
+        else {
             return XCTFail("Expected a code fence decoration")
         }
         let span = textView.decorationSpan(at: startIndex)

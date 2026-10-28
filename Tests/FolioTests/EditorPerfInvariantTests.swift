@@ -62,14 +62,16 @@ final class EditorPerfInvariantTests: XCTestCase {
             harness.drainUntilQuiet(quietPeriod: 0.25)
             let afterDelay = harness.workspaceCounters.delta(since: before)
 
-            PerfReport.record("typing20_persistence_200", [
-                "undoPersistDuringTyping": duringTyping.undoPersistCount,
-                "autosaveWritesDuringTyping": duringTyping.autosaveWriteCount,
-                "undoPersistAfterDelay": afterDelay.undoPersistCount,
-                "autosaveWritesAfterDelay": afterDelay.autosaveWriteCount,
-                "longestKeySeconds": longestKeySeconds,
-                "autoSaveDelaySeconds": delay
-            ])
+            PerfReport.record(
+                "typing20_persistence_200",
+                [
+                    "undoPersistDuringTyping": duringTyping.undoPersistCount,
+                    "autosaveWritesDuringTyping": duringTyping.autosaveWriteCount,
+                    "undoPersistAfterDelay": afterDelay.undoPersistCount,
+                    "autosaveWritesAfterDelay": afterDelay.autosaveWriteCount,
+                    "longestKeySeconds": longestKeySeconds,
+                    "autoSaveDelaySeconds": delay
+                ])
 
             XCTAssertLessThan(
                 longestKeySeconds,

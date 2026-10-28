@@ -17,12 +17,14 @@ final class RemoteGIFAndVideoMediaTests: XCTestCase {
 
     private func makeTwoFrameGIFData() throws -> Data {
         let mutableData = NSMutableData()
-        guard let dest = CGImageDestinationCreateWithData(
-            mutableData as CFMutableData,
-            UTType.gif.identifier as CFString,
-            2,
-            nil
-        ) else {
+        guard
+            let dest = CGImageDestinationCreateWithData(
+                mutableData as CFMutableData,
+                UTType.gif.identifier as CFString,
+                2,
+                nil
+            )
+        else {
             XCTFail("Failed to create GIF destination")
             return Data()
         }
@@ -57,7 +59,7 @@ final class RemoteGIFAndVideoMediaTests: XCTestCase {
             0x69, 0x73, 0x6F, 0x6D, // "isom"
             0x00, 0x00, 0x02, 0x00,
             0x69, 0x73, 0x6F, 0x6D, // "isom"
-            0x6D, 0x70, 0x34, 0x32  // "mp42"
+            0x6D, 0x70, 0x34, 0x32 // "mp42"
         ]
         bytes.append(contentsOf: Array(repeating: 0, count: 64))
         return Data(bytes)
@@ -140,12 +142,12 @@ final class RemoteGIFAndVideoMediaTests: XCTestCase {
 
         // Render in HybridMarkdownTextView and click the video card to start inline playback
         let doc = """
-        # Demo Recording
+            # Demo Recording
 
-        ![Demo Video](\(remoteVideoURL))
+            ![Demo Video](\(remoteVideoURL))
 
-        Cursor sits on this bottom line.
-        """
+            Cursor sits on this bottom line.
+            """
         let storage = NSTextStorage()
         let layoutManager = NSLayoutManager()
         storage.addLayoutManager(layoutManager)
@@ -174,17 +176,19 @@ final class RemoteGIFAndVideoMediaTests: XCTestCase {
 
         // Find the video decoration hit rect and simulate clicking it
         var offsets: [Int: CGFloat] = [:]
-        let videoDec = try XCTUnwrap(analysis.decorations.first {
-            if case .imageRendered = $0.kind { return true }
-            return false
-        })
-        let hitRect = try XCTUnwrap(textView.mediaDecorationHitRect(
-            for: videoDec,
-            layoutManager: layoutManager,
-            origin: textView.textContainerOrigin,
-            contentWidth: 680,
-            imageXOffsetByLineLocation: &offsets
-        ))
+        let videoDec = try XCTUnwrap(
+            analysis.decorations.first {
+                if case .imageRendered = $0.kind { return true }
+                return false
+            })
+        let hitRect = try XCTUnwrap(
+            textView.mediaDecorationHitRect(
+                for: videoDec,
+                layoutManager: layoutManager,
+                origin: textView.textContainerOrigin,
+                contentWidth: 680,
+                imageXOffsetByLineLocation: &offsets
+            ))
         let clickPoint = NSPoint(x: hitRect.midX, y: hitRect.midY)
 
         XCTAssertFalse(textView.isInlineVideoPlaying)

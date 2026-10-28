@@ -44,7 +44,8 @@ extension FolioMediaImageCache {
     /// Returns `nil` for single-frame static images.
     public static func decodeAnimatedFrames(from data: Data) -> FolioAnimatedMediaFrames? {
         guard !data.isEmpty,
-              let source = CGImageSourceCreateWithData(data as CFData, nil) else {
+            let source = CGImageSourceCreateWithData(data as CFData, nil)
+        else {
             return nil
         }
         let frameCount = CGImageSourceGetCount(source)
@@ -253,7 +254,8 @@ extension FolioMediaImageCache {
         }
 
         if let localURL = resolveLocalFileURL(from: trimmed, baseDirectoryURL: baseDirectoryURL),
-           FileManager.default.fileExists(atPath: localURL.path) {
+            FileManager.default.fileExists(atPath: localURL.path)
+        {
             return localURL
         }
         return nil

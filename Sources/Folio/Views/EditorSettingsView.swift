@@ -153,7 +153,8 @@ public struct EditorSettingsView: View {
             }
 
             Button("Save As…") {
-                newThemeName = viewModel.isCurrentThemeModified
+                newThemeName =
+                    viewModel.isCurrentThemeModified
                     ? "\(viewModel.theme.name) Custom"
                     : "\(viewModel.theme.name) Copy"
                 isSavingNewTheme.toggle()
@@ -284,7 +285,9 @@ public struct EditorSettingsView: View {
         let family = theme.bodyFontFamily.lowercased()
         if family.contains("mono") || family.contains("menlo") {
             return .monospaced
-        } else if family.contains("serif") || family.contains("charter") || family.contains("palatino") || family.contains("georgia") || family.contains("baskerville") || family.contains("times") {
+        } else if family.contains("serif") || family.contains("charter") || family.contains("palatino") || family.contains("georgia")
+            || family.contains("baskerville") || family.contains("times")
+        {
             return .serif
         }
         return .default

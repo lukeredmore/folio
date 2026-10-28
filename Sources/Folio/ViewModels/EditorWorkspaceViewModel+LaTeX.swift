@@ -21,32 +21,32 @@ extension EditorWorkspaceViewModel {
     // MARK: - New LaTeX Document & Workspace File
 
     public static let defaultLaTeXDocument = """
-    \\documentclass[11pt]{article}
-    \\usepackage{amsmath,amssymb,amsthm}
-    \\usepackage{graphicx}
-    \\usepackage{hyperref}
+        \\documentclass[11pt]{article}
+        \\usepackage{amsmath,amssymb,amsthm}
+        \\usepackage{graphicx}
+        \\usepackage{hyperref}
 
-    \\newtheorem{theorem}{Theorem}
-    \\newtheorem{definition}{Definition}
+        \\newtheorem{theorem}{Theorem}
+        \\newtheorem{definition}{Definition}
 
-    \\title{Untitled Paper}
-    \\author{Author Name}
-    \\date{\\today}
+        \\title{Untitled Paper}
+        \\author{Author Name}
+        \\date{\\today}
 
-    \\begin{document}
-    \\maketitle
+        \\begin{document}
+        \\maketitle
 
-    \\begin{abstract}
-    Write your abstract here.
-    \\end{abstract}
+        \\begin{abstract}
+        Write your abstract here.
+        \\end{abstract}
 
-    \\section{Introduction}
-    \\label{sec:intro}
+        \\section{Introduction}
+        \\label{sec:intro}
 
-    Write your introduction here with inline math like $E = mc^2$.
+        Write your introduction here with inline math like $E = mc^2$.
 
-    \\end{document}
-    """
+        \\end{document}
+        """
 
     public func newLaTeXDocument() {
         flushPendingAutoSaveBeforeSwitchingFile()
@@ -92,7 +92,8 @@ extension EditorWorkspaceViewModel {
             targetURL = folder.appendingPathComponent("Untitled \(candidateIndex).tex")
         }
         let titleName = targetURL.deletingPathExtension().lastPathComponent
-        let template = Self.defaultLaTeXDocument
+        let template =
+            Self.defaultLaTeXDocument
             .replacingOccurrences(of: "\\title{Untitled Paper}", with: "\\title{\(titleName)}") + "\n"
         try? FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
         try? template.write(to: targetURL, atomically: true, encoding: .utf8)
@@ -177,8 +178,9 @@ extension EditorWorkspaceViewModel {
     private static func stripLaTeXSectionWrapper(_ line: String) -> String {
         let pattern = #"^\s*\\(?:part|chapter|section|subsection|subsubsection|paragraph|subparagraph)\*?\{(.*)\}\s*$"#
         if let regex = try? NSRegularExpression(pattern: pattern),
-           let match = regex.firstMatch(in: line, range: NSRange(line.startIndex..., in: line)),
-           let r = Range(match.range(at: 1), in: line) {
+            let match = regex.firstMatch(in: line, range: NSRange(line.startIndex..., in: line)),
+            let r = Range(match.range(at: 1), in: line)
+        {
             return String(line[r])
         }
         return line.replacingOccurrences(of: #"^#{1,6}\s*"#, with: "", options: .regularExpression)
@@ -212,7 +214,8 @@ extension EditorWorkspaceViewModel {
     }
 
     public func insertSVGBlock() {
-        let snippet = "\n```svg\n<svg viewBox=\"0 0 120 40\"><rect x=\"4\" y=\"4\" width=\"112\" height=\"32\" rx=\"6\" fill=\"#3b82f6\"/><text x=\"60\" y=\"25\" fill=\"#ffffff\" text-anchor=\"middle\" font-size=\"13\">SVG</text></svg>\n```\n"
+        let snippet =
+            "\n```svg\n<svg viewBox=\"0 0 120 40\"><rect x=\"4\" y=\"4\" width=\"112\" height=\"32\" rx=\"6\" fill=\"#3b82f6\"/><text x=\"60\" y=\"25\" fill=\"#ffffff\" text-anchor=\"middle\" font-size=\"13\">SVG</text></svg>\n```\n"
         insertSnippetAtCursor(snippet, cursorOffsetFromStart: 8)
     }
 

@@ -32,7 +32,8 @@ public struct BibTeXEntry: Equatable {
     }
 
     private static func extractPrimarySurname(from rawAuthor: String) -> String {
-        let cleaned = rawAuthor
+        let cleaned =
+            rawAuthor
             .replacingOccurrences(of: "{", with: "")
             .replacingOccurrences(of: "}", with: "")
             .trimmingCharacters(in: .whitespacesAndNewlines)
@@ -51,8 +52,8 @@ public struct BibTeXEntry: Equatable {
 
 public struct LaTeXLabelTarget: Equatable {
     public let key: String
-    public let kind: String      // e.g. "Section", "Eq.", "Theorem", "Figure", "Table"
-    public let number: String    // e.g. "1.2", "1", "Theorem 1"
+    public let kind: String // e.g. "Section", "Eq.", "Theorem", "Figure", "Table"
+    public let number: String // e.g. "1.2", "1", "Theorem 1"
     public let title: String
     public let characterLocation: Int
 
@@ -145,9 +146,11 @@ enum LaTeXDocumentIndexer {
                 idx.endDocumentLineRange = lineRange
             }
 
-            if inPreamble && (trimmed.hasPrefix("\\newcommand") || trimmed.hasPrefix("\\renewcommand")
-                || trimmed.hasPrefix("\\DeclareMathOperator") || trimmed.hasPrefix("\\def\\")
-                || trimmed.hasPrefix("\\providecommand")) {
+            if inPreamble
+                && (trimmed.hasPrefix("\\newcommand") || trimmed.hasPrefix("\\renewcommand")
+                    || trimmed.hasPrefix("\\DeclareMathOperator") || trimmed.hasPrefix("\\def\\")
+                    || trimmed.hasPrefix("\\providecommand"))
+            {
                 idx.macroCount += 1
             }
 

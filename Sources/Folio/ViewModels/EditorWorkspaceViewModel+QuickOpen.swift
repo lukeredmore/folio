@@ -57,11 +57,10 @@ extension EditorWorkspaceViewModel {
         let cleaned = Self.stripSurroundingQuotes(from: q)
         let expanded = (cleaned as NSString).expandingTildeInPath
         return flatMarkdownFiles.filter { node in
-            node.name.localizedCaseInsensitiveContains(q) ||
-            node.url.path.localizedCaseInsensitiveContains(q) ||
-            node.url.path.localizedCaseInsensitiveContains(expanded) ||
-            node.url.resolvingSymlinksInPath().path.localizedCaseInsensitiveContains(expanded) ||
-            (node.remoteConnectionString?.localizedCaseInsensitiveContains(q) ?? false)
+            node.name.localizedCaseInsensitiveContains(q) || node.url.path.localizedCaseInsensitiveContains(q)
+                || node.url.path.localizedCaseInsensitiveContains(expanded)
+                || node.url.resolvingSymlinksInPath().path.localizedCaseInsensitiveContains(expanded)
+                || (node.remoteConnectionString?.localizedCaseInsensitiveContains(q) ?? false)
         }
     }
 
@@ -77,7 +76,8 @@ extension EditorWorkspaceViewModel {
             if let fileURL = URL(string: cleaned), fileURL.isFileURL {
                 cleaned = fileURL.path
             } else if let encoded = cleaned.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed),
-                      let fileURL = URL(string: encoded), fileURL.isFileURL {
+                let fileURL = URL(string: encoded), fileURL.isFileURL
+            {
                 cleaned = fileURL.path
             }
         }
@@ -103,7 +103,8 @@ extension EditorWorkspaceViewModel {
                     )
                 }
             } else {
-                let baseDirs: [URL] = preferWorkingDirectory
+                let baseDirs: [URL] =
+                    preferWorkingDirectory
                     ? [cwdURL, workspaceFolderURL, currentFileURL?.deletingLastPathComponent()].compactMap { $0 }
                     : [workspaceFolderURL, currentFileURL?.deletingLastPathComponent(), cwdURL].compactMap { $0 }
 
@@ -130,7 +131,8 @@ extension EditorWorkspaceViewModel {
             if expanded.hasPrefix("/") {
                 url = URL(fileURLWithPath: expanded).standardizedFileURL
             } else {
-                let base = preferWorkingDirectory
+                let base =
+                    preferWorkingDirectory
                     ? cwdURL
                     : (workspaceFolderURL ?? currentFileURL?.deletingLastPathComponent() ?? cwdURL)
                 url = base.appendingPathComponent(expanded).standardizedFileURL
@@ -163,9 +165,10 @@ extension EditorWorkspaceViewModel {
 
         if let candidate, candidate.exists {
             let isExplicitPath = Self.looksLikeExplicitFilesystemPath(q) || q.contains("/")
-            let matchesFirst = filtered.first.map {
-                $0.url.resolvingSymlinksInPath() == candidate.url.resolvingSymlinksInPath()
-            } ?? false
+            let matchesFirst =
+                filtered.first.map {
+                    $0.url.resolvingSymlinksInPath() == candidate.url.resolvingSymlinksInPath()
+                } ?? false
             if isExplicitPath || filtered.isEmpty || matchesFirst {
                 openQuickOpenCandidate(candidate)
                 return true
@@ -208,7 +211,8 @@ extension EditorWorkspaceViewModel {
                 loadWorkspaceFolder(parentFolder)
             }
         } else if let currentFolder = workspaceFolderURL?.resolvingSymlinksInPath(),
-                  targetURL.resolvingSymlinksInPath().path.hasPrefix(currentFolder.path + "/") {
+            targetURL.resolvingSymlinksInPath().path.hasPrefix(currentFolder.path + "/")
+        {
             reloadWorkspaceTree()
         }
 
@@ -228,27 +232,31 @@ extension EditorWorkspaceViewModel {
     }
 
     public func openPathFromCLI(_ rawPath: String) {
-        guard let candidate = resolveQuickOpenPathCandidate(for: rawPath, preferWorkingDirectory: true) ?? {
-            let trimmed = rawPath.trimmingCharacters(in: .whitespacesAndNewlines)
-            guard !trimmed.isEmpty else { return nil }
-            let unquoted = Self.stripSurroundingQuotes(from: trimmed)
-            let (pathPart, parsedLine, parsedCol, _) = FolioCLIManager.splitPathAndLineColumnSuffix(unquoted)
-            let expanded = (pathPart as NSString).expandingTildeInPath
-            let cwd = FolioCLIManager.effectiveWorkingDirectoryPath()
-            let url = expanded.hasPrefix("/")
-                ? URL(fileURLWithPath: expanded).standardizedFileURL
-                : URL(fileURLWithPath: cwd)
-                    .appendingPathComponent(expanded).standardizedFileURL
-            var isDir: ObjCBool = false
-            let exists = FileManager.default.fileExists(atPath: url.path, isDirectory: &isDir)
-            return QuickOpenPathCandidate(
-                url: url,
-                isDirectory: isDir.boolValue,
-                exists: exists,
-                lineNumber: parsedLine,
-                columnNumber: parsedCol
-            )
-        }() else {
+        guard
+            let candidate = resolveQuickOpenPathCandidate(for: rawPath, preferWorkingDirectory: true)
+                ?? {
+                    let trimmed = rawPath.trimmingCharacters(in: .whitespacesAndNewlines)
+                    guard !trimmed.isEmpty else { return nil }
+                    let unquoted = Self.stripSurroundingQuotes(from: trimmed)
+                    let (pathPart, parsedLine, parsedCol, _) = FolioCLIManager.splitPathAndLineColumnSuffix(unquoted)
+                    let expanded = (pathPart as NSString).expandingTildeInPath
+                    let cwd = FolioCLIManager.effectiveWorkingDirectoryPath()
+                    let url =
+                        expanded.hasPrefix("/")
+                        ? URL(fileURLWithPath: expanded).standardizedFileURL
+                        : URL(fileURLWithPath: cwd)
+                            .appendingPathComponent(expanded).standardizedFileURL
+                    var isDir: ObjCBool = false
+                    let exists = FileManager.default.fileExists(atPath: url.path, isDirectory: &isDir)
+                    return QuickOpenPathCandidate(
+                        url: url,
+                        isDirectory: isDir.boolValue,
+                        exists: exists,
+                        lineNumber: parsedLine,
+                        columnNumber: parsedCol
+                    )
+                }()
+        else {
             return
         }
 
@@ -267,7 +275,8 @@ extension EditorWorkspaceViewModel {
 
         let parentFolder = candidate.url.deletingLastPathComponent().standardizedFileURL
         if let currentFolder = workspaceFolderURL?.resolvingSymlinksInPath(),
-           candidate.url.resolvingSymlinksInPath().path.hasPrefix(currentFolder.path + "/") {
+            candidate.url.resolvingSymlinksInPath().path.hasPrefix(currentFolder.path + "/")
+        {
             reloadWorkspaceTree()
         } else if !Self.isSystemTemporaryRootDirectory(parentFolder) {
             loadWorkspaceFolder(parentFolder)
@@ -282,8 +291,7 @@ extension EditorWorkspaceViewModel {
 
     private static func stripSurroundingQuotes(from text: String) -> String {
         guard text.count >= 2 else { return text }
-        if (text.hasPrefix("\"") && text.hasSuffix("\"")) ||
-           (text.hasPrefix("'") && text.hasSuffix("'")) {
+        if (text.hasPrefix("\"") && text.hasSuffix("\"")) || (text.hasPrefix("'") && text.hasSuffix("'")) {
             return String(text.dropFirst().dropLast())
         }
         return text
@@ -291,12 +299,8 @@ extension EditorWorkspaceViewModel {
 
     private static func looksLikeExplicitFilesystemPath(_ text: String) -> Bool {
         let unquoted = stripSurroundingQuotes(from: text)
-        return unquoted.hasPrefix("/") ||
-            unquoted.hasPrefix("~/") ||
-            unquoted == "~" ||
-            unquoted.hasPrefix("./") ||
-            unquoted.hasPrefix("../") ||
-            unquoted.hasPrefix("file://")
+        return unquoted.hasPrefix("/") || unquoted.hasPrefix("~/") || unquoted == "~" || unquoted.hasPrefix("./") || unquoted.hasPrefix("../")
+            || unquoted.hasPrefix("file://")
     }
 
     private func navigateToLineNumber(_ lineNumber: Int, columnNumber: Int? = nil) {

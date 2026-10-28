@@ -9,13 +9,13 @@ final class MathAndDiagramRenderingTests: XCTestCase {
         assertMathMetrics(box, width: 90.5, ascent: 26.19, descent: 20.25, "Engine layout of Gauss's law")
 
         let sample = """
-        First line here.
-        Inline math $\\nabla \\cdot \\mathbf{E} = \\frac{\\rho}{\\varepsilon_0}$ here.
+            First line here.
+            Inline math $\\nabla \\cdot \\mathbf{E} = \\frac{\\rho}{\\varepsilon_0}$ here.
 
-        $$
-        \\mathcal{L}_{\\text{Folio}} = \\int_{-\\infty}^{\\infty} e^{-x^2} dx
-        $$
-        """
+            $$
+            \\mathcal{L}_{\\text{Folio}} = \\int_{-\\infty}^{\\infty} e^{-x^2} dx
+            $$
+            """
         let storage = NSTextStorage(string: sample)
         let analysis = MarkdownLiveStyler.applyStyles(
             to: storage,
@@ -25,19 +25,21 @@ final class MathAndDiagramRenderingTests: XCTestCase {
             selectedRange: NSRange(location: 0, length: 0)
         )
 
-        XCTAssertTrue(analysis.decorations.contains(where: {
-            if case .inlineMathRendered(let latex, _, _, _) = $0.kind {
-                return latex.contains("nabla")
-            }
-            return false
-        }), "Inactive line with $...$ should produce an inlineMathRendered decoration")
+        XCTAssertTrue(
+            analysis.decorations.contains(where: {
+                if case .inlineMathRendered(let latex, _, _, _) = $0.kind {
+                    return latex.contains("nabla")
+                }
+                return false
+            }), "Inactive line with $...$ should produce an inlineMathRendered decoration")
 
-        XCTAssertTrue(analysis.decorations.contains(where: {
-            if case .mathBlockRendered(let latex, _, _) = $0.kind {
-                return latex.contains("int")
-            }
-            return false
-        }), "Inactive $$...$$ block should produce a mathBlockRendered decoration")
+        XCTAssertTrue(
+            analysis.decorations.contains(where: {
+                if case .mathBlockRendered(let latex, _, _) = $0.kind {
+                    return latex.contains("int")
+                }
+                return false
+            }), "Inactive $$...$$ block should produce a mathBlockRendered decoration")
     }
 
     func testCoreEngineFFIIntegration() {
@@ -56,12 +58,12 @@ final class MathAndDiagramRenderingTests: XCTestCase {
         // opening `_` or `*` delimiter (such as `_subscriptions: Vec<Subscription>` inside inline code
         // in AGENTS.md) followed by 40+ characters without a matching closing delimiter.
         let pathologicalMarkdown = """
-        # Agent Guidelines
+            # Agent Guidelines
 
-        - When calling `cx.subscribe`, `cx.observe`, etc., never drop the returned `Subscription` without storing it (e.g., `cx.subscribe(...).detach()` is almost always a bug, unless `cx` is the `App` itself). Store subscriptions in a `_subscriptions: Vec<Subscription>` field on the struct so they are tied to the entity's lifetime.
-        - Another line with unmatched *asterisk delimiter followed by a long sequence of words that has no closing asterisk anywhere on the line at all.
-        - And an unmatched _underscore delimiter followed by a very long sequence of characters without any closing underscore anywhere on this line either!
-        """
+            - When calling `cx.subscribe`, `cx.observe`, etc., never drop the returned `Subscription` without storing it (e.g., `cx.subscribe(...).detach()` is almost always a bug, unless `cx` is the `App` itself). Store subscriptions in a `_subscriptions: Vec<Subscription>` field on the struct so they are tied to the entity's lifetime.
+            - Another line with unmatched *asterisk delimiter followed by a long sequence of words that has no closing asterisk anywhere on the line at all.
+            - And an unmatched _underscore delimiter followed by a very long sequence of characters without any closing underscore anywhere on this line either!
+            """
 
         let style: (String) -> Void = { markdown in
             _ = MarkdownLiveStyler.applyStyles(
@@ -115,7 +117,7 @@ final class MathAndDiagramRenderingTests: XCTestCase {
                 String(repeating: "[a](https://example.com/", count: n / 2),
                 String(repeating: "[outer ", count: n) + "[inner](https://example.com)",
                 // 7. Table candidate line with pipes and thousands of unmatched backticks and '$'
-                "| " + String(repeating: "`a ", count: n) + " | " + String(repeating: "$a ", count: n) + " |",
+                "| " + String(repeating: "`a ", count: n) + " | " + String(repeating: "$a ", count: n) + " |"
             ]
             return adversarialLines.joined(separator: "\n\n")
         }

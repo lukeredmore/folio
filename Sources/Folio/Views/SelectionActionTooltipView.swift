@@ -259,7 +259,8 @@ public struct SelectionActionTooltipView: View {
         let clampedX = min(max(halfW + margin, targetX), viewportW - halfW - margin)
         let aboveCenterY = selRect.minY - halfH - 8.0
         let belowCenterY = selRect.maxY + halfH + 8.0
-        let rawY = anchor.direction == .backward
+        let rawY =
+            anchor.direction == .backward
             ? (aboveCenterY >= minY ? aboveCenterY : belowCenterY)
             : (belowCenterY <= maxY ? belowCenterY : aboveCenterY)
         let clampedY = min(max(minY, rawY), maxY)

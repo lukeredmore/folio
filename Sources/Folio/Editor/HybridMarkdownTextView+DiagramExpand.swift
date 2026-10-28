@@ -19,7 +19,8 @@ extension HybridMarkdownTextView {
     /// Card rect of a rendered Mermaid block, in view coordinates (matches the card drawing).
     func diagramCardRect(for fullBlockRange: NSRange) -> NSRect? {
         guard let layoutManager = layoutManager, let textContainer = textContainer,
-              NSMaxRange(fullBlockRange) <= (string as NSString).length else { return nil }
+            NSMaxRange(fullBlockRange) <= (string as NSString).length
+        else { return nil }
         let glyphs = layoutManager.glyphRange(forCharacterRange: fullBlockRange, actualCharacterRange: nil)
         guard glyphs.location != NSNotFound, glyphs.length > 0 else { return nil }
         let origin = textContainerOrigin
@@ -79,11 +80,12 @@ extension HybridMarkdownTextView {
         guard !isSourceCodeMode else { return nil }
         for decoration in lineDecorations {
             guard case let .mermaidBlockRendered(source, fullBlockRange, _) = decoration.kind,
-                  let card = diagramCardRect(for: fullBlockRange),
-                  Self.diagramExpandButtonRect(in: card).insetBy(dx: -4, dy: -4).contains(point),
-                  let image = DiagramImageRenderer.shared.image(
-                      for: DiagramImageRenderer.Key(kind: .mermaid(isDark: currentTheme.isDark), source: source)
-                  ) else { continue }
+                let card = diagramCardRect(for: fullBlockRange),
+                Self.diagramExpandButtonRect(in: card).insetBy(dx: -4, dy: -4).contains(point),
+                let image = DiagramImageRenderer.shared.image(
+                    for: DiagramImageRenderer.Key(kind: .mermaid(isDark: currentTheme.isDark), source: source)
+                )
+            else { continue }
             return ExpandedDiagram(source: source, image: image)
         }
         return nil

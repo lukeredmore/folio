@@ -13,7 +13,8 @@ extension MarkdownLiveStyler {
         storage.enumerateAttributes(in: range, options: []) { attrs, subrange, _ in
             if attrs[collapsedTokenAttributeKey] != nil
                 || attrs[inlineMathSpanAttributeKey] != nil
-                || (attrs[.foregroundColor] as? NSColor) == NSColor.clear {
+                || (attrs[.foregroundColor] as? NSColor) == NSColor.clear
+            {
                 return
             }
             let currentFont = (attrs[.font] as? NSFont) ?? fallbackFont
@@ -31,7 +32,8 @@ extension MarkdownLiveStyler {
         storage.enumerateAttributes(in: range, options: []) { attrs, subrange, _ in
             if attrs[collapsedTokenAttributeKey] != nil
                 || attrs[inlineMathSpanAttributeKey] != nil
-                || (attrs[.foregroundColor] as? NSColor) == NSColor.clear {
+                || (attrs[.foregroundColor] as? NSColor) == NSColor.clear
+            {
                 return
             }
             storage.addAttributes(attributes, range: subrange)
@@ -93,11 +95,12 @@ extension MarkdownLiveStyler {
     ) {
         guard range.length > 0 else { return }
         if isActiveLine {
-            storage.addAttributes([
-                .foregroundColor: theme.markdownTokenNSColor.withAlphaComponent(0.85 * dimFactor),
-                .font: theme.codeFont(size: max(11.0, theme.baseFontSize * 0.85)),
-                noSpellCheckAttributeKey: true
-            ], range: range)
+            storage.addAttributes(
+                [
+                    .foregroundColor: theme.markdownTokenNSColor.withAlphaComponent(0.85 * dimFactor),
+                    .font: theme.codeFont(size: max(11.0, theme.baseFontSize * 0.85)),
+                    noSpellCheckAttributeKey: true
+                ], range: range)
         } else {
             collapseWhitespaceRange(in: storage, range: range)
         }

@@ -11,7 +11,8 @@ extension EditorWorkspaceViewModel {
     ) {
         let loadedCustomThemes: [EditorTheme]
         if let customData = resolvedDefaults.data(forKey: Self.customThemesDefaultsKey),
-           let decodedCustom = try? JSONDecoder().decode([EditorTheme].self, from: customData) {
+            let decodedCustom = try? JSONDecoder().decode([EditorTheme].self, from: customData)
+        {
             loadedCustomThemes = decodedCustom
         } else {
             loadedCustomThemes = []
@@ -21,22 +22,25 @@ extension EditorWorkspaceViewModel {
         let allAvailable = Self.mergeAvailableThemes(customThemes: loadedCustomThemes)
         var restoredTheme: EditorTheme
         if let activeData = resolvedDefaults.data(forKey: Self.activeThemeDataDefaultsKey),
-           let decodedActive = try? JSONDecoder().decode(EditorTheme.self, from: activeData) {
+            let decodedActive = try? JSONDecoder().decode(EditorTheme.self, from: activeData)
+        {
             restoredTheme = decodedActive
         } else if let rawTheme = resolvedDefaults.string(forKey: Self.themeDefaultsKey),
-                  let matched = allAvailable.first(where: {
-                      $0.id.caseInsensitiveCompare(rawTheme) == .orderedSame ||
-                      $0.name.caseInsensitiveCompare(rawTheme) == .orderedSame
-                  }) ?? EditorTheme(rawValue: rawTheme) {
+            let matched = allAvailable.first(where: {
+                $0.id.caseInsensitiveCompare(rawTheme) == .orderedSame || $0.name.caseInsensitiveCompare(rawTheme) == .orderedSame
+            }) ?? EditorTheme(rawValue: rawTheme)
+        {
             restoredTheme = matched
             if let data = resolvedDefaults.data(forKey: Self.typographyDefaultsKey),
-               let decodedTypo = try? JSONDecoder().decode(EditorTypographySettings.self, from: data) {
+                let decodedTypo = try? JSONDecoder().decode(EditorTypographySettings.self, from: data)
+            {
                 restoredTheme.typography = decodedTypo
             }
         } else {
             restoredTheme = .daylight
             if let data = resolvedDefaults.data(forKey: Self.typographyDefaultsKey),
-               let decodedTypo = try? JSONDecoder().decode(EditorTypographySettings.self, from: data) {
+                let decodedTypo = try? JSONDecoder().decode(EditorTypographySettings.self, from: data)
+            {
                 restoredTheme.typography = decodedTypo
             }
         }
@@ -74,21 +78,24 @@ extension EditorWorkspaceViewModel {
         }
 
         if let rawTab = resolvedDefaults.string(forKey: Self.activeSidebarTabDefaultsKey),
-           let decodedTab = SidebarTab(rawValue: rawTab) {
+            let decodedTab = SidebarTab(rawValue: rawTab)
+        {
             self.activeSidebarTab = decodedTab
         } else {
             self.activeSidebarTab = .outline
         }
 
         if let rawStyle = resolvedDefaults.string(forKey: Self.fileDisplayStyleDefaultsKey),
-           let decodedStyle = FileDisplayStyle(rawValue: rawStyle) {
+            let decodedStyle = FileDisplayStyle(rawValue: rawStyle)
+        {
             self.fileDisplayStyle = decodedStyle
         } else {
             self.fileDisplayStyle = .tree
         }
 
         if let rawOrder = resolvedDefaults.string(forKey: Self.fileSortOrderDefaultsKey),
-           let decodedOrder = FileSortOrder(rawValue: rawOrder) {
+            let decodedOrder = FileSortOrder(rawValue: rawOrder)
+        {
             self.fileSortOrder = decodedOrder
         } else {
             self.fileSortOrder = .name
@@ -102,7 +109,8 @@ extension EditorWorkspaceViewModel {
 
         if !undoTimelineStore.hasLoaded {
             if let savedTimelinesData = resolvedDefaults.data(forKey: Self.undoTimelinesDefaultsKey),
-               let decodedTimelines = try? JSONDecoder().decode([String: DocumentUndoTimeline].self, from: savedTimelinesData) {
+                let decodedTimelines = try? JSONDecoder().decode([String: DocumentUndoTimeline].self, from: savedTimelinesData)
+            {
                 self.perFileUndoTimelines = decodedTimelines
             } else {
                 self.perFileUndoTimelines = [:]
@@ -115,8 +123,9 @@ extension EditorWorkspaceViewModel {
             self.recentFileURLs = savedRecentPaths.compactMap { path in
                 var isDir: ObjCBool = false
                 guard !path.isEmpty,
-                      fm.fileExists(atPath: path, isDirectory: &isDir),
-                      !isDir.boolValue else {
+                    fm.fileExists(atPath: path, isDirectory: &isDir),
+                    !isDir.boolValue
+                else {
                     return nil
                 }
                 return URL(fileURLWithPath: path)
@@ -130,7 +139,8 @@ extension EditorWorkspaceViewModel {
         func sessionKey(_ base: String) -> String? { sessionReadKey(base, source: sessionSource) }
         let restoredFileURL: URL?
         if let pathKey = sessionKey(Self.currentFilePathDefaultsKey),
-           let bookmarkKey = sessionKey(Self.currentFileBookmarkDefaultsKey) {
+            let bookmarkKey = sessionKey(Self.currentFileBookmarkDefaultsKey)
+        {
             restoredFileURL = Self.resolvePersistedURL(
                 from: resolvedDefaults,
                 pathKey: pathKey,
@@ -195,8 +205,9 @@ extension EditorWorkspaceViewModel {
         self.headings = analysis.headings
 
         if (initialFileURL != nil || initialIsDirty || (hasSavedSession && !hadSavedFilePath)),
-           let cursorKey = sessionKey(Self.selectedCursorLocationDefaultsKey),
-           resolvedDefaults.object(forKey: cursorKey) != nil {
+            let cursorKey = sessionKey(Self.selectedCursorLocationDefaultsKey),
+            resolvedDefaults.object(forKey: cursorKey) != nil
+        {
             let savedLoc = resolvedDefaults.integer(forKey: cursorKey)
             let maxLen = (initialContent as NSString).length
             if savedLoc >= 0 && savedLoc <= maxLen {
@@ -209,7 +220,8 @@ extension EditorWorkspaceViewModel {
 
         let initialWorkspaceURL: URL
         if let savedWorkspaceURL = restoredWorkspaceFolderURL(from: resolvedDefaults, source: sessionSource),
-           !Self.isSystemTemporaryRootDirectory(savedWorkspaceURL) {
+            !Self.isSystemTemporaryRootDirectory(savedWorkspaceURL)
+        {
             initialWorkspaceURL = savedWorkspaceURL
         } else {
             initialWorkspaceURL = Self.defaultFallbackWorkspaceFolderURL()
@@ -228,7 +240,8 @@ extension EditorWorkspaceViewModel {
             guard let self = self else { return }
             self.reloadWorkspaceTree()
             if let currentURL = self.currentFileURL?.standardizedFileURL,
-               updatedURLs.contains(currentURL) {
+                updatedURLs.contains(currentURL)
+            {
                 self.checkForExternalFileChanges(sourceDescription: "SSH Remote")
             }
         }
@@ -249,10 +262,11 @@ extension EditorWorkspaceViewModel {
             Self.resolvePersistedURL(from: defaults, pathKey: pathKey, bookmarkKey: bookmarkKey, requireDirectory: true)
         }
         if source == .window, documentWindow != nil,
-           let own = resolve(
-               pathKey: windowSessionKey(Self.workspaceFolderPathDefaultsKey),
-               bookmarkKey: windowSessionKey(Self.workspaceFolderBookmarkDefaultsKey)
-           ) {
+            let own = resolve(
+                pathKey: windowSessionKey(Self.workspaceFolderPathDefaultsKey),
+                bookmarkKey: windowSessionKey(Self.workspaceFolderBookmarkDefaultsKey)
+            )
+        {
             return own
         }
         if let opener = documentWindow?.initialWorkspaceURL { return opener }
