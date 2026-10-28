@@ -5,18 +5,23 @@ import XCTest
 final class LaTeXDocumentStylingAndMathCrashTests: XCTestCase {
 
     func testPunctuationSpaceUnaryMinusDoesNotCrashSwiftMath() {
-        let expressions = [
-            #"-4x^2y,\quad 7xy^2,\quad 9x^2y,\quad -3xy^2,\quad 5x^2,\quad -2x^2y"#,
-            #"\boxed{-4x^2y,\ 9x^2y,\ -2x^2y}"#,
-            #"\boxed{7xy^2,\ -3xy^2}."#,
-            #"a,\ -b,\quad +c,\; -d"#,
-            #"\begin{aligned} x &= 1,\ -2 \\ y &= \boxed{3,\ -4} \end{aligned}"#
+        let swiftMathExpressions: [(latex: String, width: CGFloat, ascent: CGFloat, descent: CGFloat)] = [
+            (#"-4x^2y,\quad 7xy^2,\quad 9x^2y,\quad -3xy^2,\quad 5x^2,\quad -2x^2y"#, 396, 16, 4),
+            (#"\boxed{-4x^2y,\ 9x^2y,\ -2x^2y}"#, 190, 19.5, 7.5),
+            (#"\boxed{7xy^2,\ -3xy^2}."#, 131.5, 19.5, 7.5),
+            (#"a,\ -b,\quad +c,\; -d"#, 145, 14, 4),
         ]
-        for expr in expressions {
-            let box = LaTeXMathRenderer.layoutLatex(expr, baseFontSize: 16.0, isDisplayStyle: true)
-            XCTAssertGreaterThan(box.width, 10.0, "Expected non-empty layout for: \(expr)")
-            XCTAssertGreaterThan(box.totalHeight, 6.0, "Expected positive height for: \(expr)")
+        for expr in swiftMathExpressions {
+            let box = LaTeXMathRenderer.layoutLatex(expr.latex, baseFontSize: 16.0, isDisplayStyle: true)
+            XCTAssertTrue(box.usesNativeOpenTypeMath, "SwiftMath lays out \(expr.latex)")
+            assertMathMetrics(box, width: expr.width, ascent: expr.ascent, descent: expr.descent, expr.latex)
         }
+
+        // The engine, not SwiftMath, lays out `aligned` with a boxed row.
+        let aligned = #"\begin{aligned} x &= 1,\ -2 \\ y &= \boxed{3,\ -4} \end{aligned}"#
+        let alignedBox = LaTeXMathRenderer.layoutLatex(aligned, baseFontSize: 16.0, isDisplayStyle: true)
+        XCTAssertFalse(alignedBox.usesNativeOpenTypeMath)
+        assertMathMetrics(alignedBox, width: 84.13, ascent: 32.36, descent: 22.62, "aligned with boxed row")
     }
 
     func testCodeSpecifiedStylingOverridesThemeAndFallsBackWhenAbsent() {
