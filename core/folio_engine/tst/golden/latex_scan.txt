@@ -154,21 +154,45 @@ body: []
 ## line 52: \section{After} % trailing \label{hidden}
 preamble: [LatexDirectiveItem { kind: Section, starred: false, cmd: "section", opt_arg: "", arg1: "After", arg2: "", arg3: "" }]
 body: [LatexDirectiveItem { kind: Section, starred: false, cmd: "section", opt_arg: "", arg1: "After", arg2: "", arg3: "" }]
-LatexInlineSpan { kind: ProseMacroCandidate, full_loc: 0, full_len: 14, open_loc: 0, open_len: 14, inner_loc: 1, inner_len: 13, close_loc: 14, close_len: 0, cmd: "documentclass", arg: "" }
-LatexInlineSpan { kind: ProseMacroCandidate, full_loc: 61, full_len: 14, open_loc: 61, open_len: 14, inner_loc: 62, inner_len: 13, close_loc: 75, close_len: 0, cmd: "documentclass", arg: "" }
-LatexInlineSpan { kind: ProseMacroCandidate, full_loc: 83, full_len: 11, open_loc: 83, open_len: 11, inner_loc: 84, inner_len: 10, close_loc: 94, close_len: 0, cmd: "usepackage", arg: "" }
-LatexInlineSpan { kind: ProseMacroCandidate, full_loc: 132, full_len: 11, open_loc: 132, open_len: 11, inner_loc: 133, inner_len: 10, close_loc: 143, close_len: 0, cmd: "usepackage", arg: "" }
+## line 53: User macros \VAR{x}s \RP{\VAR{y}} \FU*{=} \pair[opt]{a}{b} \spaced {z} \unclosed{w and \T.
+preamble: []
+body: []
+## line 54: Index \index{key@$k$} hidden and \foo*{} done.
+preamble: []
+body: []
+LatexInlineSpan { kind: ProseMacroCandidate, full_loc: 0, full_len: 37, open_loc: 0, open_len: 14, inner_loc: 1, inner_len: 13, close_loc: 14, close_len: 23, cmd: "documentclass", arg: "" }
+LatexInlineSpan { kind: ProseMacroCandidate, full_loc: 38, full_len: 22, open_loc: 38, open_len: 14, inner_loc: 39, inner_len: 13, close_loc: 52, close_len: 8, cmd: "documentclass", arg: "" }
+LatexInlineSpan { kind: ProseMacroCandidate, full_loc: 61, full_len: 49, open_loc: 61, open_len: 14, inner_loc: 62, inner_len: 13, close_loc: 75, close_len: 35, cmd: "documentclass", arg: "" }
+LatexInlineSpan { kind: ProseMacroCandidate, full_loc: 83, full_len: 27, open_loc: 83, open_len: 11, inner_loc: 84, inner_len: 10, close_loc: 94, close_len: 16, cmd: "usepackage", arg: "" }
+LatexInlineSpan { kind: ProseMacroCandidate, full_loc: 111, full_len: 20, open_loc: 111, open_len: 11, inner_loc: 112, inner_len: 10, close_loc: 122, close_len: 9, cmd: "usepackage", arg: "" }
+LatexInlineSpan { kind: ProseMacroCandidate, full_loc: 132, full_len: 139, open_loc: 132, open_len: 11, inner_loc: 133, inner_len: 10, close_loc: 143, close_len: 128, cmd: "usepackage", arg: "" }
+LatexInlineSpan { kind: ProseMacroCandidate, full_loc: 145, full_len: 38, open_loc: 145, open_len: 8, inner_loc: 146, inner_len: 7, close_loc: 153, close_len: 30, cmd: "section", arg: "" }
 LatexInlineSpan { kind: StyleCmd, full_loc: 170, full_len: 12, open_loc: 170, open_len: 6, inner_loc: 176, inner_len: 5, close_loc: 181, close_len: 1, cmd: "emph", arg: "" }
-LatexInlineSpan { kind: ProseMacroCandidate, full_loc: 184, full_len: 8, open_loc: 184, open_len: 8, inner_loc: 185, inner_len: 7, close_loc: 192, close_len: 0, cmd: "section", arg: "" }
-LatexInlineSpan { kind: ProseMacroCandidate, full_loc: 232, full_len: 11, open_loc: 232, open_len: 11, inner_loc: 233, inner_len: 10, close_loc: 243, close_len: 0, cmd: "subsection", arg: "" }
+LatexInlineSpan { kind: ProseMacroCandidate, full_loc: 184, full_len: 18, open_loc: 184, open_len: 9, inner_loc: 185, inner_len: 8, close_loc: 193, close_len: 9, cmd: "section*", arg: "" }
+LatexInlineSpan { kind: ProseMacroCandidate, full_loc: 203, full_len: 28, open_loc: 203, open_len: 13, inner_loc: 204, inner_len: 12, close_loc: 216, close_len: 15, cmd: "sectiontitle", arg: "" }
+LatexInlineSpan { kind: ProseMacroCandidate, full_loc: 232, full_len: 39, open_loc: 232, open_len: 11, inner_loc: 233, inner_len: 10, close_loc: 243, close_len: 28, cmd: "subsection", arg: "" }
 LatexInlineSpan { kind: StyleCmd, full_loc: 256, full_len: 14, open_loc: 256, open_len: 8, inner_loc: 264, inner_len: 5, close_loc: 269, close_len: 1, cmd: "textbf", arg: "" }
+LatexInlineSpan { kind: ProseMacroCandidate, full_loc: 272, full_len: 20, open_loc: 272, open_len: 14, inner_loc: 273, inner_len: 13, close_loc: 286, close_len: 6, cmd: "subsubsection", arg: "" }
+LatexInlineSpan { kind: ProseMacroCandidate, full_loc: 293, full_len: 16, open_loc: 293, open_len: 10, inner_loc: 294, inner_len: 9, close_loc: 303, close_len: 6, cmd: "paragraph", arg: "" }
+LatexInlineSpan { kind: ProseMacroCandidate, full_loc: 324, full_len: 18, open_loc: 324, open_len: 13, inner_loc: 325, inner_len: 12, close_loc: 337, close_len: 5, cmd: "subparagraph", arg: "" }
+LatexInlineSpan { kind: ProseMacroCandidate, full_loc: 343, full_len: 15, open_loc: 343, open_len: 5, inner_loc: 344, inner_len: 4, close_loc: 348, close_len: 10, cmd: "part", arg: "" }
+LatexInlineSpan { kind: ProseMacroCandidate, full_loc: 359, full_len: 19, open_loc: 359, open_len: 8, inner_loc: 360, inner_len: 7, close_loc: 367, close_len: 11, cmd: "chapter", arg: "" }
+LatexInlineSpan { kind: ProseMacroCandidate, full_loc: 379, full_len: 8, open_loc: 379, open_len: 8, inner_loc: 380, inner_len: 7, close_loc: 387, close_len: 0, cmd: "section", arg: "" }
+LatexInlineSpan { kind: ProseMacroCandidate, full_loc: 399, full_len: 26, open_loc: 399, open_len: 8, inner_loc: 400, inner_len: 7, close_loc: 407, close_len: 18, cmd: "section", arg: "" }
+LatexInlineSpan { kind: ProseMacroCandidate, full_loc: 438, full_len: 22, open_loc: 438, open_len: 8, inner_loc: 439, inner_len: 7, close_loc: 446, close_len: 14, cmd: "section", arg: "" }
 LatexInlineSpan { kind: HiddenMeta, full_loc: 461, full_len: 17, open_loc: 461, open_len: 17, inner_loc: 468, inner_len: 9, close_loc: 478, close_len: 0, cmd: "label", arg: "sec:intro" }
 LatexInlineSpan { kind: HiddenMeta, full_loc: 479, full_len: 18, open_loc: 479, open_len: 18, inner_loc: 486, inner_len: 10, close_loc: 497, close_len: 0, cmd: "label", arg: "  spaced  " }
+LatexInlineSpan { kind: ProseMacroCandidate, full_loc: 498, full_len: 6, open_loc: 498, open_len: 6, inner_loc: 499, inner_len: 5, close_loc: 504, close_len: 0, cmd: "label", arg: "" }
 LatexInlineSpan { kind: HiddenMeta, full_loc: 514, full_len: 19, open_loc: 514, open_len: 19, inner_loc: 528, inner_len: 4, close_loc: 533, close_len: 0, cmd: "bibliography", arg: "refs" }
 LatexInlineSpan { kind: HiddenMeta, full_loc: 534, full_len: 25, open_loc: 534, open_len: 25, inner_loc: 550, inner_len: 8, close_loc: 559, close_len: 0, cmd: "addbibresource", arg: "refs.bib" }
+LatexInlineSpan { kind: ProseMacroCandidate, full_loc: 560, full_len: 20, open_loc: 560, open_len: 6, inner_loc: 561, inner_len: 5, close_loc: 566, close_len: 14, cmd: "input", arg: "" }
+LatexInlineSpan { kind: ProseMacroCandidate, full_loc: 581, full_len: 22, open_loc: 581, open_len: 8, inner_loc: 582, inner_len: 7, close_loc: 589, close_len: 14, cmd: "include", arg: "" }
+LatexInlineSpan { kind: ProseMacroCandidate, full_loc: 604, full_len: 24, open_loc: 604, open_len: 6, inner_loc: 605, inner_len: 5, close_loc: 610, close_len: 18, cmd: "title", arg: "" }
 LatexInlineSpan { kind: StyleCmd, full_loc: 613, full_len: 14, open_loc: 613, open_len: 8, inner_loc: 621, inner_len: 5, close_loc: 626, close_len: 1, cmd: "textit", arg: "" }
+LatexInlineSpan { kind: ProseMacroCandidate, full_loc: 629, full_len: 21, open_loc: 629, open_len: 7, inner_loc: 630, inner_len: 6, close_loc: 636, close_len: 14, cmd: "author", arg: "" }
+LatexInlineSpan { kind: ProseMacroCandidate, full_loc: 651, full_len: 13, open_loc: 651, open_len: 5, inner_loc: 652, inner_len: 4, close_loc: 656, close_len: 8, cmd: "date", arg: "" }
 LatexInlineSpan { kind: LogoCmd, full_loc: 657, full_len: 6, open_loc: 657, open_len: 1, inner_loc: 658, inner_len: 5, close_loc: 663, close_len: 0, cmd: "today", arg: "" }
-LatexInlineSpan { kind: ProseMacroCandidate, full_loc: 665, full_len: 6, open_loc: 665, open_len: 6, inner_loc: 666, inner_len: 5, close_loc: 671, close_len: 0, cmd: "title", arg: "" }
+LatexInlineSpan { kind: ProseMacroCandidate, full_loc: 665, full_len: 19, open_loc: 665, open_len: 6, inner_loc: 666, inner_len: 5, close_loc: 671, close_len: 13, cmd: "title", arg: "" }
 LatexInlineSpan { kind: ProseMacroCandidate, full_loc: 685, full_len: 6, open_loc: 685, open_len: 6, inner_loc: 686, inner_len: 5, close_loc: 691, close_len: 0, cmd: "newif", arg: "" }
 LatexInlineSpan { kind: ProseMacroCandidate, full_loc: 691, full_len: 8, open_loc: 691, open_len: 8, inner_loc: 692, inner_len: 7, close_loc: 699, close_len: 0, cmd: "ifdraft", arg: "" }
 LatexInlineSpan { kind: ProseMacroCandidate, full_loc: 700, full_len: 6, open_loc: 700, open_len: 6, inner_loc: 701, inner_len: 5, close_loc: 706, close_len: 0, cmd: "newif", arg: "" }
@@ -184,7 +208,8 @@ LatexInlineSpan { kind: Cite, full_loc: 795, full_len: 12, open_loc: 795, open_l
 LatexInlineSpan { kind: Cite, full_loc: 809, full_len: 22, open_loc: 809, open_len: 20, inner_loc: 829, inner_len: 1, close_loc: 830, close_len: 1, cmd: "parencite", arg: "c" }
 LatexInlineSpan { kind: Cite, full_loc: 833, full_len: 12, open_loc: 833, open_len: 10, inner_loc: 843, inner_len: 1, close_loc: 844, close_len: 1, cmd: "textcite", arg: "d" }
 LatexInlineSpan { kind: Cite, full_loc: 847, full_len: 12, open_loc: 847, open_len: 10, inner_loc: 857, inner_len: 1, close_loc: 858, close_len: 1, cmd: "autocite", arg: "e" }
-LatexInlineSpan { kind: ProseMacroCandidate, full_loc: 868, full_len: 5, open_loc: 868, open_len: 5, inner_loc: 869, inner_len: 4, close_loc: 873, close_len: 0, cmd: "cite", arg: "" }
+LatexInlineSpan { kind: ProseMacroCandidate, full_loc: 868, full_len: 11, open_loc: 868, open_len: 5, inner_loc: 869, inner_len: 4, close_loc: 873, close_len: 6, cmd: "cite", arg: "" }
+LatexInlineSpan { kind: ProseMacroCandidate, full_loc: 884, full_len: 5, open_loc: 884, open_len: 5, inner_loc: 885, inner_len: 4, close_loc: 889, close_len: 0, cmd: "cite", arg: "" }
 LatexInlineSpan { kind: Ref, full_loc: 904, full_len: 12, open_loc: 904, open_len: 7, inner_loc: 911, inner_len: 4, close_loc: 915, close_len: 1, cmd: "eqref", arg: "eq:1" }
 LatexInlineSpan { kind: Ref, full_loc: 918, full_len: 13, open_loc: 918, open_len: 9, inner_loc: 927, inner_len: 3, close_loc: 930, close_len: 1, cmd: "autoref", arg: "fig" }
 LatexInlineSpan { kind: Ref, full_loc: 933, full_len: 8, open_loc: 933, open_len: 6, inner_loc: 939, inner_len: 1, close_loc: 940, close_len: 1, cmd: "cref", arg: "t" }
@@ -206,6 +231,8 @@ LatexInlineSpan { kind: Href, full_loc: 1158, full_len: 45, open_loc: 1158, open
 LatexInlineSpan { kind: StyleCmd, full_loc: 1189, full_len: 13, open_loc: 1189, open_len: 8, inner_loc: 1197, inner_len: 4, close_loc: 1201, close_len: 1, cmd: "textbf", arg: "" }
 LatexInlineSpan { kind: ColorGroup, full_loc: 1208, full_len: 32, open_loc: 1208, open_len: 16, inner_loc: 1224, inner_len: 15, close_loc: 1239, close_len: 1, cmd: "textcolor", arg: "red" }
 LatexInlineSpan { kind: StyleCmd, full_loc: 1228, full_len: 11, open_loc: 1228, open_len: 6, inner_loc: 1234, inner_len: 4, close_loc: 1238, close_len: 1, cmd: "emph", arg: "" }
+LatexInlineSpan { kind: ProseMacroCandidate, full_loc: 1249, full_len: 16, open_loc: 1249, open_len: 5, inner_loc: 1250, inner_len: 4, close_loc: 1254, close_len: 11, cmd: "href", arg: "" }
+LatexInlineSpan { kind: ProseMacroCandidate, full_loc: 1270, full_len: 16, open_loc: 1270, open_len: 10, inner_loc: 1271, inner_len: 9, close_loc: 1280, close_len: 6, cmd: "textcolor", arg: "" }
 LatexInlineSpan { kind: Url, full_loc: 1291, full_len: 23, open_loc: 1291, open_len: 5, inner_loc: 1296, inner_len: 17, close_loc: 1313, close_len: 1, cmd: "url", arg: "https://folio.app" }
 LatexInlineSpan { kind: ProseMacroCandidate, full_loc: 1319, full_len: 4, open_loc: 1319, open_len: 4, inner_loc: 1320, inner_len: 3, close_loc: 1323, close_len: 0, cmd: "url", arg: "" }
 LatexInlineSpan { kind: StyleCmd, full_loc: 1338, full_len: 13, open_loc: 1338, open_len: 8, inner_loc: 1346, inner_len: 4, close_loc: 1350, close_len: 1, cmd: "textbf", arg: "" }
@@ -220,6 +247,7 @@ LatexInlineSpan { kind: StyleCmd, full_loc: 1438, full_len: 11, open_loc: 1438, 
 LatexInlineSpan { kind: StyleCmd, full_loc: 1458, full_len: 32, open_loc: 1458, open_len: 8, inner_loc: 1466, inner_len: 23, close_loc: 1489, close_len: 1, cmd: "textbf", arg: "" }
 LatexInlineSpan { kind: StyleCmd, full_loc: 1468, full_len: 21, open_loc: 1468, open_len: 8, inner_loc: 1476, inner_len: 12, close_loc: 1488, close_len: 1, cmd: "textit", arg: "" }
 LatexInlineSpan { kind: StyleCmd, full_loc: 1478, full_len: 10, open_loc: 1478, open_len: 8, inner_loc: 1486, inner_len: 1, close_loc: 1487, close_len: 1, cmd: "texttt", arg: "" }
+LatexInlineSpan { kind: ProseMacroCandidate, full_loc: 1495, full_len: 7, open_loc: 1495, open_len: 7, inner_loc: 1496, inner_len: 6, close_loc: 1502, close_len: 0, cmd: "textbf", arg: "" }
 LatexInlineSpan { kind: LogoCmd, full_loc: 1518, full_len: 8, open_loc: 1518, open_len: 1, inner_loc: 1519, inner_len: 5, close_loc: 1524, close_len: 2, cmd: "LaTeX", arg: "" }
 LatexInlineSpan { kind: LogoCmd, full_loc: 1527, full_len: 4, open_loc: 1527, open_len: 1, inner_loc: 1528, inner_len: 3, close_loc: 1531, close_len: 0, cmd: "TeX", arg: "" }
 LatexInlineSpan { kind: LogoCmd, full_loc: 1532, full_len: 8, open_loc: 1532, open_len: 1, inner_loc: 1533, inner_len: 5, close_loc: 1538, close_len: 2, cmd: "today", arg: "" }
@@ -228,6 +256,7 @@ LatexInlineSpan { kind: TextBackslash, full_loc: 1563, full_len: 16, open_loc: 1
 LatexInlineSpan { kind: TextBackslash, full_loc: 1584, full_len: 16, open_loc: 1585, open_len: 15, inner_loc: 1584, inner_len: 1, close_loc: 1600, close_len: 0, cmd: "textbackslash", arg: "" }
 LatexInlineSpan { kind: ProseMacroCandidate, full_loc: 1610, full_len: 10, open_loc: 1610, open_len: 10, inner_loc: 1611, inner_len: 7, close_loc: 1618, close_len: 2, cmd: "mymacro", arg: "" }
 LatexInlineSpan { kind: ProseMacroCandidate, full_loc: 1621, full_len: 6, open_loc: 1621, open_len: 6, inner_loc: 1622, inner_len: 5, close_loc: 1627, close_len: 0, cmd: "other", arg: "" }
+LatexInlineSpan { kind: ProseMacroCandidate, full_loc: 1628, full_len: 12, open_loc: 1628, open_len: 9, inner_loc: 1629, inner_len: 8, close_loc: 1637, close_len: 3, cmd: "withargs", arg: "" }
 LatexInlineSpan { kind: InlineMath, full_loc: 1663, full_len: 5, open_loc: 1663, open_len: 1, inner_loc: 1664, inner_len: 3, close_loc: 1667, close_len: 1, cmd: "$", arg: "x^2" }
 LatexInlineSpan { kind: InlineMath, full_loc: 1673, full_len: 7, open_loc: 1673, open_len: 2, inner_loc: 1675, inner_len: 3, close_loc: 1678, close_len: 2, cmd: "\\(", arg: "a+b" }
 LatexInlineSpan { kind: EscapedChar, full_loc: 1708, full_len: 2, open_loc: 1708, open_len: 1, inner_loc: 1709, inner_len: 1, close_loc: 1710, close_len: 0, cmd: "$", arg: "" }
@@ -239,4 +268,16 @@ LatexInlineSpan { kind: EscapedChar, full_loc: 1731, full_len: 2, open_loc: 1731
 LatexInlineSpan { kind: EscapedChar, full_loc: 1734, full_len: 2, open_loc: 1734, open_len: 1, inner_loc: 1735, inner_len: 1, close_loc: 1736, close_len: 0, cmd: "}", arg: "" }
 LatexInlineSpan { kind: HiddenMeta, full_loc: 1749, full_len: 2, open_loc: 1749, open_len: 2, inner_loc: 1749, inner_len: 0, close_loc: 1749, close_len: 0, cmd: "\\\\", arg: "" }
 LatexInlineSpan { kind: HiddenMeta, full_loc: 1756, full_len: 7, open_loc: 1756, open_len: 7, inner_loc: 1756, inner_len: 0, close_loc: 1756, close_len: 0, cmd: "\\\\", arg: "2pt" }
+LatexInlineSpan { kind: ProseMacroCandidate, full_loc: 1780, full_len: 16, open_loc: 1780, open_len: 8, inner_loc: 1781, inner_len: 7, close_loc: 1788, close_len: 8, cmd: "section", arg: "" }
+LatexInlineSpan { kind: ProseMacroCandidate, full_loc: 1797, full_len: 15, open_loc: 1797, open_len: 8, inner_loc: 1798, inner_len: 7, close_loc: 1805, close_len: 7, cmd: "section", arg: "" }
 LatexInlineSpan { kind: HiddenMeta, full_loc: 1824, full_len: 14, open_loc: 1824, open_len: 14, inner_loc: 1831, inner_len: 6, close_loc: 1838, close_len: 0, cmd: "label", arg: "hidden" }
+LatexInlineSpan { kind: ProseMacroCandidate, full_loc: 1851, full_len: 7, open_loc: 1851, open_len: 4, inner_loc: 1852, inner_len: 3, close_loc: 1855, close_len: 3, cmd: "VAR", arg: "" }
+LatexInlineSpan { kind: ProseMacroCandidate, full_loc: 1860, full_len: 12, open_loc: 1860, open_len: 3, inner_loc: 1861, inner_len: 2, close_loc: 1863, close_len: 9, cmd: "RP", arg: "" }
+LatexInlineSpan { kind: ProseMacroCandidate, full_loc: 1864, full_len: 7, open_loc: 1864, open_len: 4, inner_loc: 1865, inner_len: 3, close_loc: 1868, close_len: 3, cmd: "VAR", arg: "" }
+LatexInlineSpan { kind: ProseMacroCandidate, full_loc: 1873, full_len: 7, open_loc: 1873, open_len: 4, inner_loc: 1874, inner_len: 3, close_loc: 1877, close_len: 3, cmd: "FU*", arg: "" }
+LatexInlineSpan { kind: ProseMacroCandidate, full_loc: 1881, full_len: 16, open_loc: 1881, open_len: 5, inner_loc: 1882, inner_len: 4, close_loc: 1886, close_len: 11, cmd: "pair", arg: "" }
+LatexInlineSpan { kind: ProseMacroCandidate, full_loc: 1898, full_len: 7, open_loc: 1898, open_len: 7, inner_loc: 1899, inner_len: 6, close_loc: 1905, close_len: 0, cmd: "spaced", arg: "" }
+LatexInlineSpan { kind: ProseMacroCandidate, full_loc: 1910, full_len: 9, open_loc: 1910, open_len: 9, inner_loc: 1911, inner_len: 8, close_loc: 1919, close_len: 0, cmd: "unclosed", arg: "" }
+LatexInlineSpan { kind: ProseMacroCandidate, full_loc: 1926, full_len: 2, open_loc: 1926, open_len: 2, inner_loc: 1927, inner_len: 1, close_loc: 1928, close_len: 0, cmd: "T", arg: "" }
+LatexInlineSpan { kind: HiddenMeta, full_loc: 1936, full_len: 15, open_loc: 1936, open_len: 15, inner_loc: 1943, inner_len: 7, close_loc: 1951, close_len: 0, cmd: "index", arg: "key@$k$" }
+LatexInlineSpan { kind: ProseMacroCandidate, full_loc: 1963, full_len: 7, open_loc: 1963, open_len: 7, inner_loc: 1964, inner_len: 4, close_loc: 1968, close_len: 2, cmd: "foo*", arg: "" }
