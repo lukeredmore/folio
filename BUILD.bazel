@@ -14,6 +14,7 @@ swift_library(
         "-DFOLIO_NO_MAIN",
         "-swift-version",
         "6",
+        "-warnings-as-errors",
     ],
     module_name = "Folio",
     deps = [
@@ -28,6 +29,7 @@ swift_test(
     copts = [
         "-swift-version",
         "6",
+        "-warnings-as-errors",
     ],
     data = [
         "@swift_math//:math_fonts_files",

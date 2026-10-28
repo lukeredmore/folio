@@ -17,6 +17,7 @@ swift_library(
     copts = [
         "-swift-version",
         "6",
+        "-warnings-as-errors",
     ],
     module_name = "FolioAppMainLib",
     deps = [
