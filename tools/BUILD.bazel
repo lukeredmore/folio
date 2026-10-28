@@ -1,4 +1,4 @@
-load("@buildifier_prebuilt//:rules.bzl", "buildifier")
+load("@buildifier_prebuilt//:rules.bzl", "buildifier", "buildifier_test")
 
 package(default_visibility = ["//visibility:public"])
 
@@ -13,6 +13,17 @@ BUILDIFIER_EXCLUDE_PATTERNS = [
     "./third_party/cmark_gfm/*",
     "./third_party/markdown_spec/*",
 ]
+
+# Fails on unformatted or lint-failing BUILD, .bzl and MODULE.bazel files.
+# It reads the source tree directly, so it is never cached.
+buildifier_test(
+    name = "buildifier_test",
+    exclude_patterns = BUILDIFIER_EXCLUDE_PATTERNS,
+    lint_mode = "warn",
+    mode = "diff",
+    no_sandbox = True,
+    workspace = "//:MODULE.bazel",
+)
 
 # bazel run //tools:buildifier
 buildifier(
