@@ -80,8 +80,9 @@ extension MarkdownLiveStyler {
         decorations: inout [LineDecoration]
     ) {
         guard !astLinksByLine.isEmpty else { return }
-        for (ln, links) in astLinksByLine {
-            guard var rec = lineRecords[ln] else { continue }
+        // Lines in document order, so decorations are in document order.
+        for ln in astLinksByLine.keys.sorted() {
+            guard let links = astLinksByLine[ln], var rec = lineRecords[ln] else { continue }
             for reported in links {
                 let link = correctedInlineStart(reported, lineRecords: lineRecords)
                 let spanLines = link.startLine...link.endLine
