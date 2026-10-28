@@ -1,6 +1,6 @@
 load("@build_bazel_rules_apple//apple:macos.bzl", "macos_application")
 load("@build_bazel_rules_swift//swift:swift.bzl", "swift_library")
-load("@rules_shell//shell:sh_test.bzl", "sh_test")
+load("@rules_python//python:defs.bzl", "py_test")
 load("//tools/release:defs.bzl", "folio_dmg", "folio_info_plist", "input_hash")
 
 package(default_visibility = ["//visibility:public"])
@@ -77,9 +77,9 @@ filegroup(
 )
 
 # Fails when the built app does not have the bundle ID, name, and handler rank of its configuration.
-sh_test(
+py_test(
     name = "FolioApp_identity_test",
-    srcs = ["app_identity_test.sh"],
+    srcs = ["app_identity_test.py"],
     args = select({
         "//tools/release:release_build": [
             "release",
@@ -93,9 +93,13 @@ sh_test(
             "'Folio Dev'",
             "None",
         ],
-    }) + ["$(rlocationpath :FolioApp_bundle)"],
+    }) + [
+        RELEASE_BUNDLE_ID,
+        "$(rootpaths :FolioApp_bundle)",
+    ],
     data = [":FolioApp_bundle"],
-    env = {"RELEASE_BUNDLE_ID": RELEASE_BUNDLE_ID},
+    legacy_create_init = False,
+    main = "app_identity_test.py",
 )
 
 # Build with --config=release for the stamped, optimized release disk image.
