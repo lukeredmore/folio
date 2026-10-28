@@ -30,6 +30,7 @@ The standalone macOS app (`//:FolioApp`) provides a dedicated writing window wit
 | **Outline Panel** | `Cmd + Ctrl + 1` | Jump to hierarchical document outline (`H1`–`H6`) |
 | **File List / File Tree** | `Cmd + Ctrl + 2 / 3` | Switch between File List and File Tree workspace views |
 | **Quick Open** | `Cmd + P` | Instant spotlight-style file switcher across the workspace |
+| **Tabs** | `Cmd + T` | Open a new tab. Each tab edits its own document, and the tab shows the file name. Right-click a file in the sidebar and choose **Open in New Tab**. A file can be open in several tabs: a save in one tab updates the others, and they share the file's undo history. Preferences and recent files are shared by all tabs |
 | **Find & Replace** | `Cmd + Opt + F` | In-document Find and Replace banner |
 | **Find in Workspace** | `Cmd + Shift + F` | Multi-file search with Case-Sensitive (`Aa`), Whole-Word (`ab`), and Regex (`.*`) toggles |
 | **Word Count Popover** | `Cmd + Shift + W` | Live Words, Lines, Characters, Without Spaces, Selection stats, and Reading Time |

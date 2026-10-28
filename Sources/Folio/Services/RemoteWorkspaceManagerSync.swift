@@ -61,7 +61,7 @@ extension RemoteWorkspaceManager {
             retryCounts[id] = 0
             connectionStates[id] = .connected
 
-            onMirrorUpdated?(mount.id, updatedURLs)
+            notifyMirrorUpdated(mount.id, updatedURLs)
             return true
         } catch {
             handleTransportFailure(for: mount, error: error)
@@ -116,7 +116,7 @@ extension RemoteWorkspaceManager {
             retryTasks.removeValue(forKey: mount.id)
             retryCounts[mount.id] = 0
             connectionStates[mount.id] = .connected
-            onMirrorUpdated?(mount.id, [stdURL])
+            notifyMirrorUpdated(mount.id, [stdURL])
         } catch {
             fileSyncStatuses[stdURL] = .pendingUpload
             handleTransportFailure(for: mount, error: error)

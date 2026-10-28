@@ -100,11 +100,14 @@ extension EditorWorkspaceViewModel {
             self.collapsedDirectoryPaths = []
         }
 
-        if let savedTimelinesData = resolvedDefaults.data(forKey: Self.undoTimelinesDefaultsKey),
-           let decodedTimelines = try? JSONDecoder().decode([String: DocumentUndoTimeline].self, from: savedTimelinesData) {
-            self.perFileUndoTimelines = decodedTimelines
-        } else {
-            self.perFileUndoTimelines = [:]
+        if !undoTimelineStore.hasLoaded {
+            if let savedTimelinesData = resolvedDefaults.data(forKey: Self.undoTimelinesDefaultsKey),
+               let decodedTimelines = try? JSONDecoder().decode([String: DocumentUndoTimeline].self, from: savedTimelinesData) {
+                self.perFileUndoTimelines = decodedTimelines
+            } else {
+                self.perFileUndoTimelines = [:]
+            }
+            undoTimelineStore.hasLoaded = true
         }
 
         if let savedRecentPaths = resolvedDefaults.stringArray(forKey: Self.recentFilePathsDefaultsKey) {
@@ -123,16 +126,25 @@ extension EditorWorkspaceViewModel {
         }
 
         // Restore open file / buffer session if available
-        let restoredFileURL = Self.resolvePersistedURL(
-            from: resolvedDefaults,
-            pathKey: Self.currentFilePathDefaultsKey,
-            bookmarkKey: Self.currentFileBookmarkDefaultsKey,
-            requireDirectory: false
-        )
-        let hasSavedSession = resolvedDefaults.bool(forKey: Self.hasSavedDocumentSessionDefaultsKey)
-        let savedIsDirty = resolvedDefaults.bool(forKey: Self.unsavedBufferIsDirtyDefaultsKey)
-        let savedBufferText = resolvedDefaults.string(forKey: Self.unsavedBufferTextDefaultsKey)
-        let hadSavedFilePath = (resolvedDefaults.string(forKey: Self.currentFilePathDefaultsKey) != nil)
+        let sessionSource = resolveDocumentSessionSource(in: resolvedDefaults)
+        func sessionKey(_ base: String) -> String? { sessionReadKey(base, source: sessionSource) }
+        let restoredFileURL: URL?
+        if let pathKey = sessionKey(Self.currentFilePathDefaultsKey),
+           let bookmarkKey = sessionKey(Self.currentFileBookmarkDefaultsKey) {
+            restoredFileURL = Self.resolvePersistedURL(
+                from: resolvedDefaults,
+                pathKey: pathKey,
+                bookmarkKey: bookmarkKey,
+                requireDirectory: false
+            )
+        } else {
+            restoredFileURL = documentWindow?.initialFileURL
+        }
+        let hasSavedSession = sessionKey(Self.hasSavedDocumentSessionDefaultsKey).map { resolvedDefaults.bool(forKey: $0) } ?? false
+        let savedIsDirty = sessionKey(Self.unsavedBufferIsDirtyDefaultsKey).map { resolvedDefaults.bool(forKey: $0) } ?? false
+        let savedBufferText = sessionKey(Self.unsavedBufferTextDefaultsKey).flatMap { resolvedDefaults.string(forKey: $0) }
+        let hadSavedFilePath = sessionKey(Self.currentFilePathDefaultsKey).flatMap { resolvedDefaults.string(forKey: $0) } != nil
+        let emptyDocument = sessionSource == .none ? Self.untitledDocumentTemplate : Self.defaultWelcomeDocument
 
         let initialContent: String
         let initialFileURL: URL?
@@ -149,7 +161,7 @@ extension EditorWorkspaceViewModel {
                 initialIsDirty = false
             } else {
                 initialFileURL = nil
-                initialContent = Self.defaultWelcomeDocument
+                initialContent = emptyDocument
                 initialIsDirty = false
             }
         } else if savedIsDirty, let unsavedText = savedBufferText {
@@ -162,7 +174,7 @@ extension EditorWorkspaceViewModel {
             initialIsDirty = false
         } else {
             initialFileURL = nil
-            initialContent = Self.defaultWelcomeDocument
+            initialContent = emptyDocument
             initialIsDirty = false
         }
 
@@ -183,8 +195,9 @@ extension EditorWorkspaceViewModel {
         self.headings = analysis.headings
 
         if (initialFileURL != nil || initialIsDirty || (hasSavedSession && !hadSavedFilePath)),
-           resolvedDefaults.object(forKey: Self.selectedCursorLocationDefaultsKey) != nil {
-            let savedLoc = resolvedDefaults.integer(forKey: Self.selectedCursorLocationDefaultsKey)
+           let cursorKey = sessionKey(Self.selectedCursorLocationDefaultsKey),
+           resolvedDefaults.object(forKey: cursorKey) != nil {
+            let savedLoc = resolvedDefaults.integer(forKey: cursorKey)
             let maxLen = (initialContent as NSString).length
             if savedLoc >= 0 && savedLoc <= maxLen {
                 self.currentSelectedRange = NSRange(location: savedLoc, length: 0)
@@ -195,12 +208,8 @@ extension EditorWorkspaceViewModel {
         }
 
         let initialWorkspaceURL: URL
-        if let savedWorkspaceURL = Self.resolvePersistedURL(
-            from: resolvedDefaults,
-            pathKey: Self.workspaceFolderPathDefaultsKey,
-            bookmarkKey: Self.workspaceFolderBookmarkDefaultsKey,
-            requireDirectory: true
-        ), !Self.isSystemTemporaryRootDirectory(savedWorkspaceURL) {
+        if let savedWorkspaceURL = restoredWorkspaceFolderURL(from: resolvedDefaults, source: sessionSource),
+           !Self.isSystemTemporaryRootDirectory(savedWorkspaceURL) {
             initialWorkspaceURL = savedWorkspaceURL
         } else {
             initialWorkspaceURL = Self.defaultFallbackWorkspaceFolderURL()
@@ -215,7 +224,7 @@ extension EditorWorkspaceViewModel {
             }
             .store(in: &cancellables)
 
-        manager.onMirrorUpdated = { [weak self] _, updatedURLs in
+        manager.observeMirrorUpdates(owner: self) { [weak self] _, updatedURLs in
             guard let self = self else { return }
             self.reloadWorkspaceTree()
             if let currentURL = self.currentFileURL?.standardizedFileURL,
@@ -232,6 +241,22 @@ extension EditorWorkspaceViewModel {
         }
         self.refreshUndoRedoAvailability()
         self.isRestoringState = false
+    }
+
+    /// This window's own folder, else the folder its opener passed, else the last folder in use.
+    func restoredWorkspaceFolderURL(from defaults: UserDefaults, source: DocumentSessionSource) -> URL? {
+        func resolve(pathKey: String, bookmarkKey: String) -> URL? {
+            Self.resolvePersistedURL(from: defaults, pathKey: pathKey, bookmarkKey: bookmarkKey, requireDirectory: true)
+        }
+        if source == .window, documentWindow != nil,
+           let own = resolve(
+               pathKey: windowSessionKey(Self.workspaceFolderPathDefaultsKey),
+               bookmarkKey: windowSessionKey(Self.workspaceFolderBookmarkDefaultsKey)
+           ) {
+            return own
+        }
+        if let opener = documentWindow?.initialWorkspaceURL { return opener }
+        return resolve(pathKey: Self.workspaceFolderPathDefaultsKey, bookmarkKey: Self.workspaceFolderBookmarkDefaultsKey)
     }
 
     static func defaultFallbackWorkspaceFolderURL() -> URL {

@@ -75,7 +75,12 @@ public final class EditorWorkspaceViewModel: ObservableObject {
     @Published public var activeConflict: DocumentConflict?
     @Published public var showConflictResolverModal: Bool = false
 
-    var perFileUndoTimelines: [String: DocumentUndoTimeline] = [:]
+    /// Undo history for every file, shared with the other document windows.
+    let undoTimelineStore: UndoTimelineStore
+    var perFileUndoTimelines: [String: DocumentUndoTimeline] {
+        get { undoTimelineStore.timelines }
+        _modify { yield &undoTimelineStore.timelines }
+    }
     var hasUnpersistedUndoChanges: Bool = false
     public var currentSelectedRange: NSRange = NSRange(location: 0, length: 0)
     var isApplyingInternalStateChange: Bool = false
@@ -102,6 +107,7 @@ public final class EditorWorkspaceViewModel: ObservableObject {
             if let encoded = try? JSONEncoder().encode(customThemes) {
                 userDefaults.set(encoded, forKey: Self.customThemesDefaultsKey)
             }
+            sharePreference(\.customThemes)
         }
     }
 
@@ -114,6 +120,7 @@ public final class EditorWorkspaceViewModel: ObservableObject {
             }
             guard !isRestoringState else { return }
             persistActiveThemeState()
+            sharePreference(\.theme)
         }
     }
     @Published public var typography: EditorTypographySettings = .default {
@@ -125,40 +132,42 @@ public final class EditorWorkspaceViewModel: ObservableObject {
             }
             guard !isRestoringState else { return }
             persistActiveThemeState()
+            sharePreference(\.typography)
         }
     }
     @Published public var sourceCodeMode: Bool = false {
-        didSet { if !isRestoringState { userDefaults.set(sourceCodeMode, forKey: Self.sourceCodeModeDefaultsKey) } }
+        didSet { if !isRestoringState { userDefaults.set(sourceCodeMode, forKey: Self.sourceCodeModeDefaultsKey); sharePreference(\.sourceCodeMode) } }
     }
     @Published public var prettyModeEnabled: Bool = true
     @Published public var focusMode: Bool = false {
-        didSet { if !isRestoringState { userDefaults.set(focusMode, forKey: Self.focusModeDefaultsKey) } }
+        didSet { if !isRestoringState { userDefaults.set(focusMode, forKey: Self.focusModeDefaultsKey); sharePreference(\.focusMode) } }
     }
     @Published public var typewriterMode: Bool = false {
-        didSet { if !isRestoringState { userDefaults.set(typewriterMode, forKey: Self.typewriterModeDefaultsKey) } }
+        didSet { if !isRestoringState { userDefaults.set(typewriterMode, forKey: Self.typewriterModeDefaultsKey); sharePreference(\.typewriterMode) } }
     }
     @Published public var spellCheckEnabled: Bool = false {
-        didSet { if !isRestoringState { userDefaults.set(spellCheckEnabled, forKey: Self.spellCheckEnabledDefaultsKey) } }
+        didSet { if !isRestoringState { userDefaults.set(spellCheckEnabled, forKey: Self.spellCheckEnabledDefaultsKey); sharePreference(\.spellCheckEnabled) } }
     }
     /// Column width that edited paragraphs are hard-wrapped to in the Markdown source (0 = off).
     @Published public var sourceLineWidth: Int = MarkdownSourceReflow.defaultWidth {
-        didSet { if !isRestoringState { userDefaults.set(sourceLineWidth, forKey: Self.sourceLineWidthDefaultsKey) } }
+        didSet { if !isRestoringState { userDefaults.set(sourceLineWidth, forKey: Self.sourceLineWidthDefaultsKey); sharePreference(\.sourceLineWidth) } }
     }
     /// Editor-wide alignment for prose.
     @Published public var textAlignment: EditorTextAlignment = .left {
-        didSet { if !isRestoringState { userDefaults.set(textAlignment.rawValue, forKey: Self.textAlignmentDefaultsKey) } }
+        didSet { if !isRestoringState { userDefaults.set(textAlignment.rawValue, forKey: Self.textAlignmentDefaultsKey); sharePreference(\.textAlignment) } }
     }
     /// Mermaid diagram shown in the pan-and-zoom sheet.
     @Published public var expandedDiagram: ExpandedDiagram?
     /// Paper size used by Print.
     @Published public var printPaperSize: PrintPaperSize = .letter {
-        didSet { if !isRestoringState { userDefaults.set(printPaperSize.rawValue, forKey: Self.printPaperSizeDefaultsKey) } }
+        didSet { if !isRestoringState { userDefaults.set(printPaperSize.rawValue, forKey: Self.printPaperSizeDefaultsKey); sharePreference(\.printPaperSize) } }
     }
     /// Page orientation used by Print (unless overridden in the document).
     @Published public var printOrientation: PrintOrientation = .portrait {
         didSet {
             guard !isRestoringState else { return }
             userDefaults.set(printOrientation.rawValue, forKey: Self.printOrientationDefaultsKey)
+            sharePreference(\.printOrientation)
         }
     }
     /// Page margins used by Print (unless overridden in the document).
@@ -168,6 +177,7 @@ public final class EditorWorkspaceViewModel: ObservableObject {
             if let encoded = try? JSONEncoder().encode(printMargins) {
                 userDefaults.set(encoded, forKey: Self.printMarginsDefaultsKey)
             }
+            sharePreference(\.printMargins)
         }
     }
     /// Custom `curl` command prefix used to fetch remote media URLs (e.g. `curl -b "session=..."`).
@@ -176,6 +186,7 @@ public final class EditorWorkspaceViewModel: ObservableObject {
             FolioMediaImageCache.shared.curlCommandPrefix = mediaCurlCommandPrefix
             guard !isRestoringState else { return }
             userDefaults.set(mediaCurlCommandPrefix, forKey: Self.mediaCurlCommandPrefixDefaultsKey)
+            sharePreference(\.mediaCurlCommandPrefix)
         }
     }
     /// When enabled, passes Remote Host Access SSH credentials (`--key` and `-u`) to `curl`.
@@ -184,6 +195,7 @@ public final class EditorWorkspaceViewModel: ObservableObject {
             syncMediaSSHAuthConfig()
             guard !isRestoringState else { return }
             userDefaults.set(useSSHAuthForMedia, forKey: Self.mediaUseSSHAuthDefaultsKey)
+            sharePreference(\.useSSHAuthForMedia)
         }
     }
     /// Optional SSH identity key path (`--key`) for remote media; defaults to the connected Remote Mount's key or `~/.ssh`.
@@ -192,6 +204,7 @@ public final class EditorWorkspaceViewModel: ObservableObject {
             syncMediaSSHAuthConfig()
             guard !isRestoringState else { return }
             userDefaults.set(mediaSSHIdentityFile, forKey: Self.mediaSSHIdentityFileDefaultsKey)
+            sharePreference(\.mediaSSHIdentityFile)
         }
     }
     /// Optional SSH username (`-u <user>:`) for remote media; defaults to the connected Remote Mount's user.
@@ -200,6 +213,7 @@ public final class EditorWorkspaceViewModel: ObservableObject {
             syncMediaSSHAuthConfig()
             guard !isRestoringState else { return }
             userDefaults.set(mediaSSHUser, forKey: Self.mediaSSHUserDefaultsKey)
+            sharePreference(\.mediaSSHUser)
         }
     }
 
@@ -285,6 +299,7 @@ public final class EditorWorkspaceViewModel: ObservableObject {
         didSet {
             guard !isRestoringState else { return }
             userDefaults.set(recentFileURLs.map(\.path), forKey: Self.recentFilePathsDefaultsKey)
+            sharePreference(\.recentFileURLs)
         }
     }
 
@@ -306,6 +321,15 @@ public final class EditorWorkspaceViewModel: ObservableObject {
 
     public weak var activeTextView: HybridMarkdownTextView?
 
+    // MARK: - Document Window
+    /// This view model's window. Nil in single-window mode.
+    public let documentWindow: DocumentWindowContext?
+    weak var windowRegistry: DocumentWindowRegistry?
+    public weak var hostWindow: NSWindow?
+    /// True while this window is the one the app menus act on.
+    @Published public internal(set) var isActiveDocumentWindow: Bool = false
+    var isApplyingSharedPreference: Bool = false
+
     nonisolated(unsafe) var fileWatchSource: DispatchSourceFileSystemObject?
     nonisolated(unsafe) var parentDirWatchSource: DispatchSourceFileSystemObject?
     nonisolated(unsafe) var fileWatchDescriptor: Int32 = -1
@@ -315,12 +339,17 @@ public final class EditorWorkspaceViewModel: ObservableObject {
 
     public init(
         remoteWorkspaceManager: RemoteWorkspaceManager? = nil,
-        userDefaults: UserDefaults? = nil
+        userDefaults: UserDefaults? = nil,
+        documentWindow: DocumentWindowContext? = nil,
+        windowRegistry: DocumentWindowRegistry? = nil
     ) {
         let resolvedDefaults = userDefaults ?? remoteWorkspaceManager?.userDefaults ?? .standard
         let manager = remoteWorkspaceManager ?? RemoteWorkspaceManager(userDefaults: resolvedDefaults)
         self.userDefaults = resolvedDefaults
         self.remoteWorkspaceManager = manager
+        self.documentWindow = documentWindow
+        self.windowRegistry = windowRegistry
+        self.undoTimelineStore = windowRegistry?.undoTimelineStore ?? UndoTimelineStore()
         self.markdownText = Self.defaultWelcomeDocument
         restoreStateOnInit(resolvedDefaults: resolvedDefaults, manager: manager)
         observeTerminationForPendingAutoSave()

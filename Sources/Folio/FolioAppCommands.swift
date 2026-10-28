@@ -1,6 +1,22 @@
 import AppKit
 import SwiftUI
 
+/// App menus. They act on the focused window, or on the last active window when no window is focused.
+struct FolioCommands: Commands {
+    @FocusedObject private var focusedViewModel: EditorWorkspaceViewModel?
+    @Environment(\.openWindow) private var openWindow
+    @ObservedObject var registry: DocumentWindowRegistry
+    @ObservedObject var updateManager: AppUpdateManager
+
+    var body: some Commands {
+        // Commands exist before any window, so they supply `openWindow` for files opened at launch.
+        let _ = registry.openWindowAction = openWindow
+        if let viewModel = focusedViewModel ?? registry.activeViewModel {
+            FolioAppCommands(viewModel: viewModel, updateManager: updateManager)
+        }
+    }
+}
+
 struct FolioAppCommands: Commands {
     @ObservedObject var viewModel: EditorWorkspaceViewModel
     @ObservedObject var updateManager: AppUpdateManager
@@ -52,6 +68,11 @@ struct FolioAppCommands: Commands {
                 viewModel.newLaTeXDocument()
             }
             .keyboardShortcut("n", modifiers: [.command, .shift])
+
+            Button("New Tab") {
+                viewModel.openInNewTab(nil)
+            }
+            .keyboardShortcut("t", modifiers: [.command])
 
             Button("Open...") {
                 viewModel.openDocumentPanel()
