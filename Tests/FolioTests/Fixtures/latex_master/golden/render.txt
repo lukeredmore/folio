@@ -7,19 +7,20 @@
 006| 
 007| ⟦‹b:(open ›‹b+i:file›‹b:)› Opens ‹i:file› and returns ‹tt+u:YES›.⟧
 008| 
-009| The ⟦Widget Shell⟧ ⟦Second Edition⟧ reads ⟦‹i:path›${}^{+}$⟧ from ⟦‹tt:stdin›⟧.
-010| 
-011| Use ⟦‹i:mode›‹sub:none›⟧ or ⟦‹i:mode›‹sub:fast›⟧, with ⟦‹b:bold words›⟧ and ⟦‹tt:mono words›⟧.
-012| 
-013| Math stays math: ⟦$x_i$${}^{+}$⟧ and ⟦$\alpha + \beta$⟧.
-014| 
-015| Unsupported: \Layout{spaced} and ⟦\Spin⟧ stay as source.
-016| 
+009| 
+010| The ⟦Widget Shell⟧ ⟦Second Edition⟧ reads ⟦‹i:path›${}^{+}$⟧ from ⟦‹tt:stdin›⟧.
+011| 
+012| Use ⟦‹i:mode›‹sub:none›⟧ or ⟦‹i:mode›‹sub:fast›⟧, with ⟦‹b:bold words›⟧ and ⟦‹tt:mono words›⟧.
+013| 
+014| Math stays math: ⟦$x_i$${}^{+}$⟧ and ⟦$\alpha + \beta$⟧.
+015| 
+016| Unsupported: \Layout{spaced} and ⟦\Spin⟧ stay as source.
 017| 
+018| 
 blocks:
   line 3: section badge 1 level 1
   line 3: heading underline level 1
-## chapter.tex, cursor on line 9
+## chapter.tex, cursor on line 10
 001| 
 002| 
 003| ‹b:Commands›
@@ -28,15 +29,16 @@ blocks:
 006| 
 007| ⟦‹b:(open ›‹b+i:file›‹b:)› Opens ‹i:file› and returns ‹tt+u:YES›.⟧
 008| 
-009| The ‹tt:\Product{}› ‹tt:\Edition{}› reads ‹tt:\Many›{‹tt:\Arg›{path}} from ‹tt:\Lit›{stdin}.
-010| 
-011| Use ⟦‹i:mode›‹sub:none›⟧ or ⟦‹i:mode›‹sub:fast›⟧, with ⟦‹b:bold words›⟧ and ⟦‹tt:mono words›⟧.
-012| 
-013| Math stays math: ⟦$x_i$${}^{+}$⟧ and ⟦$\alpha + \beta$⟧.
-014| 
-015| Unsupported: \Layout{spaced} and ⟦\Spin⟧ stay as source.
-016| 
+009| 
+010| The ‹tt:\Product{}› ‹tt:\Edition{}› reads ‹tt:\Many›{‹tt:\Arg›{path}} from ‹tt:\Lit›{stdin}.
+011| 
+012| Use ⟦‹i:mode›‹sub:none›⟧ or ⟦‹i:mode›‹sub:fast›⟧, with ⟦‹b:bold words›⟧ and ⟦‹tt:mono words›⟧.
+013| 
+014| Math stays math: ⟦$x_i$${}^{+}$⟧ and ⟦$\alpha + \beta$⟧.
+015| 
+016| Unsupported: \Layout{spaced} and ⟦\Spin⟧ stay as source.
 017| 
+018| 
 blocks:
   line 3: section badge 1 level 1
   line 3: heading underline level 1
