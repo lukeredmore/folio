@@ -7,7 +7,7 @@ rules read the STABLE_FOLIO_* keys that tools/release/workspace_status.sh writes
 load("@bazel_skylib//rules:common_settings.bzl", "BuildSettingInfo")
 
 _RELEASE_FLAG = "//tools/release:release"
-_SIGNING_IDENTITY_FLAG = "@build_bazel_rules_apple//apple/build_settings:signing_certificate_name"
+_SIGNING_IDENTITY_FLAG = "//tools/release:codesign_identity"
 
 # Reads one key from the stable status file. Defined in each action script that needs it.
 _STAMP_FUNCTION = """
@@ -172,9 +172,17 @@ stage="$(/usr/bin/mktemp -d "${TMPDIR:-/tmp}/folio-dmg.XXXXXX")"
 trap '/bin/rm -rf "$stage"' EXIT
 /bin/cp -R "$app" "$stage/"
 /bin/chmod -R u+w "$stage"
+signed=0
+if [[ -n "$identity" && "$identity" != "-" ]]; then
+  signed=1
+fi
+if (( signed )); then
+  # rules_apple signs ad hoc; re-sign the copy with the hardened runtime, as build_app.sh did.
+  /usr/bin/codesign --force --deep --options runtime --timestamp --sign "$identity" "$stage/${app##*/}"
+fi
 /bin/ln -s /Applications "$stage/Applications"
 /usr/bin/hdiutil create -quiet -volname "$volume_name" -srcfolder "$stage" -ov -format UDZO "$out"
-if [[ -n "$identity" && "$identity" != "-" ]]; then
+if (( signed )); then
   /usr/bin/codesign --force --timestamp --sign "$identity" "$out"
 fi
 """,
@@ -185,8 +193,9 @@ folio_dmg = rule(
     implementation = _folio_dmg_impl,
     doc = """Packages a .app bundle into a compressed DMG with an /Applications link.
 
-The DMG is signed with the rules_apple signing identity when one is set. hdiutil is not hermetic,
-so the action runs locally without the sandbox.
+When //tools/release:codesign_identity is set, the app copy and the DMG are signed with that
+keychain identity. hdiutil and codesign are not hermetic, so the action runs locally without the
+sandbox.
 """,
     attrs = {
         "app": attr.label(mandatory = True, doc = "A macos_application target."),
