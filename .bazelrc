@@ -27,3 +27,8 @@ common:ci --show_timestamps
 common:ci --repository_cache=~/.cache/bazel-repo
 build:ci --disk_cache=~/.cache/bazel-disk
 build:ci --action_env=CI=true
+
+# Release builds: optimized, and stamped by tools/release/workspace_status.sh.
+build:release --compilation_mode=opt
+build:release --//tools/release:release=true
+build:release --workspace_status_command=tools/release/workspace_status.sh

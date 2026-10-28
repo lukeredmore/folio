@@ -1,5 +1,6 @@
 load("@build_bazel_rules_apple//apple:macos.bzl", "macos_application")
 load("@build_bazel_rules_swift//swift:swift.bzl", "swift_library")
+load("//tools/release:defs.bzl", "folio_info_plist")
 
 package(default_visibility = ["//visibility:public"])
 
@@ -30,6 +31,13 @@ swift_library(
     ],
 )
 
+# Version, channel, commit and icon keys. --config=release stamps them.
+folio_info_plist(
+    name = "StampedInfoPlist",
+    cargo_toml = "//core/folio_engine:Cargo.toml",
+    short_version = "1.0.0",
+)
+
 macos_application(
     name = "FolioApp",
     additional_contents = {
@@ -37,13 +45,25 @@ macos_application(
     },
     bundle_id = "app.folio.macos",
     bundle_name = "Folio",
-    infoplists = ["Info.plist"],
+    codesignopts = select({
+        "//tools/release:adhoc_signing": [],
+        "//conditions:default": [
+            "--options=runtime",
+            "--timestamp",
+        ],
+    }),
+    infoplists = [
+        "Info.plist",
+        ":StampedInfoPlist",
+    ],
     minimum_os_version = "26.0",
     resources = [
         "AppIcon.icns",
-        "AppIcon-Dev.icns",
         "@swift_math//:math_fonts_bundle",
-    ],
+    ] + select({
+        "//tools/release:release_build": [],
+        "//conditions:default": ["AppIcon-Dev.icns"],
+    }),
     deps = [
         ":FolioAppMainLib",
     ],
