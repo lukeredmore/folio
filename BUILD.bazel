@@ -5,7 +5,11 @@ load("//tools:swift_format.bzl", "swift_format_test")
 package(default_visibility = ["//visibility:public"])
 
 exports_files([
+    ".bazelrc",
+    "BUILD.bazel",
+    "Cargo.lock",
     "MODULE.bazel",
+    "MODULE.bazel.lock",
     "clippy.toml",
     "rustfmt.toml",
 ])

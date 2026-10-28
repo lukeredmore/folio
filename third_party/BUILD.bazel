@@ -1,3 +1,6 @@
 package(default_visibility = ["//visibility:public"])
 
-exports_files(["upstream_deps.bzl"])
+exports_files([
+    "BUILD.bazel",
+    "upstream_deps.bzl",
+])

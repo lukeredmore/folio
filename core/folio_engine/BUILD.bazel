@@ -4,7 +4,10 @@ load("@rules_rust//rust:defs.bzl", "rust_library", "rust_static_library", "rust_
 
 package(default_visibility = ["//visibility:public"])
 
-exports_files(["Cargo.toml"])
+exports_files([
+    "BUILD.bazel",
+    "Cargo.toml",
+])
 
 ENGINE_SRCS = glob(["src/**/*.rs"])
 

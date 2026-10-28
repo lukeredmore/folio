@@ -3,7 +3,11 @@ load("@bazel_skylib//rules:common_settings.bzl", "bool_flag")
 
 package(default_visibility = ["//visibility:public"])
 
-exports_files(["workspace_status.sh"])
+exports_files([
+    "BUILD.bazel",
+    "defs.bzl",
+    "workspace_status.sh",
+])
 
 # Set by --config=release. Release builds read STABLE_FOLIO_* stamp keys.
 bool_flag(
