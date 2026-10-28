@@ -51,7 +51,7 @@ cc_library(
     ],
     deps = [
         ":folio_engine_static",
-        "@cmark_gfm//:cmark_gfm",
+        "@cmark_gfm",
     ],
 )
 

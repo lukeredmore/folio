@@ -65,4 +65,3 @@ use_repo(crate, "crates", "crates_wasm")
 
 upstream = use_extension("//third_party:upstream_deps.bzl", "upstream_deps")
 use_repo(upstream, "cmark_gfm", "markdown_spec", "swift_math")
-

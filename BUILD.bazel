@@ -1,4 +1,5 @@
 load("@build_bazel_rules_swift//swift:swift.bzl", "swift_library", "swift_test")
+load("@rules_shell//shell:sh_binary.bzl", "sh_binary")
 load("//tools:swift_format.bzl", "swift_format_test")
 
 package(default_visibility = ["//visibility:public"])
@@ -33,8 +34,8 @@ swift_test(
         "-warnings-as-errors",
     ],
     data = [
-        "@swift_math//:math_fonts_files",
         "//tst/specs:all_behavior_specs",
+        "@swift_math//:math_fonts_files",
     ] + glob(["examples/**"]),
     deps = [
         ":Folio",
@@ -87,4 +88,3 @@ sh_binary(
         ":folio_zed_extension",
     ],
 )
-
