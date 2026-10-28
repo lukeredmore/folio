@@ -117,23 +117,26 @@ final class EditorPerfInvariantTests: XCTestCase {
         }
     }
 
-    func testResizeBurstRestylesAtMostTwiceAfterDebounce() throws {
+    func testResizeBurstRestylesOnceAfterDebounce() throws {
         try withHarness { harness in
+            let manual = ManualEditorScheduler()
+            harness.coordinator.scheduler = manual.scheduler
             let startWidth = harness.window.frame.width
             let before = harness.counters
             for step in 1...30 {
                 harness.resize(width: startWidth - CGFloat(step) * 10)
             }
-            harness.drainUntilQuiet(quietPeriod: 0.25)
+            harness.drainUntilIdle()
+            let duringBurst = harness.counters.delta(since: before)
+            XCTAssertEqual(harness.window.frame.width, startWidth - 300, accuracy: 1)
+            XCTAssertEqual(duringBurst.restyleCount, 0, "a resize burst must not restyle before the debounce fires")
+            XCTAssertEqual(manual.liveCount, 1, "each resize step must replace the pending restyle")
+
+            manual.flush()
+            harness.drainUntilIdle()
             let delta = harness.counters.delta(since: before)
             PerfReport.record("resizeBurst30_200", PerfReport.values(delta))
-            XCTAssertEqual(harness.window.frame.width, startWidth - 300, accuracy: 1)
-            XCTAssertGreaterThanOrEqual(delta.restyleCount, 1, "a width change must restyle once it settles")
-            XCTAssertLessThanOrEqual(
-                delta.restyleCount,
-                2,
-                "a resize burst must restyle at most twice after the debounce"
-            )
+            XCTAssertEqual(delta.restyleCount, 1, "a resize burst must restyle exactly once after the debounce")
         }
     }
 }
