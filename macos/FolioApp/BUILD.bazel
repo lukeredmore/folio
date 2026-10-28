@@ -1,8 +1,14 @@
 load("@build_bazel_rules_apple//apple:macos.bzl", "macos_application")
 load("@build_bazel_rules_swift//swift:swift.bzl", "swift_library")
+load("@rules_shell//shell:sh_test.bzl", "sh_test")
 load("//tools/release:defs.bzl", "folio_dmg", "folio_info_plist", "input_hash")
 
 package(default_visibility = ["//visibility:public"])
+
+# Bundle IDs of release builds and of dev builds (all builds without --config=release).
+RELEASE_BUNDLE_ID = "app.folio.macos"
+
+DEV_BUNDLE_ID = RELEASE_BUNDLE_ID + ".dev"
 
 exports_files([
     "AppIcon.icns",
@@ -31,10 +37,12 @@ swift_library(
     ],
 )
 
-# Version, channel, commit and icon keys. --config=release stamps them.
+# Info.plist with version, channel, commit, icon, and dev name keys. --config=release stamps them.
 folio_info_plist(
     name = "StampedInfoPlist",
+    src = "Info.plist",
     cargo_toml = "//core/folio_engine:Cargo.toml",
+    dev_bundle_name = "Folio Dev",
     short_version = "1.0.0",
 )
 
@@ -43,12 +51,12 @@ macos_application(
     additional_contents = {
         ":folio": "Resources/bin",
     },
-    bundle_id = "app.folio.macos",
+    bundle_id = select({
+        "//tools/release:release_build": RELEASE_BUNDLE_ID,
+        "//conditions:default": DEV_BUNDLE_ID,
+    }),
     bundle_name = "Folio",
-    infoplists = [
-        "Info.plist",
-        ":StampedInfoPlist",
-    ],
+    infoplists = [":StampedInfoPlist"],
     minimum_os_version = "26.0",
     resources = [
         "AppIcon.icns",
@@ -60,6 +68,34 @@ macos_application(
     deps = [
         ":FolioAppMainLib",
     ],
+)
+
+# The Folio.app directory. $(rlocationpath :FolioApp) names the run script instead.
+filegroup(
+    name = "FolioApp_bundle",
+    srcs = [":FolioApp"],
+)
+
+# Fails when the built app does not have the bundle ID, name, and handler rank of its configuration.
+sh_test(
+    name = "FolioApp_identity_test",
+    srcs = ["app_identity_test.sh"],
+    args = select({
+        "//tools/release:release_build": [
+            "release",
+            RELEASE_BUNDLE_ID,
+            "Folio",
+            "Alternate",
+        ],
+        "//conditions:default": [
+            "dev",
+            DEV_BUNDLE_ID,
+            "'Folio Dev'",
+            "None",
+        ],
+    }) + ["$(rlocationpath :FolioApp_bundle)"],
+    data = [":FolioApp_bundle"],
+    env = {"RELEASE_BUNDLE_ID": RELEASE_BUNDLE_ID},
 )
 
 # Build with --config=release for the stamped, optimized release disk image.

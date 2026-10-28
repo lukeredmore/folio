@@ -20,9 +20,9 @@ def _is_release(ctx):
 def _folio_info_plist_impl(ctx):
     out = ctx.actions.declare_file(ctx.label.name + ".plist")
     release = _is_release(ctx)
-    inputs = [ctx.file.cargo_toml]
+    inputs = [ctx.file.src, ctx.file.cargo_toml]
     args = ctx.actions.args()
-    args.add_all([out, ctx.file.cargo_toml, ctx.attr.short_version])
+    args.add_all([out, ctx.file.src, ctx.file.cargo_toml, ctx.attr.short_version, ctx.attr.dev_bundle_name])
     if release:
         inputs.append(ctx.info_file)
         args.add(ctx.info_file)
@@ -35,9 +35,11 @@ def _folio_info_plist_impl(ctx):
         command = """
 set -euo pipefail
 out="$1"
-cargo_toml="$2"
-short_version="$3"
-status_file="${4:-}"
+src="$2"
+cargo_toml="$3"
+short_version="$4"
+dev_bundle_name="$5"
+status_file="${6:-}"
 """ + _STAMP_FUNCTION + """
 engine_version="$(/usr/bin/awk -F'"' '/^version[[:space:]]*=/ { print $2; exit }' "$cargo_toml")"
 if [[ -z "$engine_version" ]]; then
@@ -60,7 +62,17 @@ if [[ -n "$status_file" ]]; then
     exit 1
   fi
 fi
-/usr/bin/plutil -create xml1 "$out"
+/usr/bin/plutil -convert xml1 -o "$out" "$src"
+/bin/chmod u+w "$out"
+if [[ -z "$status_file" ]]; then
+  # Dev builds show their own name and never become the default app for a document type.
+  /usr/bin/plutil -replace CFBundleName -string "$dev_bundle_name" "$out"
+  /usr/bin/plutil -replace CFBundleDisplayName -string "$dev_bundle_name" "$out"
+  doc_types="$(/usr/bin/plutil -extract CFBundleDocumentTypes raw -o - "$out" 2>/dev/null || echo 0)"
+  for ((i = 0; i < doc_types; i++)); do
+    /usr/bin/plutil -replace "CFBundleDocumentTypes.$i.LSHandlerRank" -string None "$out"
+  done
+fi
 /usr/bin/plutil -insert CFBundleIconFile -string "$icon" "$out"
 /usr/bin/plutil -insert CFBundleShortVersionString -string "$short_version" "$out"
 /usr/bin/plutil -insert CFBundleVersion -string "$build_number" "$out"
@@ -73,8 +85,21 @@ fi
 
 folio_info_plist = rule(
     implementation = _folio_info_plist_impl,
-    doc = "Writes the Info.plist keys that differ between dev and release builds of Folio.app.",
+    doc = """Writes the Info.plist of Folio.app: `src` plus the keys that differ between dev and release.
+
+Dev builds replace the bundle name and display name with `dev_bundle_name` and set every document
+type's LSHandlerRank to None. Release builds keep the values in `src`.
+""",
     attrs = {
+        "src": attr.label(
+            allow_single_file = [".plist"],
+            mandatory = True,
+            doc = "The Info.plist that release builds use as is.",
+        ),
+        "dev_bundle_name": attr.string(
+            mandatory = True,
+            doc = "CFBundleName and CFBundleDisplayName of dev builds.",
+        ),
         "cargo_toml": attr.label(
             allow_single_file = True,
             mandatory = True,
