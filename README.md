@@ -87,7 +87,7 @@ bazel build --config=release //:FolioDmg              # bazel-bin/macos/FolioApp
 bazel run //tools:buildifier
 ```
 
-`--config=release` stamps the build from `tools/release/workspace_status.sh`: `CFBundleVersion` is the commit count, `FolioCommitSHA` is the short commit SHA, `FolioBuildChannel` is `release`, and the commit count replaces the patch number of the extension version in `extension.toml`. Set `FOLIO_VERSION` to override `CFBundleShortVersionString`. Builds without `--config=release` are dev builds with the dev channel and the **DEV** icon.
+`--config=release` stamps the build from `tools/release/workspace_status.sh`: `CFBundleVersion` is the commit count, `FolioCommitSHA` is the short commit SHA, `FolioBuildChannel` is `release`, and the commit count replaces the patch number of the extension version in `extension.toml`. Set `FOLIO_VERSION` to override `CFBundleShortVersionString`. Builds without `--config=release` are dev builds with the dev channel and the **DEV** icon. They run as **Folio Dev** (bundle ID `app.folio.macos.dev`), with their own preferences, CLI queue, and caches, so they never change the state of an installed `Folio.app`. For screenshots and manual checks, use a dev build, open a copy of the project instead of the original, and never send clicks or keystrokes to its window. Use `path:line:column` CLI arguments and window capture instead.
 
 ---
 

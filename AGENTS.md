@@ -48,6 +48,15 @@ bazel run //tools:setup_sourcekit_bsp  # Swift indexing for sourcekit-lsp; see R
 
 Both `bazel run` launchers accept the full `folio` CLI interface (`[path[:line[:column]] ...]`, directories, `.`, `~`, `file://`, `--help`, `--version`) and resolve relative paths against your shell's working directory (`BUILD_WORKING_DIRECTORY`).
 
+Builds without `--config=release` are dev builds. They run as **Folio Dev** with bundle ID `app.folio.macos.dev`, so they have their own preferences (`~/Library/Preferences/app.folio.macos.dev.plist`), CLI queue, caches, and SSH sockets. They do not signal or update the installed `Folio.app`, do not install the `folio` command, and are never the default app for a file type.
+
+For screenshots and manual checks:
+
+1. Use a dev build. Never launch `/Applications/Folio.app`.
+2. Open a copy of the project (for example `cp -R examples /tmp/folio-check`), never the user's original files.
+3. Never send clicks or keystrokes to any window. Open files with `path:line:column` CLI arguments and capture the window with `screencapture -l <window-id>`.
+4. Quit the dev build when the capture is done. Its window takes keyboard focus when it opens.
+
 Cargo still works for editor tooling (rust-analyzer), but it is not a gate. Bazel is the source of truth for builds, lints, and tests.
 
 ---
