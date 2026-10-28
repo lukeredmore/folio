@@ -1,43 +1,5 @@
 import Foundation
-import XCTest
 @testable import Folio
-
-struct UpstreamSpecTestEntry: Decodable {
-    let example: Int
-    let section: String
-    let markdown: String
-    let html: String
-    let extensions: [String]
-}
-
-extension XCTestCase {
-    func locateSpecFixture(_ relativePath: String) throws -> URL {
-        let fm = FileManager.default
-        let env = ProcessInfo.processInfo.environment
-        let basename = (relativePath as NSString).lastPathComponent
-        var candidates: [String] = [relativePath]
-        if let testSrcdir = env["TEST_SRCDIR"] {
-            let workspace = env["TEST_WORKSPACE"] ?? "_main"
-            candidates.append("\(testSrcdir)/\(workspace)/\(relativePath)")
-            candidates.append("\(testSrcdir)/folio/\(relativePath)")
-            if let entries = try? fm.contentsOfDirectory(atPath: testSrcdir) {
-                for entry in entries {
-                    candidates.append("\(testSrcdir)/\(entry)/\(relativePath)")
-                    candidates.append("\(testSrcdir)/\(entry)/\(basename)")
-                }
-            }
-        }
-        if let pwd = env["PWD"] {
-            candidates.append("\(pwd)/\(relativePath)")
-        }
-        for candidate in candidates {
-            if fm.fileExists(atPath: candidate) {
-                return URL(fileURLWithPath: candidate)
-            }
-        }
-        throw NSError(domain: "FolioTests", code: 404, userInfo: [NSLocalizedDescriptionKey: "Missing spec fixture: \(relativePath)"])
-    }
-}
 
 final class MockRemoteTransport: RemoteFileTransport, @unchecked Sendable {
     private let lock = NSLock()

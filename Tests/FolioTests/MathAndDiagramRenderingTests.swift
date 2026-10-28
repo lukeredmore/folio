@@ -1,5 +1,4 @@
 import AppKit
-import SwiftUI
 import XCTest
 @testable import Folio
 
@@ -85,34 +84,6 @@ final class MathAndDiagramRenderingTests: XCTestCase {
             let tail = Array(repeating: "word", count: words).joined(separator: " ")
             let line = "- unmatched *asterisk \(tail) and _underscore \(tail) and `_subscriptions: Vec<Sub>` \(tail)"
             style(Array(repeating: line, count: 25).joined(separator: "\n"))
-        }
-
-        // Also verify full MainWindowView + HybridMarkdownTextView layout with AGENTS.md files if present on disk
-        let candidatePaths = [
-            "/Users/lukeredmore/Developer/Folio/third_party/zed/upstream/AGENTS.md",
-            "/Users/lukeredmore/Developer/PDLaunch/AGENTS.md"
-        ]
-        let defaultsSuiteName = "com.folio.tests.perf.\(UUID().uuidString)"
-        let testDefaults = UserDefaults(suiteName: defaultsSuiteName)!
-        defer { testDefaults.removePersistentDomain(forName: defaultsSuiteName) }
-
-        let vm = EditorWorkspaceViewModel(userDefaults: testDefaults)
-        let window = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 901, height: 1036),
-            styleMask: [.titled, .resizable],
-            backing: .buffered,
-            defer: false
-        )
-        window.contentView = NSHostingView(rootView: MainWindowView(viewModel: vm))
-        window.displayIfNeeded()
-
-        for path in candidatePaths where FileManager.default.fileExists(atPath: path) {
-            let t0 = CFAbsoluteTimeGetCurrent()
-            vm.openFile(at: URL(fileURLWithPath: path))
-            RunLoop.main.run(mode: .default, before: Date().addingTimeInterval(0.02))
-            window.displayIfNeeded()
-            let dt = CFAbsoluteTimeGetCurrent() - t0
-            XCTAssertLessThan(dt, 0.5, "Opening and rendering \(path) should complete in <0.5s, took \(dt)s")
         }
     }
 

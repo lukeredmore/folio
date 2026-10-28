@@ -104,28 +104,6 @@ final class LaTeXDocumentStylingAndMathCrashTests: XCTestCase {
         XCTAssertEqual(fbFont?.familyName, customTheme.bodyFont(size: customTheme.baseFontSize).familyName)
     }
 
-    func testPlainTexAndPlain2TexRenderWithoutCrash() throws {
-        let candidatePaths = [
-            "/Users/lukeredmore/Downloads/plain.tex",
-            "/Users/lukeredmore/Downloads/plain-2.tex"
-        ]
-        for path in candidatePaths where FileManager.default.fileExists(atPath: path) {
-            let text = try String(contentsOfFile: path, encoding: .utf8)
-            let storage = NSTextStorage(string: text)
-            let analysis = LaTeXLiveStyler.applyStyles(
-                to: storage,
-                theme: .daylight,
-                sourceCodeMode: false,
-                prettyMode: true,
-                focusMode: false,
-                selectedRange: NSRange(location: 0, length: 0),
-                containerWidth: 760,
-                fileURL: URL(fileURLWithPath: path)
-            )
-            XCTAssertFalse(analysis.decorations.isEmpty, "Expected decorations for \(path)")
-        }
-    }
-
     @MainActor
     func testLaTeXPrintViewCollapsesPreambleAndCommentsAndRespectsSingleSpacedAddressBlocks() throws {
         var commentBlock = ""

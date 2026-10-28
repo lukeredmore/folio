@@ -30,7 +30,6 @@ swift_test(
         "6",
     ],
     data = [
-        "@markdown_spec//:all_spec_files",
         "@swift_math//:math_fonts_files",
         "//tst/specs:all_behavior_specs",
     ] + glob(["examples/**"]),
