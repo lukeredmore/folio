@@ -20,6 +20,16 @@ final class LaTeXProseMacroExpansionTests: XCTestCase {
         XCTAssertEqual(expansion.segments, [.text("salt and pepper", LaTeXProseStyle())])
     }
 
+    func testControlWordBeforeArgumentStaysSeparate() {
+        let defs = macros(#"\newcommand{\V}[1]{{\itshape\selectfont#1\/}}\newcommand{\T}{T}\newcommand{\W}[1]{\T #1}"#)
+        XCTAssertEqual(LaTeXProseMacroExpander.expandCall(source: #"\V{word}"#, macros: defs)?.segments, [.text("word", style { $0.italic = true })])
+        XCTAssertEqual(LaTeXMacroExpander.substituteArguments(["d"], into: #"\mathrm#1"#), #"\mathrm d"#)
+        XCTAssertEqual(LaTeXMacroExpander.substituteArguments(["d"], into: ##"\\#1"##), #"\\d"#, "an escaped backslash is not a control word")
+        XCTAssertEqual(
+            LaTeXProseMacroExpander.expandCall(source: #"\W{x}"#, macros: defs)?.segments, [.text("Tx", LaTeXProseStyle())],
+            "spaces after a control word in a body are skipped, as in TeX")
+    }
+
     func testOptionalDefaultArgument() throws {
         let defs = macros(#"\newcommand{\opt}[2][none]{#2=#1}"#)
         XCTAssertEqual(LaTeXProseMacroExpander.expandCall(source: #"\opt{x}"#, macros: defs)?.segments, [.text("x=none", LaTeXProseStyle())])

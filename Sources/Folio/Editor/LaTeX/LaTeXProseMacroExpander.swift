@@ -137,10 +137,13 @@ extension LaTeXProseMacroExpander {
             var end = consumesStar ? afterWord + 1 : afterWord
             guard let (args, afterArgs) = LaTeXMacroExpander.readArguments(for: def, in: chars, from: end) else { return nil }
             end = afterArgs
-            if def.argCount == 0 && def.parameterText == nil && style == nil
-                && end + 1 < chars.count && chars[end] == "{" && chars[end + 1] == "}"
-            {
+            let takesNoArguments = def.argCount == 0 && def.parameterText == nil && !consumesStar
+            if takesNoArguments && style == nil && end + 1 < chars.count && chars[end] == "{" && chars[end + 1] == "}" {
                 end += 2
+            } else if takesNoArguments && style != nil && !hasStar {
+                // Inside a body, TeX skips the spaces after a control word. A call on the source
+                // line keeps them, so the line's visible spacing does not change.
+                end = LaTeXMacroExpander.skipSpaces(chars, from: end)
             }
             let body = LaTeXMacroExpander.substituteArguments(args, into: def.replacement)
             expandedBudget -= body.count
