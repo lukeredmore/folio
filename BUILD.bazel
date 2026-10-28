@@ -39,6 +39,7 @@ swift_test(
         "-warnings-as-errors",
     ],
     data = [
+        "//macos/FolioApp:folio",
         "//tst/specs:all_behavior_specs",
         "@swift_math//:math_fonts_files",
     ] + glob(["examples/**"]),

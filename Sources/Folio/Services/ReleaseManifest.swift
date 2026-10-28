@@ -211,7 +211,10 @@ public struct AppVersionInfo: Equatable, Sendable {
         } else {
             isDevFromIcon = FolioBrandIcon.isRunningDevBuild(bundle: bundle, environment: environment)
         }
-        let isDevBuild = isDevFromIcon || normalizedSHA.isEmpty || normalizedSHA == "dev"
+        let isDevFromBundleID = (info["CFBundleIdentifier"] as? String).map {
+            !FolioAppIdentity(bundleIdentifier: $0).isRelease
+        }
+        let isDevBuild = isDevFromIcon || isDevFromBundleID == true || normalizedSHA.isEmpty || normalizedSHA == "dev"
 
         return AppVersionInfo(
             shortVersion: shortVersion,

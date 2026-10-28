@@ -119,7 +119,8 @@ final class ShortcutsAndCLITests: XCTestCase {
         let installedURL = FolioCLIManager.shared.setupCLIOnFirstLaunchIfNeeded(
             candidateBinDirs: [tempBinDir],
             appBundleURL: URL(fileURLWithPath: "/Applications/Folio.app"),
-            userDefaults: defaults
+            userDefaults: defaults,
+            identity: FolioAppIdentity(bundleIdentifier: FolioAppIdentity.releaseBundleIdentifier)
         )
         let expectedScriptPath = tempBinDir.appendingPathComponent("folio").path
         XCTAssertEqual(installedURL?.path, expectedScriptPath)

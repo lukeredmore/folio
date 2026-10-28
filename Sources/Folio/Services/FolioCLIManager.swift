@@ -19,10 +19,7 @@ public final class FolioCLIManager {
         let appSupport =
             FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
             ?? FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Library/Application Support")
-        return
-            appSupport
-            .appendingPathComponent("Folio", isDirectory: true)
-            .appendingPathComponent("cli_open_requests.txt")
+        return FolioAppIdentity.current.cliQueueFileURL(in: appSupport)
     }
 
     public static var defaultCandidateBinDirectories: [URL] {
@@ -49,19 +46,22 @@ public final class FolioCLIManager {
         return "/Applications/Folio.app"
     }
 
+    /// Installs the launcher on the first release launch. Dev builds never install it on their own.
     @discardableResult
     public func setupCLIOnFirstLaunchIfNeeded(
         candidateBinDirs: [URL]? = nil,
         appBundleURL: URL? = nil,
-        queueFileURL: URL = defaultQueueFileURL,
-        userDefaults: UserDefaults = .standard
+        queueFileURL: URL? = nil,
+        userDefaults: UserDefaults = .standard,
+        identity: FolioAppIdentity = .current
     ) -> URL? {
+        guard identity.isRelease else { return nil }
         let alreadyInstalled = userDefaults.bool(forKey: Self.cliInstalledDefaultsKey)
         if alreadyInstalled,
             let existingPath = userDefaults.string(forKey: Self.cliInstalledPathDefaultsKey),
             FileManager.default.isExecutableFile(atPath: existingPath),
             let content = try? String(contentsOfFile: existingPath, encoding: .utf8),
-            content.contains("resolve_self_app_bundle")
+            content.contains(Self.cliScriptMarker)
         {
             return URL(fileURLWithPath: existingPath)
         }
@@ -69,22 +69,26 @@ public final class FolioCLIManager {
             into: candidateBinDirs,
             appBundleURL: appBundleURL,
             queueFileURL: queueFileURL,
-            userDefaults: userDefaults
+            userDefaults: userDefaults,
+            identity: identity
         )
     }
 
+    /// Writes the launcher as `folio` for release and `folio-dev` for other bundle IDs.
     @discardableResult
     public func installCLI(
         into candidateBinDirs: [URL]? = nil,
         appBundleURL: URL? = nil,
-        queueFileURL: URL = defaultQueueFileURL,
-        userDefaults: UserDefaults = .standard
+        queueFileURL: URL? = nil,
+        userDefaults: UserDefaults = .standard,
+        identity: FolioAppIdentity = .current
     ) -> URL? {
         let dirs = candidateBinDirs ?? Self.defaultCandidateBinDirectories
         let bundlePath = Self.resolveAppBundlePath(explicitBundleURL: appBundleURL)
         let scriptContent = Self.generateCLIScript(
             fallbackAppBundlePath: bundlePath,
-            queueFilePath: queueFileURL.path
+            queueFilePath: queueFileURL?.path,
+            bundleIdentifier: identity.bundleIdentifier
         )
         let fm = FileManager.default
         var primaryInstalledURL: URL?
@@ -95,7 +99,7 @@ public final class FolioCLIManager {
                 try? fm.createDirectory(at: dirURL, withIntermediateDirectories: true)
             }
             guard fm.isWritableFile(atPath: dirURL.path) else { continue }
-            let targetURL = dirURL.appendingPathComponent("folio")
+            let targetURL = dirURL.appendingPathComponent(identity.cliCommandName)
             do {
                 if let attrs = try? fm.attributesOfItem(atPath: targetURL.path),
                     attrs[.type] as? FileAttributeType == .typeSymbolicLink
@@ -121,15 +125,16 @@ public final class FolioCLIManager {
 
     public func installCLIFromMenu() {
         let installedURL = installCLI()
+        let command = FolioAppIdentity.current.cliCommandName
         let alert = NSAlert()
         if let installedURL {
             alert.alertStyle = .informational
-            alert.messageText = "Installed 'folio' Command"
+            alert.messageText = "Installed '\(command)' Command"
             alert.informativeText =
-                "The 'folio' command-line launcher is installed at \(installedURL.path).\n\nOpen files or folders from your terminal with:\nfolio <path>"
+                "The '\(command)' command-line launcher is installed at \(installedURL.path).\n\nOpen files or folders from your terminal with:\n\(command) <path>"
         } else {
             alert.alertStyle = .warning
-            alert.messageText = "Could Not Install 'folio' Command"
+            alert.messageText = "Could Not Install '\(command)' Command"
             alert.informativeText = "Could not write to /usr/local/bin or ~/.local/bin."
         }
         alert.runModal()

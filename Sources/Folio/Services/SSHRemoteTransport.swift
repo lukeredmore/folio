@@ -13,7 +13,7 @@ public struct SSHRemoteTransport: RemoteFileTransport {
     func controlSocketPath(for mount: RemoteMountSpec) -> String {
         let rawKey = "\(mount.sshDestination):\(mount.port ?? 22)"
         let hash = SHA256.hash(data: Data(rawKey.utf8)).prefix(8).map { String(format: "%02x", $0) }.joined()
-        return "/tmp/folio-ssh-\(hash).sock"
+        return FolioAppIdentity.current.sshControlSocketPath(hash: hash)
     }
 
     func baseSSHArguments(for mount: RemoteMountSpec) -> [String] {

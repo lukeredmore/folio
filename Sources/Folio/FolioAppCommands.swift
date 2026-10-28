@@ -41,7 +41,7 @@ struct FolioAppCommands: Commands {
                 }
             }
 
-            Button("Install 'folio' Command in PATH...") {
+            Button("Install '\(FolioAppIdentity.current.cliCommandName)' Command in PATH...") {
                 FolioCLIManager.shared.installCLIFromMenu()
             }
         }

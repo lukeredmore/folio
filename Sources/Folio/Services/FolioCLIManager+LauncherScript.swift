@@ -2,18 +2,48 @@ import Foundation
 
 extension FolioCLIManager {
 
+    /// Marks launchers that signal only the app with their bundle ID. Setup replaces launchers without it.
+    static let cliScriptMarker = "running_pids_for_bundle_id"
+
     /// Generates the executable `folio` shell script (similar to VS Code's `code` and Zed's `zed` CLI launcher).
+    ///
+    /// The script opens an app with `bundleIdentifier` and signals only running processes of the bundle ID
+    /// that it opens. The queue file comes from that bundle ID unless `queueFilePath` is set.
     public static func generateCLIScript(
         fallbackAppBundlePath: String,
-        queueFilePath: String = defaultQueueFileURL.path
+        queueFilePath: String? = nil,
+        bundleIdentifier: String = FolioAppIdentity.current.bundleIdentifier
     ) -> String {
         """
         #!/usr/bin/env bash
         # Folio CLI launcher — opens Markdown files and folders in Folio.app
         set -euo pipefail
-        QUEUE_FILE="${FOLIO_CLI_QUEUE_FILE:-\(queueFilePath)}"
+        QUEUE_FILE="${FOLIO_CLI_QUEUE_FILE:-\(queueFilePath ?? "")}"
         FALLBACK_APP="${FOLIO_FALLBACK_APP:-\(fallbackAppBundlePath)}"
+        EXPECTED_BUNDLE_ID="\(bundleIdentifier)"
         CALLER_CWD="${FOLIO_CALLER_CWD:-${BUILD_WORKING_DIRECTORY:-$(pwd -P)}}"
+
+        bundle_identifier() {
+            /usr/libexec/PlistBuddy -c "Print :CFBundleIdentifier" "$1/Contents/Info.plist" 2>/dev/null || true
+        }
+
+        state_directory_name() {
+            if [[ "$1" == "\(FolioAppIdentity.releaseBundleIdentifier)" ]]; then echo "Folio"; else echo "Folio-$1"; fi
+        }
+
+        running_pids_for_bundle_id() {
+            local pid exe
+            for pid in $({ pgrep -x Folio; pgrep -x FolioApp; } 2>/dev/null || true); do
+                exe="$(ps -p "${pid}" -o comm= 2>/dev/null || true)"
+                if [[ "${exe}" != /* ]]; then
+                    exe="$(/usr/sbin/lsof -a -p "${pid}" -d txt -Fn 2>/dev/null | sed -n 's/^n//p' | grep -m 1 '/Contents/MacOS/' || true)"
+                fi
+                [[ "${exe}" == */Contents/MacOS/* ]] || continue
+                if [[ "$(bundle_identifier "${exe%/Contents/MacOS/*}")" == "$1" ]]; then
+                    echo "${pid}"
+                fi
+            done
+        }
 
         resolve_self_app_bundle() {
             local source="${BASH_SOURCE[0]}"
@@ -46,14 +76,14 @@ extension FolioCLIManager {
                 echo "${self_bundle}"
                 return 0
             fi
-            for candidate in "/Applications/Folio.app" "$HOME/Applications/Folio.app" "${FALLBACK_APP}"; do
-                if [[ -n "${candidate}" && -d "${candidate}" ]]; then
+            for candidate in "${FALLBACK_APP}" "/Applications/Folio.app" "$HOME/Applications/Folio.app"; do
+                if [[ -n "${candidate}" && -d "${candidate}" && "$(bundle_identifier "${candidate}")" == "${EXPECTED_BUNDLE_ID}" ]]; then
                     echo "${candidate}"
                     return 0
                 fi
             done
             local found
-            found="$(mdfind "kMDItemCFBundleIdentifier == 'app.folio.macos'" 2>/dev/null | head -n 1 || true)"
+            found="$(mdfind "kMDItemCFBundleIdentifier == '${EXPECTED_BUNDLE_ID}'" 2>/dev/null | head -n 1 || true)"
             if [[ -n "${found}" && -d "${found}" ]]; then
                 echo "${found}"
                 return 0
@@ -123,21 +153,28 @@ extension FolioCLIManager {
             done
         fi
 
-        if (( FOREGROUND == 1 )); then
-            if APP_BUNDLE="$(resolve_app_bundle)"; then
-                export FOLIO_CALLER_CWD="${CALLER_CWD}"
-                APP_EXEC="${APP_BUNDLE}/Contents/MacOS/Folio"
-                if [[ ! -x "${APP_EXEC}" && -x "${APP_BUNDLE}/Contents/MacOS/FolioApp" ]]; then
-                    APP_EXEC="${APP_BUNDLE}/Contents/MacOS/FolioApp"
-                fi
-                if (( ${#ABS_PATHS[@]} > 0 )); then
-                    exec "${APP_EXEC}" "${ABS_PATHS[@]}"
-                else
-                    exec "${APP_EXEC}"
-                fi
-            fi
+        if ! APP_BUNDLE="$(resolve_app_bundle)"; then
             echo "folio: could not locate Folio.app. Move Folio.app to /Applications or set FOLIO_APP_PATH." >&2
             exit 1
+        fi
+
+        if (( FOREGROUND == 1 )); then
+            export FOLIO_CALLER_CWD="${CALLER_CWD}"
+            APP_EXEC="${APP_BUNDLE}/Contents/MacOS/Folio"
+            if [[ ! -x "${APP_EXEC}" && -x "${APP_BUNDLE}/Contents/MacOS/FolioApp" ]]; then
+                APP_EXEC="${APP_BUNDLE}/Contents/MacOS/FolioApp"
+            fi
+            if (( ${#ABS_PATHS[@]} > 0 )); then
+                exec "${APP_EXEC}" "${ABS_PATHS[@]}"
+            else
+                exec "${APP_EXEC}"
+            fi
+        fi
+
+        BUNDLE_ID="$(bundle_identifier "${APP_BUNDLE}")"
+        BUNDLE_ID="${BUNDLE_ID:-\(FolioAppIdentity.releaseBundleIdentifier)}"
+        if [[ -z "${QUEUE_FILE}" ]]; then
+            QUEUE_FILE="$HOME/Library/Application Support/$(state_directory_name "${BUNDLE_ID}")/cli_open_requests.txt"
         fi
 
         if (( ${#ABS_PATHS[@]} > 0 )); then
@@ -148,27 +185,22 @@ extension FolioCLIManager {
         fi
 
         if (( NEW_INSTANCE == 0 )); then
-            RUNNING_PIDS="$(pgrep -x "Folio" 2>/dev/null || pgrep -x "FolioApp" 2>/dev/null || true)"
+            RUNNING_PIDS="$(running_pids_for_bundle_id "${BUNDLE_ID}")"
             if [[ -n "${RUNNING_PIDS}" ]]; then
                 for pid in ${RUNNING_PIDS}; do
                     kill -USR1 "${pid}" 2>/dev/null || true
                 done
-                osascript -e 'tell application "System Events" to set frontmost of every process whose name is "Folio" or name is "FolioApp" to true' >/dev/null 2>&1 || true
+                osascript -e "tell application \\"System Events\\" to set frontmost of every process whose bundle identifier is \\"${BUNDLE_ID}\\" to true" >/dev/null 2>&1 || true
                 exit 0
             fi
         fi
 
-        if APP_BUNDLE="$(resolve_app_bundle)"; then
-            OPEN_FLAGS=(-a "${APP_BUNDLE}")
-            if (( NEW_INSTANCE == 1 )); then OPEN_FLAGS=(-n -a "${APP_BUNDLE}"); fi
-            if (( ${#ABS_PATHS[@]} > 0 )); then
-                open "${OPEN_FLAGS[@]}" --args "${ABS_PATHS[@]}"
-            else
-                open "${OPEN_FLAGS[@]}"
-            fi
+        OPEN_FLAGS=(-a "${APP_BUNDLE}")
+        if (( NEW_INSTANCE == 1 )); then OPEN_FLAGS=(-n -a "${APP_BUNDLE}"); fi
+        if (( ${#ABS_PATHS[@]} > 0 )); then
+            open "${OPEN_FLAGS[@]}" --args "${ABS_PATHS[@]}"
         else
-            echo "folio: could not locate Folio.app. Move Folio.app to /Applications or set FOLIO_APP_PATH." >&2
-            exit 1
+            open "${OPEN_FLAGS[@]}"
         fi
         """
     }
