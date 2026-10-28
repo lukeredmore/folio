@@ -11,13 +11,19 @@ public final class HybridMarkdownTextView: NSTextView {
 
     public var currentTheme: EditorTheme = .daylight {
         didSet {
-            if currentTheme != oldValue { needsDisplay = true }
+            if currentTheme != oldValue {
+                needsDisplay = true
+                scheduleHTMLBlockOverlaySync()
+            }
         }
     }
 
     public var typographySettings: EditorTypographySettings = .default {
         didSet {
-            if typographySettings != oldValue { needsDisplay = true }
+            if typographySettings != oldValue {
+                needsDisplay = true
+                scheduleHTMLBlockOverlaySync()
+            }
         }
     }
 
@@ -26,6 +32,7 @@ public final class HybridMarkdownTextView: NSTextView {
             if lineDecorations != oldValue {
                 refreshWideTableLayout()
                 syncInlineVideoOverlayWithDecorations()
+                scheduleHTMLBlockOverlaySync()
                 needsDisplay = true
             }
         }
@@ -78,6 +85,15 @@ public final class HybridMarkdownTextView: NSTextView {
     public internal(set) var activeInlineVideoURL: String?
     var activeInlineVideoRange: NSRange?
     var activeInlineVideoPlayer: AVPlayer?
+    /// Web views over the rendered HTML blocks near the visible area, in document order.
+    var htmlBlockOverlays: [HTMLBlockWebView] = []
+    /// The web view that holds the current HTML block selection, if any.
+    weak var htmlBlockSelectionOwner: HTMLBlockWebView?
+    var isHTMLBlockOverlaySyncScheduled = false
+    var isHTMLBlockHighlightPushScheduled = false
+    var isApplyingHTMLBlockSelection = false
+    var pendingHTMLBlockRestyle: Task<Void, Never>?
+    var pendingHTMLBlockSourceToggle: Task<Void, Never>?
 
     public func applyProgrammaticDocumentText(_ newText: String, selectedRange: NSRange) {
         let coord = editorCoordinator

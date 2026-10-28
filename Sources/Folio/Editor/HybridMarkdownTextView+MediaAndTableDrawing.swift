@@ -99,6 +99,9 @@ extension HybridMarkdownTextView {
                 withAttributes: badgeAttrs
             )
 
+        case let .htmlBlockRendered(htmlSource, fullBlockRange, _, dimFactor):
+            drawHTMLBlockFallback(source: htmlSource, fullBlockRange: fullBlockRange, dirtyRect: bounds, dimFactor: dimFactor)
+
         case let .imageRendered(url, alt, fullRange, explicitWidth, explicitHeight, baseDirectoryURL, dimFactor):
             let lineFrag = layoutManager.lineFragmentRect(forGlyphAt: glyphRange.location, effectiveRange: nil)
             let imgGlyphIdx = layoutManager.glyphIndexForCharacter(at: fullRange.location)

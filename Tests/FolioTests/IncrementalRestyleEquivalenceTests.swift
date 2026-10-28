@@ -26,6 +26,14 @@ final class IncrementalRestyleEquivalenceTests: XCTestCase {
         )
     }
 
+    func testHTMLBlocksShowcaseEditsMatchFullRestyle() throws {
+        try runEdits(
+            "html_blocks_showcase",
+            workspace: PerfFixtures.makeWorkspace(copyingExample: "html_blocks_showcase.md"),
+            seed: 0x5EED_0004
+        )
+    }
+
     func testPerfFixtureEditsMatchFullRestyle() throws {
         try runEdits("perf_200", workspace: PerfFixtures.makeWorkspace(lineCount: 200), seed: 0x5EED_0003)
     }
@@ -80,6 +88,7 @@ final class IncrementalRestyleEquivalenceTests: XCTestCase {
     /// the editor and the reference restyle on the same render cache state.
     private func settleBackgroundRenders(_ harness: EditorHarness) {
         harness.waitUntil(timeout: 10) { DiagramImageRenderer.shared.waitUntilIdle(timeout: 0.001) }
+        harness.waitUntil(timeout: 20) { !harness.textView.hasPendingHTMLBlockLayout }
         harness.drainUntilIdle()
     }
 }

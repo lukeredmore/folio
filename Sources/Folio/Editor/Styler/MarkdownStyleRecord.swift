@@ -77,6 +77,8 @@ extension BlockDecorationKind {
             return .mermaidBlockRendered(mermaidSource: source, fullBlockRange: range.shifted(by: delta), dimFactor: dim)
         case let .svgBlockRendered(source, range, dim):
             return .svgBlockRendered(svgSource: source, fullBlockRange: range.shifted(by: delta), dimFactor: dim)
+        case let .htmlBlockRendered(source, range, width, dim):
+            return .htmlBlockRendered(htmlSource: source, fullBlockRange: range.shifted(by: delta), layoutWidth: width, dimFactor: dim)
         case let .imageRendered(url, alt, range, width, height, baseURL, dim):
             return .imageRendered(
                 url: url, alt: alt, fullRange: range.shifted(by: delta), explicitWidth: width,

@@ -57,6 +57,8 @@ final class MarkdownStylePass {
     private let indentedCodeBlockLines: Set<Int>
     private let multiLineParagraphLines: Set<Int>
     private let astLinksByLine: [Int: [CmarkAstInline]]
+    /// Line count of each CommonMark HTML block, by its one-based first line.
+    private let htmlBlockLineCounts: [Int: Int]
 
     private(set) var headings: [OutlineHeading] = []
     private(set) var decorations = MarkdownDecorationPhases()
@@ -122,6 +124,11 @@ final class MarkdownStylePass {
             paragraphLines.formUnion(block.startLine...block.endLine)
         }
         multiLineParagraphLines = paragraphLines
+        var htmlBlocks: [Int: Int] = [:]
+        for block in ast.blocks where block.kind == 7 && block.startLine > 0 && block.endLine >= block.startLine {
+            htmlBlocks[block.startLine] = block.endLine - block.startLine + 1
+        }
+        htmlBlockLineCounts = htmlBlocks
     }
 
     var analysis: MarkdownDocumentAnalysis {
@@ -246,6 +253,20 @@ final class MarkdownStylePass {
             ) {
                 return step
             }
+        }
+
+        // 2c. CommonMark HTML block rendered in a web view
+        if lowerTrimmedLine.hasPrefix("<"), let blockLineCount = htmlBlockLineCounts[lineNumber],
+            let step = Styler.tryStyleHTMLBlock(
+                in: storage, nsString: nsString, lineRange: lineRange, endLineCount: blockLineCount,
+                activeLineRange: activeLineRange, selectedRange: selectedRange, theme: theme,
+                typography: typography, effectiveBaseSize: effectiveBaseSize,
+                effectiveContainerWidth: effectiveContainerWidth, focusMode: focusMode, prettyMode: prettyMode,
+                decorations: &decorations.lines
+            )
+        {
+            state.previousListTextIndent = nil
+            return step
         }
 
         // 3. Horizontal Rule (--- / *** / ___)

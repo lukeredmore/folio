@@ -158,7 +158,8 @@ struct MarkdownASTProjection {
         blocks = ast.blocks.compactMap { block in
             let isIndentedCode = block.kind == 2 && (block.flags & 1) == 0 && block.endLine >= block.startLine
             let isMultiLineParagraph = block.kind == 8 && block.endLine > block.startLine
-            guard block.startLine > 0, isIndentedCode || isMultiLineParagraph else { return nil }
+            let isHTMLBlock = block.kind == 7 && block.endLine >= block.startLine
+            guard block.startLine > 0, isIndentedCode || isMultiLineParagraph || isHTMLBlock else { return nil }
             return Block(kind: block.kind, startLine: block.startLine, endLine: block.endLine)
         }
         links = ast.inlines.filter { ($0.kind == 5 || $0.kind == 6) && $0.endLine >= $0.startLine && $0.startLine > 0 }

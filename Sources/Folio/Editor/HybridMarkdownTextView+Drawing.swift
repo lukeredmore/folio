@@ -28,6 +28,7 @@ extension HybridMarkdownTextView {
         guard !isSourceCodeMode else {
             return
         }
+        scheduleHTMLBlockHighlightPush()
 
         let visibleChars = visibleDecorationCharacterRange(for: rect)
         for (decIdx, dec) in lineDecorations.enumerated() {
@@ -316,8 +317,8 @@ extension HybridMarkdownTextView {
                 borderPath.lineWidth = 1.0
                 borderPath.stroke()
 
-            case .mermaidBlockRendered, .svgBlockRendered, .imageRendered, .listBullet, .horizontalRule, .tableRow, .latexPreambleCard, .latexTheoremCard,
-                .latexAbstractCard, .latexInputCard, .latexEquationNumber, .latexSectionBadge, .latexInlinePill, .latexInlineText,
+            case .mermaidBlockRendered, .svgBlockRendered, .htmlBlockRendered, .imageRendered, .listBullet, .horizontalRule, .tableRow, .latexPreambleCard,
+                .latexTheoremCard, .latexAbstractCard, .latexInputCard, .latexEquationNumber, .latexSectionBadge, .latexInlinePill, .latexInlineText,
                 .latexInlineRichText:
                 drawMediaAndBlockDecoration(
                     dec,

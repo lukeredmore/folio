@@ -41,6 +41,7 @@ public enum BlockDecorationKind: Equatable {
     case mathBlockRendered(latex: String, fullBlockRange: NSRange, dimFactor: CGFloat)
     case mermaidBlockRendered(mermaidSource: String, fullBlockRange: NSRange, dimFactor: CGFloat)
     case svgBlockRendered(svgSource: String, fullBlockRange: NSRange, dimFactor: CGFloat)
+    case htmlBlockRendered(htmlSource: String, fullBlockRange: NSRange, layoutWidth: CGFloat, dimFactor: CGFloat)
     case imageRendered(
         url: String,
         alt: String,

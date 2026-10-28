@@ -27,7 +27,8 @@ extension HybridMarkdownTextView {
             .latexEquationNumber(_, let fullBlockRange, _),
             .mathBlockRendered(_, let fullBlockRange, _),
             .mermaidBlockRendered(_, let fullBlockRange, _),
-            .svgBlockRendered(_, let fullBlockRange, _):
+            .svgBlockRendered(_, let fullBlockRange, _),
+            .htmlBlockRendered(_, let fullBlockRange, _, _):
             return fullBlockRange
         case .codeFenceStart:
             break
