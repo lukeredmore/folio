@@ -63,7 +63,7 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Select Xcode 26+ & compute Folio.dmg Bazel graph hash
+      - name: Select Xcode 26+ & compute the Folio.app input hash
         id: graph
         run: |
           XCODE26="$(ls -d /Applications/Xcode_26*.app 2>/dev/null | sort -V | tail -n 1 || true)"
@@ -72,13 +72,10 @@ jobs:
           fi
           xcodebuild -version
           swiftc --version
-          cat >> ~/.bazelrc <<EOF
-          build --repository_cache=~/.cache/bazel-repo
-          build --disk_cache=~/.cache/bazel-disk
-          EOF
-          chmod +x ./scripts/bazel_target_hash.sh
-          GRAPH_HASH="$(./scripts/bazel_target_hash.sh //:package_folio_dmg)"
-          echo "Computed //:package_folio_dmg Bazel graph hash: $GRAPH_HASH"
+          echo "common --config=ci" >> ~/.bazelrc
+          bazel build --config=release //macos/FolioApp:FolioApp_input_hash
+          GRAPH_HASH="$(cat "$(bazel cquery --config=release --output=files //macos/FolioApp:FolioApp_input_hash)")"
+          echo "Computed //macos/FolioApp:FolioApp_input_hash: $GRAPH_HASH"
           echo "hash=$GRAPH_HASH" >> "$GITHUB_OUTPUT"
 
       - name: Restore cached Folio.dmg if Bazel graph is unchanged
@@ -171,16 +168,35 @@ jobs:
           echo "identity=$IDENTITY" >> "$GITHUB_OUTPUT"
 
       - name: Build Folio.app and package Folio.dmg
+        if: steps.dmg_cache.outputs.cache-hit != 'true' && steps.reuse_release.outputs.reused != 'true'
         env:
-          FOLIO_REPOSITORY: ${{ github.repository }}
           FOLIO_APP_GRAPH_HASH: ${{ steps.graph.outputs.hash }}
           APPLE_CODESIGN_IDENTITY: ${{ steps.codesign.outputs.identity || '-' }}
+        run: |
+          RELEASE_FLAGS=(--config=release "--@build_bazel_rules_apple//apple/build_settings:signing_certificate_name=${APPLE_CODESIGN_IDENTITY}")
+          bazel build "${RELEASE_FLAGS[@]}" //:FolioDmg
+          cp "$(bazel cquery "${RELEASE_FLAGS[@]}" --output=files //:FolioDmg)" Folio.dmg
+          chmod u+w Folio.dmg
+          printf '%s\n' "$FOLIO_APP_GRAPH_HASH" > .folio_dmg_graph_hash
+
+      - name: Notarize and staple Folio.dmg (if configured in Secrets)
+        if: steps.dmg_cache.outputs.cache-hit != 'true' && steps.reuse_release.outputs.reused != 'true'
+        env:
           APPLE_ID: ${{ secrets.APPLE_ID }}
           APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
         run: |
-          chmod +x ./build_app.sh ./scripts/package_dmg.sh
-          ./scripts/package_dmg.sh
+          if [[ -z "$APPLE_ID" || -z "$APPLE_APP_SPECIFIC_PASSWORD" || -z "$APPLE_TEAM_ID" ]]; then
+            echo "No notarization secrets configured; skipping notarization."
+            exit 0
+          fi
+          echo "Submitting Folio.dmg to Apple Notary Service..."
+          xcrun notarytool submit Folio.dmg \
+            --apple-id "$APPLE_ID" \
+            --password "$APPLE_APP_SPECIFIC_PASSWORD" \
+            --team-id "$APPLE_TEAM_ID" \
+            --wait
+          xcrun stapler staple Folio.dmg
 
       - name: Clean up temporary signing keychain
         if: always()
@@ -212,13 +228,7 @@ jobs:
             MOUNTED=1
           fi
 
-          if [[ -f "$MOUNT_DIR/Folio.app/Contents/Info.plist" ]]; then
-            PLIST="$MOUNT_DIR/Folio.app/Contents/Info.plist"
-          elif [[ -f "Folio.app/Contents/Info.plist" ]]; then
-            PLIST="Folio.app/Contents/Info.plist"
-          else
-            PLIST="macos/FolioApp/Info.plist"
-          fi
+          PLIST="$MOUNT_DIR/Folio.app/Contents/Info.plist"
 
           VERSION=$(/usr/libexec/PlistBuddy -c "Print :CFBundleShortVersionString" "$PLIST" 2>/dev/null || echo "1.0.0")
           BUILD_NUM=$(/usr/libexec/PlistBuddy -c "Print :CFBundleVersion" "$PLIST" 2>/dev/null || true)
@@ -269,13 +279,13 @@ jobs:
             bazel-zed-ext-macos26-${{ runner.os }}-${{ hashFiles('MODULE.bazel', 'MODULE.bazel.lock', 'Cargo.lock') }}-
             bazel-zed-ext-macos26-${{ runner.os }}-
 
-      - name: Build and package folio-markdown-outline.tar.gz
+      - name: Build, check, and package folio-markdown-outline.tar.gz
         id: meta
         run: |
-          BUILD_NUM=$(git rev-list --count HEAD 2>/dev/null || echo 1)
-          EXT_VERSION="0.2.${BUILD_NUM}"
-          chmod +x ./zed/package_extension.sh
-          ./zed/package_extension.sh --version "$EXT_VERSION" --output folio-markdown-outline.tar.gz
+          bazel test --config=release //zed/folio_zed_extension:archive_test
+          cp "$(bazel cquery --config=release --output=files //zed/folio_zed_extension:archive)" folio-markdown-outline.tar.gz
+          chmod u+w folio-markdown-outline.tar.gz
+          EXT_VERSION=$(tar -xOzf folio-markdown-outline.tar.gz extension.toml | awk -F'"' '/^version[[:space:]]*=/ { print $2; exit }')
           EXT_SHA256=$(shasum -a 256 folio-markdown-outline.tar.gz | awk '{print $1}')
           echo "extension_version=$EXT_VERSION" >> "$GITHUB_OUTPUT"
           echo "extension_sha256=$EXT_SHA256" >> "$GITHUB_OUTPUT"
