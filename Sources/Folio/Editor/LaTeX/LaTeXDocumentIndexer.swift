@@ -2,7 +2,7 @@ import AppKit
 import FolioEngineFFI
 import Foundation
 
-public struct BibTeXEntry: Equatable {
+public struct BibTeXEntry: Equatable, Sendable {
     public let key: String
     public let entryType: String
     public let author: String
@@ -83,6 +83,12 @@ public struct LaTeXDocumentIndex {
     public var blockTableNumbers: [Int: String] = [:]
     public var bibEntries: [String: BibTeXEntry] = [:]
     public var extraMacros: [String: LaTeXMacroDefinition] = [:]
+    /// Every macro the document can use: its own, its inputs', and its master file's.
+    public var documentMacros: [String: LaTeXMacroDefinition] = [:]
+    /// Resolved files of the preamble's `\input` paths, from the project snapshot.
+    var inputURLs: [String: URL] = [:]
+    /// What this document needs from disk. The styler refreshes the project when it changes.
+    var projectSignature = LaTeXProjectSignature()
     public var documentStyle = LaTeXDocumentStyle()
 
     public var preambleSummaryTitle: String {
@@ -114,12 +120,16 @@ enum LaTeXDocumentIndexer {
         "equation", "align", "gather", "multline", "flalign", "alignat"
     ]
 
+    /// Indexes the document. Input macros, input files, and bibliography entries come from
+    /// `project`, so this does no file I/O.
     static func buildIndex(
         string: String,
         nsString: NSString,
-        baseDirectoryURL: URL?
+        project: LaTeXProjectSnapshot = .empty
     ) -> LaTeXDocumentIndex {
         var idx = LaTeXDocumentIndex()
+        idx.inputURLs = project.inputURLs
+        var masterDirectives: [LaTeXMasterDirective] = []
         let fullLength = nsString.length
         var charIndex = 0
         var inPreamble = true
@@ -129,7 +139,7 @@ enum LaTeXDocumentIndexer {
         var figCounter = 0
         var tabCounter = 0
         var currentContext: (kind: String, number: String, title: String, loc: Int) = ("Section", "1", "Document", 0)
-        var bibFiles: [String] = []
+        var signature = LaTeXProjectSignature()
 
         while charIndex < fullLength {
             let lineRange = nsString.lineRange(for: NSRange(location: charIndex, length: 0))
@@ -189,15 +199,19 @@ enum LaTeXDocumentIndexer {
                 }
             }
 
+            if trimmed.hasPrefix("%"), let directive = LaTeXMasterDirective.parse(line: trimmed) {
+                masterDirectives.append(directive)
+            }
+
             if line.contains("\\") {
                 applyScannedDirectives(
                     in: line,
                     lineLocation: lineRange.location,
                     inPreamble: inPreamble,
-                    baseDirectoryURL: baseDirectoryURL,
+                    project: project,
                     secCounters: &secCounters,
                     currentContext: &currentContext,
-                    bibFiles: &bibFiles,
+                    signature: &signature,
                     into: &idx
                 )
             }
@@ -205,7 +219,9 @@ enum LaTeXDocumentIndexer {
             charIndex = NSMaxRange(lineRange)
         }
 
-        idx.bibEntries = loadBibEntries(referencedFiles: bibFiles, baseDirectoryURL: baseDirectoryURL)
+        signature.masterDirective = LaTeXMasterDirective.preferred(masterDirectives)
+        idx.projectSignature = signature
+        idx.bibEntries = project.bibEntries
         return idx
     }
 }

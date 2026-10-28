@@ -317,7 +317,8 @@ extension HybridMarkdownTextView {
                 borderPath.stroke()
 
             case .mermaidBlockRendered, .svgBlockRendered, .imageRendered, .listBullet, .horizontalRule, .tableRow, .latexPreambleCard, .latexTheoremCard,
-                .latexAbstractCard, .latexInputCard, .latexEquationNumber, .latexSectionBadge, .latexInlinePill, .latexInlineText:
+                .latexAbstractCard, .latexInputCard, .latexEquationNumber, .latexSectionBadge, .latexInlinePill, .latexInlineText,
+                .latexInlineRichText:
                 drawMediaAndBlockDecoration(
                     dec,
                     glyphRange: glyphRange,

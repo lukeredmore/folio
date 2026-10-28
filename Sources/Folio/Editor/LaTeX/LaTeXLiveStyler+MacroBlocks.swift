@@ -100,7 +100,8 @@ extension LaTeXLiveStyler {
         let cmdName = cls.cmd.map { String(cString: $0) } ?? ""
         guard !reservedMacroBlockNames.contains(cmdName) else { return nil }
         let docMacros = LaTeXMathRenderer.currentDocumentMacros()
-        guard let def = docMacros["\\\(cmdName)"], def.argCount >= 1, def.operatorText == nil else { return nil }
+        // Delimited `\def` parameters do not follow the `\cmd[opt]{body}` shape this handles.
+        guard let def = docMacros["\\\(cmdName)"], def.argCount >= 1, def.operatorText == nil, def.parameterText == nil else { return nil }
         let optArg: String? = cls.has_opt_arg ? (cls.opt_arg.map { String(cString: $0) }) : nil
         let openBraceLoc = contentRange.location + Int(cls.open_len) - 1
         guard let closeBraceLoc = findMatchingCloseBrace(in: nsString, openBraceLocation: openBraceLoc, fullLength: fullLength) else {
@@ -109,6 +110,10 @@ extension LaTeXLiveStyler {
         let tpl = analyzeMacroTemplate(def: def, optArg: optArg, docIndex: docIndex, theme: theme, effectiveBaseSize: effectiveBaseSize)
 
         if closeBraceLoc < NSMaxRange(lineRange) {
+            // A call that renders as text is prose; the inline styler expands it.
+            let callStart = contentRange.location + lineText.utf16.prefix { $0 == 0x20 || $0 == 0x09 }.count
+            let callText = nsString.substring(with: NSRange(location: callStart, length: NSMaxRange(contentRange) - callStart))
+            if LaTeXProseMacroExpander.expandCall(source: callText, macros: docMacros) != nil { return nil }
             let dimFactor: CGFloat = (focusMode && !isActiveLine) ? 0.30 : 1.0
             if !tpl.showsBody {
                 styleCollapsedOrDimmedConditionalLine(

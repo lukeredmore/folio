@@ -99,6 +99,12 @@ public struct HybridMarkdownEditorRepresentable: NSViewRepresentable {
             name: FolioMediaImageCache.imageDidLoadNotification,
             object: nil
         )
+        NotificationCenter.default.addObserver(
+            context.coordinator,
+            selector: #selector(Coordinator.latexProjectDidUpdate(_:)),
+            name: LaTeXProjectContext.didUpdateNotification,
+            object: nil
+        )
         scrollView.postsFrameChangedNotifications = true
         scrollView.contentView.postsBoundsChangedNotifications = true
 

@@ -270,6 +270,9 @@ extension HybridMarkdownTextView {
                 )
             }
 
+        case let .latexInlineRichText(lines, spanRange, dimFactor):
+            drawLaTeXInlineRichText(lines: lines, spanRange: spanRange, dimFactor: dimFactor, layoutManager: layoutManager, origin: origin)
+
         default:
             break
         }

@@ -39,6 +39,16 @@ The standalone macOS app (`//:FolioApp`) provides a dedicated writing window wit
 | **Bold / Italic / Code** | `Cmd + B` / `Cmd + I` / ``Cmd + ` `` | Wrap selection in inline Markdown formatting |
 | **Code Fences / Math Block / Table** | `Cmd + Opt + C / M / T` | Insert syntax-highlighted code block, LaTeX math block, or Markdown table |
 
+### LaTeX Projects
+
+A `.tex` file uses the macros of its master document. Folio finds the master with the first rule that matches:
+
+1. A `% !TEX root = path` comment.
+2. An Emacs `%%% TeX-master: "name"` local variable. `TeX-master: t` marks the file as its own master.
+3. A `.tex` file with `\documentclass`, in the same directory and then in the parent directory, that `\input`s or `\include`s the file.
+
+Folio reads the master's preamble and the files that the preamble `\input`s when it opens the file, and again when a file in the same directory changes. Typing does not read files. User macros with arguments render as styled text. A macro whose body does layout work, such as `\vspace` or `\settowidth`, shows its source. The cursor line always shows the source.
+
 ### Included macOS App Themes
 1. **Daylight** (`#ffffff` background, `#4183C4` links, SF Pro / Helvetica Neue)
 2. **Midnight** (`#363B40` dark canvas, `#2E3033` sidebar, `#B8BFC6` body text, `#e0b27e` links)

@@ -9,6 +9,7 @@ final class EditorPerfRecorder: Sendable {
     enum Count: Sendable {
         case parse
         case draw
+        case latexFileOperation
     }
 
     private struct State: Sendable {
@@ -27,6 +28,7 @@ final class EditorPerfRecorder: Sendable {
             switch count {
             case .parse: state.counters.parseCount += 1
             case .draw: state.counters.drawCount += 1
+            case .latexFileOperation: state.counters.latexFileOperationCount += 1
             }
         }
     }

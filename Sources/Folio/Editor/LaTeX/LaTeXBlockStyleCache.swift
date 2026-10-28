@@ -311,6 +311,8 @@ enum LaTeXBlockStyleCache {
                 isCitation: isCitation, dimFactor: dimFactor)
         case let .latexInlineText(text, font, range, dimFactor):
             newKind = .latexInlineText(text: text, font: font, range: shiftRange(range, by: delta), dimFactor: dimFactor)
+        case let .latexInlineRichText(lines, range, dimFactor):
+            newKind = .latexInlineRichText(lines: lines, range: shiftRange(range, by: delta), dimFactor: dimFactor)
         }
         return LineDecoration(lineRange: newLineRange, kind: newKind)
     }

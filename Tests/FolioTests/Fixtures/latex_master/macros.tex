@@ -1,0 +1,19 @@
+% Macros for the Widget Shell handbook fixture. Only main.tex inputs this file.
+\newcommand{\Product}{Widget Shell}
+\newcommand{\Kw}[1]{\textbf{#1}}
+\newcommand{\Arg}[1]{\textit{#1}}
+\newcommand{\Lit}[1]{{\ttfamily #1}}
+\newcommand{\Pair}[2]{(\Kw{#1}~\Arg{#2})}
+\newcommand{\Opt}[2][none]{\Arg{#2}\textsubscript{#1}}
+\newcommand{\Heavy}[1]{{\fontfamily{cmr}\fontseries{b}\selectfont #1}}
+\newcommand{\Mono}[1]{\text{{\fontfamily{cmtt}\selectfont #1}}}
+\newcommand{\Many}[1]{{#1}\text{${}^{+}$}}
+\newcommand{\Yes}{\text{\ttfamily YES}}
+\newcommand{\Ret}[1]{\uline{#1}}
+\def\IT#1 #2 {\Kw{#1}\quad #2}
+% A macro that calls itself, and one with a layout command, both stay as source.
+\newcommand{\Spin}{\Spin}
+\newcommand{\Layout}[1]{\vspace{2pt}#1}
+\newenvironment{ENTRIES}[1]%
+  {\begin{list}{}{\setlength{\leftmargin}{#1}}}%
+  {\end{list}}

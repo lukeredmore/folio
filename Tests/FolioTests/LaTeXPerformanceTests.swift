@@ -65,9 +65,10 @@ final class LaTeXPerformanceTests: XCTestCase {
         }
         let macroExtractMs = (CFAbsoluteTimeGetCurrent() - tMacro0) * 1000.0 / 20.0
 
+        let project = LaTeXProjectContext.snapshot(for: .init(fileURL: showcaseURL, baseDirectoryURL: baseDir)) ?? .empty
         let tIndex0 = CFAbsoluteTimeGetCurrent()
         for _ in 0..<20 {
-            _ = LaTeXDocumentIndexer.buildIndex(string: tex, nsString: ns, baseDirectoryURL: baseDir)
+            _ = LaTeXDocumentIndexer.buildIndex(string: tex, nsString: ns, project: project)
         }
         let indexBuildMs = (CFAbsoluteTimeGetCurrent() - tIndex0) * 1000.0 / 20.0
 

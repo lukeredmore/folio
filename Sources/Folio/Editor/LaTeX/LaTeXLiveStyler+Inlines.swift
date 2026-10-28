@@ -66,12 +66,16 @@ extension LaTeXLiveStyler {
         guard count > 0, let spansPtr = scanRes.pointee.spans else { return }
         let spans = UnsafeBufferPointer(start: spansPtr, count: count)
         let baseLoc = effectiveRange.location
+        let plan = planProseMacroExpansions(
+            spans: spans, baseLoc: baseLoc, lineText: lineSub as NSString, macros: docIndex.documentMacros,
+            enabled: prettyMode && !isActiveLine
+        )
 
         // Pass 1: Container & text-formatting spans in pre-order (Href, Url, SizeGroup, ColorGroup, StyleCmd)
         styleLaTeXContainerSpans(
             spans: spans, baseLoc: baseLoc, in: storage, nsString: nsString, baseFont: baseFont,
             fontSize: fontSize, isActiveLine: isActiveLine, prettyMode: prettyMode,
-            docIndex: docIndex, theme: theme, dimFactor: dimFactor, decorations: &decorations
+            docIndex: docIndex, theme: theme, dimFactor: dimFactor, plan: plan, decorations: &decorations
         )
 
         // Pass 2: Leaf spans (InlineMath, Cite, Ref, HiddenMeta, LogoCmd, TextBackslash, ProseMacro, TexQuote, EscapedChar)
@@ -81,6 +85,7 @@ extension LaTeXLiveStyler {
             let openRange = NSRange(location: baseLoc + Int(sp.open_loc), length: Int(sp.open_len))
             let innerRange = NSRange(location: baseLoc + Int(sp.inner_loc), length: Int(sp.inner_len))
             let closeRange = NSRange(location: baseLoc + Int(sp.close_loc), length: Int(sp.close_len))
+            guard !plan.hidesSpan(at: idx, location: fullRange.location) else { continue }
             let cmd = sp.cmd.map { String(cString: $0) } ?? ""
             let arg = sp.arg.map { String(cString: $0) } ?? ""
 
@@ -123,7 +128,13 @@ extension LaTeXLiveStyler {
                     in: storage, range: fullRange, isActiveLine: isActiveLine || !prettyMode,
                     theme: theme, dimFactor: dimFactor
                 )
-            case 10, 11, 12, 13, 14:
+            case 12: // ProseMacroCandidate
+                styleProseMacroSpan(
+                    sp, expansion: plan.expansions[idx], baseLoc: baseLoc, in: storage, nsString: nsString,
+                    baseFont: baseFont, showTokens: isActiveLine || !prettyMode, docIndex: docIndex, theme: theme,
+                    dimFactor: dimFactor, decorations: &decorations
+                )
+            case 10, 11, 13, 14:
                 styleLaTeXLeafSymbolOrMacroSpan(
                     kind: sp.kind, cmd: cmd, fullRange: fullRange, openRange: openRange,
                     closeRange: closeRange, in: storage, nsString: nsString, baseFont: baseFont,

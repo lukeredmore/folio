@@ -151,6 +151,7 @@ extension LaTeXLiveStyler {
         // 1. \end{itemize|enumerate|description|figure|table|center}
         if let endEnv = LaTeXDocumentIndexer.parseEndEnvironment(trimmedLine),
             foldOnlyWrapperEnvironments.contains(endEnv)
+                || isUserEnvironmentBoundaryLine(trimmedLine, envName: endEnv, docIndex: docIndex)
         {
             styleDocumentBoundaryLineHelper(
                 in: storage,

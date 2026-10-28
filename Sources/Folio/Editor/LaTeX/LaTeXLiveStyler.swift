@@ -113,6 +113,7 @@ public enum LaTeXLiveStyler {
             string: string,
             nsString: nsString,
             baseDirectoryURL: baseDirectoryURL,
+            fileURL: fileURL,
             sourceCodeMode: sourceCodeMode
         )
         LaTeXMathRenderer.setDocumentMacros(docMacros)

@@ -24,6 +24,27 @@ extension LaTeXLiveStyler {
         return false
     }
 
+    /// True when `trimmed` is only `\begin{name}` with its arguments, or only `\end{name}`, for an
+    /// environment the document defines with `\newenvironment`. Folio does not lay out such
+    /// environments; it folds these lines like other syntax and styles the content between them.
+    static func isUserEnvironmentBoundaryLine(_ trimmed: String, envName: String, docIndex: LaTeXDocumentIndex) -> Bool {
+        guard docIndex.documentMacros[LaTeXMacroDefinition.environmentKey(envName)] != nil else { return false }
+        let code = String(LaTeXFileFacts.stripComment(Substring(trimmed))).trimmingCharacters(in: .whitespaces)
+        if code == "\\end{\(envName)}" { return true }
+        let open = "\\begin{\(envName)}"
+        guard code.hasPrefix(open) else { return false }
+        let chars = Array(code.dropFirst(open.count))
+        var idx = 0
+        while idx < chars.count {
+            idx = LaTeXMacroExpander.skipSpaces(chars, from: idx)
+            guard idx < chars.count else { break }
+            guard let (_, after) = LaTeXMacroExpander.readBracedGroup(chars, at: idx) ?? LaTeXMacroExpander.readBracketGroup(chars, at: idx)
+            else { return false }
+            idx = after
+        }
+        return true
+    }
+
     static let codeBlockEnvironments: Set<String> = [
         "verbatim", "lstlisting", "minted"
     ]
@@ -278,6 +299,20 @@ extension LaTeXLiveStyler {
             return (scanIndex, scanLineCount)
         }
 
+        if isUserEnvironmentBoundaryLine(trimmedLine, envName: envName, docIndex: docIndex) {
+            styleDocumentBoundaryLineHelper(
+                in: storage,
+                lineRange: lineRange,
+                contentRange: contentRange,
+                isActive: isActiveLine,
+                prettyMode: prettyMode,
+                theme: theme,
+                effectiveBaseSize: effectiveBaseSize,
+                effectiveContainerWidth: effectiveContainerWidth,
+                dimFactor: dimFactor
+            )
+            return (NSMaxRange(lineRange), 1)
+        }
         return nil
     }
 

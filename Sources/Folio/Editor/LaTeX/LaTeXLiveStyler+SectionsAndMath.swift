@@ -133,7 +133,8 @@ extension LaTeXLiveStyler {
             let cmd = cls.cmd.map { String(cString: $0) } ?? ""
             if cls.kind == 5 && cls.close_len > 0 && (cmd == "input" || cmd == "include") {
                 let relPath = cls.arg1.map { String(cString: $0) } ?? ""
-                let resolvedURL = LaTeXDocumentIndexer.resolveTeXFileURL(path: relPath, baseDirectoryURL: baseDirectoryURL)
+                let resolvedURL =
+                    docIndex.inputURLs[relPath] ?? LaTeXDocumentIndexer.defaultTeXFileURL(path: relPath, baseDirectoryURL: baseDirectoryURL)
                 storage.addAttribute(MKey.noSpellCheck, value: true, range: lineRange)
                 if !isActiveLine && prettyMode {
                     let pStyle = NSMutableParagraphStyle()

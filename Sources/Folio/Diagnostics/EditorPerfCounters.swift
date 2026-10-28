@@ -14,6 +14,9 @@ struct EditorPerfCounters: Equatable, Sendable {
     var parseCount = 0
     /// Calls to `HybridMarkdownTextView.draw(_:)`.
     var drawCount = 0
+    /// File-system operations (stat, read, directory listing) for LaTeX project files while this
+    /// editor was in scope. Typing must not do any.
+    var latexFileOperationCount = 0
     /// Total time of each signposted phase that ran while this editor was in scope.
     var phaseNanoseconds: [EditorPerfPhase: UInt64] = [:]
 }
