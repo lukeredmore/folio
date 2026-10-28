@@ -21,19 +21,7 @@ extension MarkdownLiveStyler {
         parameters: MarkdownStyleParameters,
         selectedRange: NSRange
     ) -> MarkdownDocumentAnalysis {
-        applyStyles(
-            to: storage,
-            theme: parameters.theme,
-            typography: parameters.typography,
-            sourceCodeMode: parameters.sourceCodeMode,
-            focusMode: parameters.focusMode,
-            selectedRange: selectedRange,
-            containerWidth: parameters.containerWidth,
-            prettyMode: parameters.prettyMode,
-            baseDirectoryURL: parameters.baseDirectoryURL,
-            textAlignment: parameters.textAlignment,
-            fileURL: parameters.fileURL
-        )
+        styleDocument(storage, parameters: parameters, selectedRange: selectedRange).analysis
     }
 }
 

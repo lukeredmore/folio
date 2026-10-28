@@ -41,12 +41,18 @@ final class IncrementalRestyleEquivalenceTests: XCTestCase {
 
         var generator = EditOperationGenerator(seed: seed)
         var history: [EditOperation] = []
+        var fullRestyleReasons: [String: Int] = [:]
         let before = harness.counters
         for index in 0..<Self.operationsPerFixture {
             let operation = generator.next(in: harness)
             history.append(operation)
+            let fullBefore = harness.counters.fullRangeRestyleCount
             operation.perform(on: harness)
             settleBackgroundRenders(harness)
+            if harness.counters.fullRangeRestyleCount > fullBefore {
+                let reason = harness.coordinator.lastFullRestyleReason?.rawValue ?? "incremental"
+                fullRestyleReasons[reason, default: 0] += 1
+            }
             if let mismatch = RestyleEquivalenceOracle.firstMismatch(in: harness) {
                 let recent = history.suffix(6).map(\.description).joined(separator: ", ")
                 XCTFail("""
@@ -62,7 +68,8 @@ final class IncrementalRestyleEquivalenceTests: XCTestCase {
             "seed": String(seed, radix: 16),
             "restyleCount": delta.restyleCount,
             "fullRangeRestyleCount": delta.fullRangeRestyleCount,
-            "charactersRestyled": delta.charactersRestyled
+            "charactersRestyled": delta.charactersRestyled,
+            "operationsWithFullRestyleByLastReason": fullRestyleReasons
         ])
     }
 
@@ -102,12 +109,14 @@ enum EditOperation: CustomStringConvertible {
 }
 
 /// Seeded generator of `EditOperation`s. Block syntax is typed at the start of a line half of
-/// the time, so it changes block structure as well as inline text.
+/// the time, so it changes block structure as well as inline text. Reference links,
+/// reference definitions, and 4-space indents change how cmark parses lines outside the
+/// edited block.
 struct EditOperationGenerator {
     private var random: SplitMix64
     private var pending: [EditOperation] = []
     private static let letters = Array("abcdefghijklmnopqrstuvwxyz0123456789 ")
-    private static let blockSyntax = ["```", "$$", "|", "- ", "# ", "[ ] "]
+    private static let blockSyntax = ["```", "$$", "|", "- ", "# ", "[ ] ", "[k]", "[k]: /k", "    "]
 
     init(seed: UInt64) {
         random = SplitMix64(seed: seed)

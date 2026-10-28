@@ -27,6 +27,14 @@ extension HybridMarkdownEditorRepresentable {
         var hasPerformedInitialScroll = false
         var pendingResizeRestyleWorkItem: DispatchWorkItem?
         var scheduler = EditorScheduler.live
+        /// The last Markdown restyle, for restyling only what the next edit can affect.
+        var styleRecord: MarkdownStyleRecord?
+        /// Characters edited since the last restyle.
+        var pendingTextEdit: MarkdownTextEdit?
+        /// Why the last restyle styled the whole document; nil after an incremental restyle.
+        var lastFullRestyleReason: MarkdownFullRestyleReason?
+        /// A text change arrived during input-method composition and was not restyled yet.
+        var isRestyleDeferredForMarkedText = false
 
         let softLineBreakLayoutDelegate = SoftLineBreakLayoutDelegate()
         var reflowAnchors: [Int] = []
@@ -165,7 +173,13 @@ extension HybridMarkdownEditorRepresentable {
                     viewModel.handleEditorTextEdited(currentText, selectedRange: sel)
                 }
             }
-            restyle(textView: tv)
+            if tv.hasMarkedText() {
+                // Restyling during composition would reset the marked text attributes.
+                isRestyleDeferredForMarkedText = true
+            } else {
+                isRestyleDeferredForMarkedText = false
+                restyle(textView: tv, incremental: true)
+            }
             tv.centerSelectionIfTypewriter()
             isUpdatingFromTextView = false
         }
@@ -183,9 +197,11 @@ extension HybridMarkdownEditorRepresentable {
 
             viewModel.handleTextViewSelectionChange(in: tv, selectedRange: sel)
 
-            if lastActiveLineRange != activeLine || viewModel.focusMode {
+            let needsRestyle = lastActiveLineRange != activeLine || viewModel.focusMode || isRestyleDeferredForMarkedText
+            if needsRestyle && !tv.hasMarkedText() {
                 lastActiveLineRange = activeLine
-                restyle(textView: tv)
+                isRestyleDeferredForMarkedText = false
+                restyle(textView: tv, incremental: true)
             }
             tv.centerSelectionIfTypewriter()
 
@@ -196,7 +212,9 @@ extension HybridMarkdownEditorRepresentable {
             }
         }
 
-        func restyle(textView: HybridMarkdownTextView) {
+        /// Restyles the document. With `incremental`, restyles only the blocks that the edits and
+        /// the selection change since the last restyle can affect, when that equals a full restyle.
+        func restyle(textView: HybridMarkdownTextView, incremental: Bool = false) {
             pendingResizeRestyleWorkItem?.cancel()
             pendingResizeRestyleWorkItem = nil
             guard !isRestyling, let storage = textView.textStorage else { return }
@@ -204,43 +222,24 @@ extension HybridMarkdownEditorRepresentable {
             perf.beginRestylePass()
             EditorPerfScope.bind(perf) {
                 EditorPerfPhase.restyle.measure {
-                    performRestyle(textView: textView, storage: storage)
+                    performRestyle(textView: textView, storage: storage, incremental: incremental)
                 }
             }
             perf.endRestylePass(documentLength: storage.length)
             isRestyling = false
         }
 
-        private func performRestyle(textView: HybridMarkdownTextView, storage: NSTextStorage) {
+        private func performRestyle(textView: HybridMarkdownTextView, storage: NSTextStorage, incremental: Bool) {
             let sel = textView.selectedRange()
             let parameters = styleParameters(for: textView)
             let contentWidth = parameters.containerWidth
+            let edit = pendingTextEdit
+            pendingTextEdit = nil
 
-            let analysis = MarkdownLiveStyler.applyStyles(to: storage, parameters: parameters, selectedRange: sel)
-
-            // Clear any spellchecker squiggles on code/math/table decorations
-            if let lm = textView.layoutManager {
-                let fullRange = NSRange(location: 0, length: (storage.string as NSString).length)
-                if !viewModel.spellCheckEnabled {
-                    if lastSpellCheckEnabled != false {
-                        lm.removeTemporaryAttribute(.spellingState, forCharacterRange: fullRange)
-                    }
-                } else {
-                    for dec in analysis.decorations {
-                        lm.removeTemporaryAttribute(.spellingState, forCharacterRange: dec.lineRange)
-                    }
-                    storage.enumerateAttribute(
-                        MarkdownLiveStyler.noSpellCheckAttributeKey,
-                        in: fullRange,
-                        options: []
-                    ) { val, range, _ in
-                        if val != nil {
-                            lm.removeTemporaryAttribute(.spellingState, forCharacterRange: range)
-                        }
-                    }
-                }
-                lastSpellCheckEnabled = viewModel.spellCheckEnabled
-            }
+            let result = styleResult(storage: storage, parameters: parameters, selectedRange: sel, edit: edit, incremental: incremental)
+            styleRecord = result.record
+            let analysis = result.analysis
+            clearSpellingMarks(textView: textView, storage: storage, decorations: analysis.decorations, restyledRanges: result.restyledRanges)
 
             if let scrollView = textView.enclosingScrollView {
                 updateInsets(for: scrollView, textView: textView, theme: viewModel.theme)

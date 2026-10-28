@@ -101,6 +101,28 @@ final class EditorPerfInvariantTests: XCTestCase {
         }
     }
 
+    func testCursorMoveToAnotherLineRestylesOnlyOldAndNewBlocks() throws {
+        try withHarness { harness in
+            let lines = harness.workspace.document.paragraphLines
+            let from = lines[1]
+            let to = lines[lines.count - 2]
+            harness.moveCursor(toLine: from, column: 3)
+            let before = harness.counters
+            harness.moveCursor(toLine: to, column: 3)
+            let delta = harness.counters.delta(since: before)
+            let budget = harness.blockLength(containingLine: from) + harness.blockLength(containingLine: to)
+            var report = PerfReport.values(delta)
+            report["oldAndNewBlockCharacters"] = budget
+            PerfReport.record("cursorMoveAcrossDocument_200", report)
+            XCTAssertEqual(delta.restyleCount, 1, "moving the cursor to another line must restyle once")
+            XCTAssertLessThanOrEqual(
+                delta.charactersRestyled,
+                budget,
+                "a cursor move restyled \(delta.charactersRestyled) characters; the old and new blocks have \(budget)"
+            )
+        }
+    }
+
     func testScrollingDoesNotRestyle() throws {
         try withHarness { harness in
             let clip = try XCTUnwrap(harness.textView.enclosingScrollView?.contentView)
