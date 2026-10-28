@@ -219,3 +219,76 @@ opt_files = rule(
         ),
     },
 )
+
+_SourceFilesInfo = provider(
+    doc = "Main-repository source files that a target depends on.",
+    fields = {"files": "depset of File"},
+)
+
+def _attr_targets(value):
+    if type(value) == "list":
+        return value
+    if type(value) == "dict":
+        return list(value.keys()) + list(value.values())
+    return [value]
+
+def _source_files_aspect_impl(_target, ctx):
+    direct = []
+    transitive = []
+    for name in dir(ctx.rule.attr):
+        # Implicit attributes hold toolchains and tools, not product inputs.
+        if name.startswith("_"):
+            continue
+        for dep in _attr_targets(getattr(ctx.rule.attr, name)):
+            if type(dep) != "Target":
+                continue
+            if _SourceFilesInfo in dep:
+                transitive.append(dep[_SourceFilesInfo].files)
+            elif dep.label.workspace_name == "":
+                # Aspects do not run on source file labels, so collect their files here.
+                direct.extend([f for f in dep[DefaultInfo].files.to_list() if f.is_source])
+    return [_SourceFilesInfo(files = depset(direct, transitive = transitive))]
+
+_source_files_aspect = aspect(
+    implementation = _source_files_aspect_impl,
+    attr_aspects = ["*"],
+    doc = "Collects main-repository source files from non-implicit attributes.",
+)
+
+def _input_hash_impl(ctx):
+    files = depset(
+        ctx.files.extra_srcs,
+        transitive = [ctx.attr.target[_SourceFilesInfo].files],
+    ).to_list()
+    files = sorted({f.path: f for f in files}.values(), key = lambda f: f.path)
+    file_list = ctx.actions.declare_file(ctx.label.name + ".files")
+    ctx.actions.write(file_list, "".join([f.path + "\n" for f in files]))
+    out = ctx.actions.declare_file(ctx.label.name + ".sha256")
+    ctx.actions.run_shell(
+        inputs = files + [file_list],
+        outputs = [out],
+        arguments = [file_list.path, out.path],
+        mnemonic = "InputHash",
+        progress_message = "Hashing source inputs of %{label}",
+        command = """
+set -euo pipefail
+/usr/bin/tr '\\n' '\\0' < "$1" | /usr/bin/xargs -0 /usr/bin/shasum -a 256 | /usr/bin/shasum -a 256 | /usr/bin/cut -d ' ' -f 1 > "$2"
+""",
+    )
+    return [DefaultInfo(files = depset([out]))]
+
+input_hash = rule(
+    implementation = _input_hash_impl,
+    doc = """Writes a SHA-256 of every main-repository source file that `target` depends on.
+
+CI compares it with the hash in the latest release and reuses that release's DMG when they match.
+Then a change that does not touch the app does not publish a new app build number.
+""",
+    attrs = {
+        "extra_srcs": attr.label_list(
+            allow_files = True,
+            doc = "Files that affect the build but are not in the target graph, such as MODULE.bazel.lock.",
+        ),
+        "target": attr.label(aspects = [_source_files_aspect], mandatory = True),
+    },
+)

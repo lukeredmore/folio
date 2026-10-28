@@ -1,6 +1,6 @@
 load("@build_bazel_rules_apple//apple:macos.bzl", "macos_application")
 load("@build_bazel_rules_swift//swift:swift.bzl", "swift_library")
-load("//tools/release:defs.bzl", "folio_dmg", "folio_info_plist")
+load("//tools/release:defs.bzl", "folio_dmg", "folio_info_plist", "input_hash")
 
 package(default_visibility = ["//visibility:public"])
 
@@ -76,4 +76,23 @@ folio_dmg(
     app = ":FolioApp",
     tags = ["manual"],
     volume_name = "Folio",
+)
+
+# CI reuses the latest release DMG when this hash matches the one recorded in that release.
+input_hash(
+    name = "FolioApp_input_hash",
+    extra_srcs = [
+        "BUILD.bazel",
+        "//:.bazelrc",
+        "//:BUILD.bazel",
+        "//:Cargo.lock",
+        "//:MODULE.bazel",
+        "//:MODULE.bazel.lock",
+        "//core/folio_engine:BUILD.bazel",
+        "//third_party:BUILD.bazel",
+        "//third_party:upstream_deps.bzl",
+        "//tools/release:BUILD.bazel",
+        "//tools/release:defs.bzl",
+    ],
+    target = ":FolioApp",
 )
