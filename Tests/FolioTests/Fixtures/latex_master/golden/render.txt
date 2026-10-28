@@ -1,0 +1,59 @@
+## chapter.tex, cursor on line 1
+001| ‹i:% Chapter of the Widget Shell handbook. It has no \input of its own:›
+002| ‹i:% its macros come from main.tex, which inputs both macros.tex and this file.›
+003| ‹b:Commands›
+004| 
+005| 
+006| 
+007| ⟦‹b:(open ›‹b+i:file›‹b:)› Opens ‹i:file› and returns ‹tt+u:YES›.⟧
+008| 
+009| The ⟦Widget Shell⟧ ⟦Second Edition⟧ reads ⟦‹i:path›${}^{+}$⟧ from ⟦‹tt:stdin›⟧.
+010| 
+011| Use ⟦‹i:mode›‹sub:none›⟧ or ⟦‹i:mode›‹sub:fast›⟧, with ⟦‹b:bold words›⟧ and ⟦‹tt:mono words›⟧.
+012| 
+013| Math stays math: ⟦$x_i$${}^{+}$⟧ and ⟦$\alpha + \beta$⟧.
+014| 
+015| Unsupported: \Layout{spaced} and ⟦\Spin⟧ stay as source.
+016| 
+017| 
+blocks:
+  line 3: section badge 1 level 1
+  line 3: heading underline level 1
+## chapter.tex, cursor on line 9
+001| 
+002| 
+003| ‹b:Commands›
+004| 
+005| 
+006| 
+007| ⟦‹b:(open ›‹b+i:file›‹b:)› Opens ‹i:file› and returns ‹tt+u:YES›.⟧
+008| 
+009| The ‹tt:\Product{}› ‹tt:\Edition{}› reads ‹tt:\Many›{‹tt:\Arg›{path}} from ‹tt:\Lit›{stdin}.
+010| 
+011| Use ⟦‹i:mode›‹sub:none›⟧ or ⟦‹i:mode›‹sub:fast›⟧, with ⟦‹b:bold words›⟧ and ⟦‹tt:mono words›⟧.
+012| 
+013| Math stays math: ⟦$x_i$${}^{+}$⟧ and ⟦$\alpha + \beta$⟧.
+014| 
+015| Unsupported: \Layout{spaced} and ⟦\Spin⟧ stay as source.
+016| 
+017| 
+blocks:
+  line 3: section badge 1 level 1
+  line 3: heading underline level 1
+## texroot-chapter.tex, cursor on line 1
+001| ‹i:% !TEX root = editions/alt-main.tex›
+002| ‹b:Alternate Edition›
+003| The ⟦Alternate Shell⟧ marks ⟦KEYWORDS⟧ differently.
+blocks:
+  line 2: section badge 1 level 1
+  line 2: heading underline level 1
+## emacs-chapter.tex, cursor on line 1
+001| ‹tt:\section{›‹b:Emacs Edition›‹tt:}›
+002| The ⟦Emacs Shell⟧ is named by an Emacs local variable.
+003| 
+004| 
+005| 
+006| 
+007| 
+blocks:
+  line 1: heading underline level 1

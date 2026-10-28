@@ -91,7 +91,7 @@ extension BlockDecorationKind {
         case let .listBullet(range, dim):
             return .listBullet(range: range.shifted(by: delta), dimFactor: dim)
         case .latexPreambleCard, .latexTheoremCard, .latexAbstractCard, .latexInputCard,
-            .latexEquationNumber, .latexSectionBadge, .latexInlinePill, .latexInlineText:
+            .latexEquationNumber, .latexSectionBadge, .latexInlinePill, .latexInlineText, .latexInlineRichText:
             return shiftedLaTeXDecoration(by: delta)
         }
     }
@@ -121,6 +121,8 @@ extension BlockDecorationKind {
             )
         case let .latexInlineText(text, font, range, dim):
             return .latexInlineText(text: text, font: font, range: range.shifted(by: delta), dimFactor: dim)
+        case let .latexInlineRichText(lines, range, dim):
+            return .latexInlineRichText(lines: lines, range: range.shifted(by: delta), dimFactor: dim)
         default:
             return self
         }

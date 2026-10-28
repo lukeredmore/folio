@@ -327,6 +327,10 @@ extension EditorWorkspaceViewModel {
             MainActor.assumeIsolated {
                 guard let self = self else { return }
                 self.checkForExternalFileChanges()
+                // A sibling such as the master file or its macros file may have changed.
+                if let url = self.currentFileURL, self.isCurrentDocumentLaTeX {
+                    LaTeXProjectContext.scheduleRefresh(forFile: url)
+                }
             }
         }
         source.setCancelHandler {

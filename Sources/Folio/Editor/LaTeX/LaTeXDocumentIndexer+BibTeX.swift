@@ -2,72 +2,6 @@ import FolioEngineFFI
 import Foundation
 
 extension LaTeXDocumentIndexer {
-    private static let cacheLock = NSLock()
-    nonisolated(unsafe) private static var lastIndexedString: String?
-    nonisolated(unsafe) private static var lastIndexedBaseDir: URL?
-    nonisolated(unsafe) private static var lastIndexedSourceMode: Bool?
-    nonisolated(unsafe) private static var lastCachedIndex = LaTeXDocumentIndex()
-    nonisolated(unsafe) private static var lastCachedMacros: [String: LaTeXMacroDefinition] = [:]
-    nonisolated(unsafe) private static var bibFileCache: [URL: (modDate: Date?, entries: [BibTeXEntry])] = [:]
-    nonisolated(unsafe) private static var inputMacrosCache: [URL: (modDate: Date?, macros: [String: LaTeXMacroDefinition])] = [:]
-
-    static func cachedIndexAndMacros(
-        string: String,
-        nsString: NSString,
-        baseDirectoryURL: URL?,
-        sourceCodeMode: Bool
-    ) -> (index: LaTeXDocumentIndex, macros: [String: LaTeXMacroDefinition]) {
-        cacheLock.lock()
-        if lastIndexedString == string,
-            lastIndexedBaseDir == baseDirectoryURL,
-            lastIndexedSourceMode == sourceCodeMode
-        {
-            let idx = lastCachedIndex
-            let mac = lastCachedMacros
-            cacheLock.unlock()
-            return (idx, mac)
-        }
-        cacheLock.unlock()
-
-        var docMacros =
-            (!sourceCodeMode && string.contains("\\"))
-            ? LaTeXMacroExpander.extractDocumentMacros(from: string)
-            : [:]
-        let docIndex = buildIndex(
-            string: string,
-            nsString: nsString,
-            baseDirectoryURL: baseDirectoryURL
-        )
-        if !docIndex.extraMacros.isEmpty {
-            docMacros.merge(docIndex.extraMacros) { current, _ in current }
-        }
-
-        cacheLock.lock()
-        lastIndexedString = string
-        lastIndexedBaseDir = baseDirectoryURL
-        lastIndexedSourceMode = sourceCodeMode
-        lastCachedIndex = docIndex
-        lastCachedMacros = docMacros
-        cacheLock.unlock()
-        return (docIndex, docMacros)
-    }
-
-    static func loadInputMacros(from inputURL: URL) -> [String: LaTeXMacroDefinition] {
-        let modDate = (try? FileManager.default.attributesOfItem(atPath: inputURL.path))?[.modificationDate] as? Date
-        cacheLock.lock()
-        if let cached = inputMacrosCache[inputURL], cached.modDate == modDate {
-            cacheLock.unlock()
-            return cached.macros
-        }
-        cacheLock.unlock()
-        guard let inputText = try? String(contentsOf: inputURL, encoding: .utf8) else { return [:] }
-        let imported = LaTeXMacroExpander.extractDocumentMacros(from: inputText)
-        cacheLock.lock()
-        inputMacrosCache[inputURL] = (modDate, imported)
-        cacheLock.unlock()
-        return imported
-    }
-
     static func sectionLevel(for cmd: String) -> Int {
         switch cmd {
         case "part", "chapter", "section", "sectiontitle": return 1
@@ -135,6 +69,15 @@ extension LaTeXDocumentIndexer {
         return df.string(from: Date())
     }
 
+    /// The URL TeX would try first for `path`, without checking that it exists. For styling,
+    /// which must not touch the file system.
+    static func defaultTeXFileURL(path: String, baseDirectoryURL: URL?) -> URL? {
+        guard let base = baseDirectoryURL else { return nil }
+        let trimmed = path.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return nil }
+        return base.appendingPathComponent(trimmed.hasSuffix(".tex") ? trimmed : trimmed + ".tex").standardizedFileURL
+    }
+
     static func resolveTeXFileURL(path: String, baseDirectoryURL: URL?) -> URL? {
         guard let base = baseDirectoryURL else { return nil }
         let trimmed = path.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -150,51 +93,6 @@ extension LaTeXDocumentIndexer {
             }
         }
         return base.appendingPathComponent(candidates[0]).standardizedFileURL
-    }
-
-    static func loadBibEntries(
-        referencedFiles: [String],
-        baseDirectoryURL: URL?
-    ) -> [String: BibTeXEntry] {
-        guard let base = baseDirectoryURL else { return [:] }
-        var urls: [URL] = []
-        for ref in referencedFiles {
-            let name = ref.hasSuffix(".bib") ? ref : (ref + ".bib")
-            let candidate = base.appendingPathComponent(name).standardizedFileURL
-            if FileManager.default.fileExists(atPath: candidate.path), !urls.contains(candidate) {
-                urls.append(candidate)
-            }
-        }
-        if urls.isEmpty,
-            let items = try? FileManager.default.contentsOfDirectory(at: base, includingPropertiesForKeys: nil)
-        {
-            for item in items where item.pathExtension.lowercased() == "bib" {
-                urls.append(item.standardizedFileURL)
-            }
-        }
-
-        var map: [String: BibTeXEntry] = [:]
-        for url in urls {
-            let modDate = (try? FileManager.default.attributesOfItem(atPath: url.path))?[.modificationDate] as? Date
-            cacheLock.lock()
-            let cached = bibFileCache[url]
-            cacheLock.unlock()
-            let entries: [BibTeXEntry]
-            if let cached, cached.modDate == modDate {
-                entries = cached.entries
-            } else if let content = try? String(contentsOf: url, encoding: .utf8) {
-                entries = parseBibTeXEntries(from: content, fileURL: url)
-                cacheLock.lock()
-                bibFileCache[url] = (modDate, entries)
-                cacheLock.unlock()
-            } else {
-                continue
-            }
-            for entry in entries {
-                map[entry.key] = entry
-            }
-        }
-        return map
     }
 
     public static func parseBibTeXEntries(from content: String, fileURL: URL? = nil) -> [BibTeXEntry] {

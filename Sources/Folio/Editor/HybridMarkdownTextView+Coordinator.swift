@@ -51,6 +51,13 @@ extension HybridMarkdownEditorRepresentable {
             tv.needsDisplay = true
         }
 
+        /// Restyles a LaTeX document after its master, inputs, or bibliography were reloaded.
+        @objc func latexProjectDidUpdate(_ notification: Notification) {
+            guard let tv = textView, viewModel.isCurrentDocumentLaTeX else { return }
+            restyle(textView: tv)
+            tv.needsDisplay = true
+        }
+
         @objc func scrollViewFrameDidChange(_ notification: Notification) {
             guard let scrollView = notification.object as? NSScrollView,
                 let tv = textView

@@ -59,6 +59,7 @@ extension LaTeXLiveStyler {
         docIndex: LaTeXDocumentIndex,
         theme: EditorTheme,
         dimFactor: CGFloat,
+        plan: ProseMacroPlan,
         decorations: inout [LineDecoration]
     ) {
         _ = nsString
@@ -72,6 +73,7 @@ extension LaTeXLiveStyler {
             let sp = spans[idx]
             guard sp.kind >= 5 && sp.kind <= 9 else { continue }
             let fullRange = NSRange(location: baseLoc + Int(sp.full_loc), length: Int(sp.full_len))
+            guard !plan.hidesSpan(at: idx, location: fullRange.location) else { continue }
             let openRange = NSRange(location: baseLoc + Int(sp.open_loc), length: Int(sp.open_len))
             let innerRange = NSRange(location: baseLoc + Int(sp.inner_loc), length: Int(sp.inner_len))
             let closeRange = NSRange(location: baseLoc + Int(sp.close_loc), length: Int(sp.close_len))
@@ -187,31 +189,6 @@ extension LaTeXLiveStyler {
             storage.addAttribute(MKey.noSpellCheck, value: true, range: fullRange)
             if openRange.length > 0 {
                 MarkdownLiveStyler.styleSyntaxToken(in: storage, range: openRange, isActiveLine: showTokens, theme: theme, dimFactor: dimFactor)
-            }
-        case 12: // ProseMacroCandidate
-            let docMacros = LaTeXMathRenderer.currentDocumentMacros()
-            guard let def = docMacros["\\\(cmd)"], def.argCount == 0, def.operatorText == nil else { return }
-            storage.addAttribute(MKey.noSpellCheck, value: true, range: fullRange)
-            if showTokens {
-                MarkdownLiveStyler.styleSyntaxToken(in: storage, range: fullRange, isActiveLine: true, theme: theme, dimFactor: dimFactor)
-            } else {
-                let parts = def.replacement.components(separatedBy: "\\\\")
-                    .map { LaTeXDocumentIndexer.cleanTeXInlineText($0) }
-                    .filter { !$0.isEmpty }
-                let displayText = parts.joined(separator: "\n")
-                guard !displayText.isEmpty else { return }
-                let currentFont = (storage.attribute(.font, at: fullRange.location, effectiveRange: nil) as? NSFont) ?? baseFont
-                let maxW = parts.map { ceil(($0 as NSString).size(withAttributes: [.font: currentFont]).width) }.max() ?? 4.0
-                let extraDescent = CGFloat(max(0, parts.count - 1)) * ceil((currentFont.ascender - currentFont.descender) * 1.10)
-                reserveAtomicInlineSpan(
-                    in: storage, nsString: nsString, fullRange: fullRange, width: max(4.0, maxW),
-                    ascent: currentFont.ascender, descent: -currentFont.descender + extraDescent
-                )
-                decorations.append(
-                    LineDecoration(
-                        lineRange: fullRange,
-                        kind: .latexInlineText(text: displayText, font: currentFont, range: fullRange, dimFactor: dimFactor)
-                    ))
             }
         case 13: // TexQuote (`` or '')
             if showTokens {

@@ -116,6 +116,18 @@ public enum BlockDecorationKind: Equatable {
         range: NSRange,
         dimFactor: CGFloat
     )
+    /// An expanded user macro: lines of styled text and inline math, drawn over the hidden source.
+    case latexInlineRichText(
+        lines: [[LaTeXInlineRichRun]],
+        range: NSRange,
+        dimFactor: CGFloat
+    )
+}
+
+/// One run of a `latexInlineRichText` decoration. Offsets move the run's baseline up.
+public enum LaTeXInlineRichRun: Equatable {
+    case text(String, font: NSFont, underline: Bool, baselineOffset: CGFloat)
+    case math(latex: String, fontSize: CGFloat, baselineOffset: CGFloat)
 }
 
 public struct LineDecoration: Equatable {

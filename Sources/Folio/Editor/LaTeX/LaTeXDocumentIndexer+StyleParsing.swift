@@ -8,10 +8,10 @@ extension LaTeXDocumentIndexer {
         in line: String,
         lineLocation: Int,
         inPreamble: Bool,
-        baseDirectoryURL: URL?,
+        project: LaTeXProjectSnapshot,
         secCounters: inout [Int],
         currentContext: inout (kind: String, number: String, title: String, loc: Int),
-        bibFiles: inout [String],
+        signature: inout LaTeXProjectSignature,
         into idx: inout LaTeXDocumentIndex
     ) {
         line.withCString { cStr in
@@ -30,6 +30,7 @@ extension LaTeXDocumentIndexer {
 
                 switch d.kind {
                 case 1: // DocumentClass
+                    signature.declaresDocumentClass = true
                     if !optArg.isEmpty {
                         idx.documentClassOptions = optArg
                         parseDocumentClassOptions(optArg, into: &idx.documentStyle)
@@ -65,13 +66,11 @@ extension LaTeXDocumentIndexer {
                     }
                 case 5: // BibResource
                     for part in arg1.split(separator: ",") {
-                        bibFiles.append(part.trimmingCharacters(in: .whitespaces))
+                        signature.bibFiles.append(part.trimmingCharacters(in: .whitespaces))
                     }
                 case 6: // InputFile
-                    if let baseDir = baseDirectoryURL,
-                        let inputURL = resolveTeXFileURL(path: arg1, baseDirectoryURL: baseDir)
-                    {
-                        let imported = loadInputMacros(from: inputURL)
+                    signature.inputPaths.append(arg1)
+                    if let imported = project.inputMacros[arg1] {
                         idx.extraMacros.merge(imported) { _, new in new }
                     }
                 case 7: // Frontmatter
