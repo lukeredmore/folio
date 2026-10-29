@@ -30,22 +30,46 @@ swift_library(
     ],
 )
 
+_SWIFT_TEST_COPTS = [
+    "-swift-version",
+    "6",
+    "-warnings-as-errors",
+]
+
+_SWIFT_TEST_DATA = [
+    "//macos/FolioApp:folio",
+    "//tst/specs:all_behavior_specs",
+    "@swift_math//:math_fonts_files",
+] + glob([
+    "examples/**",
+    "Tests/FolioTests/Fixtures/**",
+])
+
+_RESTYLE_EQUIVALENCE_TESTS = "Tests/FolioTests/IncrementalRestyleEquivalenceTests.swift"
+
 swift_test(
     name = "FolioTests",
-    srcs = glob(["Tests/FolioTests/**/*.swift"]),
-    copts = [
-        "-swift-version",
-        "6",
-        "-warnings-as-errors",
+    srcs = glob(
+        ["Tests/FolioTests/**/*.swift"],
+        exclude = [_RESTYLE_EQUIVALENCE_TESTS],
+    ),
+    copts = _SWIFT_TEST_COPTS,
+    data = _SWIFT_TEST_DATA,
+    deps = [
+        ":Folio",
     ],
-    data = [
-        "//macos/FolioApp:folio",
-        "//tst/specs:all_behavior_specs",
-        "@swift_math//:math_fonts_files",
-    ] + glob([
-        "examples/**",
-        "Tests/FolioTests/Fixtures/**",
-    ]),
+)
+
+# The seeded restyle property tests take most of the Swift test time. One shard per fixture keeps
+# each shard well inside the test timeout; exclusive keeps them off the machine while the
+# timing-sensitive perf tests in FolioTests run.
+swift_test(
+    name = "FolioRestyleEquivalenceTests",
+    srcs = glob(["Tests/FolioTests/Support/**/*.swift"]) + [_RESTYLE_EQUIVALENCE_TESTS],
+    copts = _SWIFT_TEST_COPTS,
+    data = _SWIFT_TEST_DATA,
+    shard_count = 4,
+    tags = ["exclusive"],
     deps = [
         ":Folio",
     ],
