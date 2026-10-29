@@ -256,6 +256,8 @@ extension HybridMarkdownEditorRepresentable {
             }
             perf.endRestylePass(documentLength: storage.length)
             isRestyling = false
+            // A scroller that appears or hides during the restyle changes the width it used.
+            scheduleResizeRestyleIfWidthChanged(for: textView)
         }
 
         private func performRestyle(textView: HybridMarkdownTextView, storage: NSTextStorage, incremental: Bool) {

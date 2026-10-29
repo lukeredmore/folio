@@ -110,59 +110,6 @@ final class EditorHarness {
         )
     }
 
-    /// Runs the main run loop in 1 ms slices until no work counter changes for
-    /// `stableIterations` slices in a row, then displays the window.
-    func drainUntilIdle(stableIterations: Int = 5, timeout: TimeInterval = 5) {
-        let deadline = Date().addingTimeInterval(timeout)
-        var last = fingerprint
-        var stable = 0
-        while stable < stableIterations && Date() < deadline {
-            RunLoop.main.run(until: Date().addingTimeInterval(0.001))
-            let current = fingerprint
-            if current == last {
-                stable += 1
-            } else {
-                stable = 0
-                last = current
-            }
-        }
-        window.displayIfNeeded()
-    }
-
-    /// Like `drainUntilIdle`, but requires `quietPeriod` seconds without counter changes, so
-    /// debounced work (resize restyle) has run.
-    func drainUntilQuiet(quietPeriod: TimeInterval, timeout: TimeInterval = 5) {
-        let deadline = Date().addingTimeInterval(timeout)
-        var last = fingerprint
-        var quietSince = Date()
-        while Date().timeIntervalSince(quietSince) < quietPeriod && Date() < deadline {
-            RunLoop.main.run(until: Date().addingTimeInterval(0.001))
-            let current = fingerprint
-            if current != last {
-                last = current
-                quietSince = Date()
-            }
-        }
-        window.displayIfNeeded()
-    }
-
-    /// Waits for a debounced restyle after a content width change, then drains.
-    func settleResizeRestyle(timeout: TimeInterval = 5) {
-        waitUntil(timeout: timeout) { coordinator.pendingResizeRestyleWorkItem == nil }
-        drainUntilIdle()
-    }
-
-    /// Polls `condition` while running the main run loop. Returns false on timeout.
-    @discardableResult
-    func waitUntil(timeout: TimeInterval, _ condition: () -> Bool) -> Bool {
-        let deadline = Date().addingTimeInterval(timeout)
-        while !condition() {
-            if Date() >= deadline { return false }
-            RunLoop.main.run(until: Date().addingTimeInterval(0.001))
-        }
-        return true
-    }
-
     /// A line in the middle of the document that holds a plain paragraph.
     var middleParagraphLine: Int {
         let lines = workspace.document.paragraphLines
@@ -199,24 +146,6 @@ final class EditorHarness {
         let nsText = textView.string as NSString
         let range = nsText.lineRange(for: NSRange(location: lineStart(line), length: 0))
         return nsText.substring(with: range).trimmingCharacters(in: .newlines)
-    }
-
-    /// Waits until the last restyle used the current content width. A width change (such as the
-    /// vertical scroller appearing) restyles after a short debounce, which a slow machine can
-    /// still be inside of when `drainUntilQuiet` returns.
-    func waitUntilStyledAtCurrentWidth(timeout: TimeInterval = 10) {
-        waitUntil(timeout: timeout) {
-            abs(coordinator.lastContentWidth - coordinator.currentContentWidth(for: textView)) <= 0.5
-        }
-        drainUntilIdle()
-    }
-
-    /// Waits for initial layout, background diagram renders, and the first restyle to finish.
-    private func settle() {
-        drainUntilIdle()
-        waitUntil(timeout: 10) { DiagramImageRenderer.shared.waitUntilIdle(timeout: 0.001) }
-        drainUntilQuiet(quietPeriod: 0.15)
-        waitUntilStyledAtCurrentWidth()
     }
 }
 

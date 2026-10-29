@@ -78,7 +78,7 @@ final class IncrementalRestyleEquivalenceTests: XCTestCase {
     ) throws -> EditorPerfCounters? {
         let harness = try EditorHarness(workspace: workspace)
         defer { harness.tearDown() }
-        settleBackgroundRenders(harness)
+        harness.settleBackgroundWork()
         if let mismatch = RestyleEquivalenceOracle.firstMismatch(in: harness) {
             XCTFail("\(name): the initial restyle differs from a full restyle: \(mismatch)")
             return nil
@@ -93,7 +93,7 @@ final class IncrementalRestyleEquivalenceTests: XCTestCase {
             history.append(operation)
             let fullBefore = harness.counters.fullRangeRestyleCount
             operation.perform(on: harness)
-            settleBackgroundRenders(harness)
+            harness.settleBackgroundWork()
             if harness.counters.fullRangeRestyleCount > fullBefore {
                 let reason = harness.coordinator.lastFullRestyleReason?.rawValue ?? "incremental"
                 fullRestyleReasons[reason, default: 0] += 1
@@ -121,15 +121,6 @@ final class IncrementalRestyleEquivalenceTests: XCTestCase {
                 "latexBlocksReusedCount": delta.latexBlocksReusedCount
             ])
         return delta
-    }
-
-    /// Diagram renders finish in the background and trigger a restyle, and a content width
-    /// change restyles after a debounce. Waiting for both keeps the editor and the reference
-    /// restyle on the same state.
-    private func settleBackgroundRenders(_ harness: EditorHarness) {
-        harness.waitUntil(timeout: 10) { DiagramImageRenderer.shared.waitUntilIdle(timeout: 0.001) }
-        harness.waitUntil(timeout: 20) { !harness.textView.hasPendingHTMLBlockLayout }
-        harness.waitUntilStyledAtCurrentWidth()
     }
 }
 
