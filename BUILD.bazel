@@ -47,11 +47,18 @@ _SWIFT_TEST_DATA = [
 
 _RESTYLE_EQUIVALENCE_TESTS = "Tests/FolioTests/IncrementalRestyleEquivalenceTests.swift"
 
+_PERF_TESTS = [
+    "Tests/FolioTests/EditorPerfInvariantTests.swift",
+    "Tests/FolioTests/EditorPerfScalingTests.swift",
+    "Tests/FolioTests/FolioUILagProfileTests.swift",
+    "Tests/FolioTests/LaTeXPerformanceTests.swift",
+]
+
 swift_test(
     name = "FolioTests",
     srcs = glob(
         ["Tests/FolioTests/**/*.swift"],
-        exclude = [_RESTYLE_EQUIVALENCE_TESTS],
+        exclude = [_RESTYLE_EQUIVALENCE_TESTS] + _PERF_TESTS,
     ),
     copts = _SWIFT_TEST_COPTS,
     data = _SWIFT_TEST_DATA,
@@ -69,6 +76,19 @@ swift_test(
     copts = _SWIFT_TEST_COPTS,
     data = _SWIFT_TEST_DATA,
     shard_count = 4,
+    tags = ["exclusive"],
+    deps = [
+        ":Folio",
+    ],
+)
+
+# Timing tests compare keystrokes and passes on the same machine, so other tests running at the
+# same time make them fail. Exclusive runs them alone.
+swift_test(
+    name = "FolioPerfTests",
+    srcs = glob(["Tests/FolioTests/Support/**/*.swift"]) + _PERF_TESTS,
+    copts = _SWIFT_TEST_COPTS,
+    data = _SWIFT_TEST_DATA,
     tags = ["exclusive"],
     deps = [
         ":Folio",

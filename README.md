@@ -108,5 +108,5 @@ The first indexing build can take a few minutes. It uses a separate Bazel output
 | Package | Targets | Documentation |
 | :--- | :--- | :--- |
 | **`core/folio_engine`** | `//core/folio_engine`, `//core/folio_engine:folio_engine_ffi` | [Core Engine README](core/folio_engine/README.md) — Shared Rust Markdown AST/span scanner, active-line token folding, native $\text{LaTeX}$ box layout, paragraph reflow, and C-ABI FFI. |
-| **`macos/` & `Sources/Folio/`** | `//:FolioApp`, `//:folio`, `//:FolioTests`, `//:FolioRestyleEquivalenceTests` | [macOS App README](macos/README.md) — Standalone macOS app features, bundled `folio` CLI (`Contents/Resources/bin/folio`), keyboard shortcuts, typography themes, `.dmg` packaging, and GitHub Release auto-updates. |
+| **`macos/` & `Sources/Folio/`** | `//:FolioApp`, `//:folio`, `//:FolioTests`, `//:FolioRestyleEquivalenceTests`, `//:FolioPerfTests` | [macOS App README](macos/README.md) — Standalone macOS app features, bundled `folio` CLI (`Contents/Resources/bin/folio`), keyboard shortcuts, typography themes, `.dmg` packaging, and GitHub Release auto-updates. |
 | **`zed/folio_zed_extension/`** | `//zed/folio_zed_extension/...` | [Zed Extension README](zed/README.md) — Standalone WASI Preview 2 Zed extension (`v0.8.0` Extension Editor API), installation, independent auto-updates, and default preview view settings. |
