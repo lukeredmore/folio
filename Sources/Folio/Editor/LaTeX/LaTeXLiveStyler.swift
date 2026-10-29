@@ -50,9 +50,29 @@ public enum LaTeXLiveStyler {
         baseDirectoryURL: URL? = nil,
         fileURL: URL? = nil
     ) -> MarkdownDocumentAnalysis {
+        let parameters = MarkdownStyleParameters(
+            theme: theme, typography: typography ?? theme.typography, sourceCodeMode: sourceCodeMode, focusMode: focusMode,
+            containerWidth: containerWidth, prettyMode: prettyMode, baseDirectoryURL: baseDirectoryURL, textAlignment: textAlignment,
+            fileURL: fileURL
+        )
+        return applyStyles(to: storage, parameters: parameters, selectedRange: selectedRange)
+    }
+
+    /// Styles the document. `parameters` holds every input besides the text and selection, so
+    /// the block style cache keys on it.
+    @discardableResult
+    static func applyStyles(to storage: NSTextStorage, parameters: MarkdownStyleParameters, selectedRange: NSRange) -> MarkdownDocumentAnalysis {
         let span = EditorPerfPhase.latexStyles.begin()
         defer { span.end() }
-        let typography = typography ?? theme.typography
+        let theme = parameters.theme
+        let typography = parameters.typography
+        let textAlignment = parameters.textAlignment
+        let sourceCodeMode = parameters.sourceCodeMode
+        let prettyMode = parameters.prettyMode
+        let focusMode = parameters.focusMode
+        let containerWidth = parameters.containerWidth
+        let baseDirectoryURL = parameters.baseDirectoryURL
+        let fileURL = parameters.fileURL
         let string = storage.string
         let nsString = string as NSString
         let fullLength = nsString.length
@@ -192,17 +212,7 @@ public enum LaTeXLiveStyler {
         var decorations: [LineDecoration] = []
         var recordedBlocks: [LaTeXBlockStyleCache.CachedBlock] = []
 
-        let styleConfig = LaTeXBlockStyleCache.StyleConfig(
-            theme: theme,
-            typography: typography,
-            documentStyle: docIndex.documentStyle,
-            textAlignment: textAlignment,
-            sourceCodeMode: sourceCodeMode,
-            prettyMode: prettyMode,
-            focusMode: focusMode,
-            effectiveContainerWidth: effectiveContainerWidth,
-            baseDirectoryURL: baseDirectoryURL
-        )
+        let styleConfig = LaTeXBlockStyleCache.StyleConfig(parameters: parameters, documentStyle: docIndex.documentStyle)
         LaTeXBlockStyleCache.activeBaseAttributes = baseAttributes
         LaTeXBlockStyleCache.pendingGlyphInvalidationRanges.removeAll(keepingCapacity: true)
         let session = LaTeXBlockStyleCache.prepareIncrementalSession(
@@ -260,71 +270,6 @@ public enum LaTeXLiveStyler {
             blocks: recordedBlocks
         )
         return MarkdownDocumentAnalysis(headings: headings, decorations: decorations)
-    }
-
-    // MARK: - BibTeX Document Styling
-
-    private static func applyBibTeXStyles(
-        to storage: NSTextStorage, string: String, nsString: NSString, fullLength: Int,
-        theme: EditorTheme, effectiveBaseSize: CGFloat, effectiveContainerWidth: CGFloat, fileURL: URL?
-    ) -> MarkdownDocumentAnalysis {
-        let codeFont = theme.codeFont(size: effectiveBaseSize * 0.92)
-        let boldFont = NSFontManager.shared.convert(codeFont, toHaveTrait: .boldFontMask)
-        let fullRange = NSRange(location: 0, length: fullLength)
-        storage.addAttributes([.font: codeFont, MKey.noSpellCheck: true], range: fullRange)
-
-        let entries = LaTeXDocumentIndexer.parseBibTeXEntries(from: string, fileURL: fileURL)
-        var headings: [OutlineHeading] = []
-        var lineNum = 1
-        var idx = 0
-        var charToLine: [Int: Int] = [:]
-        while idx < fullLength {
-            let lr = nsString.lineRange(for: NSRange(location: idx, length: 0))
-            charToLine[lr.location] = lineNum
-            let lineStr = nsString.substring(with: lr) as NSString
-            let lineLen = lineStr.length
-            var p = 0
-            while p < lineLen && (lineStr.character(at: p) == 0x20 || lineStr.character(at: p) == 0x09) { p += 1 }
-            if p < lineLen {
-                let firstCh = lineStr.character(at: p)
-                if firstCh == 0x40 {
-                    let braceRange = lineStr.range(of: "{", options: [], range: NSRange(location: p + 1, length: lineLen - (p + 1)))
-                    if braceRange.location != NSNotFound && braceRange.location > p + 1 {
-                        let typeEnd = braceRange.location
-                        let commaRange = lineStr.range(of: ",", options: [], range: NSRange(location: typeEnd + 1, length: lineLen - (typeEnd + 1)))
-                        if commaRange.location != NSNotFound && commaRange.location > typeEnd + 1 {
-                            storage.addAttributes(
-                                [.font: boldFont, .foregroundColor: theme.linkNSColor], range: NSRange(location: lr.location + p, length: typeEnd - p))
-                            storage.addAttributes(
-                                [.font: boldFont, .foregroundColor: theme.headingNSColor],
-                                range: NSRange(location: lr.location + typeEnd + 1, length: commaRange.location - (typeEnd + 1)))
-                        }
-                    }
-                } else if (firstCh >= 0x41 && firstCh <= 0x5A) || (firstCh >= 0x61 && firstCh <= 0x7A) {
-                    var nameEnd = p + 1
-                    while nameEnd < lineLen {
-                        let c = lineStr.character(at: nameEnd)
-                        if (c >= 0x41 && c <= 0x5A) || (c >= 0x61 && c <= 0x7A) || c == 0x5F { nameEnd += 1 } else { break }
-                    }
-                    var eqPos = nameEnd
-                    while eqPos < lineLen && (lineStr.character(at: eqPos) == 0x20 || lineStr.character(at: eqPos) == 0x09) { eqPos += 1 }
-                    if eqPos < lineLen && lineStr.character(at: eqPos) == 0x3D {
-                        storage.addAttribute(.foregroundColor, value: theme.inlineCodeNSColor, range: NSRange(location: lr.location + p, length: nameEnd - p))
-                    }
-                }
-            }
-            idx = NSMaxRange(lr)
-            lineNum += 1
-        }
-
-        for entry in entries {
-            let title = "@\(entry.entryType){\(entry.key)} — \(entry.shortCitation)"
-            let line = charToLine[entry.characterLocation] ?? 1
-            headings.append(OutlineHeading(level: 1, title: title, characterLocation: entry.characterLocation, lineNumber: line))
-        }
-
-        _ = effectiveContainerWidth
-        return MarkdownDocumentAnalysis(headings: headings, decorations: [])
     }
 
     enum MKey {

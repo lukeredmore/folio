@@ -131,19 +131,7 @@ public final class MarkdownLiveStyler {
         let string = storage.string
         let fullRange = NSRange(location: 0, length: (string as NSString).length)
         if LaTeXLiveStyler.isLaTeXOrBibTeXDocument(string, fileURL: parameters.fileURL) {
-            let analysis = LaTeXLiveStyler.applyStyles(
-                to: storage,
-                theme: parameters.theme,
-                typography: parameters.typography,
-                textAlignment: parameters.textAlignment,
-                sourceCodeMode: parameters.sourceCodeMode,
-                prettyMode: parameters.prettyMode,
-                focusMode: parameters.focusMode,
-                selectedRange: selectedRange,
-                containerWidth: parameters.containerWidth,
-                baseDirectoryURL: parameters.baseDirectoryURL,
-                fileURL: parameters.fileURL
-            )
+            let analysis = LaTeXLiveStyler.applyStyles(to: storage, parameters: parameters, selectedRange: selectedRange)
             return MarkdownStyleResult(analysis: analysis, record: nil, restyledRanges: [fullRange])
         }
         let span = EditorPerfPhase.applyStyles.begin()

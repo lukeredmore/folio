@@ -47,6 +47,8 @@ extension HybridMarkdownEditorRepresentable {
 
         @objc func mediaImageDidLoad(_ notification: Notification) {
             guard let tv = textView else { return }
+            // A cached LaTeX figure block reserved the height of the image before it loaded.
+            LaTeXBlockStyleCache.invalidate()
             restyle(textView: tv)
             tv.needsDisplay = true
         }

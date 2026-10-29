@@ -6,16 +6,11 @@ enum LaTeXBlockStyleCache {
     static let styledPassAttributeKey = NSAttributedString.Key("FolioLaTeXStyledPass")
     static let sourceModePassAttributeKey = NSAttributedString.Key("FolioSourceCodeModePass")
 
+    /// The inputs of a styling pass besides the text, the selection, and the document facts.
+    /// A session is reused only for an equal config.
     struct StyleConfig: Equatable {
-        let theme: EditorTheme
-        let typography: EditorTypographySettings
+        let parameters: MarkdownStyleParameters
         let documentStyle: LaTeXDocumentStyle
-        let textAlignment: NSTextAlignment
-        let sourceCodeMode: Bool
-        let prettyMode: Bool
-        let focusMode: Bool
-        let effectiveContainerWidth: CGFloat
-        let baseDirectoryURL: URL?
     }
 
     struct CachedBlock {
@@ -25,7 +20,7 @@ enum LaTeXBlockStyleCache {
         let isActive: Bool
         let dimFactor: CGFloat
         let headings: [OutlineHeading]
-        let decorations: [LineDecoration]
+        var decorations: [LineDecoration]
         /// The text that styling the block read, which can extend past `range`: a probe for a
         /// multi-line call reads ahead, and a blank block checks its neighbors.
         var context: NSRange?
@@ -41,8 +36,8 @@ enum LaTeXBlockStyleCache {
         let config: StyleConfig
         let string: String
         let nsString: NSString
-        let docIndex: LaTeXDocumentIndex
         let docMacros: [String: LaTeXMacroDefinition]
+        let facts: DocumentFacts
         let blocksByStart: [Int: CachedBlock]
     }
 
@@ -51,7 +46,12 @@ enum LaTeXBlockStyleCache {
         let commonPrefixLen: Int
         let suffixStartInNew: Int
         let charDelta: Int
-        let numberingUnchanged: Bool
+
+        /// Where a location in the old text is in the new text, or nil inside the changed text.
+        func newLocation(ofOld location: Int) -> Int? {
+            if isSameString || location < commonPrefixLen { return location }
+            return location >= suffixStartInNew - charDelta ? location + charDelta : nil
+        }
     }
 
     /// The last session of each recently styled storage, so styling another storage, such as a
@@ -120,14 +120,8 @@ enum LaTeXBlockStyleCache {
         }
 
         if entry.string == string {
-            let diff = DiffWindow(
-                isSameString: true,
-                commonPrefixLen: nsString.length,
-                suffixStartInNew: 0,
-                charDelta: 0,
-                numberingUnchanged: true
-            )
-            return (entry, diff)
+            let diff = DiffWindow(isSameString: true, commonPrefixLen: nsString.length, suffixStartInNew: 0, charDelta: 0)
+            return entry.facts == DocumentFacts(docIndex) ? (entry, diff) : nil
         }
 
         let prevNS = entry.nsString
@@ -146,21 +140,9 @@ enum LaTeXBlockStyleCache {
             suffix += 1
         }
 
-        let delta = newLen - prevLen
-        let prevIdx = entry.docIndex
-        let numberingUnchanged =
-            docIndex.lineSectionNumbers.count == prevIdx.lineSectionNumbers.count && docIndex.blockTheoremHeaders.count == prevIdx.blockTheoremHeaders.count
-            && docIndex.blockEquationNumbers.count == prevIdx.blockEquationNumbers.count && docIndex.labels.count == prevIdx.labels.count
-            && docIndex.bibEntries.count == prevIdx.bibEntries.count
-
-        let diff = DiffWindow(
-            isSameString: false,
-            commonPrefixLen: prefix,
-            suffixStartInNew: newLen - suffix,
-            charDelta: delta,
-            numberingUnchanged: numberingUnchanged
-        )
-        return (entry, diff)
+        let diff = DiffWindow(isSameString: false, commonPrefixLen: prefix, suffixStartInNew: newLen - suffix, charDelta: newLen - prevLen)
+        // A block reads labels, numbers, and citations from anywhere in the document.
+        return entry.facts.moved(by: diff) == DocumentFacts(docIndex) ? (entry, diff) : nil
     }
 
     static func saveSession(
@@ -186,8 +168,8 @@ enum LaTeXBlockStyleCache {
             config: config,
             string: string,
             nsString: nsString,
-            docIndex: docIndex,
             docMacros: docMacros,
+            facts: DocumentFacts(docIndex),
             blocksByStart: map
         )
     }
@@ -222,8 +204,8 @@ enum LaTeXBlockStyleCache {
         guard let (entry, diff) = session else { return nil }
 
         if diff.isSameString || charIndex < diff.commonPrefixLen {
-            // The text before a block here is unchanged, so its entry flow state is too.
-            guard let prev = entry.blocksByStart[charIndex] else { return nil }
+            // The text before the block is unchanged; its entry flow state must match too.
+            guard let prev = entry.blocksByStart[charIndex], prev.entryFlow == flow else { return nil }
             if !diff.isSameString && NSMaxRange(prev.contextRange) >= diff.commonPrefixLen {
                 return nil
             }
@@ -233,15 +215,18 @@ enum LaTeXBlockStyleCache {
             let newDim: CGFloat = focusMode ? 0.30 : 1.0
             guard prev.dimFactor == newDim, hasStyledMarker(in: storage, range: prev.range) else { return nil }
 
-            headings.append(contentsOf: prev.headings)
-            decorations.append(contentsOf: prev.decorations)
-            recordedBlocks.append(prev)
+            var kept = prev
+            // A reference before the edit can point at a label after it.
+            kept.decorations = prev.decorations.map { shiftReferenceTarget($0, diff: diff) }
+            headings.append(contentsOf: kept.headings)
+            decorations.append(contentsOf: kept.decorations)
+            recordedBlocks.append(kept)
             flow = prev.exitFlow
             EditorPerfScope.recorder?.increment(.latexBlockReused)
             return (NSMaxRange(prev.range), prev.lineCount)
         }
 
-        if charIndex > diff.suffixStartInNew && diff.numberingUnchanged {
+        if charIndex > diff.suffixStartInNew {
             let oldStart = charIndex - diff.charDelta
             guard let prev = entry.blocksByStart[oldStart], !prev.isActive, prev.entryFlow == flow,
                 prev.contextRange.location + diff.charDelta > diff.suffixStartInNew
@@ -294,65 +279,5 @@ enum LaTeXBlockStyleCache {
             return false
         }
         return storage.attribute(sourceModePassAttributeKey, at: range.location, effectiveRange: nil) == nil
-    }
-
-    private static func shiftRange(_ r: NSRange, by delta: Int) -> NSRange {
-        guard r.location != NSNotFound else { return r }
-        return NSRange(location: r.location + delta, length: r.length)
-    }
-
-    private static func shiftDecoration(_ dec: LineDecoration, by delta: Int, editLocation: Int) -> LineDecoration {
-        guard delta != 0 else { return dec }
-        let newLineRange = shiftRange(dec.lineRange, by: delta)
-        let newKind: BlockDecorationKind
-        switch dec.kind {
-        case .headingUnderline, .blockquote, .codeFenceStart, .codeFenceBody, .codeFenceEnd,
-            .mathBlockStart, .mathBlockBody, .mathBlockEnd, .horizontalRule, .tableRow:
-            newKind = dec.kind
-        case let .mathBlockRendered(latex, fullBlockRange, dimFactor):
-            newKind = .mathBlockRendered(latex: latex, fullBlockRange: shiftRange(fullBlockRange, by: delta), dimFactor: dimFactor)
-        case let .mermaidBlockRendered(source, fullBlockRange, dimFactor):
-            newKind = .mermaidBlockRendered(mermaidSource: source, fullBlockRange: shiftRange(fullBlockRange, by: delta), dimFactor: dimFactor)
-        case let .svgBlockRendered(source, fullBlockRange, dimFactor):
-            newKind = .svgBlockRendered(svgSource: source, fullBlockRange: shiftRange(fullBlockRange, by: delta), dimFactor: dimFactor)
-        case let .htmlBlockRendered(source, fullBlockRange, width, dimFactor):
-            newKind = .htmlBlockRendered(
-                htmlSource: source, fullBlockRange: shiftRange(fullBlockRange, by: delta), layoutWidth: width, dimFactor: dimFactor)
-        case let .imageRendered(url, alt, fullRange, ew, eh, baseDir, dimFactor):
-            newKind = .imageRendered(
-                url: url, alt: alt, fullRange: shiftRange(fullRange, by: delta), explicitWidth: ew, explicitHeight: eh, baseDirectoryURL: baseDir,
-                dimFactor: dimFactor)
-        case let .inlineMathRendered(latex, range, fontSize, dimFactor):
-            newKind = .inlineMathRendered(latex: latex, range: shiftRange(range, by: delta), fontSize: fontSize, dimFactor: dimFactor)
-        case let .inlineCode(range, fontSize, dimFactor):
-            newKind = .inlineCode(range: shiftRange(range, by: delta), fontSize: fontSize, dimFactor: dimFactor)
-        case let .kbdPill(range, fontSize, dimFactor):
-            newKind = .kbdPill(range: shiftRange(range, by: delta), fontSize: fontSize, dimFactor: dimFactor)
-        case let .listBullet(range, dimFactor):
-            newKind = .listBullet(range: shiftRange(range, by: delta), dimFactor: dimFactor)
-        case let .latexPreambleCard(title, subtitle, fullBlockRange, dimFactor):
-            newKind = .latexPreambleCard(title: title, subtitle: subtitle, fullBlockRange: shiftRange(fullBlockRange, by: delta), dimFactor: dimFactor)
-        case let .latexTheoremCard(header, isProof, showHeader, fullBlockRange, dimFactor):
-            newKind = .latexTheoremCard(
-                header: header, isProof: isProof, showHeader: showHeader, fullBlockRange: shiftRange(fullBlockRange, by: delta), dimFactor: dimFactor)
-        case let .latexAbstractCard(showHeader, fullBlockRange, dimFactor):
-            newKind = .latexAbstractCard(showHeader: showHeader, fullBlockRange: shiftRange(fullBlockRange, by: delta), dimFactor: dimFactor)
-        case let .latexInputCard(path, resolvedURL, lineRange, dimFactor):
-            newKind = .latexInputCard(path: path, resolvedURL: resolvedURL, lineRange: shiftRange(lineRange, by: delta), dimFactor: dimFactor)
-        case let .latexEquationNumber(number, fullBlockRange, dimFactor):
-            newKind = .latexEquationNumber(number: number, fullBlockRange: shiftRange(fullBlockRange, by: delta), dimFactor: dimFactor)
-        case let .latexSectionBadge(number, level, lineRange, dimFactor):
-            newKind = .latexSectionBadge(number: number, level: level, lineRange: shiftRange(lineRange, by: delta), dimFactor: dimFactor)
-        case let .latexInlinePill(label, tooltip, targetLoc, targetURL, range, fontSize, isCitation, dimFactor):
-            let shiftedTarget = targetLoc.map { $0 >= editLocation ? $0 + delta : $0 }
-            newKind = .latexInlinePill(
-                label: label, tooltip: tooltip, targetLocation: shiftedTarget, targetURL: targetURL, range: shiftRange(range, by: delta), fontSize: fontSize,
-                isCitation: isCitation, dimFactor: dimFactor)
-        case let .latexInlineText(text, font, range, dimFactor):
-            newKind = .latexInlineText(text: text, font: font, range: shiftRange(range, by: delta), dimFactor: dimFactor)
-        case let .latexInlineRichText(lines, range, dimFactor):
-            newKind = .latexInlineRichText(lines: lines, range: shiftRange(range, by: delta), dimFactor: dimFactor)
-        }
-        return LineDecoration(lineRange: newLineRange, kind: newKind)
     }
 }
