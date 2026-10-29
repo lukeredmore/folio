@@ -10,6 +10,9 @@ import XCTest
 final class EditorHarnessWindow: NSWindow {
     override var isKeyWindow: Bool { true }
     override var canBecomeKey: Bool { true }
+
+    /// Keeps the requested frame, so the editor has the same size on every screen.
+    override func constrainFrameRect(_ frameRect: NSRect, to screen: NSScreen?) -> NSRect { frameRect }
 }
 
 /// Hosts the production `MainWindowView` in a real window with isolated defaults and a temporary
@@ -71,6 +74,9 @@ final class EditorHarness {
         window.layoutIfNeeded()
         RunLoop.main.run(until: Date().addingTimeInterval(0.05))
         textView = try XCTUnwrap(viewModel.activeTextView, "MainWindowView did not create the editor")
+        // The system scroller style depends on the attached pointing devices. A legacy scroller
+        // takes width from the text when it appears, so every machine uses one.
+        textView.enclosingScrollView?.scrollerStyle = .legacy
 
         viewModel.objectWillChange
             .sink { [weak self] _ in
@@ -138,6 +144,12 @@ final class EditorHarness {
             }
         }
         window.displayIfNeeded()
+    }
+
+    /// Waits for a debounced restyle after a content width change, then drains.
+    func settleResizeRestyle(timeout: TimeInterval = 5) {
+        waitUntil(timeout: timeout) { coordinator.pendingResizeRestyleWorkItem == nil }
+        drainUntilIdle()
     }
 
     /// Polls `condition` while running the main run loop. Returns false on timeout.

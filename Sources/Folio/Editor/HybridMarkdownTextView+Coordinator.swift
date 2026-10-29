@@ -93,7 +93,9 @@ extension HybridMarkdownEditorRepresentable {
         func scheduleResizeRestyle(for textView: HybridMarkdownTextView) {
             pendingResizeRestyleWorkItem?.cancel()
             let item = DispatchWorkItem { [weak self, weak textView] in
-                guard let self = self, let tv = textView else { return }
+                guard let self = self else { return }
+                self.pendingResizeRestyleWorkItem = nil
+                guard let tv = textView else { return }
                 let width = self.currentContentWidth(for: tv)
                 if abs(width - self.lastContentWidth) > 0.5 {
                     self.restyle(textView: tv)
