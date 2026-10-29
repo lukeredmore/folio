@@ -91,9 +91,10 @@ extension EditorHarness {
 
     /// Resizes the window as one frame of a live resize. Runs the run loop for `frameInterval`
     /// seconds, so a burst of calls paces like a 60 Hz drag.
-    func resize(width: CGFloat, frameInterval: TimeInterval = 1.0 / 60.0) {
+    func resize(width: CGFloat, height: CGFloat? = nil, frameInterval: TimeInterval = 1.0 / 60.0) {
         var frame = window.frame
         frame.size.width = width
+        frame.size.height = height ?? frame.size.height
         dispatchInRunLoop { self.window.setFrame(frame, display: true) }
         RunLoop.main.run(until: Date().addingTimeInterval(frameInterval))
     }

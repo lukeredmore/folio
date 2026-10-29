@@ -42,15 +42,28 @@ final class IncrementalRestyleEquivalenceTests: XCTestCase {
     /// switches make a block depend on text before and after it, so edits that open or close a
     /// call on another line must restyle it.
     func testLaTeXMultiLineCallEditsMatchFullRestyle() throws {
+        let delta = try runEdits("latex_master_chapter", workspace: latexChapterWorkspace(), seed: 0x5EED_0004, syntax: EditOperationGenerator.latexSyntax)
+        if let delta {
+            XCTAssertGreaterThan(delta.latexBlocksReusedCount, 0, "the edits must exercise reuse of cached blocks")
+        }
+    }
+
+    /// Window resizes, and a scroller that appears or hides, change the content width between
+    /// edits and cursor moves.
+    func testLaTeXEditsWithContentWidthChangesMatchFullRestyle() throws {
+        try runEdits(
+            "latex_master_chapter_resized", workspace: latexChapterWorkspace(), seed: 0x5EED_0005, syntax: EditOperationGenerator.latexSyntax,
+            operations: 150, changesContentWidth: true)
+    }
+
+    private func latexChapterWorkspace() throws -> PerfFixtures.Workspace {
         LaTeXProjectContext.removeAll()
-        defer { LaTeXProjectContext.removeAll() }
+        addTeardownBlock { @MainActor in LaTeXProjectContext.removeAll() }
         let directory = try makeTemporaryDirectory("LaTeXEquivalence").appendingPathComponent("project")
         try FileManager.default.copyItem(at: LaTeXProjectFixtures.fixtureDirectory, to: directory)
         let fileURL = directory.appendingPathComponent("chapter.tex")
         let text = try String(contentsOf: fileURL, encoding: .utf8)
-        let workspace = PerfFixtures.Workspace(directory: directory, fileURL: fileURL, document: PerfFixtures.Document(markdown: text, paragraphLines: []))
-        let delta = try runEdits("latex_master_chapter", workspace: workspace, seed: 0x5EED_0004, syntax: EditOperationGenerator.latexSyntax)
-        XCTAssertGreaterThan(delta?.latexBlocksReusedCount ?? 0, 0, "the edits must exercise reuse of cached blocks")
+        return PerfFixtures.Workspace(directory: directory, fileURL: fileURL, document: PerfFixtures.Document(markdown: text, paragraphLines: []))
     }
 
     /// Runs the edits and returns the counters for them, or nil when a check failed.
@@ -59,7 +72,9 @@ final class IncrementalRestyleEquivalenceTests: XCTestCase {
         _ name: String,
         workspace: PerfFixtures.Workspace,
         seed: UInt64,
-        syntax: [String] = EditOperationGenerator.markdownSyntax
+        syntax: [String] = EditOperationGenerator.markdownSyntax,
+        operations: Int = operationsPerFixture,
+        changesContentWidth: Bool = false
     ) throws -> EditorPerfCounters? {
         let harness = try EditorHarness(workspace: workspace)
         defer { harness.tearDown() }
@@ -69,11 +84,11 @@ final class IncrementalRestyleEquivalenceTests: XCTestCase {
             return nil
         }
 
-        var generator = EditOperationGenerator(seed: seed, blockSyntax: syntax)
+        var generator = EditOperationGenerator(seed: seed, blockSyntax: syntax, changesContentWidth: changesContentWidth)
         var history: [EditOperation] = []
         var fullRestyleReasons: [String: Int] = [:]
         let before = harness.counters
-        for index in 0..<Self.operationsPerFixture {
+        for index in 0..<operations {
             let operation = generator.next(in: harness)
             history.append(operation)
             let fullBefore = harness.counters.fullRangeRestyleCount
@@ -97,7 +112,7 @@ final class IncrementalRestyleEquivalenceTests: XCTestCase {
         PerfReport.record(
             "incrementalEquivalence_\(name)",
             [
-                "operations": Self.operationsPerFixture,
+                "operations": operations,
                 "seed": String(seed, radix: 16),
                 "restyleCount": delta.restyleCount,
                 "fullRangeRestyleCount": delta.fullRangeRestyleCount,
@@ -108,8 +123,9 @@ final class IncrementalRestyleEquivalenceTests: XCTestCase {
         return delta
     }
 
-    /// Diagram renders finish in the background and trigger a restyle. Waiting for them keeps
-    /// the editor and the reference restyle on the same render cache state.
+    /// Diagram renders finish in the background and trigger a restyle, and a content width
+    /// change restyles after a debounce. Waiting for both keeps the editor and the reference
+    /// restyle on the same state.
     private func settleBackgroundRenders(_ harness: EditorHarness) {
         harness.waitUntil(timeout: 10) { DiagramImageRenderer.shared.waitUntilIdle(timeout: 0.001) }
         harness.waitUntil(timeout: 20) { !harness.textView.hasPendingHTMLBlockLayout }
@@ -123,9 +139,13 @@ enum EditOperation: CustomStringConvertible {
     case returnKey
     case backspace
     case moveCursor(line: Int, column: Int)
+    case resizeWindow(width: Int, height: Int)
+    case scrollerStyle(NSScroller.Style)
 
     var description: String {
         switch self {
+        case let .resizeWindow(width, height): return "resize window to \(width)x\(height)"
+        case .scrollerStyle(let style): return style == .legacy ? "legacy scrollers" : "overlay scrollers"
         case .type(let text): return "type \(text.debugDescription)"
         case .returnKey: return "Return"
         case .backspace: return "Backspace"
@@ -140,6 +160,10 @@ enum EditOperation: CustomStringConvertible {
         case .returnKey: harness.pressReturn()
         case .backspace: harness.pressBackspace()
         case let .moveCursor(line, column): harness.moveCursor(toLine: line, column: column)
+        case let .resizeWindow(width, height): harness.resize(width: CGFloat(width), height: CGFloat(height))
+        case .scrollerStyle(let style):
+            harness.textView.enclosingScrollView?.scrollerStyle = style
+            harness.drainUntilIdle()
         }
     }
 }
@@ -158,16 +182,26 @@ struct EditOperationGenerator {
         "\\ENTRY{", "}", "{", "\\\\", "%", "\\Kw{", "\\itshape ", "\\begin{center}", "\\end{center}", "\\Stack{", "\\vfill", "$"
     ]
     private let blockSyntax: [String]
+    private let changesContentWidth: Bool
 
-    init(seed: UInt64, blockSyntax: [String] = Self.markdownSyntax) {
+    /// With `changesContentWidth`, one operation in ten resizes the window or switches the
+    /// scroller style. Other seeds draw the same operations as before.
+    init(seed: UInt64, blockSyntax: [String] = Self.markdownSyntax, changesContentWidth: Bool = false) {
         random = SplitMix64(seed: seed)
         self.blockSyntax = blockSyntax
+        self.changesContentWidth = changesContentWidth
     }
 
     @MainActor
     mutating func next(in harness: EditorHarness) -> EditOperation {
         if !pending.isEmpty {
             return pending.removeFirst()
+        }
+        if changesContentWidth && Int.random(in: 0..<10, using: &random) == 0 {
+            guard Bool.random(using: &random) else {
+                return .scrollerStyle(Bool.random(using: &random) ? .legacy : .overlay)
+            }
+            return .resizeWindow(width: Int.random(in: 900...1500, using: &random), height: Int.random(in: 500...1000, using: &random))
         }
         let roll = Int.random(in: 0..<100, using: &random)
         switch roll {
