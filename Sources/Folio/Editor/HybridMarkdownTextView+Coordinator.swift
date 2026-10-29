@@ -63,17 +63,31 @@ extension HybridMarkdownEditorRepresentable {
                 let tv = textView
             else { return }
             updateInsets(for: scrollView, textView: tv, theme: viewModel.theme)
-            let newContentWidth = currentContentWidth(for: tv)
-            if abs(newContentWidth - lastContentWidth) > 0.5 {
-                scheduleResizeRestyle(for: tv)
-            }
+            scheduleResizeRestyleIfWidthChanged(for: tv)
             tv.scheduleHTMLBlockOverlaySync()
             viewModel.refreshTooltipAnchorOnViewportChangeIfNeeded()
+        }
+
+        /// A legacy vertical scroller that appears or hides resizes the clip view while the
+        /// scroll view frame stays the same.
+        @objc func clipViewFrameDidChange(_ notification: Notification) {
+            guard let scrollView = (notification.object as? NSClipView)?.enclosingScrollView,
+                let tv = textView
+            else { return }
+            updateInsets(for: scrollView, textView: tv, theme: viewModel.theme)
+            scheduleResizeRestyleIfWidthChanged(for: tv)
+            tv.scheduleHTMLBlockOverlaySync()
         }
 
         @objc func clipViewBoundsDidChange(_ notification: Notification) {
             textView?.scheduleHTMLBlockOverlaySync()
             viewModel.refreshTooltipAnchorOnViewportChangeIfNeeded()
+        }
+
+        private func scheduleResizeRestyleIfWidthChanged(for textView: HybridMarkdownTextView) {
+            if abs(currentContentWidth(for: textView) - lastContentWidth) > 0.5 {
+                scheduleResizeRestyle(for: textView)
+            }
         }
 
         func scheduleResizeRestyle(for textView: HybridMarkdownTextView) {

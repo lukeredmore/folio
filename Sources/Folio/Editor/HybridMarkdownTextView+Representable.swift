@@ -89,6 +89,12 @@ public struct HybridMarkdownEditorRepresentable: NSViewRepresentable {
         )
         NotificationCenter.default.addObserver(
             context.coordinator,
+            selector: #selector(Coordinator.clipViewFrameDidChange(_:)),
+            name: NSView.frameDidChangeNotification,
+            object: scrollView.contentView
+        )
+        NotificationCenter.default.addObserver(
+            context.coordinator,
             selector: #selector(Coordinator.clipViewBoundsDidChange(_:)),
             name: NSView.boundsDidChangeNotification,
             object: scrollView.contentView
@@ -107,6 +113,7 @@ public struct HybridMarkdownEditorRepresentable: NSViewRepresentable {
         )
         scrollView.postsFrameChangedNotifications = true
         scrollView.contentView.postsBoundsChangedNotifications = true
+        scrollView.contentView.postsFrameChangedNotifications = true
 
         return scrollView
     }
