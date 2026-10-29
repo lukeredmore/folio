@@ -275,6 +275,7 @@ enum HTMLBlockPage {
               };
               window.__folioClearSelection = () => { const s = document.getSelection(); if (s) s.removeAllRanges(); };
               window.__folioSetOpacity = (o) => { root.style.opacity = String(o); };
+              window.__folioReportHeight = () => { lastHeight = -1; reportHeight(); };
 
               reportHeight();
               post({ type: 'ready' });

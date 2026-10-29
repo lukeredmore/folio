@@ -42,7 +42,13 @@ final class HTMLBlockWebView: WKWebView, WKNavigationDelegate {
     private(set) var style: HTMLBlockPageStyle
     /// Range of the block's source lines in the text view, updated as the text changes.
     var blockRange: NSRange
-    var layoutWidth: CGFloat
+    /// The column width that the measured height is cached for. A new width reports it again.
+    var layoutWidth: CGFloat {
+        didSet {
+            guard isReady, Int(layoutWidth.rounded()) != Int(oldValue.rounded()) else { return }
+            runBridge("window.__folioReportHeight()")
+        }
+    }
     private(set) var isReady = false
     private(set) var selection: Selection?
     private(set) var measuredHeight: CGFloat?
