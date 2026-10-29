@@ -189,11 +189,22 @@ final class EditorHarness {
         return nsText.substring(with: range).trimmingCharacters(in: .newlines)
     }
 
+    /// Waits until the last restyle used the current content width. A width change (such as the
+    /// vertical scroller appearing) restyles after a short debounce, which a slow machine can
+    /// still be inside of when `drainUntilQuiet` returns.
+    func waitUntilStyledAtCurrentWidth(timeout: TimeInterval = 10) {
+        waitUntil(timeout: timeout) {
+            abs(coordinator.lastContentWidth - coordinator.currentContentWidth(for: textView)) <= 0.5
+        }
+        drainUntilIdle()
+    }
+
     /// Waits for initial layout, background diagram renders, and the first restyle to finish.
     private func settle() {
         drainUntilIdle()
         waitUntil(timeout: 10) { DiagramImageRenderer.shared.waitUntilIdle(timeout: 0.001) }
         drainUntilQuiet(quietPeriod: 0.15)
+        waitUntilStyledAtCurrentWidth()
     }
 }
 

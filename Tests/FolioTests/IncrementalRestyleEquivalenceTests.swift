@@ -89,7 +89,7 @@ final class IncrementalRestyleEquivalenceTests: XCTestCase {
     private func settleBackgroundRenders(_ harness: EditorHarness) {
         harness.waitUntil(timeout: 10) { DiagramImageRenderer.shared.waitUntilIdle(timeout: 0.001) }
         harness.waitUntil(timeout: 20) { !harness.textView.hasPendingHTMLBlockLayout }
-        harness.drainUntilIdle()
+        harness.waitUntilStyledAtCurrentWidth()
     }
 }
 
