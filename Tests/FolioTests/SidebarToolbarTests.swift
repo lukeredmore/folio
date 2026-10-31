@@ -5,14 +5,6 @@ import XCTest
 
 @MainActor
 final class SidebarToolbarTests: XCTestCase {
-    private var window: NSWindow?
-
-    override func tearDown() {
-        window?.orderOut(nil)
-        window = nil
-        super.tearDown()
-    }
-
     private func findSubviews<T: NSView>(of type: T.Type, in root: NSView) -> [T] {
         var results: [T] = []
         if let match = root as? T { results.append(match) }
@@ -31,7 +23,6 @@ final class SidebarToolbarTests: XCTestCase {
         window.toolbarStyle = .unified
         window.contentView = hostingView
         window.makeKeyAndOrderFront(nil)
-        self.window = window
         settle(window)
         return window
     }
@@ -78,12 +69,14 @@ final class SidebarToolbarTests: XCTestCase {
 
     func testDefaultWidthShowsOptionsMenuAndModePickerOnly() throws {
         let window = makeWindow(makeIsolatedViewModel())
+        defer { window.orderOut(nil) }
         XCTAssertEqual(visibleSidebarItemCount(in: window), 2)
         XCTAssertEqual(clippedIndicatorCount(in: window), 0)
     }
 
     func testWideSidebarAddsAddButtonWithoutOverflow() throws {
         let window = makeWindow(makeIsolatedViewModel())
+        defer { window.orderOut(nil) }
         let split = try splitView(in: window)
 
         split.setPosition(SidebarView.addButtonMinimumSidebarWidth, ofDividerAt: 0)
@@ -111,6 +104,7 @@ final class SidebarToolbarTests: XCTestCase {
     func testCollapsedSidebarShowsOnlyTheToggle() throws {
         let vm = makeIsolatedViewModel()
         let window = makeWindow(vm)
+        defer { window.orderOut(nil) }
         vm.showSidebar = false
         settle(window)
         XCTAssertEqual(visibleSidebarItemCount(in: window), 0)
