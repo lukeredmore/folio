@@ -81,11 +81,12 @@ extension MarkdownLiveStyler {
         decorations: inout [LineDecoration]
     ) {
         guard !astLinksByLine.isEmpty else { return }
+        var columns = LineUTF8ColumnCache(lineRecords: lineRecords)
         // Lines in document order, so decorations are in document order.
         for ln in astLinksByLine.keys.sorted() {
             guard let links = astLinksByLine[ln], var rec = lineRecords[ln] else { continue }
             for reported in links {
-                let link = correctedInlineStart(reported, lineRecords: lineRecords)
+                let link = correctedInlineStart(reported, columns: &columns)
                 let spanLines = link.startLine...link.endLine
                 if link.endLine > link.startLine {
                     // A multi-line span is only one visual span when its lines are joined.
@@ -95,8 +96,8 @@ extension MarkdownLiveStyler {
                     }
                     guard joined else { continue }
                 }
-                guard let docStart = documentOffset(lineRecords[link.startLine], byteColumn: link.startColumn - 1),
-                    let docEnd = documentOffset(lineRecords[link.endLine], byteColumn: link.endColumn),
+                guard let docStart = columns.documentOffset(line: link.startLine, byteColumn: link.startColumn - 1),
+                    let docEnd = columns.documentOffset(line: link.endLine, byteColumn: link.endColumn),
                     docEnd > docStart
                 else {
                     continue
@@ -231,17 +232,16 @@ extension MarkdownLiveStyler {
     /// `!`, uses the nearest earlier line that has one at the reported start column.
     static func correctedInlineStart(
         _ inline: CmarkAstInline,
-        lineRecords: [Int: LineRecord]
+        columns: inout LineUTF8ColumnCache
     ) -> CmarkAstInline {
         let col = inline.startColumn - 1
-        let startsWithBracket: (Int) -> Bool = { line in
-            guard let rec = lineRecords[line] else { return false }
-            let bytes = Array(rec.lineText.utf8)
-            return col >= 0 && col < bytes.count && (bytes[col] == UInt8(ascii: "[") || bytes[col] == UInt8(ascii: "!"))
+        func startsWithBracket(_ line: Int) -> Bool {
+            let byte = columns.byte(line: line, column: col)
+            return byte == UInt8(ascii: "[") || byte == UInt8(ascii: "!")
         }
         guard !startsWithBracket(inline.startLine) else { return inline }
         var line = inline.startLine - 1
-        while line >= 1, lineRecords[line] != nil {
+        while line >= 1, columns.lineRecords[line] != nil {
             if startsWithBracket(line) {
                 return CmarkAstInline(
                     kind: inline.kind,
@@ -256,19 +256,6 @@ extension MarkdownLiveStyler {
             line -= 1
         }
         return inline
-    }
-
-    /// UTF-16 document offset of a 0-based UTF-8 byte column in a line's content.
-    static func documentOffset(
-        _ rec: LineRecord?,
-        byteColumn: Int
-    ) -> Int? {
-        guard let rec = rec else { return nil }
-        let utf8 = rec.lineText.utf8
-        guard let idx = utf8.index(utf8.startIndex, offsetBy: max(0, min(byteColumn, utf8.count)), limitedBy: utf8.endIndex) else {
-            return nil
-        }
-        return rec.contentRange.location + NSRange(utf8.startIndex..<idx, in: rec.lineText).length
     }
 
     static func canJoinProseLines(_ current: ProseLineKind?, _ next: ProseLineKind?) -> Bool {
