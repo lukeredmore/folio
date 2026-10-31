@@ -170,6 +170,8 @@ final class MarkdownStylePass {
     private func styleStep(at index: Int, lineNumber: Int) -> (nextIndex: Int, lineDelta: Int) {
         let lineRange = nsString.lineRange(for: NSRange(location: index, length: 0))
         let contentRange = Styler.strippedLineContentRange(nsString: nsString, lineRange: lineRange)
+        // A line without a record is skipped by the passes in `finish()` as well.
+        guard contentRange.length <= Styler.maxStyledLineLength else { return (NSMaxRange(lineRange), 1) }
         let lineText = nsString.substring(with: contentRange)
         let isActiveLine = Styler.isLineActive(lineRange: lineRange, activeLineRange: activeLineRange, selectedRange: selectedRange)
         let dimFactor: CGFloat = (focusMode && !isActiveLine) ? 0.30 : 1.0

@@ -13,6 +13,11 @@ public final class MarkdownLiveStyler {
     public static let noSpellCheckAttributeKey = NSAttributedString.Key("FolioNoSpellCheck")
     /// Stores a custom LaTeX foreground color (e.g. from `\color{...}` or colored macro blocks) so custom-drawn math and inline text inherit it.
     public static let customColorAttributeKey = NSAttributedString.Key("FolioCustomForegroundColor")
+    /// Lines longer than this many UTF-16 units keep the base attributes. TextKit lays out a
+    /// paragraph in time that grows faster than quadratically with its attribute runs, so styling
+    /// a minified or one-line file (for example 18 MB of JSON with a link every 40 characters)
+    /// hangs layout. The limit matches VS Code's `editor.maxTokenizationLineLength`.
+    static let maxStyledLineLength = 20_000
 
     public struct InlineMathLayoutInfo: Hashable, Sendable {
         public let range: NSRange
