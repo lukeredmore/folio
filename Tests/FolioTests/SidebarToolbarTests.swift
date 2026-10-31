@@ -27,6 +27,18 @@ final class SidebarToolbarTests: XCTestCase {
         return window
     }
 
+    /// Waits for the toolbar to rebuild, which follows the sidebar width a few runloop passes late.
+    private func waitForSidebarItemCount(_ expected: Int, in window: NSWindow, timeout: TimeInterval = 3) -> Int {
+        let deadline = Date().addingTimeInterval(timeout)
+        var count = visibleSidebarItemCount(in: window)
+        while count != expected, Date() < deadline {
+            RunLoop.current.run(until: Date().addingTimeInterval(0.05))
+            window.contentView?.layoutSubtreeIfNeeded()
+            count = visibleSidebarItemCount(in: window)
+        }
+        return count
+    }
+
     private func settle(_ window: NSWindow) {
         window.contentView?.layoutSubtreeIfNeeded()
         RunLoop.current.run(until: Date().addingTimeInterval(0.3))
@@ -70,7 +82,7 @@ final class SidebarToolbarTests: XCTestCase {
     func testDefaultWidthShowsOptionsMenuAndModePickerOnly() throws {
         let window = makeWindow(makeIsolatedViewModel())
         defer { window.orderOut(nil) }
-        XCTAssertEqual(visibleSidebarItemCount(in: window), 2)
+        XCTAssertEqual(waitForSidebarItemCount(2, in: window), 2)
         XCTAssertEqual(clippedIndicatorCount(in: window), 0)
     }
 
@@ -81,14 +93,14 @@ final class SidebarToolbarTests: XCTestCase {
 
         split.setPosition(SidebarView.addButtonMinimumSidebarWidth, ofDividerAt: 0)
         settle(window)
-        XCTAssertEqual(visibleSidebarItemCount(in: window), 3)
+        XCTAssertEqual(waitForSidebarItemCount(3, in: window), 3)
         XCTAssertEqual(clippedIndicatorCount(in: window), 0, "The add button must fit at its minimum sidebar width")
 
         // Space-between: the add button hugs the traffic lights, the rest hug the sidebar toggle.
         split.setPosition(400, ofDividerAt: 0)
         settle(window)
+        XCTAssertEqual(waitForSidebarItemCount(3, in: window), 3)
         let frames = visibleSidebarItemFrames(in: window)
-        XCTAssertEqual(frames.count, 3)
         let toggle = try toggleSidebarFrame(in: window)
         let zoomButton = try XCTUnwrap(window.standardWindowButton(.zoomButton))
         let trafficLightsMaxX = zoomButton.convert(zoomButton.bounds, to: nil).maxX
@@ -98,7 +110,7 @@ final class SidebarToolbarTests: XCTestCase {
 
         split.setPosition(SidebarView.addButtonMinimumSidebarWidth - 20, ofDividerAt: 0)
         settle(window)
-        XCTAssertEqual(visibleSidebarItemCount(in: window), 2)
+        XCTAssertEqual(waitForSidebarItemCount(2, in: window), 2)
     }
 
     func testCollapsedSidebarShowsOnlyTheToggle() throws {
@@ -107,7 +119,7 @@ final class SidebarToolbarTests: XCTestCase {
         defer { window.orderOut(nil) }
         vm.showSidebar = false
         settle(window)
-        XCTAssertEqual(visibleSidebarItemCount(in: window), 0)
+        XCTAssertEqual(waitForSidebarItemCount(0, in: window), 0)
         XCTAssertEqual(clippedIndicatorCount(in: window), 0)
     }
 }
