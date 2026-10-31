@@ -141,6 +141,38 @@ final class WindowTabBarLayoutTests: XCTestCase {
         XCTAssertNil(hosted.markedRegionFrame(identifier: ExternalUpdateTooltipView.layoutRegionIdentifier))
     }
 
+    func testConflictUsesOpaqueStatusBarTooltipInsteadOfEditorBanner() throws {
+        for showSidebar in [true, false] {
+            let state = showSidebar ? "conflict, sidebar open" : "conflict, sidebar closed"
+            let hosted = HostedMainWindow(viewModel: makeIsolatedViewModel(), showSidebar: showSidebar, markdown: sampleDocument)
+            defer { hosted.close() }
+            hosted.showExternalUpdateNotice()
+            hosted.showConflict()
+            hosted.writeSnapshot(named: showSidebar ? "conflict-sidebar-open" : "conflict-sidebar-closed")
+            try assertUpdateTooltipAnchoredToStatusBar(hosted, state)
+            XCTAssertNil(
+                hosted.markedRegionFrame(identifier: DocumentBannerStack.layoutRegionIdentifier),
+                "\(state): the conflict must not draw a banner over the top of the editor"
+            )
+        }
+    }
+
+    func testConflictTooltipTakesClicksWithoutBlockingEditor() throws {
+        let hosted = HostedMainWindow(viewModel: makeIsolatedViewModel(), showSidebar: true, markdown: sampleDocument)
+        defer { hosted.close() }
+        hosted.showConflict()
+        let textView = try XCTUnwrap(hosted.viewModel.activeTextView)
+        let firstLine = try hosted.firstEditorLineFrame()
+        let editorHit = hosted.window.contentView?.superview?.hitTest(NSPoint(x: firstLine.midX, y: firstLine.midY))
+        XCTAssertTrue(editorHit === textView, "The conflict tooltip must not block clicks on the editor text")
+
+        let tooltip = try XCTUnwrap(hosted.markedRegionFrame(identifier: ExternalUpdateTooltipView.layoutRegionIdentifier))
+        let resolvePoint = NSPoint(x: tooltip.maxX - 50, y: tooltip.minY + ExternalUpdateTooltipView.arrowHeight + 19)
+        hosted.click(at: resolvePoint)
+        hosted.pump(0.2)
+        XCTAssertTrue(hosted.viewModel.showConflictResolverModal, "Clicking Resolve Interactively must open the resolver")
+    }
+
     func testCommentsPillStaysInToolbarRowWithTabBar() throws {
         let hosted = HostedMainWindow(viewModel: makeIsolatedViewModel(), showSidebar: false, markdown: sampleDocument)
         defer { hosted.close() }

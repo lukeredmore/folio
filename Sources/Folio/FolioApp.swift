@@ -15,7 +15,7 @@ public struct MainWindowView: View {
 
     private var isBottomBarVisibleWhenSidebarClosed: Bool {
         isHoveringBottomEdge || viewModel.showSettingsModal || viewModel.showWordCountPopover
-            || viewModel.externalUpdateNotice != nil
+            || viewModel.externalUpdateNotice != nil || viewModel.activeConflict != nil
     }
 
     /// The editor bleeds under the transparent toolbar, but not under the opaque native tab bar.

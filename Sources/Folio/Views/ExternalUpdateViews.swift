@@ -1,62 +1,43 @@
 import AppKit
 import SwiftUI
 
-// MARK: - Document Conflict Banner & External Update Diff Inspector
+// MARK: - Document Conflict Tooltip & External Update Diff Inspector
 
-public struct DocumentConflictBannerView: View {
+/// Headline and resolution actions for an external edit that overlaps unsaved local edits.
+struct DocumentConflictTooltipBody: View {
     @ObservedObject var viewModel: EditorWorkspaceViewModel
+    let conflict: DocumentConflict
 
-    public init(viewModel: EditorWorkspaceViewModel) {
-        self.viewModel = viewModel
-    }
-
-    public var body: some View {
-        if let conflict = viewModel.activeConflict {
-            HStack(spacing: 10) {
-                Image(systemName: "exclamationmark.triangle.fill")
-                    .font(.system(size: 13.5, weight: .semibold))
-                    .foregroundColor(.orange)
-
-                VStack(alignment: .leading, spacing: 1) {
-                    Text("External Edit Conflict in \(conflict.fileURL.lastPathComponent)")
-                        .font(.system(size: 12, weight: .semibold))
-                        .foregroundColor(viewModel.theme.textColor)
-                    Text("\(conflict.conflictHunks.count) overlapping section(s) changed both in Folio and on disk.")
-                        .font(.system(size: 10.5))
-                        .foregroundColor(viewModel.theme.secondaryTextColor)
-                }
-
-                Spacer()
-
-                Button("Resolve Interactively…") {
-                    viewModel.showConflictResolverModal = true
-                }
+    var body: some View {
+        HStack(alignment: .top, spacing: 8) {
+            Image(systemName: "exclamationmark.triangle.fill")
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundColor(.orange)
+            VStack(alignment: .leading, spacing: 2) {
+                Text("External Edit Conflict in \(conflict.fileURL.lastPathComponent)")
+                    .font(.system(size: 11.5, weight: .semibold))
+                    .foregroundColor(viewModel.theme.textColor)
+                Text("\(conflict.conflictHunks.count) overlapping section(s) changed both in Folio and on disk.")
+                    .font(.system(size: 10.5))
+                    .foregroundColor(viewModel.theme.secondaryTextColor)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            Spacer(minLength: 0)
+        }
+        HStack(spacing: 8) {
+            Spacer(minLength: 0)
+            Button("Keep My Changes") { viewModel.resolveConflict(using: .keepLocal) }
+            Button("Accept External") { viewModel.resolveConflict(using: .acceptExternal) }
+            Button("Keep Both") { viewModel.resolveConflict(using: .keepBoth) }
+        }
+        .controlSize(.small)
+        HStack {
+            Spacer(minLength: 0)
+            Button("Resolve Interactively…") { viewModel.showConflictResolverModal = true }
                 .buttonStyle(.borderedProminent)
                 .tint(.orange)
-                .controlSize(.small)
-
-                Button("Keep My Changes") {
-                    viewModel.resolveConflict(using: .keepLocal)
-                }
-                .controlSize(.small)
-
-                Button("Accept External") {
-                    viewModel.resolveConflict(using: .acceptExternal)
-                }
-                .controlSize(.small)
-
-                Button("Keep Both") {
-                    viewModel.resolveConflict(using: .keepBoth)
-                }
-                .controlSize(.small)
-            }
-            .padding(.horizontal, 14)
-            .padding(.vertical, 9)
-            .background(Color.orange.opacity(viewModel.theme.isDark ? 0.16 : 0.10))
-            .overlay(alignment: .bottom) {
-                Divider().overlay(Color.orange.opacity(0.4))
-            }
         }
+        .controlSize(.small)
     }
 }
 

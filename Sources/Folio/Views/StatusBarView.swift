@@ -191,6 +191,7 @@ public struct StatusBarView: View {
                     .foregroundStyle(.orange)
             }
             .buttonStyle(.borderless)
+            .anchorPreference(key: AutosaveIndicatorAnchorKey.self, value: .bounds) { $0 }
             .help("Conflict (\(conflict.conflictHunks.count)) — Click to resolve")
         } else if let notice = viewModel.externalUpdateNotice {
             Button {

@@ -10,48 +10,35 @@ struct AutosaveIndicatorAnchorKey: PreferenceKey {
     }
 }
 
-/// Tooltip card that rises from the autosave indicator when the open file changes on disk.
+/// What the persistence tooltip reports: a clean external update, or a conflict with unsaved local edits.
+enum PersistenceTooltipContent {
+    case update(ExternalUpdateNotice)
+    case conflict(DocumentConflict)
+
+    var tint: Color {
+        switch self {
+        case .update: return .green
+        case .conflict: return .orange
+        }
+    }
+}
+
+/// Opaque tooltip card that rises from the autosave indicator when the open file changes on disk.
 struct ExternalUpdateTooltipView: View {
     static let layoutRegionIdentifier = "ExternalUpdateTooltip"
     static let arrowHeight: CGFloat = 6
     @ObservedObject var viewModel: EditorWorkspaceViewModel
-    let notice: ExternalUpdateNotice
+    let content: PersistenceTooltipContent
     let arrowCenterX: CGFloat
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            HStack(alignment: .top, spacing: 8) {
-                Image(systemName: notice.wasThreeWayMerged ? "arrow.triangle.branch" : "arrow.triangle.2.circlepath.circle.fill")
-                    .font(.system(size: 13, weight: .semibold))
-                    .foregroundColor(.green)
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("\(notice.headlineText) in \(notice.fileURL.lastPathComponent) (\(notice.summaryText))")
-                        .font(.system(size: 11.5, weight: .semibold))
-                        .foregroundColor(viewModel.theme.textColor)
-                    Text("Changed lines are highlighted in green in the editor.")
-                        .font(.system(size: 10.5))
-                        .foregroundColor(viewModel.theme.secondaryTextColor)
-                }
-                Spacer(minLength: 4)
-                Button {
-                    viewModel.dismissExternalUpdateNotice()
-                } label: {
-                    Image(systemName: "xmark")
-                        .font(.system(size: 10, weight: .semibold))
-                        .foregroundColor(viewModel.theme.secondaryTextColor)
-                }
-                .buttonStyle(.plain)
-                .help("Dismiss")
+            switch content {
+            case .update(let notice):
+                ExternalUpdateTooltipBody(viewModel: viewModel, notice: notice)
+            case .conflict(let conflict):
+                DocumentConflictTooltipBody(viewModel: viewModel, conflict: conflict)
             }
-            HStack(spacing: 8) {
-                Spacer()
-                Button("View Diff") { viewModel.showExternalUpdateDiffModal = true }
-                Button("Undo Update") {
-                    viewModel.undo()
-                    viewModel.dismissExternalUpdateNotice()
-                }
-            }
-            .controlSize(.small)
         }
         .padding(10)
         .frame(width: 340, alignment: .leading)
@@ -64,11 +51,52 @@ struct ExternalUpdateTooltipView: View {
         let shape = TooltipCardShape(arrowCenterX: arrowCenterX, arrowHeight: Self.arrowHeight)
         return ZStack {
             shape.fill(viewModel.theme.editorBackgroundColor)
-            shape.fill(Color.green.opacity(viewModel.theme.isDark ? 0.16 : 0.10))
-            shape.stroke(Color.green.opacity(0.45), lineWidth: 1)
+            shape.fill(content.tint.opacity(viewModel.theme.isDark ? 0.16 : 0.10))
+            shape.stroke(content.tint.opacity(0.45), lineWidth: 1)
         }
         .padding(.bottom, -Self.arrowHeight)
         .shadow(color: .black.opacity(0.18), radius: 8, y: 2)
+    }
+}
+
+/// Headline, dismiss button, and actions for an external update that merged cleanly.
+private struct ExternalUpdateTooltipBody: View {
+    @ObservedObject var viewModel: EditorWorkspaceViewModel
+    let notice: ExternalUpdateNotice
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 8) {
+            Image(systemName: notice.wasThreeWayMerged ? "arrow.triangle.branch" : "arrow.triangle.2.circlepath.circle.fill")
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundColor(.green)
+            VStack(alignment: .leading, spacing: 2) {
+                Text("\(notice.headlineText) in \(notice.fileURL.lastPathComponent) (\(notice.summaryText))")
+                    .font(.system(size: 11.5, weight: .semibold))
+                    .foregroundColor(viewModel.theme.textColor)
+                Text("Changed lines are highlighted in green in the editor.")
+                    .font(.system(size: 10.5))
+                    .foregroundColor(viewModel.theme.secondaryTextColor)
+            }
+            Spacer(minLength: 4)
+            Button {
+                viewModel.dismissExternalUpdateNotice()
+            } label: {
+                Image(systemName: "xmark")
+                    .font(.system(size: 10, weight: .semibold))
+                    .foregroundColor(viewModel.theme.secondaryTextColor)
+            }
+            .buttonStyle(.plain)
+            .help("Dismiss")
+        }
+        HStack(spacing: 8) {
+            Spacer()
+            Button("View Diff") { viewModel.showExternalUpdateDiffModal = true }
+            Button("Undo Update") {
+                viewModel.undo()
+                viewModel.dismissExternalUpdateNotice()
+            }
+        }
+        .controlSize(.small)
     }
 }
 
@@ -118,14 +146,20 @@ struct ExternalUpdateTooltipOverlay: View {
     private let cardWidth: CGFloat = 340
     private let gap: CGFloat = 4
 
+    private var content: PersistenceTooltipContent? {
+        if let conflict = viewModel.activeConflict { return .conflict(conflict) }
+        if let notice = viewModel.externalUpdateNotice { return .update(notice) }
+        return nil
+    }
+
     var body: some View {
         GeometryReader { proxy in
-            if let anchor, let notice = viewModel.externalUpdateNotice, viewModel.activeConflict == nil {
+            if let anchor, let content {
                 let indicator = proxy[anchor]
                 let leading = min(max(8, indicator.midX - 24), max(8, proxy.size.width - cardWidth - 8))
                 let tooltip = ExternalUpdateTooltipView(
                     viewModel: viewModel,
-                    notice: notice,
+                    content: content,
                     arrowCenterX: indicator.midX - leading
                 )
                 ExternalUpdateTooltipHost(tooltip: tooltip)

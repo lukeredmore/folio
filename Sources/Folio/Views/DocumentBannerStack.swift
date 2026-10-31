@@ -12,7 +12,6 @@ struct DocumentBannerStack: View {
     var body: some View {
         VStack(spacing: 0) {
             RemoteConnectionBannerView(viewModel: viewModel)
-            DocumentConflictBannerView(viewModel: viewModel)
             if viewModel.showFindReplaceBar {
                 FindReplaceBannerView(viewModel: viewModel)
             }
