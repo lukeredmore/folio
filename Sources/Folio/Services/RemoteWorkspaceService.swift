@@ -166,6 +166,7 @@ public final class RemoteWorkspaceManager: ObservableObject {
 
     @discardableResult
     public func addMount(_ spec: RemoteMountSpec) async -> Bool {
+        recordRecentHost(spec)
         if let existingIdx = mounts.firstIndex(where: {
             $0.host == spec.host && $0.user == spec.user && $0.port == spec.port && $0.remotePath == spec.remotePath
         }) {

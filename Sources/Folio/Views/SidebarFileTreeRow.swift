@@ -1,19 +1,25 @@
 import AppKit
 import SwiftUI
 
+/// Context menu actions for a sidebar row.
+struct SidebarNodeActions {
+    let sshDisplayPath: String?
+    let newFile: (URL) -> Void
+    let newLaTeXFile: (URL) -> Void
+    let syncMount: (UUID) -> Void
+    let disconnectMount: (UUID) -> Void
+    let removeLocalFolder: (URL) -> Void
+    let deleteItem: (URL) -> Void
+    let openInNewTab: (URL) -> Void
+}
+
 struct SidebarArticleRow: View {
     let node: WorkspaceFileNode
     let isSelected: Bool
     let accentColor: Color
     let mountConnectionState: RemoteConnectionState?
     let liveSyncStatus: RemoteFileSyncStatus
-    let onNewFileInDirectory: (URL) -> Void
-    let onNewLaTeXFileInDirectory: (URL) -> Void
-    let onSyncMount: (UUID) -> Void
-    let onDisconnectMount: (UUID) -> Void
-    let onDeleteItem: (URL) -> Void
-    let onOpenInNewTab: (URL) -> Void
-    let sshDisplayPath: String?
+    let actions: SidebarNodeActions
 
     var body: some View {
         HStack(spacing: 8) {
@@ -48,16 +54,7 @@ struct SidebarArticleRow: View {
         }
         .padding(.vertical, 2)
         .contextMenu {
-            SidebarNodeContextMenu(
-                node: node,
-                sshDisplayPath: sshDisplayPath,
-                onNewFileInDirectory: onNewFileInDirectory,
-                onNewLaTeXFileInDirectory: onNewLaTeXFileInDirectory,
-                onSyncMount: onSyncMount,
-                onDisconnectMount: onDisconnectMount,
-                onDeleteItem: onDeleteItem,
-                onOpenInNewTab: onOpenInNewTab
-            )
+            SidebarNodeContextMenu(node: node, actions: actions)
         }
     }
 }
@@ -67,13 +64,7 @@ struct SidebarFileRow: View {
     let accentColor: Color
     let mountConnectionState: RemoteConnectionState?
     let liveSyncStatus: RemoteFileSyncStatus
-    let onNewFileInDirectory: (URL) -> Void
-    let onNewLaTeXFileInDirectory: (URL) -> Void
-    let onSyncMount: (UUID) -> Void
-    let onDisconnectMount: (UUID) -> Void
-    let onDeleteItem: (URL) -> Void
-    let onOpenInNewTab: (URL) -> Void
-    let sshDisplayPath: String?
+    let actions: SidebarNodeActions
 
     private var iconName: String {
         if node.isDirectory {
@@ -99,34 +90,19 @@ struct SidebarFileRow: View {
         .tag(node.isDirectory ? Optional<URL>.none : Optional(node.url))
         .help(node.remoteConnectionString ?? node.url.path)
         .contextMenu {
-            SidebarNodeContextMenu(
-                node: node,
-                sshDisplayPath: sshDisplayPath,
-                onNewFileInDirectory: onNewFileInDirectory,
-                onNewLaTeXFileInDirectory: onNewLaTeXFileInDirectory,
-                onSyncMount: onSyncMount,
-                onDisconnectMount: onDisconnectMount,
-                onDeleteItem: onDeleteItem,
-                onOpenInNewTab: onOpenInNewTab
-            )
+            SidebarNodeContextMenu(node: node, actions: actions)
         }
     }
 }
 
 struct SidebarNodeContextMenu: View {
     let node: WorkspaceFileNode
-    let sshDisplayPath: String?
-    let onNewFileInDirectory: (URL) -> Void
-    let onNewLaTeXFileInDirectory: (URL) -> Void
-    let onSyncMount: (UUID) -> Void
-    let onDisconnectMount: (UUID) -> Void
-    let onDeleteItem: (URL) -> Void
-    let onOpenInNewTab: (URL) -> Void
+    let actions: SidebarNodeActions
 
     var body: some View {
         if !node.isDirectory {
             Button {
-                onOpenInNewTab(node.url)
+                actions.openInNewTab(node.url)
             } label: {
                 Label("Open in New Tab", systemImage: "plus.square.on.square")
             }
@@ -134,12 +110,12 @@ struct SidebarNodeContextMenu: View {
         }
         if node.isDirectory {
             Button {
-                onNewFileInDirectory(node.url)
+                actions.newFile(node.url)
             } label: {
                 Label("New Markdown File (.md)", systemImage: "doc.badge.plus")
             }
             Button {
-                onNewLaTeXFileInDirectory(node.url)
+                actions.newLaTeXFile(node.url)
             } label: {
                 Label("New LaTeX File (.tex)", systemImage: "function")
             }
@@ -147,11 +123,11 @@ struct SidebarNodeContextMenu: View {
         }
         if let mountID = node.remoteMountID {
             Button {
-                onSyncMount(mountID)
+                actions.syncMount(mountID)
             } label: {
                 Label("Sync Remote Now", systemImage: "arrow.triangle.2.circlepath")
             }
-            if let sshURI = sshDisplayPath {
+            if let sshURI = actions.sshDisplayPath {
                 Button {
                     NSPasteboard.general.clearContents()
                     NSPasteboard.general.setString(sshURI, forType: .string)
@@ -167,7 +143,7 @@ struct SidebarNodeContextMenu: View {
             if node.isRemoteRoot {
                 Divider()
                 Button(role: .destructive) {
-                    onDisconnectMount(mountID)
+                    actions.disconnectMount(mountID)
                 } label: {
                     Label("Disconnect Remote", systemImage: "eject")
                 }
@@ -178,14 +154,57 @@ struct SidebarNodeContextMenu: View {
             } label: {
                 Label("Reveal in Finder", systemImage: "folder")
             }
+            if node.isLocalRoot {
+                Divider()
+                Button {
+                    actions.removeLocalFolder(node.url)
+                } label: {
+                    Label("Remove from Sidebar", systemImage: "minus.circle")
+                }
+            }
         }
         if node.isDeletableFromSidebar {
             Divider()
             Button(role: .destructive) {
-                onDeleteItem(node.url)
+                actions.deleteItem(node.url)
             } label: {
                 Label(node.isRemote ? "Delete from Remote…" : "Move to Trash", systemImage: "trash")
             }
+        }
+    }
+}
+
+/// One icon for a remote mount's connection state. The tooltip carries the detail.
+struct RemoteConnectionStateIcon: View {
+    let state: RemoteConnectionState
+    let accentColor: Color
+
+    var body: some View {
+        switch state {
+        case .syncing:
+            Image(systemName: "arrow.triangle.2.circlepath")
+                .font(.caption2)
+                .foregroundStyle(accentColor)
+                .help(state.statusSummary)
+        case .reconnecting(let attempt, _, _):
+            HStack(spacing: 3) {
+                Image(systemName: "wifi.exclamationmark")
+                    .font(.caption2)
+                Text("#\(attempt)")
+                    .font(.caption2.monospaced())
+            }
+            .foregroundStyle(.orange)
+            .help(state.statusSummary)
+        case .error:
+            Image(systemName: "wifi.exclamationmark")
+                .font(.caption2)
+                .foregroundStyle(.orange)
+                .help(state.statusSummary)
+        case .connected:
+            Circle()
+                .fill(Color.green.opacity(0.85))
+                .frame(width: 6, height: 6)
+                .help(state.statusSummary)
         }
     }
 }
@@ -198,32 +217,7 @@ struct SidebarRemoteStatusBadge: View {
 
     var body: some View {
         if node.isRemoteRoot, let state = mountConnectionState {
-            switch state {
-            case .syncing:
-                Image(systemName: "arrow.triangle.2.circlepath")
-                    .font(.caption2)
-                    .foregroundStyle(accentColor)
-                    .help("Syncing with remote host…")
-            case .reconnecting(let attempt, let err, _):
-                HStack(spacing: 3) {
-                    Image(systemName: "wifi.exclamationmark")
-                        .font(.caption2)
-                    Text("#\(attempt)")
-                        .font(.caption2.monospaced())
-                }
-                .foregroundStyle(.orange)
-                .help("Connection interrupted (\(err)). Auto-reconnecting…")
-            case .error(let err):
-                Image(systemName: "wifi.exclamationmark")
-                    .font(.caption2)
-                    .foregroundStyle(.orange)
-                    .help("Connection interrupted (\(err)). Auto-reconnecting…")
-            case .connected:
-                Circle()
-                    .fill(Color.green.opacity(0.85))
-                    .frame(width: 6, height: 6)
-                    .help("Remote SSH Connected")
-            }
+            RemoteConnectionStateIcon(state: state, accentColor: accentColor)
         } else if !node.isDirectory, node.isRemote {
             switch liveSyncStatus {
             case .syncing:

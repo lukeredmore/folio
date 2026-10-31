@@ -43,12 +43,15 @@ final class WorkspaceAndPersistenceTests: XCTestCase {
         XCTAssertFalse(flatNames.contains("main.swift"))
         XCTAssertFalse(flatNames.contains("config.yaml"))
 
-        // Tree root nodes should only contain "docs" directory, "README.md", and "guide.markdown"
+        // The folder is one sidebar root. Its children are only "docs", "README.md", and "guide.markdown"
         // (no "main.swift", no "config.yaml", and no "Sources" directory since it has no Markdown files)
-        let rootNames = Set(vm.rootFileNodes.map(\.name))
-        XCTAssertEqual(rootNames, ["docs", "README.md", "guide.markdown"])
+        XCTAssertEqual(vm.rootFileNodes.count, 1)
+        let folderRoot = try XCTUnwrap(vm.rootFileNodes.first)
+        XCTAssertTrue(folderRoot.isLocalRoot)
+        let rootChildren = folderRoot.children ?? []
+        XCTAssertEqual(Set(rootChildren.map(\.name)), ["docs", "README.md", "guide.markdown"])
 
-        if let docsNode = vm.rootFileNodes.first(where: { $0.name == "docs" }) {
+        if let docsNode = rootChildren.first(where: { $0.name == "docs" }) {
             let docsChildrenNames = Set((docsNode.children ?? []).map(\.name))
             XCTAssertEqual(docsChildrenNames, ["architecture.md"])
         } else {

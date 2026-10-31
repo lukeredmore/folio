@@ -8,6 +8,7 @@ extension EditorWorkspaceViewModel {
     public static let activeThemeDataDefaultsKey = "Folio.ActiveEditorThemeData.v1"
     public static let workspaceFolderPathDefaultsKey = "Folio.WorkspaceFolderPath.v1"
     public static let workspaceFolderBookmarkDefaultsKey = "Folio.WorkspaceFolderBookmark.v1"
+    public static let localFolderPathsDefaultsKey = "Folio.LocalFolderPaths.v1"
     public static let currentFilePathDefaultsKey = "Folio.CurrentFilePath.v1"
     public static let currentFileBookmarkDefaultsKey = "Folio.CurrentFileBookmark.v1"
     public static let unsavedBufferTextDefaultsKey = "Folio.UnsavedBufferText.v1"

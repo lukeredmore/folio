@@ -52,15 +52,22 @@ public struct RemoteMountSpec: Identifiable, Codable, Equatable, Hashable, Senda
         return host
     }
 
-    /// Short human-readable label for the sidebar root node.
-    public var effectiveDisplayName: String {
+    /// The custom label, else the last component of the remote path. Does not include the host.
+    public var folderName: String {
         if let custom = displayName, !custom.isEmpty {
             return custom
         }
         let cleaned = remotePath.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
         let basename = (cleaned as NSString).lastPathComponent
-        let label = basename.isEmpty ? remotePath : basename
-        return "\(label) (\(host))"
+        return basename.isEmpty ? remotePath : basename
+    }
+
+    /// Short human-readable label for the sidebar root node.
+    public var effectiveDisplayName: String {
+        if let custom = displayName, !custom.isEmpty {
+            return custom
+        }
+        return "\(folderName) (\(host))"
     }
 
     /// Alias for `effectiveDisplayName`.
@@ -79,6 +86,44 @@ public struct RemoteMountSpec: Identifiable, Codable, Equatable, Hashable, Senda
     /// Alias for `connectionSpecString`.
     public var connectionString: String {
         connectionSpecString
+    }
+
+    /// Parses a host field (`[user@]host`) and a separate remote path.
+    /// A full connection string in `destination` is also accepted when `path` is empty.
+    public static func parse(
+        destination: String,
+        path: String,
+        targetKind: RemoteMountTargetKind? = nil,
+        portOverride: Int? = nil,
+        identityFilePath: String? = nil,
+        displayName: String? = nil
+    ) throws -> RemoteMountSpec {
+        let trimmedDestination = destination.trimmingCharacters(in: .whitespacesAndNewlines)
+        let trimmedPath = path.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedDestination.isEmpty else {
+            throw RemoteWorkspaceError.invalidConnectionSpec("Enter a host, for example user@host.")
+        }
+        let connectionString =
+            trimmedPath.isEmpty && trimmedDestination.contains(":")
+            ? trimmedDestination
+            : "\(trimmedDestination):\(trimmedPath.isEmpty ? "~" : trimmedPath)"
+        return try parse(
+            connectionString: connectionString,
+            targetKind: targetKind,
+            portOverride: portOverride,
+            identityFilePath: identityFilePath,
+            displayName: displayName
+        )
+    }
+
+    /// The target kind for `remotePath`: a file when it has a supported document extension, else a folder.
+    public static func inferredTargetKind(forRemotePath remotePath: String) -> RemoteMountTargetKind {
+        let ext = (remotePath as NSString).pathExtension.lowercased()
+        let documentExtensions =
+            WorkspaceFileNode.markdownExtensions
+            .union(WorkspaceFileNode.latexExtensions)
+            .union(WorkspaceFileNode.bibtexExtensions)
+        return documentExtensions.contains(ext) ? .file : .folder
     }
 
     /// Parses connection strings of the forms:
@@ -148,17 +193,7 @@ public struct RemoteMountSpec: Identifiable, Codable, Equatable, Hashable, Senda
             throw RemoteWorkspaceError.invalidConnectionSpec("Invalid remote host in '\(raw)'.")
         }
 
-        let inferredKind: RemoteMountTargetKind
-        if let explicit = targetKind {
-            inferredKind = explicit
-        } else {
-            let ext = (remotePath as NSString).pathExtension.lowercased()
-            if ["md", "markdown", "mdown", "mkd", "txt", "textbundle"].contains(ext) {
-                inferredKind = .file
-            } else {
-                inferredKind = .folder
-            }
-        }
+        let inferredKind = targetKind ?? inferredTargetKind(forRemotePath: remotePath)
 
         let effectivePort = portOverride ?? port ?? 22
         let effectiveIdentity = identityFilePath ?? identityFile
