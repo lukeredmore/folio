@@ -218,14 +218,12 @@ extension EditorWorkspaceViewModel {
             }
         }
 
-        let initialWorkspaceURL: URL
-        if let savedWorkspaceURL = restoredWorkspaceFolderURL(from: resolvedDefaults, source: sessionSource),
-            !Self.isSystemTemporaryRootDirectory(savedWorkspaceURL)
-        {
-            initialWorkspaceURL = savedWorkspaceURL
-        } else {
-            initialWorkspaceURL = Self.defaultFallbackWorkspaceFolderURL()
-        }
+        let savedWorkspaceURL = restoredWorkspaceFolderURL(from: resolvedDefaults, source: sessionSource)
+            .flatMap { Self.isSystemTemporaryRootDirectory($0) ? nil : $0 }
+        let savedLocalFolders = restoredLocalFolderURLs(from: resolvedDefaults, source: sessionSource)
+        let initialLocalFolders = savedLocalFolders ?? (savedWorkspaceURL.map { [$0] } ?? [])
+        let initialWorkspaceURL =
+            savedWorkspaceURL ?? initialLocalFolders.last ?? Self.defaultFallbackWorkspaceFolderURL()
 
         manager.objectWillChange
             .sink { [weak self] _ in
@@ -246,6 +244,7 @@ extension EditorWorkspaceViewModel {
             }
         }
 
+        self.localFolderURLs = initialLocalFolders
         self.workspaceFolderURL = initialWorkspaceURL
         self.reloadWorkspaceTree()
         if let fileURL = initialFileURL {

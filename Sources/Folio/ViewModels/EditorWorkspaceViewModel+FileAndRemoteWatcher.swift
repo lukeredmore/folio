@@ -66,7 +66,7 @@ extension EditorWorkspaceViewModel {
         panel.canChooseDirectories = true
         panel.allowsMultipleSelection = false
         panel.directoryURL = workspaceFolderURL ?? currentFileURL?.deletingLastPathComponent()
-        panel.prompt = "Open Folder"
+        panel.prompt = "Add Folder"
         if panel.runModal() == .OK, let url = panel.url {
             loadWorkspaceFolder(url)
             showSidebar = true

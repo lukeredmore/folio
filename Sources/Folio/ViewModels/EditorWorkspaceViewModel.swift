@@ -293,6 +293,10 @@ public final class EditorWorkspaceViewModel: ObservableObject {
             persistWorkspaceFolder(workspaceFolderURL)
         }
     }
+    /// Local folders added to the sidebar. The primary `workspaceFolderURL` also shows when it is not in this list.
+    @Published public var localFolderURLs: [URL] = [] {
+        didSet { persistLocalFolders() }
+    }
     @Published public var rootFileNodes: [WorkspaceFileNode] = []
     @Published public var flatMarkdownFiles: [WorkspaceFileNode] = []
     @Published public var recentFileURLs: [URL] = [] {

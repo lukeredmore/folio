@@ -206,13 +206,11 @@ extension EditorWorkspaceViewModel {
         }
 
         let parentFolder = targetURL.deletingLastPathComponent().standardizedFileURL
-        if workspaceFolderURL == nil {
+        if sidebarLocalFolderURLs.isEmpty {
             if !Self.isSystemTemporaryRootDirectory(parentFolder) {
                 loadWorkspaceFolder(parentFolder)
             }
-        } else if let currentFolder = workspaceFolderURL?.resolvingSymlinksInPath(),
-            targetURL.resolvingSymlinksInPath().path.hasPrefix(currentFolder.path + "/")
-        {
+        } else if isInsideSidebarLocalFolder(targetURL) {
             reloadWorkspaceTree()
         }
 
@@ -274,9 +272,7 @@ extension EditorWorkspaceViewModel {
         }
 
         let parentFolder = candidate.url.deletingLastPathComponent().standardizedFileURL
-        if let currentFolder = workspaceFolderURL?.resolvingSymlinksInPath(),
-            candidate.url.resolvingSymlinksInPath().path.hasPrefix(currentFolder.path + "/")
-        {
+        if isInsideSidebarLocalFolder(candidate.url) {
             reloadWorkspaceTree()
         } else if !Self.isSystemTemporaryRootDirectory(parentFolder) {
             loadWorkspaceFolder(parentFolder)

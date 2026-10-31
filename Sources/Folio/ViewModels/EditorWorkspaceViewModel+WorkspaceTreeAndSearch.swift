@@ -27,20 +27,29 @@ public enum FileDisplayStyle: String, CaseIterable {
 extension EditorWorkspaceViewModel {
 
     // MARK: - Workspace Folder Tree & Multi-file Search
+    /// Adds `folderURL` to the sidebar and makes it the primary folder.
     public func loadWorkspaceFolder(_ folderURL: URL) {
-        workspaceFolderURL = folderURL
-        reloadWorkspaceTree()
+        addLocalFolder(folderURL)
     }
 
     public func reloadWorkspaceTree() {
         var flatList: [WorkspaceFileNode] = []
         var combinedRoots: [WorkspaceFileNode] = []
 
-        if let folderURL = workspaceFolderURL, !Self.isSystemTemporaryRootDirectory(folderURL) {
-            combinedRoots.append(contentsOf: scanDirectory(at: folderURL, depth: 0, remoteMountID: nil, flatAccumulator: &flatList))
+        for folderURL in sidebarLocalFolderURLs {
+            let rv = try? folderURL.resourceValues(forKeys: [.contentModificationDateKey, .creationDateKey])
+            combinedRoots.append(
+                WorkspaceFileNode(
+                    url: folderURL,
+                    name: folderURL.lastPathComponent,
+                    isDirectory: true,
+                    modificationDate: rv?.contentModificationDate ?? Date(),
+                    creationDate: rv?.creationDate ?? Date(),
+                    children: scanDirectory(at: folderURL, depth: 0, remoteMountID: nil, flatAccumulator: &flatList),
+                    isLocalRoot: true
+                ))
         }
 
-        // Append mounted remote folders & files into the unified multi-root tree
         for mount in remoteWorkspaceManager.mounts {
             let mirrorDir = remoteWorkspaceManager.localMirrorDirectory(for: mount)
             switch mount.targetKind {
@@ -176,9 +185,12 @@ extension EditorWorkspaceViewModel {
             }
             return copy
         }.sorted { a, b in
-            // Keep remote root mounts grouped cleanly at the top of the tree or alongside folders
-            if a.isRemoteRoot != b.isRemoteRoot {
-                return a.isRemoteRoot
+            // Local and remote roots share one level, sorted by name.
+            if a.isSidebarRoot != b.isSidebarRoot {
+                return a.isSidebarRoot
+            }
+            if a.isSidebarRoot {
+                return a.name.localizedStandardCompare(b.name) == .orderedAscending
             }
             if a.isDirectory != b.isDirectory {
                 return a.isDirectory

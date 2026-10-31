@@ -67,6 +67,8 @@ public struct WorkspaceFileNode: Identifiable, Hashable, Sendable {
     public var children: [WorkspaceFileNode]?
     public var remoteMountID: UUID?
     public var isRemoteRoot: Bool
+    /// True for a local folder added to the sidebar.
+    public var isLocalRoot: Bool
     public var remoteConnectionString: String?
     public var syncStatus: RemoteFileSyncStatus?
 
@@ -79,6 +81,7 @@ public struct WorkspaceFileNode: Identifiable, Hashable, Sendable {
         children: [WorkspaceFileNode]?,
         remoteMountID: UUID? = nil,
         isRemoteRoot: Bool = false,
+        isLocalRoot: Bool = false,
         remoteConnectionString: String? = nil,
         syncStatus: RemoteFileSyncStatus? = nil
     ) {
@@ -90,6 +93,7 @@ public struct WorkspaceFileNode: Identifiable, Hashable, Sendable {
         self.children = children
         self.remoteMountID = remoteMountID
         self.isRemoteRoot = isRemoteRoot
+        self.isLocalRoot = isLocalRoot
         self.remoteConnectionString = remoteConnectionString
         self.syncStatus = syncStatus
     }
@@ -97,6 +101,9 @@ public struct WorkspaceFileNode: Identifiable, Hashable, Sendable {
     public var id: URL { url }
 
     public var isRemote: Bool { remoteMountID != nil }
+
+    /// True for a top-level sidebar entry: a local folder or a remote mount.
+    public var isSidebarRoot: Bool { isRemoteRoot || isLocalRoot }
 
     public static let markdownExtensions: Set<String> = ["md", "markdown", "mdown", "mkd", "txt", "textbundle"]
     public static let latexExtensions: Set<String> = ["tex", "sty", "cls", "ltx"]

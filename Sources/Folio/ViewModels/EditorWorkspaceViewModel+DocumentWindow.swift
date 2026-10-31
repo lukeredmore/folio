@@ -87,7 +87,8 @@ extension EditorWorkspaceViewModel {
         hasSavedDocumentSessionDefaultsKey,
         selectedCursorLocationDefaultsKey,
         workspaceFolderPathDefaultsKey,
-        workspaceFolderBookmarkDefaultsKey
+        workspaceFolderBookmarkDefaultsKey,
+        localFolderPathsDefaultsKey
     ]
 
     // MARK: - Window Lifecycle
@@ -98,6 +99,7 @@ extension EditorWorkspaceViewModel {
         isActiveDocumentWindow = isActive
         guard isActive, !isRestoringState else { return }
         persistWorkspaceFolder(workspaceFolderURL)
+        persistLocalFolders()
         persistCurrentFileBookmark()
         persistDocumentSessionState()
     }

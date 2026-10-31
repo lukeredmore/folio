@@ -243,6 +243,14 @@ extension SidebarView {
             }
 
             Button {
+                viewModel.openFolderPanel()
+            } label: {
+                Image(systemName: "folder.badge.plus")
+            }
+            .buttonStyle(.borderless)
+            .help("Add Local Folder to Sidebar (Cmd+Shift+O)")
+
+            Button {
                 viewModel.showAddRemoteModal = true
             } label: {
                 Image(systemName: "network")
@@ -253,18 +261,11 @@ extension SidebarView {
                     )
             }
             .buttonStyle(.borderless)
-            .help("Connect Remote Folder or File via SSH (Cmd+Option+Shift+R)")
+            .help("Connect Remote Folder via SSH (Cmd+Option+Shift+R)")
 
             Spacer(minLength: 4)
 
             Menu {
-                if let folder = viewModel.workspaceFolderURL {
-                    Text("Local: \(folder.lastPathComponent)")
-                }
-                if !remoteManager.mounts.isEmpty {
-                    Text("Remotes: \(remoteManager.mounts.count) connected")
-                }
-                Divider()
                 Button {
                     viewModel.createNewFileInWorkspace()
                 } label: {
@@ -279,7 +280,7 @@ extension SidebarView {
                 Button {
                     viewModel.openFolderPanel()
                 } label: {
-                    Label("Open Local Folder…", systemImage: "folder.badge.plus")
+                    Label("Add Local Folder…", systemImage: "folder.badge.plus")
                 }
                 Button {
                     viewModel.showAddRemoteModal = true

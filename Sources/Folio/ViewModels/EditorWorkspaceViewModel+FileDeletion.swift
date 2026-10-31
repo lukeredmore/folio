@@ -89,8 +89,8 @@ extension EditorWorkspaceViewModel {
 }
 
 extension WorkspaceFileNode {
-    /// Local files and folders, and remote files (not remote folders or mount roots), can be deleted from the sidebar.
+    /// Local files and folders, and remote files (not remote folders or sidebar roots), can be deleted from the sidebar.
     var isDeletableFromSidebar: Bool {
-        !isRemoteRoot && (!isRemote || !isDirectory)
+        !isSidebarRoot && (!isRemote || !isDirectory)
     }
 }

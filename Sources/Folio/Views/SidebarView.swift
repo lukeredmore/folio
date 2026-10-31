@@ -4,8 +4,6 @@ import SwiftUI
 public struct SidebarView: View {
     @ObservedObject var viewModel: EditorWorkspaceViewModel
     @ObservedObject var remoteManager: RemoteWorkspaceManager
-    @State var isLocalSectionExpanded: Bool = true
-    @State var isRemoteSectionExpanded: Bool = true
     @State var selectedSearchMatchID: UUID?
 
     public init(viewModel: EditorWorkspaceViewModel) {
@@ -135,7 +133,7 @@ public struct SidebarView: View {
                 Text("Open a local Markdown or LaTeX workspace, or mount a remote folder via SSH.")
             } actions: {
                 VStack(spacing: 8) {
-                    Button("Open Folder…") {
+                    Button("Add Folder…") {
                         viewModel.openFolderPanel()
                     }
                     .buttonStyle(.borderedProminent)
@@ -170,15 +168,7 @@ public struct SidebarView: View {
                                 accentColor: viewModel.theme.linkColor,
                                 mountConnectionState: node.remoteMountID.flatMap { remoteManager.connectionStates[$0] },
                                 liveSyncStatus: remoteManager.syncStatus(forLocalURL: node.url),
-                                onNewFileInDirectory: { viewModel.createNewFileInWorkspace(in: $0) },
-                                onNewLaTeXFileInDirectory: { viewModel.createNewLaTeXFileInWorkspace(in: $0) },
-                                onSyncMount: { mountID in
-                                    Task { await remoteManager.syncMount(id: mountID, isBackground: false) }
-                                },
-                                onDisconnectMount: { viewModel.disconnectRemoteMount(id: $0) },
-                                onDeleteItem: { viewModel.requestDeleteWorkspaceItem(at: $0) },
-                                onOpenInNewTab: { viewModel.openInNewTab($0) },
-                                sshDisplayPath: remoteManager.remoteSSHDisplayPath(forLocalURL: node.url) ?? node.remoteConnectionString
+                                actions: rowActions(for: node)
                             )
                             .tag(Optional(node.url))
                         }
@@ -187,59 +177,56 @@ public struct SidebarView: View {
                 .listStyle(.sidebar)
             }
         } else {
-            let localNodes = viewModel.rootFileNodes.filter { !$0.isRemoteRoot }
-            let remoteNodes = viewModel.rootFileNodes.filter { $0.isRemoteRoot }
-
             List(selection: selectedFileURLBinding) {
-                if !localNodes.isEmpty {
-                    Section(isExpanded: $isLocalSectionExpanded) {
-                        OutlineGroup(localNodes, children: \.children) { node in
-                            SidebarFileRow(
-                                node: node,
-                                accentColor: viewModel.theme.linkColor,
-                                mountConnectionState: node.remoteMountID.flatMap { remoteManager.connectionStates[$0] },
-                                liveSyncStatus: remoteManager.syncStatus(forLocalURL: node.url),
-                                onNewFileInDirectory: { viewModel.createNewFileInWorkspace(in: $0) },
-                                onNewLaTeXFileInDirectory: { viewModel.createNewLaTeXFileInWorkspace(in: $0) },
-                                onSyncMount: { mountID in
-                                    Task { await remoteManager.syncMount(id: mountID, isBackground: false) }
-                                },
-                                onDisconnectMount: { viewModel.disconnectRemoteMount(id: $0) },
-                                onDeleteItem: { viewModel.requestDeleteWorkspaceItem(at: $0) },
-                                onOpenInNewTab: { viewModel.openInNewTab($0) },
-                                sshDisplayPath: remoteManager.remoteSSHDisplayPath(forLocalURL: node.url) ?? node.remoteConnectionString
-                            )
+                ForEach(viewModel.rootFileNodes) { root in
+                    if let children = root.children {
+                        DisclosureGroup(isExpanded: rootExpansionBinding(for: root)) {
+                            OutlineGroup(children, children: \.children) { node in
+                                fileRow(for: node)
+                            }
+                        } label: {
+                            fileRow(for: root)
                         }
-                    } header: {
-                        Text(viewModel.workspaceFolderURL?.lastPathComponent ?? "Workspace")
-                    }
-                }
-
-                if !remoteNodes.isEmpty {
-                    Section(isExpanded: $isRemoteSectionExpanded) {
-                        OutlineGroup(remoteNodes, children: \.children) { node in
-                            SidebarFileRow(
-                                node: node,
-                                accentColor: viewModel.theme.linkColor,
-                                mountConnectionState: node.remoteMountID.flatMap { remoteManager.connectionStates[$0] },
-                                liveSyncStatus: remoteManager.syncStatus(forLocalURL: node.url),
-                                onNewFileInDirectory: { viewModel.createNewFileInWorkspace(in: $0) },
-                                onNewLaTeXFileInDirectory: { viewModel.createNewLaTeXFileInWorkspace(in: $0) },
-                                onSyncMount: { mountID in
-                                    Task { await remoteManager.syncMount(id: mountID, isBackground: false) }
-                                },
-                                onDisconnectMount: { viewModel.disconnectRemoteMount(id: $0) },
-                                onDeleteItem: { viewModel.requestDeleteWorkspaceItem(at: $0) },
-                                onOpenInNewTab: { viewModel.openInNewTab($0) },
-                                sshDisplayPath: remoteManager.remoteSSHDisplayPath(forLocalURL: node.url) ?? node.remoteConnectionString
-                            )
-                        }
-                    } header: {
-                        Text("Remote (SSH)")
+                    } else {
+                        fileRow(for: root)
                     }
                 }
             }
             .listStyle(.sidebar)
         }
+    }
+
+    // MARK: - Rows
+
+    private func rootExpansionBinding(for root: WorkspaceFileNode) -> Binding<Bool> {
+        Binding(
+            get: { viewModel.isDirectoryExpanded(root.url) },
+            set: { viewModel.setDirectoryExpanded($0, for: root.url) }
+        )
+    }
+
+    private func fileRow(for node: WorkspaceFileNode) -> some View {
+        SidebarFileRow(
+            node: node,
+            accentColor: viewModel.theme.linkColor,
+            mountConnectionState: node.remoteMountID.flatMap { remoteManager.connectionStates[$0] },
+            liveSyncStatus: remoteManager.syncStatus(forLocalURL: node.url),
+            actions: rowActions(for: node)
+        )
+    }
+
+    private func rowActions(for node: WorkspaceFileNode) -> SidebarNodeActions {
+        SidebarNodeActions(
+            sshDisplayPath: remoteManager.remoteSSHDisplayPath(forLocalURL: node.url) ?? node.remoteConnectionString,
+            newFile: { viewModel.createNewFileInWorkspace(in: $0) },
+            newLaTeXFile: { viewModel.createNewLaTeXFileInWorkspace(in: $0) },
+            syncMount: { mountID in
+                Task { await remoteManager.syncMount(id: mountID, isBackground: false) }
+            },
+            disconnectMount: { viewModel.disconnectRemoteMount(id: $0) },
+            removeLocalFolder: { viewModel.removeLocalFolder($0) },
+            deleteItem: { viewModel.requestDeleteWorkspaceItem(at: $0) },
+            openInNewTab: { viewModel.openInNewTab($0) }
+        )
     }
 }

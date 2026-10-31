@@ -79,7 +79,7 @@ struct FolioAppCommands: Commands {
             }
             .keyboardShortcut("o", modifiers: [.command])
 
-            Button("Open Folder...") {
+            Button("Add Folder...") {
                 viewModel.openFolderPanel()
             }
             .keyboardShortcut("o", modifiers: [.command, .shift])
@@ -100,7 +100,7 @@ struct FolioAppCommands: Commands {
                 }
             }
 
-            Button("Connect Remote Folder or File (SSH)...") {
+            Button("Connect Remote Folder (SSH)...") {
                 viewModel.showAddRemoteModal = true
             }
             .keyboardShortcut("r", modifiers: [.command, .option, .shift])
