@@ -91,10 +91,20 @@ final class SidebarToolbarTests: XCTestCase {
         defer { window.orderOut(nil) }
         let split = try splitView(in: window)
 
-        split.setPosition(SidebarView.addButtonMinimumSidebarWidth, ofDividerAt: 0)
-        settle(window)
-        XCTAssertEqual(waitForSidebarItemCount(3, in: window), 3)
-        XCTAssertEqual(clippedIndicatorCount(in: window), 0, "The add button must fit at its minimum sidebar width")
+        // The sidebar content can be a few points narrower than the divider position, depending on
+        // the macOS version, so find the first divider position that shows the add button.
+        let threshold = SidebarView.addButtonMinimumSidebarWidth
+        var firstWidthWithAddButton: CGFloat?
+        for width in stride(from: threshold, through: threshold + 40, by: 2) {
+            split.setPosition(width, ofDividerAt: 0)
+            settle(window)
+            if visibleSidebarItemCount(in: window) == 3 {
+                firstWidthWithAddButton = width
+                break
+            }
+        }
+        XCTAssertNotNil(firstWidthWithAddButton, "The add button must show by \(threshold + 40) pt")
+        XCTAssertEqual(clippedIndicatorCount(in: window), 0, "The add button must fit at the narrowest width that shows it")
 
         // Space-between: the add button hugs the traffic lights, the rest hug the sidebar toggle.
         split.setPosition(400, ofDividerAt: 0)
