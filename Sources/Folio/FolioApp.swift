@@ -40,7 +40,7 @@ public struct MainWindowView: View {
         ZStack {
             NavigationSplitView(columnVisibility: $columnVisibility) {
                 SidebarView(viewModel: viewModel)
-                    .navigationSplitViewColumnWidth(min: 255, ideal: 265, max: 380)
+                    .navigationSplitViewColumnWidth(min: 285, ideal: 300, max: 400)
             } detail: {
                 ZStack(alignment: .top) {
                     GeometryReader { proxy in

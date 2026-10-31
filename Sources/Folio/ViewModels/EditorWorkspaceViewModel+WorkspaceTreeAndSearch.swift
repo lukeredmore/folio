@@ -6,7 +6,6 @@ import SwiftUI
 public enum SidebarTab: String, CaseIterable, Identifiable {
     case files = "Files"
     case outline = "Outline"
-    case search = "Search"
 
     public var id: String { rawValue }
 
@@ -14,7 +13,6 @@ public enum SidebarTab: String, CaseIterable, Identifiable {
         switch self {
         case .files: return "folder"
         case .outline: return "list.bullet.indent"
-        case .search: return "magnifyingglass"
         }
     }
 }

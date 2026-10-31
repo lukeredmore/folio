@@ -221,7 +221,7 @@ final class ShortcutsAndCLITests: XCTestCase {
         // Find in Files opens workspace search without replace
         vm.openWorkspaceSearch(withReplace: false)
         XCTAssertTrue(vm.showSidebar)
-        XCTAssertEqual(vm.activeSidebarTab, .search)
+        XCTAssertEqual(vm.activeSidebarTab, .files)
         XCTAssertFalse(vm.showWorkspaceReplace)
 
         // Find and Replace in Files enables replace

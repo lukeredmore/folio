@@ -249,7 +249,6 @@ public final class EditorWorkspaceViewModel: ObservableObject {
         }
     }
     @Published public var outlineFilterText: String = ""
-    @Published public var fileFilterText: String = ""
 
     // MARK: - Modals & Banners
     @Published public var showQuickOpen: Bool = false

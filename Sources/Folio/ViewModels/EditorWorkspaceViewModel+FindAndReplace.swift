@@ -147,7 +147,7 @@ extension EditorWorkspaceViewModel {
             workspaceSearchQuery = selText
         }
         showSidebar = true
-        activeSidebarTab = .search
+        activeSidebarTab = .files
         showWorkspaceReplace = withReplace
         workspaceSearchFocusRequestID &+= 1
         if !workspaceSearchQuery.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
