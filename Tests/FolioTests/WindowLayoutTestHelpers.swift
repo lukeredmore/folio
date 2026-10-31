@@ -64,6 +64,20 @@ final class HostedMainWindow {
         pump(0.3)
     }
 
+    func showConflict() {
+        let hunk = DocumentConflictHunk(
+            index: 0, baseStartLine: 3, baseLines: ["base"], localLines: ["local"], externalLines: ["external"]
+        )
+        viewModel.activeConflict = DocumentConflict(
+            fileURL: URL(fileURLWithPath: "/tmp/folio-audit.md"),
+            baseText: "base",
+            localText: "local",
+            externalText: "external",
+            segments: [.conflict(hunk)]
+        )
+        pump(0.3)
+    }
+
     func pump(_ seconds: TimeInterval) {
         hostingView.layoutSubtreeIfNeeded()
         RunLoop.current.run(until: Date().addingTimeInterval(seconds))
