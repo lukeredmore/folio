@@ -21,10 +21,14 @@ struct SidebarArticleRow: View {
     let liveSyncStatus: RemoteFileSyncStatus
     let actions: SidebarNodeActions
 
+    /// Fixed so names line up when icons differ in width.
+    static let iconColumnWidth: CGFloat = 18
+
     var body: some View {
         HStack(spacing: 8) {
             Image(systemName: node.isRemote ? "network" : node.iconSystemName)
                 .foregroundStyle(.secondary)
+                .frame(width: Self.iconColumnWidth)
 
             VStack(alignment: .leading, spacing: 2) {
                 Text(node.name)

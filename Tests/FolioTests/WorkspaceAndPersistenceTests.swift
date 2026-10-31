@@ -312,14 +312,14 @@ final class WorkspaceAndPersistenceTests: XCTestCase {
         }
 
         // Simulate 60 animation frames of NSSplitViewController resizing the editor pane
-        // from 1000pt (sidebar collapsed) down to 735pt (sidebar expanded, 265pt wide) and back.
+        // from 1000pt (sidebar collapsed) down to 700pt (sidebar expanded, 300pt wide) and back.
         let steps = 30
         var widths: [CGFloat] = []
         for i in 1...steps {
-            widths.append(1000.0 - CGFloat(i) * (265.0 / CGFloat(steps)))
+            widths.append(1000.0 - CGFloat(i) * (300.0 / CGFloat(steps)))
         }
         for i in 1...steps {
-            widths.append(735.0 + CGFloat(i) * (265.0 / CGFloat(steps)))
+            widths.append(700.0 + CGFloat(i) * (300.0 / CGFloat(steps)))
         }
 
         let start = CFAbsoluteTimeGetCurrent()

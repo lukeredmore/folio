@@ -1,6 +1,11 @@
 import AppKit
 import SwiftUI
 
+enum SidebarFilterResult: Hashable {
+    case file(URL)
+    case match(UUID)
+}
+
 extension SidebarView {
 
     private var searchOptionsRow: some View {
@@ -150,183 +155,158 @@ extension SidebarView {
         }
         return groups
     }
-
+    /// File-name matches first (cheap), then full-text matches across the workspace.
     @ViewBuilder
-    var searchTabContent: some View {
-        List(selection: selectedSearchMatchBinding) {
-            Section {
-                VStack(spacing: 6) {
-                    searchOptionsRow
-                    if viewModel.showWorkspaceReplace {
-                        workspaceReplaceRow
+    var filterResultsContent: some View {
+        let files = filteredFlatFiles
+        List(selection: filterResultSelectionBinding) {
+            if !files.isEmpty {
+                Section("Files (\(files.count))") {
+                    ForEach(files) { node in
+                        articleRow(node).tag(Optional(SidebarFilterResult.file(node.url)))
                     }
                 }
-                .padding(.vertical, 2)
             }
 
             if viewModel.workspaceSearchMatches.isEmpty {
-                Section {
-                    if viewModel.workspaceSearchQuery.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                        Label("Type in the search field to find text across all files.", systemImage: "magnifyingglass")
-                            .font(.callout)
-                            .foregroundStyle(.secondary)
-                            .padding(.vertical, 6)
-                    } else {
-                        Label("No matches for \"\(viewModel.workspaceSearchQuery)\"", systemImage: "magnifyingglass")
-                            .font(.callout)
-                            .foregroundStyle(.secondary)
-                            .padding(.vertical, 6)
-                    }
+                Section("In Files") {
+                    Label("No text matches for \"\(viewModel.workspaceSearchQuery)\"", systemImage: "magnifyingglass")
+                        .font(.callout)
+                        .foregroundStyle(.secondary)
+                        .padding(.vertical, 6)
                 }
             } else {
                 ForEach(groupedSearchMatches) { group in
                     Section {
                         ForEach(group.matches) { match in
-                            HStack(alignment: .firstTextBaseline, spacing: 6) {
-                                Text("\(match.lineNumber)")
-                                    .font(.caption2.monospaced())
-                                    .foregroundStyle(.secondary)
-                                    .frame(minWidth: 24, alignment: .trailing)
-
-                                Text(match.lineSnippet)
-                                    .font(.callout.monospaced())
-                                    .lineLimit(2)
-
-                                if viewModel.showWorkspaceReplace {
-                                    Spacer(minLength: 4)
-                                    Button {
-                                        viewModel.replaceWorkspaceMatch(match)
-                                    } label: {
-                                        Image(systemName: "arrow.turn.down.right")
-                                            .font(.caption2.weight(.semibold))
-                                    }
-                                    .buttonStyle(.borderless)
-                                    .help("Replace this match")
-                                }
-                            }
-                            .tag(Optional(match.id))
+                            searchMatchRow(match).tag(Optional(SidebarFilterResult.match(match.id)))
                         }
                     } header: {
-                        HStack {
-                            Label(group.fileName, systemImage: "doc.text")
+                        HStack(spacing: 4) {
+                            Text(group.fileName)
                                 .lineLimit(1)
-                            Spacer()
+                                .truncationMode(.middle)
+                            Spacer(minLength: 4)
                             Text("\(group.matches.count)")
-                                .font(.caption2)
-                                .foregroundStyle(.secondary)
                                 .monospacedDigit()
                         }
+                        .padding(.trailing, 8)
                     }
                 }
             }
         }
         .listStyle(.sidebar)
+        .safeAreaBar(edge: .top) {
+            VStack(spacing: 6) {
+                searchOptionsRow
+                if viewModel.showWorkspaceReplace {
+                    workspaceReplaceRow
+                }
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 4)
+        }
     }
 
-    // MARK: - Bottom Action Bar
-    var sidebarFooterBar: some View {
-        HStack(spacing: 8) {
-            Button {
-                viewModel.createNewFileInWorkspace()
-            } label: {
-                Image(systemName: "plus")
-            }
-            .buttonStyle(.borderless)
-            .help("New Markdown File in Workspace")
-            .contextMenu {
-                Button("New Markdown File (.md)") {
-                    viewModel.createNewFileInWorkspace()
-                }
-                Button("New LaTeX File (.tex)") {
-                    viewModel.createNewLaTeXFileInWorkspace()
-                }
-            }
+    /// The line number fills the same column as the file icon in `SidebarArticleRow`.
+    private func searchMatchRow(_ match: WorkspaceSearchMatch) -> some View {
+        HStack(alignment: .firstTextBaseline, spacing: 8) {
+            Text("\(match.lineNumber)")
+                .font(.caption2.monospaced())
+                .foregroundStyle(.secondary)
+                .frame(minWidth: SidebarArticleRow.iconColumnWidth, alignment: .trailing)
 
-            Button {
-                viewModel.openFolderPanel()
-            } label: {
-                Image(systemName: "folder.badge.plus")
-            }
-            .buttonStyle(.borderless)
-            .help("Add Local Folder to Sidebar (Cmd+Shift+O)")
+            Text(match.lineSnippet)
+                .font(.callout.monospaced())
+                .lineLimit(2)
 
-            Button {
-                viewModel.showAddRemoteModal = true
-            } label: {
-                Image(systemName: "network")
-                    .foregroundStyle(
-                        !remoteManager.unhealthyMounts.isEmpty
-                            ? Color.orange
-                            : (!remoteManager.mounts.isEmpty ? viewModel.theme.linkColor : Color.secondary)
-                    )
-            }
-            .buttonStyle(.borderless)
-            .help("Connect Remote Folder via SSH (Cmd+Option+Shift+R)")
-
-            Spacer(minLength: 4)
-
-            Menu {
+            if viewModel.showWorkspaceReplace {
+                Spacer(minLength: 4)
                 Button {
-                    viewModel.createNewFileInWorkspace()
+                    viewModel.replaceWorkspaceMatch(match)
                 } label: {
-                    Label("New Markdown File (.md)", systemImage: "doc.badge.plus")
+                    Image(systemName: "arrow.turn.down.right")
+                        .font(.caption2.weight(.semibold))
                 }
-                Button {
-                    viewModel.createNewLaTeXFileInWorkspace()
-                } label: {
-                    Label("New LaTeX File (.tex)", systemImage: "function")
-                }
-                Divider()
-                Button {
-                    viewModel.openFolderPanel()
-                } label: {
-                    Label("Add Local Folder…", systemImage: "folder.badge.plus")
-                }
-                Button {
-                    viewModel.showAddRemoteModal = true
-                } label: {
-                    Label("Connect Remote (SSH)…", systemImage: "network")
-                }
-                if !remoteManager.mounts.isEmpty {
-                    Button {
-                        Task {
-                            await remoteManager.syncAllMounts(isBackground: false)
-                        }
-                    } label: {
-                        Label("Sync All Remotes Now", systemImage: "arrow.triangle.2.circlepath")
-                    }
-                }
-                Divider()
-                Picker("View Mode", selection: $viewModel.fileDisplayStyle) {
-                    Label("File Tree View", systemImage: "list.bullet.indent").tag(FileDisplayStyle.tree)
-                    Label("Article List View", systemImage: "list.bullet").tag(FileDisplayStyle.list)
-                }
-                Picker("Sort By", selection: $viewModel.fileSortOrder) {
-                    ForEach(FileSortOrder.allCases) { order in
-                        Text(order.rawValue).tag(order)
-                    }
-                }
-                .onChange(of: viewModel.fileSortOrder) { _, _ in
-                    viewModel.sortFileNodes()
-                }
-            } label: {
-                Image(systemName: "ellipsis.circle")
+                .buttonStyle(.borderless)
+                .help("Replace this match")
             }
-            .menuStyle(.borderlessButton)
-            .fixedSize()
-            .help("Workspace & Sort Options")
-
-            Button {
-                viewModel.fileDisplayStyle = (viewModel.fileDisplayStyle == .tree) ? .list : .tree
-            } label: {
-                Image(systemName: viewModel.fileDisplayStyle == .tree ? "list.bullet.indent" : "list.bullet")
-            }
-            .buttonStyle(.borderless)
-            .help("Switch between File Tree and Article List view")
         }
-        .controlSize(.small)
-        .foregroundStyle(.secondary)
-        .padding(.horizontal, 12)
-        .padding(.vertical, 8)
+    }
+
+    // MARK: - Toolbar Menus
+
+    /// Sidebar width at which the add menu gets its own toolbar button outside full screen.
+    static let addButtonMinimumSidebarWidth: CGFloat = 330
+
+    @ViewBuilder
+    var addActions: some View {
+        Button {
+            viewModel.createNewFileInWorkspace()
+        } label: {
+            Label("New Markdown File (.md)", systemImage: "doc.badge.plus")
+        }
+        Button {
+            viewModel.createNewLaTeXFileInWorkspace()
+        } label: {
+            Label("New LaTeX File (.tex)", systemImage: "function")
+        }
+        Divider()
+        Button {
+            viewModel.openFolderPanel()
+        } label: {
+            Label("Add Local Folder…", systemImage: "folder.badge.plus")
+        }
+        Button {
+            viewModel.showAddRemoteModal = true
+        } label: {
+            Label("Connect Remote (SSH)…", systemImage: "network")
+        }
+    }
+
+    var addMenu: some View {
+        Menu {
+            addActions
+        } label: {
+            Label("Add", systemImage: "plus")
+        }
+        .menuIndicator(.hidden)
+        .help("New File, Add Folder, or Connect Remote")
+    }
+
+    /// Holds the add actions too unless `addMenu` shows them.
+    func workspaceOptionsMenu(includesAddActions: Bool) -> some View {
+        Menu {
+            if includesAddActions {
+                addActions
+                Divider()
+            }
+            if !remoteManager.mounts.isEmpty {
+                Button {
+                    Task {
+                        await remoteManager.syncAllMounts(isBackground: false)
+                    }
+                } label: {
+                    Label("Sync All Remotes Now", systemImage: "arrow.triangle.2.circlepath")
+                }
+                Divider()
+            }
+            Picker("View Mode", selection: $viewModel.fileDisplayStyle) {
+                Label("File Tree View", systemImage: "list.bullet.indent").tag(FileDisplayStyle.tree)
+                Label("Article List View", systemImage: "list.bullet").tag(FileDisplayStyle.list)
+            }
+            Picker("Sort By", selection: $viewModel.fileSortOrder) {
+                ForEach(FileSortOrder.allCases) { order in
+                    Text(order.rawValue).tag(order)
+                }
+            }
+            .onChange(of: viewModel.fileSortOrder) { _, _ in
+                viewModel.sortFileNodes()
+            }
+        } label: {
+            Label("Workspace Options", systemImage: "ellipsis")
+        }
+        .menuIndicator(.hidden)
+        .help("Workspace & Sort Options")
     }
 }

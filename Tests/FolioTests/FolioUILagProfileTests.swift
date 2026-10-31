@@ -37,18 +37,15 @@ final class FolioUILagProfileTests: XCTestCase {
         RunLoop.current.run(until: Date().addingTimeInterval(0.05))
         hostingView.layoutSubtreeIfNeeded()
 
-        let footerHosting = NSHostingView(rootView: SidebarView(viewModel: vm).sidebarFooterBar)
         let statusHosting = NSHostingView(rootView: StatusBarView(viewModel: vm))
-        let footerHeight = footerHosting.fittingSize.height
         let statusHeight = statusHosting.fittingSize.height
 
         let tv = try XCTUnwrap(vm.activeTextView)
         let scrollView = try XCTUnwrap(tv.enclosingScrollView)
         let scrollWindowRect = scrollView.convert(scrollView.bounds, to: nil)
         let editorScrollMinY = scrollWindowRect.minY
-        XCTAssertEqual(footerHeight, 30.0, accuracy: 0.5, "Sidebar footer bar height must be 30pt")
         XCTAssertEqual(statusHeight, 30.0, accuracy: 0.5, "StatusBarView height must be 30pt")
-        XCTAssertEqual(footerHeight, editorScrollMinY, accuracy: 0.5, "Sidebar footer top edge must align with StatusBarView top edge")
+        XCTAssertEqual(statusHeight, editorScrollMinY, accuracy: 0.5, "Editor scroll view must end at the StatusBarView top edge")
         XCTAssertEqual(
             scrollWindowRect.maxY, hostingView.bounds.height, accuracy: 1.0, "Editor scroll view canvas must extend all the way to the top edge of the window")
         XCTAssertEqual(scrollView.contentInsets.top, 0.0, accuracy: 0.1, "Editor scroll view must not have automatic top content insets")
