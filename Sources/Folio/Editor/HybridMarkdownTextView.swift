@@ -166,6 +166,9 @@ public final class HybridMarkdownTextView: NSTextView {
         coord?.clearReflowAnchors()
         if self.string != newText {
             self.string = newText
+            if let storage = self.textStorage {
+                LaTeXBlockStyleCache.invalidate(for: storage)
+            }
         }
         coord?.lastKnownTextHash = newText.hashValue
         let nsLen = (self.string as NSString).length

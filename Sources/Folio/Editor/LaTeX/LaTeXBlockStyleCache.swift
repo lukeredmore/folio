@@ -57,6 +57,7 @@ package enum LaTeXBlockStyleCache {
     /// The last session of each recently styled storage, so styling another storage, such as a
     /// print or reference copy, does not discard the editor's session.
     nonisolated(unsafe) private static var entries: [ObjectIdentifier: StorageEntry] = [:]
+    nonisolated(unsafe) private static var pendingEdits: [ObjectIdentifier: MarkdownTextEdit] = [:]
     private static let maxEntries = 4
     nonisolated(unsafe) static var activeBaseAttributes: [NSAttributedString.Key: Any] = [:]
     nonisolated(unsafe) static var pendingGlyphInvalidationRanges: [NSRange] = []
@@ -71,6 +72,23 @@ package enum LaTeXBlockStyleCache {
 
     package static func invalidate() {
         entries.removeAll()
+        pendingEdits.removeAll()
+    }
+
+    package static func invalidate(for storage: NSTextStorage) {
+        let key = ObjectIdentifier(storage)
+        entries.removeValue(forKey: key)
+        pendingEdits.removeValue(forKey: key)
+    }
+
+    package static func noteTextEdit(for storage: NSTextStorage, editedRange: NSRange, changeInLength delta: Int) {
+        let key = ObjectIdentifier(storage)
+        if var edit = pendingEdits[key] {
+            edit.merge(editedRange: editedRange, changeInLength: delta)
+            pendingEdits[key] = edit
+        } else {
+            pendingEdits[key] = MarkdownTextEdit(range: editedRange, changeInLength: delta)
+        }
     }
 
     package static func collapseInternalNewlines(in storage: NSTextStorage, nsString: NSString, range: NSRange) {
@@ -111,7 +129,9 @@ package enum LaTeXBlockStyleCache {
         docIndex: LaTeXDocumentIndex,
         docMacros: [String: LaTeXMacroDefinition]
     ) -> (entry: StorageEntry, diff: DiffWindow)? {
-        guard let entry = entries[ObjectIdentifier(storage)],
+        let key = ObjectIdentifier(storage)
+        let pendingEdit = pendingEdits.removeValue(forKey: key)
+        guard let entry = entries[key],
             entry.storage === storage,
             entry.config == config,
             entry.docMacros == docMacros
@@ -120,6 +140,15 @@ package enum LaTeXBlockStyleCache {
         }
 
         if entry.string == string {
+            if let edit = pendingEdit, edit.range.length > 0 {
+                let diff = DiffWindow(
+                    isSameString: false,
+                    commonPrefixLen: edit.range.location,
+                    suffixStartInNew: NSMaxRange(edit.range),
+                    charDelta: 0
+                )
+                return entry.facts == DocumentFacts(docIndex) ? (entry, diff) : nil
+            }
             let diff = DiffWindow(isSameString: true, commonPrefixLen: nsString.length, suffixStartInNew: 0, charDelta: 0)
             return entry.facts == DocumentFacts(docIndex) ? (entry, diff) : nil
         }
@@ -140,7 +169,19 @@ package enum LaTeXBlockStyleCache {
             suffix += 1
         }
 
-        let diff = DiffWindow(isSameString: false, commonPrefixLen: prefix, suffixStartInNew: newLen - suffix, charDelta: newLen - prevLen)
+        var commonPrefixLen = prefix
+        var suffixStartInNew = newLen - suffix
+        if let edit = pendingEdit {
+            commonPrefixLen = min(commonPrefixLen, edit.range.location)
+            suffixStartInNew = max(suffixStartInNew, NSMaxRange(edit.range))
+        }
+
+        let diff = DiffWindow(
+            isSameString: false,
+            commonPrefixLen: commonPrefixLen,
+            suffixStartInNew: suffixStartInNew,
+            charDelta: newLen - prevLen
+        )
         // A block reads labels, numbers, and citations from anywhere in the document.
         return entry.facts.moved(by: diff) == DocumentFacts(docIndex) ? (entry, diff) : nil
     }
@@ -159,11 +200,13 @@ package enum LaTeXBlockStyleCache {
         for b in blocks {
             map[b.range.location] = b
         }
+        let key = ObjectIdentifier(storage)
+        pendingEdits.removeValue(forKey: key)
         entries = entries.filter { $0.value.storage != nil }
-        if entries.count >= maxEntries && entries[ObjectIdentifier(storage)] == nil {
+        if entries.count >= maxEntries && entries[key] == nil {
             entries.removeAll()
         }
-        entries[ObjectIdentifier(storage)] = StorageEntry(
+        entries[key] = StorageEntry(
             storage: storage,
             config: config,
             string: string,

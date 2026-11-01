@@ -203,4 +203,41 @@ final class ExternalSyncAndConflictTests: XCTestCase {
         XCTAssertNil(vm.activeConflict, "Identical concurrent modifications to the same line must merge cleanly without false conflict")
         XCTAssertEqual(vm.markdownText, identicalModification)
     }
+
+    @MainActor
+    func testAutosaveWatcherEchoDuringContinuedTypingDoesNotRevertOrCorruptBase() throws {
+        let tempDir = try makeTemporaryDirectory("FolioWatcherEchoTest")
+        let fileURL = tempDir.appendingPathComponent("Chapter.tex")
+        let initial = "% Header comment\nLine 1\nLine 2\nLine 3\n"
+        try initial.write(to: fileURL, atomically: true, encoding: .utf8)
+
+        let vm = makeIsolatedViewModel()
+        vm.autoSaveDelay = 10.0
+        vm.openFile(at: fileURL)
+
+        let afterFirstEdit = "% Header comment\nLine 1\nLine 2 edited\nLine 3\n"
+        vm.handleEditorTextEdited(afterFirstEdit, selectedRange: NSRange(location: 30, length: 0))
+        vm.flushPendingAutoSave()
+        XCTAssertEqual(vm.lastSavedDiskContent, afterFirstEdit)
+        XCTAssertFalse(vm.isDirty)
+
+        // User continues typing on Line 3 before the watcher echo from flushPendingAutoSave() is processed
+        let afterSecondEdit = "% Header comment\nLine 1\nLine 2 edited\nLine 3 typing\n"
+        vm.handleEditorTextEdited(afterSecondEdit, selectedRange: NSRange(location: 44, length: 0))
+        XCTAssertTrue(vm.isDirty)
+
+        // First asynchronous watcher echo arrives while disk still has `afterFirstEdit`
+        vm.checkForExternalFileChanges(for: fileURL)
+        XCTAssertEqual(vm.markdownText, afterSecondEdit)
+        XCTAssertEqual(vm.lastSavedDiskContent, afterFirstEdit, "Watcher echo must not advance lastSavedDiskContent to unsaved local text")
+        XCTAssertTrue(vm.isDirty)
+
+        // User types on Line 1, then a second watcher echo arrives before the debounced autosave fires
+        let afterThirdEdit = "% Header comment\nLine 1 typing\nLine 2 edited\nLine 3 typing\n"
+        vm.handleEditorTextEdited(afterThirdEdit, selectedRange: NSRange(location: 24, length: 0))
+        vm.checkForExternalFileChanges(for: fileURL)
+        XCTAssertEqual(vm.markdownText, afterThirdEdit, "Subsequent watcher echo must not 3-way merge stale disk state and revert Line 3")
+        XCTAssertEqual(vm.lastSavedDiskContent, afterFirstEdit)
+        XCTAssertTrue(vm.isDirty)
+    }
 }
