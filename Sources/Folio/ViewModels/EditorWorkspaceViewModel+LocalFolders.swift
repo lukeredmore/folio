@@ -28,6 +28,41 @@ extension EditorWorkspaceViewModel {
         reloadWorkspaceTree()
     }
 
+    /// Rescans the sidebar folders from disk (or syncs a remote mount if `folderURL` is inside one),
+    /// refreshes any active workspace search results, and checks the open document for external changes.
+    public func refreshFolderFromDisk(_ folderURL: URL? = nil) {
+        pendingFolderWatchReloadWorkItem?.cancel()
+        pendingFolderWatchReloadWorkItem = nil
+
+        if let folderURL, let resolved = remoteWorkspaceManager.resolveMount(for: folderURL) {
+            syncRemoteMountNow(id: resolved.mount.id)
+        }
+
+        reloadWorkspaceTree()
+
+        if let currentURL = currentFileURL {
+            let shouldCheckCurrentFile: Bool
+            if let folderURL {
+                shouldCheckCurrentFile = Self.path(
+                    currentURL.resolvingSymlinksInPath().standardizedFileURL.path,
+                    isWithin: folderURL.resolvingSymlinksInPath().standardizedFileURL.path
+                )
+            } else {
+                shouldCheckCurrentFile = true
+            }
+            if shouldCheckCurrentFile {
+                checkForExternalFileChanges(for: currentURL)
+                if isCurrentDocumentLaTeX {
+                    LaTeXProjectContext.scheduleRefresh(forFile: currentURL)
+                }
+            }
+        }
+
+        if !workspaceSearchQuery.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            performWorkspaceSearch()
+        }
+    }
+
     /// True when `url` is a sidebar local folder or is inside one.
     public func isInsideSidebarLocalFolder(_ url: URL) -> Bool {
         let path = url.resolvingSymlinksInPath().path

@@ -338,6 +338,8 @@ public final class EditorWorkspaceViewModel: ObservableObject {
     nonisolated(unsafe) var fileWatchDescriptor: Int32 = -1
     nonisolated(unsafe) var parentDirWatchDescriptor: Int32 = -1
     nonisolated(unsafe) var watchedFileInode: UInt64 = 0
+    nonisolated(unsafe) var folderWatchEntries: [String: WatchedDirectoryEntry] = [:]
+    nonisolated(unsafe) var pendingFolderWatchReloadWorkItem: DispatchWorkItem?
     nonisolated(unsafe) var externalHighlightClearTask: Task<Void, Never>?
 
     public init(
@@ -362,5 +364,6 @@ public final class EditorWorkspaceViewModel: ObservableObject {
         if let terminationObserver { NotificationCenter.default.removeObserver(terminationObserver) }
         externalHighlightClearTask?.cancel()
         stopWatchingCurrentFile()
+        stopWatchingWorkspaceFolders()
     }
 }

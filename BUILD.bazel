@@ -36,6 +36,12 @@ _SWIFT_TEST_COPTS = [
     "-warnings-as-errors",
 ]
 
+_SWIFT_TEST_LINKOPTS = [
+    "-Wl,-rpath,__BAZEL_XCODE_DEVELOPER_DIR__/Platforms/MacOSX.platform/Developer/usr/lib",
+    "-Wl,-rpath,__BAZEL_XCODE_DEVELOPER_DIR__/Platforms/MacOSX.platform/Developer/Library/Frameworks",
+    "-Wl,-rpath,__BAZEL_XCODE_DEVELOPER_DIR__/Platforms/MacOSX.platform/Developer/Library/PrivateFrameworks",
+]
+
 _SWIFT_TEST_DATA = [
     "//macos/FolioApp:folio",
     "//tst/specs:all_behavior_specs",
@@ -62,6 +68,7 @@ swift_test(
     ),
     copts = _SWIFT_TEST_COPTS,
     data = _SWIFT_TEST_DATA,
+    linkopts = _SWIFT_TEST_LINKOPTS,
     deps = [
         ":Folio",
     ],
@@ -75,6 +82,7 @@ swift_test(
     srcs = glob(["Tests/FolioTests/Support/**/*.swift"]) + [_RESTYLE_EQUIVALENCE_TESTS],
     copts = _SWIFT_TEST_COPTS,
     data = _SWIFT_TEST_DATA,
+    linkopts = _SWIFT_TEST_LINKOPTS,
     shard_count = 4,
     tags = ["exclusive"],
     deps = [
@@ -89,6 +97,7 @@ swift_test(
     srcs = glob(["Tests/FolioTests/Support/**/*.swift"]) + _PERF_TESTS,
     copts = _SWIFT_TEST_COPTS,
     data = _SWIFT_TEST_DATA,
+    linkopts = _SWIFT_TEST_LINKOPTS,
     tags = ["exclusive"],
     deps = [
         ":Folio",

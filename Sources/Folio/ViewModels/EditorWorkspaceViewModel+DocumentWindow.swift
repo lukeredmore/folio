@@ -111,6 +111,7 @@ extension EditorWorkspaceViewModel {
         guard !isTerminating else { return }
         discardUntouchedNewFile()
         stopWatchingCurrentFile()
+        stopWatchingWorkspaceFolders()
         guard documentWindow != nil else { return }
         for base in Self.windowScopedSessionKeys {
             userDefaults.removeObject(forKey: windowSessionKey(base))

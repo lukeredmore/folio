@@ -249,6 +249,7 @@ public struct SidebarView: View {
             sshDisplayPath: remoteManager.remoteSSHDisplayPath(forLocalURL: node.url) ?? node.remoteConnectionString,
             newFile: { viewModel.createNewFileInWorkspace(in: $0) },
             newLaTeXFile: { viewModel.createNewLaTeXFileInWorkspace(in: $0) },
+            refreshFolder: { viewModel.refreshFolderFromDisk($0) },
             syncMount: { mountID in
                 Task { await remoteManager.syncMount(id: mountID, isBackground: false) }
             },

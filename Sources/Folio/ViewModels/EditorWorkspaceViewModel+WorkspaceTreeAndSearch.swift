@@ -33,17 +33,25 @@ extension EditorWorkspaceViewModel {
     public func reloadWorkspaceTree() {
         var flatList: [WorkspaceFileNode] = []
         var combinedRoots: [WorkspaceFileNode] = []
+        var activeWatchedDirectoryKeys: Set<String> = []
 
         for folderURL in sidebarLocalFolderURLs {
             let rv = try? folderURL.resourceValues(forKeys: [.contentModificationDateKey, .creationDateKey])
+            let children = scanDirectory(
+                at: folderURL,
+                depth: 0,
+                remoteMountID: nil,
+                flatAccumulator: &flatList,
+                watchedDirectoryKeys: &activeWatchedDirectoryKeys
+            )
             combinedRoots.append(
                 WorkspaceFileNode(
                     url: folderURL,
                     name: folderURL.lastPathComponent,
                     isDirectory: true,
-                    modificationDate: rv?.contentModificationDate ?? Date(),
-                    creationDate: rv?.creationDate ?? Date(),
-                    children: scanDirectory(at: folderURL, depth: 0, remoteMountID: nil, flatAccumulator: &flatList),
+                    modificationDate: rv?.contentModificationDate ?? Date.distantPast,
+                    creationDate: rv?.creationDate ?? Date.distantPast,
+                    children: children,
                     isLocalRoot: true
                 ))
         }
@@ -52,13 +60,20 @@ extension EditorWorkspaceViewModel {
             let mirrorDir = remoteWorkspaceManager.localMirrorDirectory(for: mount)
             switch mount.targetKind {
             case .folder:
-                let remoteChildren = scanDirectory(at: mirrorDir, depth: 0, remoteMountID: mount.id, flatAccumulator: &flatList)
+                let rv = try? mirrorDir.resourceValues(forKeys: [.contentModificationDateKey, .creationDateKey])
+                let remoteChildren = scanDirectory(
+                    at: mirrorDir,
+                    depth: 0,
+                    remoteMountID: mount.id,
+                    flatAccumulator: &flatList,
+                    watchedDirectoryKeys: &activeWatchedDirectoryKeys
+                )
                 let rootNode = WorkspaceFileNode(
                     url: mirrorDir,
                     name: mount.effectiveDisplayName,
                     isDirectory: true,
-                    modificationDate: Date(),
-                    creationDate: Date(),
+                    modificationDate: rv?.contentModificationDate ?? Date.distantPast,
+                    creationDate: rv?.creationDate ?? Date.distantPast,
                     children: remoteChildren,
                     remoteMountID: mount.id,
                     isRemoteRoot: true,
@@ -79,8 +94,8 @@ extension EditorWorkspaceViewModel {
                     url: fileURL,
                     name: mount.displayName ?? filename,
                     isDirectory: false,
-                    modificationDate: rv?.contentModificationDate ?? Date(),
-                    creationDate: rv?.creationDate ?? Date(),
+                    modificationDate: rv?.contentModificationDate ?? Date.distantPast,
+                    creationDate: rv?.creationDate ?? Date.distantPast,
                     children: nil,
                     remoteMountID: mount.id,
                     isRemoteRoot: true,
@@ -94,18 +109,29 @@ extension EditorWorkspaceViewModel {
             }
         }
 
-        rootFileNodes = combinedRoots
-        sortFileNodes()
-        flatMarkdownFiles = sortNodesArray(flatList, by: fileSortOrder)
+        pruneWatchedWorkspaceDirectories(keeping: activeWatchedDirectoryKeys)
+
+        let sortedRoots = sortNodesArray(combinedRoots, by: fileSortOrder)
+        let sortedFlat = sortNodesArray(flatList, by: fileSortOrder)
+        if rootFileNodes != sortedRoots {
+            rootFileNodes = sortedRoots
+        }
+        if flatMarkdownFiles != sortedFlat {
+            flatMarkdownFiles = sortedFlat
+        }
     }
 
     func scanDirectory(
         at url: URL,
         depth: Int,
         remoteMountID: UUID?,
-        flatAccumulator: inout [WorkspaceFileNode]
+        flatAccumulator: inout [WorkspaceFileNode],
+        watchedDirectoryKeys: inout Set<String>
     ) -> [WorkspaceFileNode] {
         guard depth < 4 else { return [] }
+        if remoteMountID == nil {
+            recordWatchedWorkspaceDirectory(url, activeKeys: &watchedDirectoryKeys)
+        }
         let fm = FileManager.default
         guard
             let contents = try? fm.contentsOfDirectory(
@@ -134,7 +160,13 @@ extension EditorWorkspaceViewModel {
             let createDate = resourceValues?.creationDate ?? Date.distantPast
 
             if isDir {
-                let children = scanDirectory(at: itemURL, depth: depth + 1, remoteMountID: remoteMountID, flatAccumulator: &flatAccumulator)
+                let children = scanDirectory(
+                    at: itemURL,
+                    depth: depth + 1,
+                    remoteMountID: remoteMountID,
+                    flatAccumulator: &flatAccumulator,
+                    watchedDirectoryKeys: &watchedDirectoryKeys
+                )
                 if !children.isEmpty {
                     let node = WorkspaceFileNode(
                         url: itemURL,

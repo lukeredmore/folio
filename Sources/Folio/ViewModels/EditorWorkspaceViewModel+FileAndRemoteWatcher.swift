@@ -4,6 +4,12 @@ import Foundation
 import SwiftUI
 import UniformTypeIdentifiers
 
+struct WatchedDirectoryEntry {
+    let source: DispatchSourceFileSystemObject
+    let descriptor: Int32
+    let inode: UInt64
+}
+
 extension EditorWorkspaceViewModel {
 
     // MARK: - File & Workspace Operations
@@ -348,5 +354,88 @@ extension EditorWorkspaceViewModel {
         parentDirWatchSource = nil
         parentDirWatchDescriptor = -1
         watchedFileInode = 0
+    }
+
+    // MARK: - POSIX DispatchSource Workspace Folder Tree Watcher
+
+    static let maxWatchedWorkspaceDirectories = 256
+
+    func recordWatchedWorkspaceDirectory(_ url: URL, activeKeys: inout Set<String>) {
+        guard !Self.isSystemTemporaryRootDirectory(url) else { return }
+        let key = url.resolvingSymlinksInPath().standardizedFileURL.path
+        guard !activeKeys.contains(key) else { return }
+        let currentInode = Self.fileInode(for: url)
+        guard currentInode != 0 else { return }
+
+        if let existing = folderWatchEntries[key] {
+            if existing.inode == currentInode {
+                activeKeys.insert(key)
+                return
+            }
+            existing.source.cancel()
+            folderWatchEntries.removeValue(forKey: key)
+        }
+
+        guard folderWatchEntries.count < Self.maxWatchedWorkspaceDirectories else { return }
+        let dirFD = open(url.path, O_EVTONLY)
+        guard dirFD >= 0 else { return }
+
+        let source = DispatchSource.makeFileSystemObjectSource(
+            fileDescriptor: dirFD,
+            eventMask: [.write, .rename, .extend, .attrib, .delete, .link, .revoke],
+            queue: .main
+        )
+        source.setEventHandler { [weak self, weak source] in
+            let flags = source?.data ?? []
+            MainActor.assumeIsolated {
+                guard let self = self else { return }
+                if flags.contains(.delete) || flags.contains(.rename) || flags.contains(.revoke) {
+                    if let removed = self.folderWatchEntries.removeValue(forKey: key) {
+                        removed.source.cancel()
+                    }
+                }
+                self.scheduleWorkspaceTreeReloadFromWatcher()
+            }
+        }
+        source.setCancelHandler {
+            close(dirFD)
+        }
+        source.resume()
+        folderWatchEntries[key] = WatchedDirectoryEntry(source: source, descriptor: dirFD, inode: currentInode)
+        activeKeys.insert(key)
+    }
+
+    func pruneWatchedWorkspaceDirectories(keeping activeKeys: Set<String>) {
+        let staleKeys = folderWatchEntries.keys.filter { !activeKeys.contains($0) }
+        for key in staleKeys {
+            if let entry = folderWatchEntries.removeValue(forKey: key) {
+                entry.source.cancel()
+            }
+        }
+    }
+
+    func scheduleWorkspaceTreeReloadFromWatcher() {
+        pendingFolderWatchReloadWorkItem?.cancel()
+        let work = DispatchWorkItem { [weak self] in
+            MainActor.assumeIsolated {
+                guard let self = self else { return }
+                self.pendingFolderWatchReloadWorkItem = nil
+                self.reloadWorkspaceTree()
+                if !self.workspaceSearchQuery.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                    self.performWorkspaceSearch()
+                }
+            }
+        }
+        pendingFolderWatchReloadWorkItem = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.02, execute: work)
+    }
+
+    nonisolated func stopWatchingWorkspaceFolders() {
+        pendingFolderWatchReloadWorkItem?.cancel()
+        pendingFolderWatchReloadWorkItem = nil
+        for (_, entry) in folderWatchEntries {
+            entry.source.cancel()
+        }
+        folderWatchEntries.removeAll()
     }
 }

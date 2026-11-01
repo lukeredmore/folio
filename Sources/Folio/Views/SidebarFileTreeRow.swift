@@ -6,6 +6,7 @@ struct SidebarNodeActions {
     let sshDisplayPath: String?
     let newFile: (URL) -> Void
     let newLaTeXFile: (URL) -> Void
+    let refreshFolder: (URL) -> Void
     let syncMount: (UUID) -> Void
     let disconnectMount: (UUID) -> Void
     let removeLocalFolder: (URL) -> Void
@@ -153,6 +154,13 @@ struct SidebarNodeContextMenu: View {
                 }
             }
         } else {
+            if node.isDirectory {
+                Button {
+                    actions.refreshFolder(node.url)
+                } label: {
+                    Label("Refresh from Disk", systemImage: "arrow.clockwise")
+                }
+            }
             Button {
                 NSWorkspace.shared.activateFileViewerSelecting([node.url])
             } label: {

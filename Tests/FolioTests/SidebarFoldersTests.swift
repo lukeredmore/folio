@@ -110,6 +110,101 @@ final class SidebarFoldersTests: XCTestCase {
         )
         XCTAssertEqual(sorted.map(\.name), ["alpha", "beta", "zeta"])
     }
+
+    private func waitUntil(timeout: TimeInterval = 2.0, _ condition: () -> Bool) -> Bool {
+        let deadline = Date().addingTimeInterval(timeout)
+        while Date() < deadline {
+            if condition() { return true }
+            RunLoop.main.run(mode: .default, before: Date(timeIntervalSinceNow: 0.01))
+        }
+        return condition()
+    }
+
+    func testRefreshFolderFromDiskUpdatesTreeSearchAndOpenDocument() throws {
+        let folder = try makeFolder("RefreshManual", files: ["existing.md"])
+        let vm = makeIsolatedViewModel()
+        vm.loadWorkspaceFolder(folder)
+
+        let existingURL = folder.appendingPathComponent("existing.md")
+        vm.openFile(at: existingURL)
+        vm.workspaceSearchQuery = "needle"
+        vm.performWorkspaceSearch()
+        XCTAssertTrue(vm.workspaceSearchMatches.isEmpty)
+
+        // Cancel automatic watcher so we specifically test manual refreshFolderFromDisk
+        vm.stopWatchingWorkspaceFolders()
+        vm.stopWatchingCurrentFile()
+
+        let addedURL = folder.appendingPathComponent("added.md")
+        try "# Added\nFound a needle here.\n".write(to: addedURL, atomically: true, encoding: .utf8)
+        try "# Existing\nUpdated externally with needle.\n".write(to: existingURL, atomically: true, encoding: .utf8)
+
+        XCTAssertEqual(vm.flatMarkdownFiles.map(\.name), ["existing.md"])
+
+        vm.refreshFolderFromDisk(folder)
+
+        XCTAssertEqual(Set(vm.flatMarkdownFiles.map(\.name)), ["existing.md", "added.md"])
+        XCTAssertEqual(Set(vm.workspaceSearchMatches.map(\.fileName)), ["existing.md", "added.md"])
+        XCTAssertTrue(vm.markdownText.contains("Updated externally with needle."))
+    }
+
+    func testWorkspaceFoldersAutomaticallyRefreshOnDiskChanges() throws {
+        let folder = try makeFolder("AutoWatch", files: ["alpha.md"])
+        let emptySubfolder = folder.appendingPathComponent("empty-sub", isDirectory: true)
+        try FileManager.default.createDirectory(at: emptySubfolder, withIntermediateDirectories: true)
+
+        let vm = makeIsolatedViewModel()
+        vm.loadWorkspaceFolder(folder)
+        vm.workspaceSearchQuery = "magic-token"
+        vm.performWorkspaceSearch()
+        XCTAssertEqual(vm.flatMarkdownFiles.map(\.name), ["alpha.md"])
+        XCTAssertTrue(vm.workspaceSearchMatches.isEmpty)
+
+        // 1. Adding a file in the root folder updates the tree and active search automatically.
+        let betaURL = folder.appendingPathComponent("beta.md")
+        try "# Beta\nContains magic-token.\n".write(to: betaURL, atomically: true, encoding: .utf8)
+
+        XCTAssertTrue(
+            waitUntil { Set(vm.flatMarkdownFiles.map(\.name)) == ["alpha.md", "beta.md"] },
+            "Adding a file to a watched root folder should automatically update the sidebar tree"
+        )
+        XCTAssertEqual(vm.workspaceSearchMatches.map(\.fileName), ["beta.md"])
+
+        // 2. Adding a file inside an initially-empty subfolder makes the subfolder and file appear automatically.
+        let nestedURL = emptySubfolder.appendingPathComponent("nested.md")
+        try "# Nested\nAnother magic-token.\n".write(to: nestedURL, atomically: true, encoding: .utf8)
+
+        XCTAssertTrue(
+            waitUntil { Set(vm.flatMarkdownFiles.map(\.name)) == ["alpha.md", "beta.md", "nested.md"] },
+            "Adding a file to an existing empty subfolder should automatically reveal the subfolder and file"
+        )
+        XCTAssertEqual(Set(vm.workspaceSearchMatches.map(\.fileName)), ["beta.md", "nested.md"])
+
+        // 3. Creating a brand-new subfolder and writing a file inside it updates the sidebar automatically.
+        let newSubfolder = folder.appendingPathComponent("brand-new-sub", isDirectory: true)
+        try FileManager.default.createDirectory(at: newSubfolder, withIntermediateDirectories: true)
+        let deepURL = newSubfolder.appendingPathComponent("deep.tex")
+        try "\\section{Deep}\n% magic-token\n".write(to: deepURL, atomically: true, encoding: .utf8)
+
+        XCTAssertTrue(
+            waitUntil { Set(vm.flatMarkdownFiles.map(\.name)) == ["alpha.md", "beta.md", "nested.md", "deep.tex"] },
+            "Creating a new subfolder with a supported document should automatically update the sidebar"
+        )
+
+        // 4. Renaming and deleting files on disk updates the sidebar automatically.
+        let renamedURL = folder.appendingPathComponent("beta-renamed.md")
+        try FileManager.default.moveItem(at: betaURL, to: renamedURL)
+        try FileManager.default.removeItem(at: folder.appendingPathComponent("alpha.md"))
+
+        XCTAssertTrue(
+            waitUntil { Set(vm.flatMarkdownFiles.map(\.name)) == ["beta-renamed.md", "nested.md", "deep.tex"] },
+            "Renaming and deleting files on disk should automatically update the sidebar"
+        )
+
+        // 5. Removing the folder from the sidebar stops watching it.
+        vm.removeLocalFolder(folder)
+        XCTAssertTrue(vm.folderWatchEntries.isEmpty)
+    }
 }
 
 final class RemoteHostEntryTests: XCTestCase {
