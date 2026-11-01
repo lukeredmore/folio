@@ -27,6 +27,7 @@ extension EditorHarness {
     /// Like `drainUntilIdle`, but requires `quietPeriod` seconds without counter changes, so
     /// debounced work (resize restyle) has run.
     func drainUntilQuiet(quietPeriod: TimeInterval, timeout: TimeInterval = 5) {
+        window.displayIfNeeded()
         let deadline = Date().addingTimeInterval(timeout)
         var last = fingerprint
         var quietSince = Date()
@@ -34,7 +35,8 @@ extension EditorHarness {
             RunLoop.main.run(until: Date().addingTimeInterval(0.001))
             let current = fingerprint
             if current != last {
-                last = current
+                window.displayIfNeeded()
+                last = fingerprint
                 quietSince = Date()
             }
         }
