@@ -93,6 +93,8 @@ final class EditorHarness {
         cancellables.removeAll()
         viewModel.pendingAutoSaveWorkItem?.cancel()
         viewModel.pendingAutoSaveWorkItem = nil
+        viewModel.stopWatchingCurrentFile()
+        viewModel.stopWatchingWorkspaceFolders()
         window.orderOut(nil)
         window.contentView = nil
         defaults.removePersistentDomain(forName: defaultsSuiteName)

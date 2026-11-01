@@ -36,7 +36,6 @@ extension EditorWorkspaceViewModel {
         var activeWatchedDirectoryKeys: Set<String> = []
 
         for folderURL in sidebarLocalFolderURLs {
-            let rv = try? folderURL.resourceValues(forKeys: [.contentModificationDateKey, .creationDateKey])
             let children = scanDirectory(
                 at: folderURL,
                 depth: 0,
@@ -49,8 +48,8 @@ extension EditorWorkspaceViewModel {
                     url: folderURL,
                     name: folderURL.lastPathComponent,
                     isDirectory: true,
-                    modificationDate: rv?.contentModificationDate ?? Date.distantPast,
-                    creationDate: rv?.creationDate ?? Date.distantPast,
+                    modificationDate: children.map(\.modificationDate).max() ?? Date.distantPast,
+                    creationDate: children.map(\.creationDate).max() ?? Date.distantPast,
                     children: children,
                     isLocalRoot: true
                 ))
@@ -60,7 +59,6 @@ extension EditorWorkspaceViewModel {
             let mirrorDir = remoteWorkspaceManager.localMirrorDirectory(for: mount)
             switch mount.targetKind {
             case .folder:
-                let rv = try? mirrorDir.resourceValues(forKeys: [.contentModificationDateKey, .creationDateKey])
                 let remoteChildren = scanDirectory(
                     at: mirrorDir,
                     depth: 0,
@@ -72,8 +70,8 @@ extension EditorWorkspaceViewModel {
                     url: mirrorDir,
                     name: mount.effectiveDisplayName,
                     isDirectory: true,
-                    modificationDate: rv?.contentModificationDate ?? Date.distantPast,
-                    creationDate: rv?.creationDate ?? Date.distantPast,
+                    modificationDate: remoteChildren.map(\.modificationDate).max() ?? Date.distantPast,
+                    creationDate: remoteChildren.map(\.creationDate).max() ?? Date.distantPast,
                     children: remoteChildren,
                     remoteMountID: mount.id,
                     isRemoteRoot: true,
@@ -172,8 +170,8 @@ extension EditorWorkspaceViewModel {
                         url: itemURL,
                         name: name,
                         isDirectory: true,
-                        modificationDate: modDate,
-                        creationDate: createDate,
+                        modificationDate: children.map(\.modificationDate).max() ?? Date.distantPast,
+                        creationDate: children.map(\.creationDate).max() ?? Date.distantPast,
                         children: children,
                         remoteMountID: remoteMountID
                     )

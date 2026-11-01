@@ -10,7 +10,7 @@ extension MarkdownLiveStyler {
         fallbackFont: NSFont
     ) {
         guard range.length > 0 else { return }
-        storage.enumerateAttributes(in: range, options: []) { attrs, subrange, _ in
+        storage.enumerateAttributes(in: range, options: .longestEffectiveRangeNotRequired) { attrs, subrange, _ in
             if attrs[collapsedTokenAttributeKey] != nil
                 || attrs[inlineMathSpanAttributeKey] != nil
                 || (attrs[.foregroundColor] as? NSColor) == NSColor.clear
@@ -29,7 +29,7 @@ extension MarkdownLiveStyler {
         attributes: [NSAttributedString.Key: Any]
     ) {
         guard range.length > 0 else { return }
-        storage.enumerateAttributes(in: range, options: []) { attrs, subrange, _ in
+        storage.enumerateAttributes(in: range, options: .longestEffectiveRangeNotRequired) { attrs, subrange, _ in
             if attrs[collapsedTokenAttributeKey] != nil
                 || attrs[inlineMathSpanAttributeKey] != nil
                 || (attrs[.foregroundColor] as? NSColor) == NSColor.clear
