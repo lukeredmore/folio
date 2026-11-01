@@ -57,6 +57,11 @@ extension XCTestCase {
             preconditionFailure("Could not create a remote mirror directory: \(error)")
         }
         let manager = RemoteWorkspaceManager(mirrorBaseDirectory: mirror, userDefaults: resolvedDefaults)
-        return EditorWorkspaceViewModel(remoteWorkspaceManager: manager, userDefaults: resolvedDefaults)
+        let vm = EditorWorkspaceViewModel(remoteWorkspaceManager: manager, userDefaults: resolvedDefaults)
+        addTeardownBlock {
+            vm.stopWatchingCurrentFile()
+            vm.stopWatchingWorkspaceFolders()
+        }
+        return vm
     }
 }

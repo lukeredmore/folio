@@ -106,9 +106,13 @@ extension MarkdownLiveStyler {
                 guard NSMaxRange(docRange) <= fullLength, docRange.length > 0 else { continue }
                 rec.isActive = spanLines.contains { lineRecords[$0]?.isActive ?? false }
 
-                let spanText = nsString.substring(with: docRange)
-                if spanText.hasPrefix("[") || spanText.hasPrefix("![") {
-                    let isImg = spanText.hasPrefix("![")
+                let firstChar = nsString.character(at: docRange.location)
+                let isBracketLink =
+                    firstChar == 0x5B
+                    || (firstChar == 0x21 && docRange.length >= 2 && nsString.character(at: docRange.location + 1) == 0x5B)
+                if isBracketLink {
+                    let spanText = nsString.substring(with: docRange)
+                    let isImg = firstChar == 0x21
                     let openLen = isImg ? 2 : 1
                     let spanNS = spanText as NSString
                     var scan = openLen
@@ -180,7 +184,7 @@ extension MarkdownLiveStyler {
                         styleSyntaxToken(
                             in: storage, range: trailingSyntaxRange, isActiveLine: rec.isActive || !prettyMode, theme: theme, dimFactor: rec.dimFactor)
                     }
-                } else if !spanText.hasPrefix("<") {
+                } else if firstChar != 0x3C {
                     // GFM extended bare autolink (e.g. www.example.com, https://example.com)
                     applyAttributesToVisibleCharacters(
                         in: storage,
@@ -234,12 +238,15 @@ extension MarkdownLiveStyler {
         _ inline: CmarkAstInline,
         columns: inout LineUTF8ColumnCache
     ) -> CmarkAstInline {
+        guard inline.startLine > 1 else { return inline }
         let col = inline.startColumn - 1
         func startsWithBracket(_ line: Int) -> Bool {
             let byte = columns.byte(line: line, column: col)
             return byte == UInt8(ascii: "[") || byte == UInt8(ascii: "!")
         }
         guard !startsWithBracket(inline.startLine) else { return inline }
+        let endByte = columns.byte(line: inline.endLine, column: inline.endColumn - 1)
+        guard endByte == UInt8(ascii: ")") || endByte == UInt8(ascii: "]") else { return inline }
         var line = inline.startLine - 1
         while line >= 1, columns.lineRecords[line] != nil {
             if startsWithBracket(line) {

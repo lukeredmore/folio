@@ -46,7 +46,10 @@ extension MarkdownLiveStyler {
         /// UTF-8 byte at a 0-based column of a line, or nil when the line or column does not exist.
         mutating func byte(line: Int, column: Int) -> UInt8? {
             guard let rec = lineRecords[line] else { return nil }
-            let entry = columns[line] ?? LineUTF8Columns(rec.lineText)
+            if let existing = columns[line] {
+                return existing.bytes.indices.contains(column) ? existing.bytes[column] : nil
+            }
+            let entry = LineUTF8Columns(rec.lineText)
             columns[line] = entry
             return entry.bytes.indices.contains(column) ? entry.bytes[column] : nil
         }

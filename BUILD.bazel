@@ -58,6 +58,7 @@ _PERF_TESTS = [
     "Tests/FolioTests/EditorPerfScalingTests.swift",
     "Tests/FolioTests/FolioUILagProfileTests.swift",
     "Tests/FolioTests/LaTeXPerformanceTests.swift",
+    "Tests/FolioTests/LongLineLinkStylingTests.swift",
 ]
 
 swift_test(

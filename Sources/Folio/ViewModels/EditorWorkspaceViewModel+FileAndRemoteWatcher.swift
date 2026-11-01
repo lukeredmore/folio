@@ -361,7 +361,7 @@ extension EditorWorkspaceViewModel {
     static let maxWatchedWorkspaceDirectories = 256
 
     func recordWatchedWorkspaceDirectory(_ url: URL, activeKeys: inout Set<String>) {
-        guard !Self.isSystemTemporaryRootDirectory(url) else { return }
+        guard !Self.isSystemTemporaryRootDirectory(url), !url.path.contains(".runfiles") else { return }
         let key = url.resolvingSymlinksInPath().standardizedFileURL.path
         guard !activeKeys.contains(key) else { return }
         let currentInode = Self.fileInode(for: url)
