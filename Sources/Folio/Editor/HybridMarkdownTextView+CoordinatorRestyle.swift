@@ -40,6 +40,7 @@ extension HybridMarkdownEditorRepresentable.Coordinator {
         } else {
             pendingTextEdit = MarkdownTextEdit(range: range, changeInLength: delta)
         }
+        LaTeXBlockStyleCache.noteTextEdit(for: storage, editedRange: range, changeInLength: delta)
     }
 
     /// Restyles after input-method composition ends, if a text change was deferred during it.

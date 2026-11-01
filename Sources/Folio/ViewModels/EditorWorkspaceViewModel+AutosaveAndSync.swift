@@ -109,11 +109,19 @@ extension EditorWorkspaceViewModel {
             return
         }
 
+        // Ignore watcher echoes when no conflict is active and disk has not changed since our last save,
+        // even if the user has typed additional unsaved characters in the meantime.
+        if activeConflict == nil,
+            diskContent == lastSavedDiskContent
+        {
+            return
+        }
+
         // Also ignore asynchronous watcher echo from an older self-write that we already superseded
         if activeConflict == nil,
             diskContent != markdownText,
             recentSelfWrites.contains(diskContent),
-            markdownText == lastSavedDiskContent
+            (markdownText == lastSavedDiskContent || recentSelfWrites.contains(lastSavedDiskContent))
         {
             return
         }
@@ -192,10 +200,11 @@ extension EditorWorkspaceViewModel {
                 )
             }
 
-            lastSavedDiskContent = mergedText
-            isDirty = false
             if wasAutoMerged && mergedText != diskContent {
                 performDiskWrite(mergedText, to: url)
+            } else {
+                lastSavedDiskContent = diskContent
+                isDirty = (mergedText != diskContent)
             }
             persistDocumentSessionState()
 

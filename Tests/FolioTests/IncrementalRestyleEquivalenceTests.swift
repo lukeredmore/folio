@@ -62,6 +62,22 @@ final class IncrementalRestyleEquivalenceTests: XCTestCase {
             operations: 150, changesContentWidth: true)
     }
 
+    func testProgrammaticLaTeXDocumentUpdateMatchesFullRestyle() throws {
+        let workspace = try latexChapterWorkspace()
+        let harness = try EditorHarness(workspace: workspace)
+        defer { harness.tearDown() }
+        harness.settleBackgroundWork()
+
+        let original = harness.textView.string
+        let updated = original.replacingOccurrences(of: "Use \\Opt{mode}", with: "Use \\Kw{updated} \\Opt{mode}")
+        XCTAssertNotEqual(original, updated)
+
+        harness.textView.applyProgrammaticDocumentText(updated, selectedRange: NSRange(location: 0, length: 0))
+        if let mismatch = RestyleEquivalenceOracle.firstMismatch(in: harness) {
+            XCTFail("applyProgrammaticDocumentText left the editor different from a full restyle: \(mismatch)")
+        }
+    }
+
     private func latexChapterWorkspace() throws -> PerfFixtures.Workspace {
         LaTeXProjectContext.removeAll()
         addTeardownBlock { @MainActor in LaTeXProjectContext.removeAll() }
