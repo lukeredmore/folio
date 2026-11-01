@@ -191,6 +191,18 @@ extension SidebarView {
                                 .monospacedDigit()
                         }
                         .padding(.trailing, 8)
+                        .contextMenu {
+                            Button {
+                                viewModel.copyPath(for: group.fileURL)
+                            } label: {
+                                Label("Copy Path", systemImage: "doc.on.doc")
+                            }
+                            Button {
+                                NSWorkspace.shared.activateFileViewerSelecting([group.fileURL])
+                            } label: {
+                                Label("Reveal in Finder", systemImage: "folder")
+                            }
+                        }
                     }
                 }
             }

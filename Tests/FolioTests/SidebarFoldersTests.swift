@@ -1,3 +1,4 @@
+import AppKit
 import XCTest
 @testable import Folio
 
@@ -204,6 +205,37 @@ final class SidebarFoldersTests: XCTestCase {
         // 5. Removing the folder from the sidebar stops watching it.
         vm.removeLocalFolder(folder)
         XCTAssertTrue(vm.folderWatchEntries.isEmpty)
+    }
+
+    func testCopyPathForSidebarNodesAndStatusBarCurrentFile() throws {
+        let folder = try makeFolder("CopyPathFolder", files: ["doc.md"])
+        let fileURL = folder.appendingPathComponent("doc.md")
+        let vm = makeIsolatedViewModel()
+        vm.loadWorkspaceFolder(folder)
+
+        let pasteboard = NSPasteboard.withUniqueName()
+        defer { pasteboard.releaseGlobally() }
+
+        // Before opening a file on disk, copying the current file path is a no-op when currentFileURL is nil.
+        vm.currentFileURL = nil
+        XCTAssertNil(vm.copyCurrentFilePath(to: pasteboard))
+
+        // Copy folder path from sidebar context menu.
+        let copiedFolderPath = vm.copyPath(for: folder, to: pasteboard)
+        XCTAssertEqual(copiedFolderPath, folder.path)
+        XCTAssertEqual(pasteboard.string(forType: .string), folder.path)
+
+        // Copy file path from sidebar context menu.
+        let copiedFilePath = vm.copyPath(for: fileURL, to: pasteboard)
+        XCTAssertEqual(copiedFilePath, fileURL.path)
+        XCTAssertEqual(pasteboard.string(forType: .string), fileURL.path)
+
+        // Copy current file path from status bar context menu.
+        vm.openFile(at: fileURL)
+        pasteboard.clearContents()
+        let copiedCurrentPath = vm.copyCurrentFilePath(to: pasteboard)
+        XCTAssertEqual(copiedCurrentPath, fileURL.path)
+        XCTAssertEqual(pasteboard.string(forType: .string), fileURL.path)
     }
 }
 

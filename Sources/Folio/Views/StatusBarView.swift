@@ -12,10 +12,7 @@ public struct StatusBarView: View {
 
     private var documentTooltipText: String {
         if let fileURL = viewModel.currentFileURL {
-            if let sshPath = remoteManager.remoteSSHDisplayPath(forLocalURL: fileURL) {
-                return sshPath
-            }
-            return fileURL.path
+            return viewModel.displayPath(for: fileURL)
         }
         return viewModel.documentTitle
     }
@@ -165,9 +162,32 @@ public struct StatusBarView: View {
                         .help("Edited")
                 }
             }
-            .frame(maxWidth: 320)
-            .allowsHitTesting(false)
+            .padding(.horizontal, 4)
+            .padding(.vertical, 2)
+            .contentShape(Rectangle())
             .help(documentTooltipText)
+            .contextMenu {
+                Button {
+                    viewModel.copyCurrentFilePath()
+                } label: {
+                    Label("Copy Path", systemImage: "doc.on.doc")
+                }
+                .disabled(viewModel.currentFileURL == nil)
+
+                if let fileURL = viewModel.currentFileURL {
+                    Button {
+                        NSWorkspace.shared.activateFileViewerSelecting([fileURL])
+                    } label: {
+                        Label(
+                            remoteManager.mount(forLocalURL: fileURL) != nil
+                                ? "Reveal Local Mirror in Finder"
+                                : "Reveal in Finder",
+                            systemImage: "folder"
+                        )
+                    }
+                }
+            }
+            .frame(maxWidth: 320)
         }
         .controlSize(.small)
         .foregroundStyle(.secondary)
