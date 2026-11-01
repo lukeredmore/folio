@@ -320,6 +320,13 @@ final class HTMLBlockTests: XCTestCase {
         // The Save button and Return save the draft range, as the tooltip does after focus moved.
         let saved = try XCTUnwrap(viewModel.addOrUpdateSelectionComment(for: viewModel.selectionTooltipAnchor?.range))
         XCTAssertEqual(saved.range, target)
+        XCTAssertTrue(
+            harness.waitUntil(timeout: 5) {
+                harness.window.displayIfNeeded()
+                return textView.bounds.width < widthBefore
+            },
+            "The comments sidebar must narrow the editor"
+        )
         harness.drainUntilQuiet(quietPeriod: 1.0)
         XCTAssertTrue(harness.waitUntil(timeout: 20) { !textView.hasPendingHTMLBlockLayout })
 
