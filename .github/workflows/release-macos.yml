@@ -4,7 +4,7 @@ on:
   push:
     branches:
       - main
-  pull_request:
+  pull_request_target:
   workflow_dispatch:
 
 permissions:
@@ -12,15 +12,18 @@ permissions:
 
 concurrency:
   group: release-macos-${{ github.event.pull_request.number || github.ref }}
-  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' || github.event_name == 'pull_request_target' }}
 
 jobs:
   test:
     name: Run Workspace Tests & Hygiene Checks
+    if: github.event_name != 'pull_request_target' || github.event.pull_request.head.repo.full_name == github.repository
     runs-on: macos-26
     steps:
       - name: Checkout repository
         uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
 
       - name: Select Xcode 26+ & configure Bazel CI profile
         run: |
@@ -32,13 +35,14 @@ jobs:
           swiftc --version
           echo "common --config=ci" >> ~/.bazelrc
 
-      - name: Cache Bazel repository & disk cache (test)
-        uses: actions/cache@v6
+      - name: Restore Bazel repository & disk cache (test)
+        id: bazel_test_cache
+        uses: actions/cache/restore@v6
         with:
           path: |
             ~/.cache/bazel-repo
             ~/.cache/bazel-disk
-          key: bazel-test-macos26-${{ runner.os }}-${{ hashFiles('MODULE.bazel', 'MODULE.bazel.lock', 'Cargo.lock') }}-${{ hashFiles('core/**/*.rs', 'zed/**/*.rs', 'Sources/**/*.swift', 'Tests/**/*.swift', 'tst/specs/**/*.json') }}
+          key: bazel-test-macos26-${{ runner.os }}-${{ hashFiles('MODULE.bazel', 'MODULE.bazel.lock', 'Cargo.lock') }}-${{ hashFiles('core/**/*.rs', 'zed/**/*.rs', 'Sources/**/*.swift', 'Tests/**/*.swift', 'macos/**', 'tools/**', 'tst/specs/**/*.json', '**/BUILD.bazel', '.bazelrc', '.swift-format') }}
           restore-keys: |
             bazel-test-macos26-${{ runner.os }}-${{ hashFiles('MODULE.bazel', 'MODULE.bazel.lock', 'Cargo.lock') }}-
             bazel-test-macos26-${{ runner.os }}-
@@ -46,8 +50,18 @@ jobs:
       - name: Run all tests, lints, and format checks
         run: bazel test //...
 
+      - name: Save Bazel repository & disk cache (test)
+        if: always() && steps.bazel_test_cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v6
+        with:
+          path: |
+            ~/.cache/bazel-repo
+            ~/.cache/bazel-disk
+          key: ${{ steps.bazel_test_cache.outputs.cache-primary-key }}
+
   build-folio-dmg:
     name: Build & Package Folio.dmg
+    if: github.event_name != 'pull_request_target' || github.event.pull_request.head.repo.full_name == github.repository
     runs-on: macos-26
     outputs:
       version: ${{ steps.meta.outputs.version }}
@@ -61,6 +75,7 @@ jobs:
       - name: Checkout repository (full history for commit count build number)
         uses: actions/checkout@v7
         with:
+          ref: ${{ github.event.pull_request.head.sha }}
           fetch-depth: 0
 
       - name: Select Xcode 26+ & compute the Folio.app input hash
@@ -255,6 +270,7 @@ jobs:
 
   build-zed-extension:
     name: Build & Package Folio Zed Extension (wasm32-wasip2)
+    if: github.event_name != 'pull_request_target' || github.event.pull_request.head.repo.full_name == github.repository
     runs-on: macos-26
     outputs:
       extension_version: ${{ steps.meta.outputs.extension_version }}
@@ -263,6 +279,7 @@ jobs:
       - name: Checkout repository (full history for commit count build number)
         uses: actions/checkout@v7
         with:
+          ref: ${{ github.event.pull_request.head.sha }}
           fetch-depth: 0
 
       - name: Configure Bazel CI profile
@@ -305,7 +322,7 @@ jobs:
       - test
       - build-folio-dmg
       - build-zed-extension
-    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+    if: (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
