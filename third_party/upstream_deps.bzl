@@ -106,10 +106,20 @@ src = src.replace(
 )
 with open(p, "w", encoding="utf-8") as f:
     f.write(src)
+p = "Sources/SwiftMath/MathRender/MTMathList.swift"
+with open(p, "r", encoding="utf-8") as f:
+    src = f.read()
+# MTOverLine.finalized skips super.finalized, so atoms in its scripts keep indexRange 0 and typesetting traps on index -1.
+old = "let newOverline = MTOverLine(self)"
+if old not in src:
+    raise SystemExit("MTOverLine.finalized patch target not found")
+src = src.replace(old, "let newOverline = super.finalized as! MTOverLine")
+with open(p, "w", encoding="utf-8") as f:
+    f.write(src)
 """,
     ])
     if patch_res.return_code != 0:
-        fail("Failed to patch SwiftMath MTTypesetter.swift:\n{}\n{}".format(patch_res.stdout, patch_res.stderr))
+        fail("Failed to patch SwiftMath:\n{}\n{}".format(patch_res.stdout, patch_res.stderr))
     ctx.file(
         "Sources/SwiftMath/MathBundle/BundleModuleAccessor.swift",
         content = """import Foundation

@@ -24,6 +24,19 @@ final class LaTeXDocumentStylingAndMathCrashTests: XCTestCase {
         assertMathMetrics(alignedBox, width: 84.13, ascent: 32.36, descent: 22.62, "aligned with boxed row")
     }
 
+    func testOverlineWithScriptedAtomsInItsScriptsDoesNotCrashSwiftMath() {
+        let expressions = [
+            #"\overline{a}^{\tau^{+}}"#,
+            #"\overline{a}_{x_{1}}^{y^{2}}"#,
+            #"\overline{\tau^{+} \le \sigma^{-}}^{\;(\tau^{+} \le \sigma^{-}) \in \Xi,\ \mathit{FV}(\tau^{+} \le \sigma^{-}) \subseteq V}"#
+        ]
+        for latex in expressions {
+            let box = LaTeXMathRenderer.layoutLatex(latex, baseFontSize: 16.0, isDisplayStyle: false)
+            XCTAssertTrue(box.usesNativeOpenTypeMath, "SwiftMath lays out \(latex)")
+            XCTAssertGreaterThan(box.width, 0, latex)
+        }
+    }
+
     func testCodeSpecifiedStylingOverridesThemeAndFallsBackWhenAbsent() {
         let styledTeX = """
             \\documentclass[12pt,letterpaper]{article}

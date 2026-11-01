@@ -243,7 +243,7 @@
   "moduleExtensions": {
     "//third_party:upstream_deps.bzl%upstream_deps": {
       "general": {
-        "bzlTransitiveDigest": "+9Gd9VmR8SbgIWnxbyHMtvtf5mBbmLhgn2qy9wJj06s=",
+        "bzlTransitiveDigest": "tfBNofoHjcW1uBCWdx1qZBFLjEtBNeI2xedwV1jiwt8=",
         "usagesDigest": "HBVAk9P3cU5ZIw4jY5O0aXhEvgKlxSfQ1R8eFii6jSY=",
         "recordedInputs": [],
         "generatedRepoSpecs": {
