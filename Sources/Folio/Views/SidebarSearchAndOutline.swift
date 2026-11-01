@@ -281,6 +281,13 @@ extension SidebarView {
                 addActions
                 Divider()
             }
+            if !viewModel.sidebarLocalFolderURLs.isEmpty {
+                Button {
+                    viewModel.refreshFolderFromDisk()
+                } label: {
+                    Label("Refresh Folders from Disk", systemImage: "arrow.clockwise")
+                }
+            }
             if !remoteManager.mounts.isEmpty {
                 Button {
                     Task {
@@ -289,6 +296,8 @@ extension SidebarView {
                 } label: {
                     Label("Sync All Remotes Now", systemImage: "arrow.triangle.2.circlepath")
                 }
+            }
+            if !viewModel.sidebarLocalFolderURLs.isEmpty || !remoteManager.mounts.isEmpty {
                 Divider()
             }
             Picker("View Mode", selection: $viewModel.fileDisplayStyle) {
