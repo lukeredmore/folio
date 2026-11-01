@@ -1,6 +1,33 @@
+import AppKit
 import Foundation
 
 extension EditorWorkspaceViewModel {
+
+    // MARK: - Path Copying
+
+    /// Returns the user-facing path for `url` (the remote SSH URI when `url` belongs to a remote mount, otherwise `url.path`).
+    public func displayPath(for url: URL) -> String {
+        if let sshPath = remoteWorkspaceManager.remoteSSHDisplayPath(forLocalURL: url) {
+            return sshPath
+        }
+        return url.path
+    }
+
+    /// Copies the user-facing path for `url` to `pasteboard` and returns the copied string.
+    @discardableResult
+    public func copyPath(for url: URL, to pasteboard: NSPasteboard = .general) -> String {
+        let path = displayPath(for: url)
+        pasteboard.clearContents()
+        pasteboard.setString(path, forType: .string)
+        return path
+    }
+
+    /// Copies the user-facing path for `currentFileURL` to `pasteboard` and returns the copied string, or `nil` when no file is associated with disk.
+    @discardableResult
+    public func copyCurrentFilePath(to pasteboard: NSPasteboard = .general) -> String? {
+        guard let url = currentFileURL else { return nil }
+        return copyPath(for: url, to: pasteboard)
+    }
 
     // MARK: - Local Sidebar Folders
 

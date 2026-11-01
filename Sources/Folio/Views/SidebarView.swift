@@ -250,6 +250,7 @@ public struct SidebarView: View {
             newFile: { viewModel.createNewFileInWorkspace(in: $0) },
             newLaTeXFile: { viewModel.createNewLaTeXFileInWorkspace(in: $0) },
             refreshFolder: { viewModel.refreshFolderFromDisk($0) },
+            copyPath: { viewModel.copyPath(for: $0) },
             syncMount: { mountID in
                 Task { await remoteManager.syncMount(id: mountID, isBackground: false) }
             },

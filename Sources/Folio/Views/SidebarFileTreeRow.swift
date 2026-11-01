@@ -7,6 +7,7 @@ struct SidebarNodeActions {
     let newFile: (URL) -> Void
     let newLaTeXFile: (URL) -> Void
     let refreshFolder: (URL) -> Void
+    let copyPath: (URL) -> Void
     let syncMount: (UUID) -> Void
     let disconnectMount: (UUID) -> Void
     let removeLocalFolder: (URL) -> Void
@@ -139,6 +140,12 @@ struct SidebarNodeContextMenu: View {
                 } label: {
                     Label("Copy SSH Path (\(sshURI))", systemImage: "doc.on.doc")
                 }
+            } else {
+                Button {
+                    actions.copyPath(node.url)
+                } label: {
+                    Label("Copy Path", systemImage: "doc.on.doc")
+                }
             }
             Button {
                 NSWorkspace.shared.activateFileViewerSelecting([node.url])
@@ -160,6 +167,11 @@ struct SidebarNodeContextMenu: View {
                 } label: {
                     Label("Refresh from Disk", systemImage: "arrow.clockwise")
                 }
+            }
+            Button {
+                actions.copyPath(node.url)
+            } label: {
+                Label("Copy Path", systemImage: "doc.on.doc")
             }
             Button {
                 NSWorkspace.shared.activateFileViewerSelecting([node.url])
