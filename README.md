@@ -99,7 +99,7 @@ Swift indexing uses [sourcekit-bazel-bsp](https://github.com/spotify/sourcekit-b
 2. Open the repository root in an editor that runs `sourcekit-lsp`, for example VS Code or Cursor with the Swift extension. The `sourcekit-lsp` that ships with Xcode works.
 3. When `sourcekit-lsp` asks whether to trust the workspace, choose **Trust Workspace**. If you do not, it ignores `.bsp/` and reports `No such module 'FolioEngineFFI'`.
 
-The first indexing build can take a few minutes. It uses a separate Bazel output base, so it does not discard the analysis cache of your normal builds. The BSP indexes the Swift libraries under `//macos/FolioApp:FolioApp` (`Sources/Folio`, `macos/FolioApp/AppMain.swift`, and the `FolioEngineFFI` C module). It does not index `Tests/FolioTests`, because that code is compiled by a `swift_test` target, not a `swift_library`.
+The first indexing build can take a few minutes. It uses a separate Bazel output base, so it does not discard the analysis cache of your normal builds. The BSP indexes the Swift libraries under `//macos/FolioApp:FolioApp` and `//:FolioTestsIndex` (`Sources/Folio`, `Tests/FolioTests`, `macos/FolioApp/AppMain.swift`, and the `FolioEngineFFI` C module).
 
 ---
 

@@ -1,3 +1,4 @@
+load("@build_bazel_rules_apple//apple:macos.bzl", "macos_build_test")
 load("@build_bazel_rules_swift//swift:swift.bzl", "swift_library", "swift_test")
 load("@rules_shell//shell:sh_binary.bzl", "sh_binary")
 load("//tools:swift_format.bzl", "swift_format_test")
@@ -236,38 +237,56 @@ swift_library(
     ],
 )
 
-swift_test(
-    name = "FolioEditorTests",
+swift_library(
+    name = "FolioEditorTestsLib",
+    testonly = True,
     srcs = _EDITOR_TESTS,
     copts = _SWIFT_TEST_COPTS,
-    data = _SWIFT_TEST_DATA,
-    linkopts = _SWIFT_TEST_LINKOPTS,
+    module_name = "FolioEditorTestsLib",
     deps = [
         ":FolioEditor",
         ":FolioEditorTestSupport",
         ":FolioModels",
     ],
+    alwayslink = True,
+)
+
+swift_test(
+    name = "FolioEditorTests",
+    copts = _SWIFT_TEST_COPTS,
+    data = _SWIFT_TEST_DATA,
+    linkopts = _SWIFT_TEST_LINKOPTS,
+    deps = [":FolioEditorTestsLib"],
+)
+
+swift_library(
+    name = "FolioLaTeXTestsLib",
+    testonly = True,
+    srcs = _LATEX_TESTS,
+    copts = _SWIFT_TEST_COPTS,
+    module_name = "FolioLaTeXTestsLib",
+    deps = [
+        ":FolioEditor",
+        ":FolioEditorTestSupport",
+        ":FolioModels",
+    ],
+    alwayslink = True,
 )
 
 swift_test(
     name = "FolioLaTeXTests",
-    srcs = _LATEX_TESTS,
     copts = _SWIFT_TEST_COPTS,
     data = _SWIFT_TEST_DATA,
     linkopts = _SWIFT_TEST_LINKOPTS,
-    deps = [
-        ":FolioEditor",
-        ":FolioEditorTestSupport",
-        ":FolioModels",
-    ],
+    deps = [":FolioLaTeXTestsLib"],
 )
 
-swift_test(
-    name = "FolioWorkspaceTests",
+swift_library(
+    name = "FolioWorkspaceTestsLib",
+    testonly = True,
     srcs = _WORKSPACE_TESTS,
     copts = _SWIFT_TEST_COPTS,
-    data = _SWIFT_TEST_DATA,
-    linkopts = _SWIFT_TEST_LINKOPTS,
+    module_name = "FolioWorkspaceTestsLib",
     deps = [
         ":FolioEditor",
         ":FolioEditorTestSupport",
@@ -275,17 +294,26 @@ swift_test(
         ":FolioWorkspace",
         ":FolioWorkspaceTestSupport",
     ],
+    alwayslink = True,
 )
 
 swift_test(
-    name = "FolioUITests",
+    name = "FolioWorkspaceTests",
+    copts = _SWIFT_TEST_COPTS,
+    data = _SWIFT_TEST_DATA,
+    linkopts = _SWIFT_TEST_LINKOPTS,
+    deps = [":FolioWorkspaceTestsLib"],
+)
+
+swift_library(
+    name = "FolioUITestsLib",
+    testonly = True,
     srcs = glob(
         ["Tests/FolioTests/*Tests.swift"],
         exclude = _EDITOR_TESTS + _LATEX_TESTS + _WORKSPACE_TESTS + [_RESTYLE_EQUIVALENCE_TESTS] + _PERF_TESTS,
     ),
     copts = _SWIFT_TEST_COPTS,
-    data = _SWIFT_TEST_DATA,
-    linkopts = _SWIFT_TEST_LINKOPTS,
+    module_name = "FolioUITestsLib",
     deps = [
         ":Folio",
         ":FolioEditor",
@@ -295,6 +323,15 @@ swift_test(
         ":FolioWorkspace",
         ":FolioWorkspaceTestSupport",
     ],
+    alwayslink = True,
+)
+
+swift_test(
+    name = "FolioUITests",
+    copts = _SWIFT_TEST_COPTS,
+    data = _SWIFT_TEST_DATA,
+    linkopts = _SWIFT_TEST_LINKOPTS,
+    deps = [":FolioUITestsLib"],
 )
 
 test_suite(
@@ -307,15 +344,12 @@ test_suite(
     ],
 )
 
-# The seeded restyle property tests take most of the Swift test time. One shard per fixture keeps
-# each shard well inside the test timeout and allows all 4 shards to run in parallel.
-swift_test(
-    name = "FolioRestyleEquivalenceTests",
+swift_library(
+    name = "FolioRestyleEquivalenceTestsLib",
+    testonly = True,
     srcs = [_RESTYLE_EQUIVALENCE_TESTS],
     copts = _SWIFT_TEST_COPTS,
-    data = _SWIFT_TEST_DATA,
-    linkopts = _SWIFT_TEST_LINKOPTS,
-    shard_count = 4,
+    module_name = "FolioRestyleEquivalenceTestsLib",
     deps = [
         ":Folio",
         ":FolioEditor",
@@ -325,17 +359,26 @@ swift_test(
         ":FolioWorkspace",
         ":FolioWorkspaceTestSupport",
     ],
+    alwayslink = True,
 )
 
-# Timing tests compare keystrokes and passes on the same machine, so other tests running at the
-# same time make them fail. Exclusive runs them alone after parallel tests complete.
+# The seeded restyle property tests take most of the Swift test time. One shard per fixture keeps
+# each shard well inside the test timeout and allows all 4 shards to run in parallel.
 swift_test(
-    name = "FolioPerfTests",
-    srcs = _PERF_TESTS,
+    name = "FolioRestyleEquivalenceTests",
     copts = _SWIFT_TEST_COPTS,
     data = _SWIFT_TEST_DATA,
     linkopts = _SWIFT_TEST_LINKOPTS,
-    tags = ["exclusive"],
+    shard_count = 4,
+    deps = [":FolioRestyleEquivalenceTestsLib"],
+)
+
+swift_library(
+    name = "FolioPerfTestsLib",
+    testonly = True,
+    srcs = _PERF_TESTS,
+    copts = _SWIFT_TEST_COPTS,
+    module_name = "FolioPerfTestsLib",
     deps = [
         ":Folio",
         ":FolioEditor",
@@ -344,6 +387,33 @@ swift_test(
         ":FolioTestSupport",
         ":FolioWorkspace",
         ":FolioWorkspaceTestSupport",
+    ],
+    alwayslink = True,
+)
+
+# Timing tests compare keystrokes and passes on the same machine, so other tests running at the
+# same time make them fail. Exclusive runs them alone after parallel tests complete.
+swift_test(
+    name = "FolioPerfTests",
+    copts = _SWIFT_TEST_COPTS,
+    data = _SWIFT_TEST_DATA,
+    linkopts = _SWIFT_TEST_LINKOPTS,
+    tags = ["exclusive"],
+    deps = [":FolioPerfTestsLib"],
+)
+
+# Top-level target for sourcekit-bazel-bsp so sourcekit-lsp indexes Tests/FolioTests.
+macos_build_test(
+    name = "FolioTestsIndex",
+    minimum_os_version = "26.0",
+    tags = ["manual"],
+    targets = [
+        ":FolioEditorTestsLib",
+        ":FolioLaTeXTestsLib",
+        ":FolioPerfTestsLib",
+        ":FolioRestyleEquivalenceTestsLib",
+        ":FolioUITestsLib",
+        ":FolioWorkspaceTestsLib",
     ],
 )
 
