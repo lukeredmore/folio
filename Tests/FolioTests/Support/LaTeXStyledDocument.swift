@@ -1,5 +1,6 @@
 import AppKit
-@testable import Folio
+@testable import FolioEditor
+@testable import FolioModels
 
 /// Styles a LaTeX document from a string, as the editor does, and returns its render dump.
 @MainActor

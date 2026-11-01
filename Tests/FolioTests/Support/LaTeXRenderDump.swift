@@ -1,5 +1,6 @@
 import AppKit
-@testable import Folio
+@testable import FolioEditor
+@testable import FolioModels
 
 /// Text form of what a styled LaTeX document shows, for golden tests. Each line lists the
 /// visible characters, skipping collapsed or clear syntax. Runs with font traits are written

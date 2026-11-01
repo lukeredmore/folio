@@ -1,10 +1,10 @@
 import AppKit
 import Foundation
 
-enum LaTeXBlockStyleCache {
+package enum LaTeXBlockStyleCache {
 
-    static let styledPassAttributeKey = NSAttributedString.Key("FolioLaTeXStyledPass")
-    static let sourceModePassAttributeKey = NSAttributedString.Key("FolioSourceCodeModePass")
+    package static let styledPassAttributeKey = NSAttributedString.Key("FolioLaTeXStyledPass")
+    package static let sourceModePassAttributeKey = NSAttributedString.Key("FolioSourceCodeModePass")
 
     /// The inputs of a styling pass besides the text, the selection, and the document facts.
     /// A session is reused only for an equal config.
@@ -69,11 +69,11 @@ enum LaTeXBlockStyleCache {
         currentBlockContext = currentBlockContext.map { NSUnionRange($0, range) } ?? range
     }
 
-    static func invalidate() {
+    package static func invalidate() {
         entries.removeAll()
     }
 
-    static func collapseInternalNewlines(in storage: NSTextStorage, nsString: NSString, range: NSRange) {
+    package static func collapseInternalNewlines(in storage: NSTextStorage, nsString: NSString, range: NSRange) {
         let end = min(NSMaxRange(range), nsString.length) - 1
         guard range.location < end else { return }
         var idx = range.location

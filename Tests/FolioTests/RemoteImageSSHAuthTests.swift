@@ -1,6 +1,10 @@
 import Foundation
 import XCTest
-@testable import Folio
+@testable import FolioEditor
+@testable import FolioEditorTestSupport
+@testable import FolioModels
+@testable import FolioWorkspace
+@testable import FolioWorkspaceTestSupport
 
 final class RemoteImageSSHAuthTests: XCTestCase {
 

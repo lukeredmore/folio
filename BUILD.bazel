@@ -14,32 +14,114 @@ exports_files([
     "rustfmt.toml",
 ])
 
-swift_library(
-    name = "Folio",
-    srcs = glob(["Sources/Folio/**/*.swift"]),
-    copts = [
-        "-DFOLIO_NO_MAIN",
-        "-swift-version",
-        "6",
-        "-warnings-as-errors",
-    ],
-    module_name = "Folio",
-    deps = [
-        "//core/folio_engine:folio_engine_ffi",
-        "@swift_math//:SwiftMath",
-    ],
-)
-
-_SWIFT_TEST_COPTS = [
+_SWIFT_LIB_COPTS = [
+    "-DFOLIO_NO_MAIN",
+    "-package-name",
+    "Folio",
     "-swift-version",
     "6",
     "-warnings-as-errors",
 ]
 
+_FOLIO_MODELS_SRCS = glob(
+    ["Sources/Folio/Models/*.swift"],
+    exclude = ["Sources/Folio/Models/SelectionCommentPersistence.swift"],
+) + [
+    "Sources/Folio/Diagnostics/EditorPerfCounters.swift",
+    "Sources/Folio/Diagnostics/EditorPerfPhase.swift",
+    "Sources/Folio/Diagnostics/EditorPerfRecorder.swift",
+    "Sources/Folio/Editor/EditorScheduler.swift",
+    "Sources/Folio/Services/FolioAppIdentity.swift",
+    "Sources/Folio/Services/FolioCLIManager.swift",
+    "Sources/Folio/Services/FolioCLIManager+Arguments.swift",
+    "Sources/Folio/Services/FolioCLIManager+LauncherScript.swift",
+    "Sources/Folio/Services/RemoteHostHistory.swift",
+    "Sources/Folio/Services/RemoteWorkspaceManager+Delete.swift",
+    "Sources/Folio/Services/RemoteWorkspaceManagerSync.swift",
+    "Sources/Folio/Services/RemoteWorkspaceModels.swift",
+    "Sources/Folio/Services/RemoteWorkspaceService.swift",
+    "Sources/Folio/Services/SSHRemoteTransport.swift",
+]
+
+_FOLIO_COORDINATOR_SRCS = [
+    "Sources/Folio/Diagnostics/Coordinator+PerfCounters.swift",
+    "Sources/Folio/Editor/HybridMarkdownTextView+Coordinator.swift",
+    "Sources/Folio/Editor/HybridMarkdownTextView+CoordinatorReflow.swift",
+    "Sources/Folio/Editor/HybridMarkdownTextView+CoordinatorRestyle.swift",
+    "Sources/Folio/Editor/HybridMarkdownTextView+Representable.swift",
+]
+
+_FOLIO_EDITOR_SRCS = glob(
+    ["Sources/Folio/Editor/**/*.swift"],
+    exclude = ["Sources/Folio/Editor/EditorScheduler.swift"] + _FOLIO_COORDINATOR_SRCS,
+) + [
+    "Sources/Folio/Models/SelectionCommentPersistence.swift",
+]
+
+_FOLIO_WORKSPACE_SRCS = glob(["Sources/Folio/ViewModels/*.swift"]) + _FOLIO_COORDINATOR_SRCS + [
+    "Sources/Folio/Services/DocumentWindowRegistry.swift",
+]
+
+_FOLIO_UI_SRCS = glob(
+    ["Sources/Folio/**/*.swift"],
+    exclude = _FOLIO_MODELS_SRCS + _FOLIO_EDITOR_SRCS + _FOLIO_WORKSPACE_SRCS,
+)
+
+swift_library(
+    name = "FolioModels",
+    srcs = _FOLIO_MODELS_SRCS,
+    copts = _SWIFT_LIB_COPTS,
+    module_name = "FolioModels",
+    deps = [
+        "//core/folio_engine:folio_engine_ffi",
+    ],
+)
+
+swift_library(
+    name = "FolioEditor",
+    srcs = _FOLIO_EDITOR_SRCS,
+    copts = _SWIFT_LIB_COPTS,
+    module_name = "FolioEditor",
+    deps = [
+        ":FolioModels",
+        "//core/folio_engine:folio_engine_ffi",
+        "@swift_math//:SwiftMath",
+    ],
+)
+
+swift_library(
+    name = "FolioWorkspace",
+    srcs = _FOLIO_WORKSPACE_SRCS,
+    copts = _SWIFT_LIB_COPTS,
+    module_name = "FolioWorkspace",
+    deps = [
+        ":FolioEditor",
+        ":FolioModels",
+        "//core/folio_engine:folio_engine_ffi",
+    ],
+)
+
+swift_library(
+    name = "Folio",
+    srcs = _FOLIO_UI_SRCS,
+    copts = _SWIFT_LIB_COPTS,
+    module_name = "Folio",
+    deps = [
+        ":FolioEditor",
+        ":FolioModels",
+        ":FolioWorkspace",
+        "//core/folio_engine:folio_engine_ffi",
+        "@swift_math//:SwiftMath",
+    ],
+)
+
+_SWIFT_TEST_COPTS = _SWIFT_LIB_COPTS
+
 _SWIFT_TEST_LINKOPTS = [
     "-Wl,-rpath,__BAZEL_XCODE_DEVELOPER_DIR__/Platforms/MacOSX.platform/Developer/usr/lib",
     "-Wl,-rpath,__BAZEL_XCODE_DEVELOPER_DIR__/Platforms/MacOSX.platform/Developer/Library/Frameworks",
     "-Wl,-rpath,__BAZEL_XCODE_DEVELOPER_DIR__/Platforms/MacOSX.platform/Developer/Library/PrivateFrameworks",
+    "-Wl,-rpath,__BAZEL_XCODE_DEVELOPER_DIR__/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift-6.2/macosx",
 ]
 
 _SWIFT_TEST_DATA = [
@@ -61,47 +143,207 @@ _PERF_TESTS = [
     "Tests/FolioTests/LongLineLinkStylingTests.swift",
 ]
 
-swift_test(
-    name = "FolioTests",
+_EDITOR_TESTS = [
+    "Tests/FolioTests/BehaviorSpecTests.swift",
+    "Tests/FolioTests/DiagramImageRendererTests.swift",
+    "Tests/FolioTests/DrawCullingTests.swift",
+    "Tests/FolioTests/ListNestedCodeAndLinkMathTests.swift",
+    "Tests/FolioTests/LiveStylerAndFoldingTests.swift",
+    "Tests/FolioTests/MarkdownAstAndTableTests.swift",
+    "Tests/FolioTests/MathAndDiagramRenderingTests.swift",
+    "Tests/FolioTests/RemoteGIFAndVideoMediaTests.swift",
+    "Tests/FolioTests/RichMediaAndHtmlTests.swift",
+    "Tests/FolioTests/WideTableLayoutTests.swift",
+]
+
+_LATEX_TESTS = [
+    "Tests/FolioTests/LaTeXArrayAlternativesTests.swift",
+    "Tests/FolioTests/LaTeXBlockStyleCacheInputTests.swift",
+    "Tests/FolioTests/LaTeXDefParameterTests.swift",
+    "Tests/FolioTests/LaTeXLayoutCommandTests.swift",
+    "Tests/FolioTests/LaTeXMasterDetectionTests.swift",
+    "Tests/FolioTests/LaTeXMasterMacroGoldenTests.swift",
+    "Tests/FolioTests/LaTeXMultiLineCallTests.swift",
+    "Tests/FolioTests/LaTeXProseMacroExpansionTests.swift",
+    "Tests/FolioTests/LaTeXUserEnvironmentFoldingTests.swift",
+    "Tests/FolioTests/SwiftMathAndMacroRenderingTests.swift",
+]
+
+_WORKSPACE_TESTS = [
+    "Tests/FolioTests/AutosaveAndUndoHistoryTests.swift",
+    "Tests/FolioTests/AutosaveDebounceTests.swift",
+    "Tests/FolioTests/ExternalSyncAndConflictTests.swift",
+    "Tests/FolioTests/ExtremeScaleSyncAndMergeTests.swift",
+    "Tests/FolioTests/LaTeXDocumentStylerTests.swift",
+    "Tests/FolioTests/LaTeXDocumentStylingAndMathCrashTests.swift",
+    "Tests/FolioTests/PageLayoutAndPrintTests.swift",
+    "Tests/FolioTests/RemoteImageSSHAuthTests.swift",
+    "Tests/FolioTests/RemoteImageUrlAndAuthTests.swift",
+    "Tests/FolioTests/RemoteWorkspaceTests.swift",
+    "Tests/FolioTests/SidebarFoldersTests.swift",
+    "Tests/FolioTests/SoftLineBreakTests.swift",
+    "Tests/FolioTests/ThemeAndTypographyTests.swift",
+    "Tests/FolioTests/WorkspaceFileDeletionTests.swift",
+]
+
+# Shared test fixtures and assertions for editor/styler/LaTeX tests. Compiled once and cached.
+swift_library(
+    name = "FolioEditorTestSupport",
+    testonly = True,
     srcs = glob(
-        ["Tests/FolioTests/**/*.swift"],
-        exclude = [_RESTYLE_EQUIVALENCE_TESTS] + _PERF_TESTS,
+        ["Tests/FolioTests/Support/**/*.swift"],
+        exclude = ["Tests/FolioTests/Support/EditorHarness*.swift"],
+    ),
+    copts = _SWIFT_LIB_COPTS,
+    module_name = "FolioEditorTestSupport",
+    deps = [
+        ":FolioEditor",
+        ":FolioModels",
+    ],
+)
+
+# Shared test fixtures for workspace view-model tests (`makeIsolatedViewModel`, `MockRemoteTransport`).
+swift_library(
+    name = "FolioWorkspaceTestSupport",
+    testonly = True,
+    srcs = ["Tests/FolioTests/FolioTestHelpers.swift"],
+    copts = _SWIFT_LIB_COPTS,
+    module_name = "FolioWorkspaceTestSupport",
+    deps = [
+        ":FolioEditor",
+        ":FolioEditorTestSupport",
+        ":FolioModels",
+        ":FolioWorkspace",
+    ],
+)
+
+# Full-window test harnesses (`EditorHarness`, `HostedMainWindow`) for UI, equivalence, and perf tests.
+swift_library(
+    name = "FolioTestSupport",
+    testonly = True,
+    srcs = ["Tests/FolioTests/WindowLayoutTestHelpers.swift"] + glob([
+        "Tests/FolioTests/Support/EditorHarness*.swift",
+    ]),
+    copts = _SWIFT_LIB_COPTS,
+    module_name = "FolioTestSupport",
+    deps = [
+        ":Folio",
+        ":FolioEditor",
+        ":FolioEditorTestSupport",
+        ":FolioModels",
+        ":FolioWorkspace",
+        ":FolioWorkspaceTestSupport",
+    ],
+)
+
+swift_test(
+    name = "FolioEditorTests",
+    srcs = _EDITOR_TESTS,
+    copts = _SWIFT_TEST_COPTS,
+    data = _SWIFT_TEST_DATA,
+    linkopts = _SWIFT_TEST_LINKOPTS,
+    deps = [
+        ":FolioEditor",
+        ":FolioEditorTestSupport",
+        ":FolioModels",
+    ],
+)
+
+swift_test(
+    name = "FolioLaTeXTests",
+    srcs = _LATEX_TESTS,
+    copts = _SWIFT_TEST_COPTS,
+    data = _SWIFT_TEST_DATA,
+    linkopts = _SWIFT_TEST_LINKOPTS,
+    deps = [
+        ":FolioEditor",
+        ":FolioEditorTestSupport",
+        ":FolioModels",
+    ],
+)
+
+swift_test(
+    name = "FolioWorkspaceTests",
+    srcs = _WORKSPACE_TESTS,
+    copts = _SWIFT_TEST_COPTS,
+    data = _SWIFT_TEST_DATA,
+    linkopts = _SWIFT_TEST_LINKOPTS,
+    deps = [
+        ":FolioEditor",
+        ":FolioEditorTestSupport",
+        ":FolioModels",
+        ":FolioWorkspace",
+        ":FolioWorkspaceTestSupport",
+    ],
+)
+
+swift_test(
+    name = "FolioUITests",
+    srcs = glob(
+        ["Tests/FolioTests/*Tests.swift"],
+        exclude = _EDITOR_TESTS + _LATEX_TESTS + _WORKSPACE_TESTS + [_RESTYLE_EQUIVALENCE_TESTS] + _PERF_TESTS,
     ),
     copts = _SWIFT_TEST_COPTS,
     data = _SWIFT_TEST_DATA,
     linkopts = _SWIFT_TEST_LINKOPTS,
     deps = [
         ":Folio",
+        ":FolioEditor",
+        ":FolioEditorTestSupport",
+        ":FolioModels",
+        ":FolioTestSupport",
+        ":FolioWorkspace",
+        ":FolioWorkspaceTestSupport",
+    ],
+)
+
+test_suite(
+    name = "FolioTests",
+    tests = [
+        ":FolioEditorTests",
+        ":FolioLaTeXTests",
+        ":FolioUITests",
+        ":FolioWorkspaceTests",
     ],
 )
 
 # The seeded restyle property tests take most of the Swift test time. One shard per fixture keeps
-# each shard well inside the test timeout; exclusive keeps them off the machine while the
-# timing-sensitive perf tests in FolioTests run.
+# each shard well inside the test timeout and allows all 4 shards to run in parallel.
 swift_test(
     name = "FolioRestyleEquivalenceTests",
-    srcs = glob(["Tests/FolioTests/Support/**/*.swift"]) + [_RESTYLE_EQUIVALENCE_TESTS],
+    srcs = [_RESTYLE_EQUIVALENCE_TESTS],
     copts = _SWIFT_TEST_COPTS,
     data = _SWIFT_TEST_DATA,
     linkopts = _SWIFT_TEST_LINKOPTS,
     shard_count = 4,
-    tags = ["exclusive"],
     deps = [
         ":Folio",
+        ":FolioEditor",
+        ":FolioEditorTestSupport",
+        ":FolioModels",
+        ":FolioTestSupport",
+        ":FolioWorkspace",
+        ":FolioWorkspaceTestSupport",
     ],
 )
 
 # Timing tests compare keystrokes and passes on the same machine, so other tests running at the
-# same time make them fail. Exclusive runs them alone.
+# same time make them fail. Exclusive runs them alone after parallel tests complete.
 swift_test(
     name = "FolioPerfTests",
-    srcs = glob(["Tests/FolioTests/Support/**/*.swift"]) + _PERF_TESTS,
+    srcs = _PERF_TESTS,
     copts = _SWIFT_TEST_COPTS,
     data = _SWIFT_TEST_DATA,
     linkopts = _SWIFT_TEST_LINKOPTS,
     tags = ["exclusive"],
     deps = [
         ":Folio",
+        ":FolioEditor",
+        ":FolioEditorTestSupport",
+        ":FolioModels",
+        ":FolioTestSupport",
+        ":FolioWorkspace",
+        ":FolioWorkspaceTestSupport",
     ],
 )
 

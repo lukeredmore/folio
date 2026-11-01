@@ -1,6 +1,12 @@
 import Foundation
 import XCTest
 @testable import Folio
+@testable import FolioEditor
+@testable import FolioEditorTestSupport
+@testable import FolioModels
+@testable import FolioTestSupport
+@testable import FolioWorkspace
+@testable import FolioWorkspaceTestSupport
 
 /// Runs both `folio` launchers against fake dev and release apps, with fake `pgrep`, `ps`, `open`, and `osascript`.
 @MainActor

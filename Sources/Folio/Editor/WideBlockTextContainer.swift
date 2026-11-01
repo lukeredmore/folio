@@ -4,24 +4,30 @@ import AppKit
 /// and start left of it. The column itself stays at the container's bounds, so prose layout is
 /// unchanged; a wide table is centered on the column, or pinned to the canvas margin and
 /// scrolled horizontally when it is wider than the canvas.
-final class WideBlockTextContainer: NSTextContainer {
+package final class WideBlockTextContainer: NSTextContainer {
 
-    struct Region: Equatable {
+    package struct Region: Equatable {
         /// Characters laid out with the wide fragment.
-        let range: NSRange
+        package let range: NSRange
         /// Fragment origin relative to the column's leading edge (negative is left of the column).
-        let x: CGFloat
+        package let x: CGFloat
         /// Fragment width.
-        let width: CGFloat
+        package let width: CGFloat
+
+        package init(range: NSRange, x: CGFloat, width: CGFloat) {
+            self.range = range
+            self.x = x
+            self.width = width
+        }
     }
 
     /// Sorted by location and non-overlapping.
-    private(set) var regions: [Region] = []
+    package private(set) var regions: [Region] = []
 
-    override var isSimpleRectangularTextContainer: Bool { regions.isEmpty }
+    package override var isSimpleRectangularTextContainer: Bool { regions.isEmpty }
 
     /// Replaces the wide regions and returns the character ranges whose layout must be redone.
-    func setRegions(_ newRegions: [Region]) -> [NSRange] {
+    package func setRegions(_ newRegions: [Region]) -> [NSRange] {
         let sorted = newRegions.sorted { $0.range.location < $1.range.location }
         guard sorted != regions else { return [] }
         let changed = Set(regions.map(\.range.location)).symmetricDifference(sorted.map(\.range.location))
@@ -53,7 +59,7 @@ final class WideBlockTextContainer: NSTextContainer {
         return nil
     }
 
-    override func lineFragmentRect(
+    package override func lineFragmentRect(
         forProposedRect proposedRect: NSRect,
         at characterIndex: Int,
         writingDirection baseWritingDirection: NSWritingDirection,

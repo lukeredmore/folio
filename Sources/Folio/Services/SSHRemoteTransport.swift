@@ -10,13 +10,13 @@ public struct SSHRemoteTransport: RemoteFileTransport {
         self.connectTimeoutSeconds = connectTimeoutSeconds
     }
 
-    func controlSocketPath(for mount: RemoteMountSpec) -> String {
+    package func controlSocketPath(for mount: RemoteMountSpec) -> String {
         let rawKey = "\(mount.sshDestination):\(mount.port ?? 22)"
         let hash = SHA256.hash(data: Data(rawKey.utf8)).prefix(8).map { String(format: "%02x", $0) }.joined()
         return FolioAppIdentity.current.sshControlSocketPath(hash: hash)
     }
 
-    func baseSSHArguments(for mount: RemoteMountSpec) -> [String] {
+    package func baseSSHArguments(for mount: RemoteMountSpec) -> [String] {
         let lowerHost = mount.host.lowercased()
         let isLoopback = lowerHost == "localhost" || lowerHost == "127.0.0.1" || lowerHost == "::1"
         var args: [String] = [

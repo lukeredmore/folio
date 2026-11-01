@@ -1,6 +1,8 @@
 import AppKit
 import XCTest
-@testable import Folio
+@testable import FolioEditor
+@testable import FolioEditorTestSupport
+@testable import FolioModels
 
 /// Link styling on very long lines, such as minified JSON or a one-line backup file.
 @MainActor

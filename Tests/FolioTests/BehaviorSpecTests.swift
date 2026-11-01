@@ -2,7 +2,9 @@ import AppKit
 import Foundation
 import FolioEngineFFI
 import XCTest
-@testable import Folio
+@testable import FolioEditor
+@testable import FolioEditorTestSupport
+@testable import FolioModels
 
 final class BehaviorSpecTests: XCTestCase {
 

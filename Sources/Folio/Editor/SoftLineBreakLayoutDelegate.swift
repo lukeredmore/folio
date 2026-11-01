@@ -3,8 +3,12 @@ import AppKit
 /// Renders source newlines marked with `MarkdownLiveStyler.softLineBreakAttributeKey` as a
 /// space, keeps inactive `$...$` inline math spans atomic across line wraps, and expands
 /// line fragment heights to accommodate tall inline equations.
-final class SoftLineBreakLayoutDelegate: NSObject, NSLayoutManagerDelegate {
-    func layoutManager(
+package final class SoftLineBreakLayoutDelegate: NSObject, NSLayoutManagerDelegate {
+    package override init() {
+        super.init()
+    }
+
+    package func layoutManager(
         _ layoutManager: NSLayoutManager,
         shouldUse action: NSLayoutManager.ControlCharacterAction,
         forControlCharacterAt charIndex: Int
@@ -12,7 +16,7 @@ final class SoftLineBreakLayoutDelegate: NSObject, NSLayoutManagerDelegate {
         isSoftLineBreak(at: charIndex, in: layoutManager) ? .whitespace : action
     }
 
-    func layoutManager(
+    package func layoutManager(
         _ layoutManager: NSLayoutManager,
         boundingBoxForControlGlyphAt glyphIndex: Int,
         for textContainer: NSTextContainer,
@@ -35,21 +39,21 @@ final class SoftLineBreakLayoutDelegate: NSObject, NSLayoutManagerDelegate {
         return NSRect(x: glyphPosition.x, y: 0, width: spaceWidth, height: 0)
     }
 
-    func layoutManager(
+    package func layoutManager(
         _ layoutManager: NSLayoutManager,
         shouldBreakLineByWordBeforeCharacterAt charIndex: Int
     ) -> Bool {
         shouldAllowBreak(beforeCharacterAt: charIndex, in: layoutManager)
     }
 
-    func layoutManager(
+    package func layoutManager(
         _ layoutManager: NSLayoutManager,
         shouldBreakLineByHyphenatingBeforeCharacterAt charIndex: Int
     ) -> Bool {
         shouldAllowBreak(beforeCharacterAt: charIndex, in: layoutManager)
     }
 
-    func layoutManager(
+    package func layoutManager(
         _ layoutManager: NSLayoutManager,
         shouldSetLineFragmentRect lineFragmentRect: UnsafeMutablePointer<NSRect>,
         lineFragmentUsedRect: UnsafeMutablePointer<NSRect>,

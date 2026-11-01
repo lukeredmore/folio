@@ -30,7 +30,7 @@ extension HybridMarkdownTextView {
 
     /// Lays out tables wider than the column: centered on the column at full width when they fit
     /// the canvas, otherwise pinned to the canvas margin and scrolled by `tableScrollOffsets`.
-    func refreshWideTableLayout() {
+    package func refreshWideTableLayout() {
         guard let container = textContainer as? WideBlockTextContainer, let layoutManager = layoutManager else { return }
         let tables = Self.tableSpans(in: lineDecorations)
         if tables.isEmpty && container.regions.isEmpty && overflowingTables.isEmpty {

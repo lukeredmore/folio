@@ -1,6 +1,12 @@
 import AppKit
 import XCTest
 @testable import Folio
+@testable import FolioEditor
+@testable import FolioEditorTestSupport
+@testable import FolioModels
+@testable import FolioTestSupport
+@testable import FolioWorkspace
+@testable import FolioWorkspaceTestSupport
 
 /// The live editor resolves a LaTeX child's master once, on open, and typing does no file I/O.
 @MainActor

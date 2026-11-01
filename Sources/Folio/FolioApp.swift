@@ -1,4 +1,7 @@
 import AppKit
+@_exported import FolioEditor
+@_exported import FolioModels
+@_exported import FolioWorkspace
 import SwiftUI
 
 public struct MainWindowView: View {

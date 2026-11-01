@@ -1,6 +1,11 @@
 import AppKit
 import XCTest
 @testable import Folio
+@testable import FolioEditor
+@testable import FolioEditorTestSupport
+@testable import FolioModels
+@testable import FolioWorkspace
+@testable import FolioWorkspaceTestSupport
 
 /// Run loop draining and waits for background work in `EditorHarness`. The waits fail the test
 /// on timeout, so unfinished work is reported where it happened instead of as a later mismatch.

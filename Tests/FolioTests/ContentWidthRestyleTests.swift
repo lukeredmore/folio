@@ -1,6 +1,12 @@
 import AppKit
 import XCTest
 @testable import Folio
+@testable import FolioEditor
+@testable import FolioEditorTestSupport
+@testable import FolioModels
+@testable import FolioTestSupport
+@testable import FolioWorkspace
+@testable import FolioWorkspaceTestSupport
 
 /// The editor restyles when the content width changes, also when only the clip view changes: a
 /// legacy scroller that appears or hides takes its width from the text.

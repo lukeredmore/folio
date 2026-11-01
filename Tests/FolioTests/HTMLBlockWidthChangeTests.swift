@@ -1,6 +1,12 @@
 import AppKit
 import XCTest
 @testable import Folio
+@testable import FolioEditor
+@testable import FolioEditorTestSupport
+@testable import FolioModels
+@testable import FolioTestSupport
+@testable import FolioWorkspace
+@testable import FolioWorkspaceTestSupport
 
 /// HTML block heights are cached per column width, so a width change must cache the measured
 /// height again, also when the height stays the same.

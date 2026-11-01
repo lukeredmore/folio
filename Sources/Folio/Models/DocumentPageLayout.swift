@@ -92,7 +92,7 @@ public struct DocumentPageLayout: Equatable, Sendable {
     // MARK: - Extraction Entry Point
 
     public static func extract(from text: String, fileURL: URL? = nil) -> DocumentPageLayout {
-        let kind = LaTeXLiveStyler.documentKind(for: text, fileURL: fileURL)
+        let kind = FolioDocumentKind.detect(for: text, fileURL: fileURL)
         if kind == .latex {
             return extractFromLaTeX(text)
         }

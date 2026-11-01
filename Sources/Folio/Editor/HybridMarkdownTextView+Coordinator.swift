@@ -4,45 +4,49 @@ import SwiftUI
 extension HybridMarkdownEditorRepresentable {
 
     @MainActor
-    public final class Coordinator: NSObject, NSTextViewDelegate {
-        var viewModel: EditorWorkspaceViewModel
-        weak var textView: HybridMarkdownTextView?
-        var isUpdatingFromTextView = false
-        var isProgrammaticUpdate = false
-        var isRestyling = false
+    public final class Coordinator: NSObject, NSTextViewDelegate, HybridMarkdownCoordinatorDelegate {
+        package var viewModel: EditorWorkspaceViewModel
+        package weak var textView: HybridMarkdownTextView?
+        package var isUpdatingFromTextView = false
+        package var isProgrammaticUpdate = false
+        package var isRestyling = false
 
-        var lastTheme: EditorTheme?
-        var lastTypography: EditorTypographySettings?
-        var lastSourceMode: Bool?
-        var lastPrettyMode: Bool?
-        var lastTextAlignment: EditorTextAlignment?
-        var lastFileURL: URL?
-        var lastFocusMode: Bool?
-        var lastSpellCheckEnabled: Bool?
-        var lastActiveLineRange: NSRange?
-        var lastKnownTextHash: Int?
-        var lastContentWidth: CGFloat = 0
-        var lastViewportWidth: CGFloat = 0
-        var lastMaxColumnWidth: CGFloat = 0
-        var hasPerformedInitialScroll = false
-        var pendingResizeRestyleWorkItem: DispatchWorkItem?
-        var scheduler = EditorScheduler.live
+        package var lastTheme: EditorTheme?
+        package var lastTypography: EditorTypographySettings?
+        package var lastSourceMode: Bool?
+        package var lastPrettyMode: Bool?
+        package var lastTextAlignment: EditorTextAlignment?
+        package var lastFileURL: URL?
+        package var lastFocusMode: Bool?
+        package var lastSpellCheckEnabled: Bool?
+        package var lastActiveLineRange: NSRange?
+        package var lastKnownTextHash: Int?
+        package var lastContentWidth: CGFloat = 0
+        package var lastViewportWidth: CGFloat = 0
+        package var lastMaxColumnWidth: CGFloat = 0
+        package var hasPerformedInitialScroll = false
+        package var pendingResizeRestyleWorkItem: DispatchWorkItem?
+        package var scheduler = EditorScheduler.live
         /// The last Markdown restyle, for restyling only what the next edit can affect.
-        var styleRecord: MarkdownStyleRecord?
+        package var styleRecord: MarkdownStyleRecord?
         /// Characters edited since the last restyle.
-        var pendingTextEdit: MarkdownTextEdit?
+        package var pendingTextEdit: MarkdownTextEdit?
         /// Why the last restyle styled the whole document; nil after an incremental restyle.
-        var lastFullRestyleReason: MarkdownFullRestyleReason?
+        package var lastFullRestyleReason: MarkdownFullRestyleReason?
         /// A text change arrived during input-method composition and was not restyled yet.
-        var isRestyleDeferredForMarkedText = false
+        package var isRestyleDeferredForMarkedText = false
 
-        let softLineBreakLayoutDelegate = SoftLineBreakLayoutDelegate()
-        var reflowAnchors: [Int] = []
-        var isApplyingReflow = false
-        let perf = EditorPerfRecorder()
+        package let softLineBreakLayoutDelegate = SoftLineBreakLayoutDelegate()
+        package var reflowAnchors: [Int] = []
+        package var isApplyingReflow = false
+        package let perf = EditorPerfRecorder()
 
-        init(viewModel: EditorWorkspaceViewModel) {
+        package init(viewModel: EditorWorkspaceViewModel) {
             self.viewModel = viewModel
+        }
+
+        package func clearReflowAnchors() {
+            reflowAnchors.removeAll()
         }
 
         @objc func mediaImageDidLoad(_ notification: Notification) {
@@ -243,7 +247,7 @@ extension HybridMarkdownEditorRepresentable {
 
         /// Restyles the document. With `incremental`, restyles only the blocks that the edits and
         /// the selection change since the last restyle can affect, when that equals a full restyle.
-        func restyle(textView: HybridMarkdownTextView, incremental: Bool = false) {
+        package func restyle(textView: HybridMarkdownTextView, incremental: Bool = false) {
             pendingResizeRestyleWorkItem?.cancel()
             pendingResizeRestyleWorkItem = nil
             guard !isRestyling, let storage = textView.textStorage else { return }

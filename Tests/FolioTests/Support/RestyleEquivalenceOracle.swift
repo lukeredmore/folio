@@ -1,40 +1,12 @@
 import AppKit
-@testable import Folio
+@testable import FolioEditor
+@testable import FolioModels
 
 /// Checks that the editor's styling equals a full restyle of the same text, selection, and
 /// settings. A restyle that touched too little of the document leaves stale attributes,
 /// decorations, or headings, and the first difference is reported.
 @MainActor
 enum RestyleEquivalenceOracle {
-    /// Nil when the editor matches a full restyle, else a description of the first difference.
-    static func firstMismatch(in harness: EditorHarness) -> String? {
-        let textView = harness.textView
-        guard let storage = textView.textStorage else { return "the text view has no text storage" }
-        let reference = NSTextStorage(string: storage.string)
-        let expected = MarkdownLiveStyler.applyStyles(
-            to: reference,
-            parameters: harness.coordinator.styleParameters(for: textView),
-            selectedRange: textView.selectedRange()
-        )
-        if let difference = firstAttributeDifference(actual: storage, expected: reference) {
-            return difference
-        }
-        if let difference = firstDifference(
-            "decoration",
-            actual: textView.lineDecorations,
-            expected: expected.decorations,
-            text: storage.string
-        ) {
-            return difference
-        }
-        return firstDifference(
-            "heading",
-            actual: harness.viewModel.headings,
-            expected: expected.headings,
-            text: storage.string
-        )
-    }
-
     /// Compares attribute runs by longest effective range, so run fragmentation does not count.
     static func firstAttributeDifference(actual: NSAttributedString, expected: NSAttributedString) -> String? {
         guard actual.string == expected.string else { return "the reference text differs from the editor text" }
@@ -61,7 +33,7 @@ enum RestyleEquivalenceOracle {
         return nil
     }
 
-    private static func firstDifference<Element: Equatable>(
+    static func firstDifference<Element: Equatable>(
         _ name: String,
         actual: [Element],
         expected: [Element],

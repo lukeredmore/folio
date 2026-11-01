@@ -5,8 +5,8 @@ import os
 /// Static styler and parser code records into the recorder bound by `EditorPerfScope`, so the
 /// counts stay per editor without global state. Thread-safe, because diagram and media work can
 /// run off the main thread.
-final class EditorPerfRecorder: Sendable {
-    enum Count: Sendable {
+package final class EditorPerfRecorder: Sendable {
+    package enum Count: Sendable {
         case parse
         case draw
         case latexFileOperation
@@ -20,11 +20,13 @@ final class EditorPerfRecorder: Sendable {
 
     private let state = OSAllocatedUnfairLock(initialState: State())
 
-    var counters: EditorPerfCounters {
+    package init() {}
+
+    package var counters: EditorPerfCounters {
         state.withLock { $0.counters }
     }
 
-    func increment(_ count: Count) {
+    package func increment(_ count: Count) {
         state.withLock { state in
             switch count {
             case .parse: state.counters.parseCount += 1
@@ -35,25 +37,25 @@ final class EditorPerfRecorder: Sendable {
         }
     }
 
-    func addDuration(_ phase: EditorPerfPhase, nanoseconds: UInt64) {
+    package func addDuration(_ phase: EditorPerfPhase, nanoseconds: UInt64) {
         state.withLock { state in
             state.counters.phaseNanoseconds[phase, default: 0] &+= nanoseconds
         }
     }
 
-    func beginRestylePass() {
+    package func beginRestylePass() {
         state.withLock { $0.restylePassCharacters = 0 }
     }
 
     /// Adds an attribute edit to the open restyle pass. Edits outside a pass are ignored.
-    func recordAttributeEdit(length: Int) {
+    package func recordAttributeEdit(length: Int) {
         state.withLock { state in
             guard let characters = state.restylePassCharacters else { return }
             state.restylePassCharacters = characters + length
         }
     }
 
-    func endRestylePass(documentLength: Int) {
+    package func endRestylePass(documentLength: Int) {
         state.withLock { state in
             let characters = state.restylePassCharacters ?? 0
             state.restylePassCharacters = nil
@@ -67,10 +69,10 @@ final class EditorPerfRecorder: Sendable {
 }
 
 /// Binds the editor recorder that static code records into for the duration of a call.
-enum EditorPerfScope {
-    @TaskLocal static var recorder: EditorPerfRecorder?
+package enum EditorPerfScope {
+    @TaskLocal package static var recorder: EditorPerfRecorder?
 
-    static func bind<T>(_ recorder: EditorPerfRecorder?, _ body: () throws -> T) rethrows -> T {
+    package static func bind<T>(_ recorder: EditorPerfRecorder?, _ body: () throws -> T) rethrows -> T {
         try $recorder.withValue(recorder, operation: body)
     }
 }

@@ -1,6 +1,12 @@
 import AppKit
 import XCTest
 @testable import Folio
+@testable import FolioEditor
+@testable import FolioEditorTestSupport
+@testable import FolioModels
+@testable import FolioTestSupport
+@testable import FolioWorkspace
+@testable import FolioWorkspaceTestSupport
 
 /// Size-scaling and hang checks for the live editor, driven by real key events.
 /// Times are main-thread busy time from `MainThreadStallMonitor`, compared as ratios between

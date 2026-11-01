@@ -25,6 +25,22 @@ public struct DocumentStats: Equatable, Sendable {
     public var selectedWords: Int = 0
     public var selectedCharacters: Int = 0
 
+    public init(
+        words: Int = 0,
+        lines: Int = 0,
+        characters: Int = 0,
+        charactersWithoutSpaces: Int = 0,
+        selectedWords: Int = 0,
+        selectedCharacters: Int = 0
+    ) {
+        self.words = words
+        self.lines = lines
+        self.characters = characters
+        self.charactersWithoutSpaces = charactersWithoutSpaces
+        self.selectedWords = selectedWords
+        self.selectedCharacters = selectedCharacters
+    }
+
     public var readingTimeString: String {
         // Estimate reading time at ~225 words/minute
         let totalSeconds = max(0, Int((Double(words) / 225.0) * 60.0))
@@ -141,6 +157,31 @@ public enum FolioDocumentKind: String, Equatable, Sendable {
     case markdown
     case latex
     case bibtex
+
+    public static func detect(for text: String, fileURL: URL? = nil) -> FolioDocumentKind {
+        if let ext = fileURL?.pathExtension.lowercased(), !ext.isEmpty {
+            if WorkspaceFileNode.latexExtensions.contains(ext) {
+                return .latex
+            }
+            if WorkspaceFileNode.bibtexExtensions.contains(ext) {
+                return .bibtex
+            }
+            if WorkspaceFileNode.markdownExtensions.contains(ext) {
+                return .markdown
+            }
+        }
+        let prefix = String(text.prefix(2000))
+        if prefix.contains("\\documentclass") || prefix.contains("\\begin{document}") || prefix.contains("\\ProvidesPackage") {
+            return .latex
+        }
+        let trimmed = prefix.trimmingCharacters(in: .whitespacesAndNewlines)
+        if trimmed.hasPrefix("@article{") || trimmed.hasPrefix("@book{") || trimmed.hasPrefix("@inproceedings{")
+            || trimmed.hasPrefix("@misc{") || trimmed.hasPrefix("@techreport{") || trimmed.hasPrefix("@phdthesis{")
+        {
+            return .bibtex
+        }
+        return .markdown
+    }
 }
 
 public enum FileSortOrder: String, CaseIterable, Identifiable, Sendable {
@@ -158,6 +199,20 @@ public struct WorkspaceSearchMatch: Identifiable, Equatable, Sendable {
     public let lineNumber: Int
     public let lineSnippet: String
     public let matchRangeInFile: NSRange
+
+    public init(
+        fileURL: URL,
+        fileName: String,
+        lineNumber: Int,
+        lineSnippet: String,
+        matchRangeInFile: NSRange
+    ) {
+        self.fileURL = fileURL
+        self.fileName = fileName
+        self.lineNumber = lineNumber
+        self.lineSnippet = lineSnippet
+        self.matchRangeInFile = matchRangeInFile
+    }
 }
 
 public struct EditorTypographySettings: Equatable, Hashable, Codable, Sendable {

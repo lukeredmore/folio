@@ -2,7 +2,11 @@ import AppKit
 import Darwin
 import Foundation
 import XCTest
-@testable import Folio
+@testable import FolioEditor
+@testable import FolioEditorTestSupport
+@testable import FolioModels
+@testable import FolioWorkspace
+@testable import FolioWorkspaceTestSupport
 
 private final class LocalLoopbackAuthHTTPServer: @unchecked Sendable {
     let port: UInt16

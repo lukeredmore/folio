@@ -1,8 +1,9 @@
 import Foundation
 import XCTest
-@testable import Folio
+@testable import FolioEditor
+@testable import FolioModels
 
-/// Per-test defaults, directories, and view models, removed when the test ends.
+/// Per-test defaults and temporary directories, removed when the test ends.
 extension XCTestCase {
     /// A new, empty `UserDefaults` suite.
     func isolatedDefaults() -> UserDefaults {
@@ -44,24 +45,5 @@ extension XCTestCase {
             try FileManager.default.copyItem(at: source, to: directory.appendingPathComponent(companion))
         }
         return workspace.fileURL
-    }
-
-    /// A view model with isolated defaults and a temporary remote mirror.
-    @MainActor
-    func makeIsolatedViewModel(defaults: UserDefaults? = nil) -> EditorWorkspaceViewModel {
-        let resolvedDefaults = defaults ?? isolatedDefaults()
-        let mirror: URL
-        do {
-            mirror = try makeTemporaryDirectory("FolioMirror")
-        } catch {
-            preconditionFailure("Could not create a remote mirror directory: \(error)")
-        }
-        let manager = RemoteWorkspaceManager(mirrorBaseDirectory: mirror, userDefaults: resolvedDefaults)
-        let vm = EditorWorkspaceViewModel(remoteWorkspaceManager: manager, userDefaults: resolvedDefaults)
-        addTeardownBlock {
-            vm.stopWatchingCurrentFile()
-            vm.stopWatchingWorkspaceFolders()
-        }
-        return vm
     }
 }
