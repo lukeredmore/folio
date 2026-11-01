@@ -25,7 +25,7 @@ struct LaTeXProjectSnapshot: Sendable {
 
 /// Stores project snapshots and refreshes them: synchronously the first time a document is
 /// styled, and on a background queue when its signature changes or a watched file changes.
-enum LaTeXProjectContext {
+package enum LaTeXProjectContext {
     struct Key: Hashable, Sendable {
         let fileURL: URL?
         let baseDirectoryURL: URL?
@@ -37,7 +37,7 @@ enum LaTeXProjectContext {
     }
 
     /// Posted on the main queue after a background refresh changes a snapshot.
-    static let didUpdateNotification = Notification.Name("FolioLaTeXProjectDidUpdate")
+    package static let didUpdateNotification = Notification.Name("FolioLaTeXProjectDidUpdate")
     static let factsCache = LaTeXFileFactsCache()
     static let limits = LaTeXProjectLimits()
     private static let maxStoredSnapshots = 32
@@ -92,7 +92,7 @@ enum LaTeXProjectContext {
 
     /// Queues a refresh of every stored snapshot for `fileURL`, for example after a file in its
     /// directory changed on disk.
-    static func scheduleRefresh(forFile fileURL: URL) {
+    package static func scheduleRefresh(forFile fileURL: URL) {
         let path = fileURL.standardizedFileURL.path
         lock.lock()
         let matches = snapshots.filter { $0.key.fileURL?.path == path }

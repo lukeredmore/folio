@@ -1,5 +1,7 @@
 import XCTest
-@testable import Folio
+@testable import FolioEditor
+@testable import FolioEditorTestSupport
+@testable import FolioModels
 
 /// Text-mode expansion of user macros with arguments, and its caps.
 final class LaTeXProseMacroExpansionTests: XCTestCase {

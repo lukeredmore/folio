@@ -3,47 +3,47 @@ import Foundation
 
 /// What a Markdown restyle produced. The editor keeps the latest record, so the next restyle can
 /// redo only the lines that an edit or a selection change can affect.
-struct MarkdownStyleRecord {
+package struct MarkdownStyleRecord {
     /// The text that was styled.
-    let text: NSString
-    let parameters: MarkdownStyleParameters
-    let selectedRange: NSRange
+    package let text: NSString
+    package let parameters: MarkdownStyleParameters
+    package let selectedRange: NSRange
     let ast: MarkdownStyleAST
     let documentMacros: [String: LaTeXMacroDefinition]
     /// Sorted by location.
     let checkpoints: [MarkdownStyleCheckpoint]
     let decorations: MarkdownDecorationPhases
-    let headings: [OutlineHeading]
+    package let headings: [OutlineHeading]
 }
 
-struct MarkdownStyleResult {
-    let analysis: MarkdownDocumentAnalysis
+package struct MarkdownStyleResult {
+    package let analysis: MarkdownDocumentAnalysis
     /// Nil when the next restyle must be a full one: LaTeX documents, source mode, empty text.
-    let record: MarkdownStyleRecord?
+    package let record: MarkdownStyleRecord?
     /// Character ranges whose attributes the restyle replaced.
-    let restyledRanges: [NSRange]
+    package let restyledRanges: [NSRange]
 }
 
 /// The characters replaced since the last restyle, as one range.
-struct MarkdownTextEdit: Equatable {
+package struct MarkdownTextEdit: Equatable {
     /// The changed characters in the current text.
-    private(set) var range: NSRange
+    package private(set) var range: NSRange
     /// Current text length minus the text length at the last restyle.
-    private(set) var changeInLength: Int
+    package private(set) var changeInLength: Int
 
-    init(range: NSRange, changeInLength: Int) {
+    package init(range: NSRange, changeInLength: Int) {
         self.range = range
         self.changeInLength = changeInLength
     }
 
     /// The range of the text at the last restyle that `range` replaced.
-    var replacedRange: NSRange {
+    package var replacedRange: NSRange {
         NSRange(location: range.location, length: range.length - changeInLength)
     }
 
     /// Adds a later edit that replaced `editedRange.length - delta` characters at
     /// `editedRange.location` with the `editedRange.length` characters now there.
-    mutating func merge(editedRange: NSRange, changeInLength delta: Int) {
+    package mutating func merge(editedRange: NSRange, changeInLength delta: Int) {
         let replacedEnd = NSMaxRange(editedRange) - delta
         let start = min(range.location, editedRange.location)
         var end = NSMaxRange(range)

@@ -3,6 +3,11 @@ import Combine
 import SwiftUI
 import XCTest
 @testable import Folio
+@testable import FolioEditor
+@testable import FolioEditorTestSupport
+@testable import FolioModels
+@testable import FolioWorkspace
+@testable import FolioWorkspaceTestSupport
 
 /// Window that reports itself as key. The test process never runs `NSApp.run()`, so AppKit
 /// cannot make any window key; this keeps key-window behavior (selection colors, focus) the same
@@ -39,7 +44,7 @@ final class EditorHarness {
     private var cancellables: Set<AnyCancellable> = []
 
     var coordinator: HybridMarkdownEditorRepresentable.Coordinator {
-        guard let coordinator = textView.editorCoordinator else {
+        guard let coordinator = textView.editorCoordinator as? HybridMarkdownEditorRepresentable.Coordinator else {
             preconditionFailure("HybridMarkdownTextView lost its coordinator")
         }
         return coordinator
@@ -157,5 +162,36 @@ extension EditorPerfCounters {
         var copy = self
         copy.phaseNanoseconds = [:]
         return copy
+    }
+}
+
+extension RestyleEquivalenceOracle {
+    /// Nil when the editor matches a full restyle, else a description of the first difference.
+    static func firstMismatch(in harness: EditorHarness) -> String? {
+        let textView = harness.textView
+        guard let storage = textView.textStorage else { return "the text view has no text storage" }
+        let reference = NSTextStorage(string: storage.string)
+        let expected = MarkdownLiveStyler.applyStyles(
+            to: reference,
+            parameters: harness.coordinator.styleParameters(for: textView),
+            selectedRange: textView.selectedRange()
+        )
+        if let difference = firstAttributeDifference(actual: storage, expected: reference) {
+            return difference
+        }
+        if let difference = firstDifference(
+            "decoration",
+            actual: textView.lineDecorations,
+            expected: expected.decorations,
+            text: storage.string
+        ) {
+            return difference
+        }
+        return firstDifference(
+            "heading",
+            actual: harness.viewModel.headings,
+            expected: expected.headings,
+            text: storage.string
+        )
     }
 }

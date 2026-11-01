@@ -3,11 +3,19 @@ import AppKit
 /// Layout manager that leaves the glyphs of wide table rows (WideBlockTextContainer regions) out
 /// of NSTextView's normal text drawing, which clips to the column. HybridMarkdownTextView draws
 /// those rows itself, unclipped, through `drawWideRegionGlyphs`.
-final class WideBlockLayoutManager: NSLayoutManager {
+package final class WideBlockLayoutManager: NSLayoutManager {
 
     private var isDrawingWideRegions = false
 
-    override func drawGlyphs(forGlyphRange glyphsToShow: NSRange, at origin: NSPoint) {
+    package override init() {
+        super.init()
+    }
+
+    package required init?(coder: NSCoder) {
+        super.init(coder: coder)
+    }
+
+    package override func drawGlyphs(forGlyphRange glyphsToShow: NSRange, at origin: NSPoint) {
         guard !isDrawingWideRegions,
             let container = textContainers.first as? WideBlockTextContainer,
             !container.regions.isEmpty
@@ -62,7 +70,7 @@ final class WideBlockLayoutManager: NSLayoutManager {
         return suppress
     }
 
-    override func addTemporaryAttribute(_ attrName: NSAttributedString.Key, value: Any, forCharacterRange charRange: NSRange) {
+    package override func addTemporaryAttribute(_ attrName: NSAttributedString.Key, value: Any, forCharacterRange charRange: NSRange) {
         if attrName == .spellingState,
             let storage = textStorage,
             Self.shouldSuppressSpellCheck(in: storage, range: charRange)
@@ -72,7 +80,7 @@ final class WideBlockLayoutManager: NSLayoutManager {
         super.addTemporaryAttribute(attrName, value: value, forCharacterRange: charRange)
     }
 
-    override func addTemporaryAttributes(_ attrs: [NSAttributedString.Key: Any] = [:], forCharacterRange charRange: NSRange) {
+    package override func addTemporaryAttributes(_ attrs: [NSAttributedString.Key: Any] = [:], forCharacterRange charRange: NSRange) {
         if attrs[.spellingState] != nil,
             let storage = textStorage,
             Self.shouldSuppressSpellCheck(in: storage, range: charRange)
@@ -86,7 +94,7 @@ final class WideBlockLayoutManager: NSLayoutManager {
         super.addTemporaryAttributes(attrs, forCharacterRange: charRange)
     }
 
-    override func setTemporaryAttributes(_ attrs: [NSAttributedString.Key: Any], forCharacterRange charRange: NSRange) {
+    package override func setTemporaryAttributes(_ attrs: [NSAttributedString.Key: Any], forCharacterRange charRange: NSRange) {
         if attrs[.spellingState] != nil,
             let storage = textStorage,
             Self.shouldSuppressSpellCheck(in: storage, range: charRange)

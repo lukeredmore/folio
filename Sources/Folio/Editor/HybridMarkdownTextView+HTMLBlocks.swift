@@ -28,7 +28,7 @@ extension HybridMarkdownTextView: HTMLBlockWebViewDelegate {
     }
 
     /// True while a block's web view loads, or a measured height still waits for its restyle.
-    var hasPendingHTMLBlockLayout: Bool {
+    package var hasPendingHTMLBlockLayout: Bool {
         pendingHTMLBlockRestyle != nil || pendingHTMLBlockSourceToggle != nil || isHTMLBlockOverlaySyncScheduled || htmlBlockOverlays.contains { !$0.isReady }
     }
 
@@ -59,7 +59,7 @@ extension HybridMarkdownTextView: HTMLBlockWebViewDelegate {
         }
     }
 
-    func scheduleHTMLBlockOverlaySync() {
+    package func scheduleHTMLBlockOverlaySync() {
         guard !isHTMLBlockOverlaySyncScheduled else { return }
         isHTMLBlockOverlaySyncScheduled = true
         DispatchQueue.main.async { [weak self] in
@@ -71,7 +71,7 @@ extension HybridMarkdownTextView: HTMLBlockWebViewDelegate {
 
     /// Creates, moves, and removes web views so that each rendered HTML block within about a
     /// screen of the visible area has one, positioned over its hidden source lines.
-    func syncHTMLBlockOverlays() {
+    package func syncHTMLBlockOverlays() {
         let blocks = renderedHTMLBlocks()
         guard window != nil, !isSourceCodeMode, !blocks.isEmpty else {
             removeHTMLBlockOverlays(htmlBlockOverlays)
@@ -212,7 +212,7 @@ extension HybridMarkdownTextView: HTMLBlockWebViewDelegate {
 
     /// Tooltip anchor rects for a range in a rendered HTML block, where the source glyphs are
     /// hidden: the web selection rects, or the top of the block. Nil outside rendered blocks.
-    func htmlBlockAnchorRects(for range: NSRange, direction: SelectionDirection) -> (bounding: NSRect, head: NSRect)? {
+    package func htmlBlockAnchorRects(for range: NSRange, direction: SelectionDirection) -> (bounding: NSRect, head: NSRect)? {
         if let selection = htmlBlockSelection, selection.sourceRange == range, let first = selection.rects.first, let last = selection.rects.last {
             let bounding = selection.rects.dropFirst().reduce(first) { $0.union($1) }
             let head =

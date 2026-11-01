@@ -1,6 +1,12 @@
 import AppKit
 import XCTest
 @testable import Folio
+@testable import FolioEditor
+@testable import FolioEditorTestSupport
+@testable import FolioModels
+@testable import FolioTestSupport
+@testable import FolioWorkspace
+@testable import FolioWorkspaceTestSupport
 
 /// Property tests for the live restyle: seeded pseudo-random edits go through the real key path,
 /// and after every operation the editor must match a full restyle of the same text

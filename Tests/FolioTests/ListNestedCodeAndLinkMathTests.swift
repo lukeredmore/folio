@@ -1,6 +1,8 @@
 import AppKit
 import XCTest
-@testable import Folio
+@testable import FolioEditor
+@testable import FolioEditorTestSupport
+@testable import FolioModels
 
 final class ListNestedCodeAndLinkMathTests: XCTestCase {
 

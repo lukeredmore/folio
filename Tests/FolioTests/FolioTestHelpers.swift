@@ -1,5 +1,9 @@
 import Foundation
-@testable import Folio
+import XCTest
+@testable import FolioEditor
+@testable import FolioEditorTestSupport
+@testable import FolioModels
+@testable import FolioWorkspace
 
 final class MockRemoteTransport: RemoteFileTransport, @unchecked Sendable {
     private let lock = NSLock()
@@ -61,5 +65,35 @@ final class MockRemoteTransport: RemoteFileTransport, @unchecked Sendable {
         if let err {
             throw err
         }
+    }
+}
+
+extension XCTestCase {
+    /// A view model with isolated defaults and a temporary remote mirror.
+    @MainActor
+    func makeIsolatedViewModel(defaults: UserDefaults? = nil) -> EditorWorkspaceViewModel {
+        let resolvedDefaults = defaults ?? isolatedDefaults()
+        let mirror: URL
+        do {
+            mirror = try makeTemporaryDirectory("FolioMirror")
+        } catch {
+            preconditionFailure("Could not create a remote mirror directory: \(error)")
+        }
+        let manager = RemoteWorkspaceManager(mirrorBaseDirectory: mirror, userDefaults: resolvedDefaults)
+        let vm = EditorWorkspaceViewModel(remoteWorkspaceManager: manager, userDefaults: resolvedDefaults)
+        addTeardownBlock {
+            vm.stopWatchingCurrentFile()
+            vm.stopWatchingWorkspaceFolders()
+        }
+        return vm
+    }
+}
+
+extension WorkspacePerfCounters {
+    func delta(since earlier: WorkspacePerfCounters) -> WorkspacePerfCounters {
+        var result = WorkspacePerfCounters()
+        result.undoPersistCount = undoPersistCount - earlier.undoPersistCount
+        result.autosaveWriteCount = autosaveWriteCount - earlier.autosaveWriteCount
+        return result
     }
 }

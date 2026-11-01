@@ -3,7 +3,7 @@ import os
 
 /// Editor work that is timed with an `OSSignposter` interval.
 /// Intervals appear in Instruments under the bundle ID subsystem, category `editor`.
-enum EditorPerfPhase: String, CaseIterable, Sendable {
+package enum EditorPerfPhase: String, CaseIterable, Sendable {
     case restyle
     case applyStyles
     case latexStyles
@@ -14,9 +14,9 @@ enum EditorPerfPhase: String, CaseIterable, Sendable {
     case diagramRender
     case mediaDecode
 
-    static let signposter = OSSignposter(subsystem: FolioAppIdentity.current.signpostSubsystem, category: "editor")
+    package static let signposter = OSSignposter(subsystem: FolioAppIdentity.current.signpostSubsystem, category: "editor")
 
-    var signpostName: StaticString {
+    package var signpostName: StaticString {
         switch self {
         case .restyle: return "Coordinator.restyle"
         case .applyStyles: return "MarkdownLiveStyler.applyStyles"
@@ -31,12 +31,12 @@ enum EditorPerfPhase: String, CaseIterable, Sendable {
     }
 
     /// Starts an interval. Call `end()` on the result, usually from a `defer`.
-    func begin() -> EditorPerfSpan {
+    package func begin() -> EditorPerfSpan {
         EditorPerfSpan(phase: self)
     }
 
     /// Runs `body` inside an interval for this phase.
-    func measure<T>(_ body: () throws -> T) rethrows -> T {
+    package func measure<T>(_ body: () throws -> T) rethrows -> T {
         let span = begin()
         defer { span.end() }
         return try body()
@@ -45,14 +45,14 @@ enum EditorPerfPhase: String, CaseIterable, Sendable {
 
 /// One open signpost interval. It also adds its duration to the editor recorder that was in
 /// scope when it began, if any.
-struct EditorPerfSpan {
+package struct EditorPerfSpan {
     private let phase: EditorPerfPhase
     private let name: StaticString
     private let state: OSSignpostIntervalState
     private let recorder: EditorPerfRecorder?
     private let startNanoseconds: UInt64
 
-    init(phase: EditorPerfPhase) {
+    package init(phase: EditorPerfPhase) {
         let signposter = EditorPerfPhase.signposter
         self.phase = phase
         name = phase.signpostName
@@ -61,7 +61,7 @@ struct EditorPerfSpan {
         startNanoseconds = recorder == nil ? 0 : clock_gettime_nsec_np(CLOCK_UPTIME_RAW)
     }
 
-    func end() {
+    package func end() {
         EditorPerfPhase.signposter.endInterval(name, state)
         guard let recorder else { return }
         let elapsed = clock_gettime_nsec_np(CLOCK_UPTIME_RAW) &- startNanoseconds

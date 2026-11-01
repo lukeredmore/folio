@@ -1,6 +1,8 @@
 import AppKit
 import XCTest
-@testable import Folio
+@testable import FolioEditor
+@testable import FolioEditorTestSupport
+@testable import FolioModels
 
 /// The LaTeX block style cache reuses a block only when every input of its styling is the same.
 /// After each change, restyling the same storage must equal a full restyle of a new storage.

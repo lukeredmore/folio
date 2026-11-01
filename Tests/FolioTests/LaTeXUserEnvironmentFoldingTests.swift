@@ -1,6 +1,8 @@
 import AppKit
 import XCTest
-@testable import Folio
+@testable import FolioEditor
+@testable import FolioEditorTestSupport
+@testable import FolioModels
 
 /// Lines that only open or close a `\newenvironment` environment, or only hold `\index`
 /// entries, fold like other syntax; the content between them stays visible.

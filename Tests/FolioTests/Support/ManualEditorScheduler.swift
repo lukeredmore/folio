@@ -1,5 +1,6 @@
 import Foundation
-@testable import Folio
+@testable import FolioEditor
+@testable import FolioModels
 
 /// Holds scheduled editor work until the test calls `flush()`.
 @MainActor

@@ -1,7 +1,7 @@
 import AppKit
 import Foundation
 
-enum MarkdownRestyleOutcome {
+package enum MarkdownRestyleOutcome {
     case restyled(MarkdownStyleResult)
     case needsFullRestyle(MarkdownFullRestyleReason)
 }
@@ -12,7 +12,7 @@ extension MarkdownLiveStyler {
     /// result equals a full restyle; when that cannot be shown, nothing is kept and the caller
     /// must run `styleDocument`. A failed region check can leave regions restyled, which the full
     /// restyle replaces.
-    static func restyleIncrementally(
+    package static func restyleIncrementally(
         _ storage: NSTextStorage,
         parameters: MarkdownStyleParameters,
         selectedRange: NSRange,

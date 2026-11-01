@@ -1,4 +1,5 @@
 import AppKit
+@_exported import FolioModels
 import Foundation
 
 public enum LaTeXLiveStyler {
@@ -6,28 +7,7 @@ public enum LaTeXLiveStyler {
     // MARK: - Document Type Detection
 
     public static func documentKind(for text: String, fileURL: URL? = nil) -> FolioDocumentKind {
-        if let ext = fileURL?.pathExtension.lowercased(), !ext.isEmpty {
-            if WorkspaceFileNode.latexExtensions.contains(ext) {
-                return .latex
-            }
-            if WorkspaceFileNode.bibtexExtensions.contains(ext) {
-                return .bibtex
-            }
-            if WorkspaceFileNode.markdownExtensions.contains(ext) {
-                return .markdown
-            }
-        }
-        let prefix = String(text.prefix(2000))
-        if prefix.contains("\\documentclass") || prefix.contains("\\begin{document}") || prefix.contains("\\ProvidesPackage") {
-            return .latex
-        }
-        let trimmed = prefix.trimmingCharacters(in: .whitespacesAndNewlines)
-        if trimmed.hasPrefix("@article{") || trimmed.hasPrefix("@book{") || trimmed.hasPrefix("@inproceedings{")
-            || trimmed.hasPrefix("@misc{") || trimmed.hasPrefix("@techreport{") || trimmed.hasPrefix("@phdthesis{")
-        {
-            return .bibtex
-        }
-        return .markdown
+        FolioDocumentKind.detect(for: text, fileURL: fileURL)
     }
 
     public static func isLaTeXOrBibTeXDocument(_ text: String, fileURL: URL? = nil) -> Bool {

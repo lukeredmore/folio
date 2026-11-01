@@ -1,6 +1,8 @@
 import AppKit
 import XCTest
-@testable import Folio
+@testable import FolioEditor
+@testable import FolioEditorTestSupport
+@testable import FolioModels
 
 /// User macro calls whose arguments continue on later lines, and calls whose layout-only body
 /// is drawn transparently.

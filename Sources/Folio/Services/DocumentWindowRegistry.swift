@@ -15,7 +15,7 @@ public final class DocumentWindowRegistry: ObservableObject {
     /// The window that the app menus act on: the key window, or the last one that was key.
     @Published public private(set) var activeViewModel: EditorWorkspaceViewModel?
     /// Set from a SwiftUI view, because `openWindow` is only available in the view environment.
-    var openWindowAction: OpenWindowAction?
+    package var openWindowAction: OpenWindowAction?
     /// True after the user quits, so closing windows keeps their sessions for the next launch.
     public var isTerminating = false
 
@@ -66,7 +66,7 @@ public final class DocumentWindowRegistry: ObservableObject {
     }
 
     /// Connects a view model to its `NSWindow`, and tabs a requested new tab into its opener.
-    func attach(_ window: NSWindow, to viewModel: EditorWorkspaceViewModel) {
+    package func attach(_ window: NSWindow, to viewModel: EditorWorkspaceViewModel) {
         guard let id = windowID(of: viewModel), entries[id]?.window !== window else { return }
         entries[id]?.observers.forEach(NotificationCenter.default.removeObserver)
         viewModel.hostWindow = window
@@ -125,7 +125,7 @@ public final class DocumentWindowRegistry: ObservableObject {
     }
 
     /// Returns true once per launch, for the first window that appears, and makes that window active.
-    func claimLaunchSetup(for viewModel: EditorWorkspaceViewModel) -> Bool {
+    package func claimLaunchSetup(for viewModel: EditorWorkspaceViewModel) -> Bool {
         guard !hasPerformedLaunchSetup else { return false }
         hasPerformedLaunchSetup = true
         if activeViewModel == nil { setActive(viewModel) }

@@ -121,7 +121,7 @@ extension EditorTheme {
     }
 
     // MARK: - Font Resolution
-    static func resolveFont(
+    package static func resolveFont(
         familySpec: String,
         size: CGFloat,
         bold: Bool,

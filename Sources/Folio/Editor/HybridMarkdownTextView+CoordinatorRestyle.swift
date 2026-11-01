@@ -2,6 +2,21 @@ import AppKit
 
 extension HybridMarkdownEditorRepresentable.Coordinator {
 
+    /// Style parameters for the current view model settings and text view width.
+    package func styleParameters(for textView: HybridMarkdownTextView) -> MarkdownStyleParameters {
+        MarkdownStyleParameters(
+            theme: viewModel.theme,
+            typography: viewModel.typography,
+            sourceCodeMode: viewModel.sourceCodeMode,
+            focusMode: viewModel.focusMode,
+            containerWidth: currentContentWidth(for: textView),
+            prettyMode: viewModel.prettyModeEnabled,
+            baseDirectoryURL: viewModel.currentFileURL?.deletingLastPathComponent() ?? viewModel.workspaceFolderURL,
+            textAlignment: viewModel.textAlignment.nsAlignment,
+            fileURL: viewModel.currentFileURL
+        )
+    }
+
     func observeTextEdits(of storage: NSTextStorage) {
         NotificationCenter.default.addObserver(
             self,
@@ -28,7 +43,7 @@ extension HybridMarkdownEditorRepresentable.Coordinator {
     }
 
     /// Restyles after input-method composition ends, if a text change was deferred during it.
-    func restyleAfterMarkedText(textView: HybridMarkdownTextView) {
+    package func restyleAfterMarkedText(textView: HybridMarkdownTextView) {
         guard isRestyleDeferredForMarkedText, !textView.hasMarkedText() else { return }
         isRestyleDeferredForMarkedText = false
         restyle(textView: textView, incremental: true)

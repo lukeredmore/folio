@@ -1,10 +1,12 @@
 import AppKit
 import Combine
+@_exported import FolioEditor
+@_exported import FolioModels
 import Foundation
 import SwiftUI
 
 @MainActor
-public final class EditorWorkspaceViewModel: ObservableObject {
+public final class EditorWorkspaceViewModel: ObservableObject, HybridMarkdownWorkspaceDelegate {
 
     // MARK: - Document & Editor State
     @Published public var markdownText: String {

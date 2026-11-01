@@ -1,6 +1,7 @@
 import AppKit
 import XCTest
-@testable import Folio
+@testable import FolioEditor
+@testable import FolioModels
 
 /// The `Fixtures/latex_master` project, a counting file system, and a renderer that dumps what a
 /// styled LaTeX document shows.

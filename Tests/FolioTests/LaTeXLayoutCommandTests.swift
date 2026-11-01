@@ -1,6 +1,8 @@
 import AppKit
 import XCTest
-@testable import Folio
+@testable import FolioEditor
+@testable import FolioEditorTestSupport
+@testable import FolioModels
 
 /// Commands that print nothing: lines that hold only them fold, font switches style the text
 /// after them, and definitions in the body never expand the name they define.

@@ -1,5 +1,6 @@
 import Foundation
-@testable import Folio
+@testable import FolioEditor
+@testable import FolioModels
 
 /// Writes perf measurements to `$TEST_UNDECLARED_OUTPUTS_DIR/perf.json`, which Bazel keeps in
 /// `bazel-testlogs/FolioTests/test.outputs/`. Values are for reading and comparing; no test
@@ -63,14 +64,5 @@ extension EditorPerfCounters {
             result.phaseNanoseconds[phase] = nanos &- (earlier.phaseNanoseconds[phase] ?? 0)
         }
         return result
-    }
-}
-
-extension WorkspacePerfCounters {
-    func delta(since earlier: WorkspacePerfCounters) -> WorkspacePerfCounters {
-        WorkspacePerfCounters(
-            undoPersistCount: undoPersistCount - earlier.undoPersistCount,
-            autosaveWriteCount: autosaveWriteCount - earlier.autosaveWriteCount
-        )
     }
 }

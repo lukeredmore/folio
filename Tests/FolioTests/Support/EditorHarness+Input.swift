@@ -1,5 +1,10 @@
 import AppKit
 @testable import Folio
+@testable import FolioEditor
+@testable import FolioEditorTestSupport
+@testable import FolioModels
+@testable import FolioWorkspace
+@testable import FolioWorkspaceTestSupport
 
 /// Input for `EditorHarness`. Key events are real `NSEvent.keyEvent`s sent through
 /// `NSWindow.sendEvent`, so they take the AppKit path `keyDown` -> `interpretKeyEvents` ->

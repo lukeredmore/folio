@@ -1,5 +1,7 @@
 import XCTest
-@testable import Folio
+@testable import FolioEditor
+@testable import FolioEditorTestSupport
+@testable import FolioModels
 
 /// Master-file rules, their bounds, and the project cache.
 final class LaTeXMasterDetectionTests: XCTestCase {

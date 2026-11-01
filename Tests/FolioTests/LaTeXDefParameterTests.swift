@@ -1,5 +1,7 @@
 import XCTest
-@testable import Folio
+@testable import FolioEditor
+@testable import FolioEditorTestSupport
+@testable import FolioModels
 
 /// `\def` parameter text: parsing, argument reading, and use in math expansion.
 final class LaTeXDefParameterTests: XCTestCase {

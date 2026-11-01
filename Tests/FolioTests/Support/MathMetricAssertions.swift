@@ -1,6 +1,7 @@
 import AppKit
 import XCTest
-@testable import Folio
+@testable import FolioEditor
+@testable import FolioModels
 
 extension XCTestCase {
     /// Asserts box metrics to within `accuracy` points, which absorbs SwiftMath's rounding up.

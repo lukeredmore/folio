@@ -128,7 +128,7 @@ public final class MarkdownLiveStyler {
 
     /// Restyles the whole document. Markdown documents styled outside source mode also get a
     /// record for `restyleIncrementally`.
-    static func styleDocument(
+    package static func styleDocument(
         _ storage: NSTextStorage,
         parameters: MarkdownStyleParameters,
         selectedRange: NSRange

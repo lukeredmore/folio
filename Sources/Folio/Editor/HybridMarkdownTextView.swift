@@ -3,11 +3,76 @@ import AVFoundation
 import FolioEngineFFI
 import SwiftUI
 
+@MainActor
+public protocol HybridMarkdownWorkspaceDelegate: AnyObject {
+    var currentFileURL: URL? { get }
+    var workspaceFolderURL: URL? { get }
+    var selectionComments: [SelectionComment] { get }
+    var activeCommentID: UUID? { get set }
+    var activeCommentDraftRange: NSRange? { get }
+    var expandedDiagram: ExpandedDiagram? { get set }
+    var showSidebar: Bool { get set }
+    var canUndo: Bool { get }
+    var canRedo: Bool { get }
+    func breakUndoCoalescing()
+    func undo()
+    func redo()
+    func openFile(at url: URL)
+    func updateSelectionStats(selectedRange: NSRange, direction: SelectionDirection?)
+    func comment(atCharacterIndex charIndex: Int) -> SelectionComment?
+    func handleCommentHighlightClick(_ comment: SelectionComment)
+    func beginCommentOnCurrentSelection(for explicitRange: NSRange?)
+    @discardableResult func copySelectionFormatted(for explicitRange: NSRange?, to pasteboard: NSPasteboard) -> String?
+    @discardableResult func copySelectionRaw(for explicitRange: NSRange?, to pasteboard: NSPasteboard) -> String?
+    func printDocument()
+    func findNextInDocument()
+    func findPreviousInDocument()
+    func replaceAllInDocument()
+    func replaceCurrentMatch()
+    func openDocumentFind(withReplace: Bool)
+}
+
+extension HybridMarkdownWorkspaceDelegate {
+    public func updateSelectionStats(selectedRange: NSRange) {
+        updateSelectionStats(selectedRange: selectedRange, direction: nil)
+    }
+
+    public func beginCommentOnCurrentSelection() {
+        beginCommentOnCurrentSelection(for: nil)
+    }
+
+    @discardableResult
+    public func copySelectionFormatted() -> String? {
+        copySelectionFormatted(for: nil, to: .general)
+    }
+
+    @discardableResult
+    public func copySelectionRaw() -> String? {
+        copySelectionRaw(for: nil, to: .general)
+    }
+}
+
+@MainActor
+package protocol HybridMarkdownCoordinatorDelegate: AnyObject {
+    var isProgrammaticUpdate: Bool { get set }
+    var lastKnownTextHash: Int? { get set }
+    var perf: EditorPerfRecorder { get }
+    func clearReflowAnchors()
+    func restyle(textView: HybridMarkdownTextView, incremental: Bool)
+    func restyleAfterMarkedText(textView: HybridMarkdownTextView)
+}
+
+extension HybridMarkdownCoordinatorDelegate {
+    package func restyle(textView: HybridMarkdownTextView) {
+        restyle(textView: textView, incremental: false)
+    }
+}
+
 public final class HybridMarkdownTextView: NSTextView {
 
-    public weak var workspaceViewModel: EditorWorkspaceViewModel?
-    weak var editorCoordinator: HybridMarkdownEditorRepresentable.Coordinator?
-    let softLineBreakLayoutDelegate = SoftLineBreakLayoutDelegate()
+    public weak var workspaceViewModel: (any HybridMarkdownWorkspaceDelegate)?
+    package weak var editorCoordinator: (any HybridMarkdownCoordinatorDelegate)?
+    package let softLineBreakLayoutDelegate = SoftLineBreakLayoutDelegate()
 
     public var currentTheme: EditorTheme = .daylight {
         didSet {
@@ -41,7 +106,7 @@ public final class HybridMarkdownTextView: NSTextView {
     /// Optional horizontal column inset managed by `Coordinator.updateInsets` so centering the
     /// fixed-width prose column during split-view/window resize does not call `setTextContainerInset:`
     /// (which forces `NSLayoutManager.textContainerChangedGeometry` even when container width is unchanged).
-    var horizontalColumnInset: CGFloat? {
+    package var horizontalColumnInset: CGFloat? {
         didSet {
             if horizontalColumnInset != oldValue {
                 invalidateTextContainerOrigin()
@@ -98,7 +163,7 @@ public final class HybridMarkdownTextView: NSTextView {
     public func applyProgrammaticDocumentText(_ newText: String, selectedRange: NSRange) {
         let coord = editorCoordinator
         coord?.isProgrammaticUpdate = true
-        coord?.reflowAnchors.removeAll()
+        coord?.clearReflowAnchors()
         if self.string != newText {
             self.string = newText
         }

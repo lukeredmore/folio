@@ -4,7 +4,9 @@ import Foundation
 import ImageIO
 import UniformTypeIdentifiers
 import XCTest
-@testable import Folio
+@testable import FolioEditor
+@testable import FolioEditorTestSupport
+@testable import FolioModels
 
 final class RemoteGIFAndVideoMediaTests: XCTestCase {
 

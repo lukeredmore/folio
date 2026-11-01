@@ -1,5 +1,7 @@
 import XCTest
-@testable import Folio
+@testable import FolioEditor
+@testable import FolioEditorTestSupport
+@testable import FolioModels
 
 /// Macros that lay out `\\`-separated alternatives in an `array`, such as clqr's `\xorGOO`.
 final class LaTeXArrayAlternativesTests: XCTestCase {

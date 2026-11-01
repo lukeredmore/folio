@@ -2,7 +2,7 @@ import AppKit
 import Foundation
 
 /// Why a restyle styled the whole document instead of some line regions.
-enum MarkdownFullRestyleReason: String, Sendable {
+package enum MarkdownFullRestyleReason: String, Sendable {
     case notRequested
     case noRecord
     case settingsChanged
