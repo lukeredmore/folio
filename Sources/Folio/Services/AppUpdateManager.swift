@@ -339,6 +339,14 @@ public final class AppUpdateManager: ObservableObject {
             throw error
         }
 
+        // Release builds are signed with a pinned Apple Development certificate (Team ID XU8E27A586)
+        // without Developer ID notarization, so clear quarantine only after code signature verification succeeds.
+        let xattrProc = Process()
+        xattrProc.executableURL = URL(fileURLWithPath: "/usr/bin/xattr")
+        xattrProc.arguments = ["-cr", stagedApp.path]
+        try? xattrProc.run()
+        xattrProc.waitUntilExit()
+
         let runningBundleURL = Bundle.main.bundleURL
         let targetAppPath =
             (runningBundleURL.pathExtension == "app" && !runningBundleURL.path.hasPrefix("/Volumes/"))
