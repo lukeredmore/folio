@@ -17,7 +17,9 @@ public final class AppUpdateManager: ObservableObject {
         case error(String)
     }
 
-    public static let lastInstalledUpdateTokenKey = "folio.lastInstalledUpdateToken"
+    public nonisolated static let lastInstalledUpdateTokenKey = "folio.lastInstalledUpdateToken"
+    public nonisolated static let expectedTeamID = "XU8E27A586"
+    public nonisolated static let expectedBundleIdentifier = FolioAppIdentity.releaseBundleIdentifier
 
     @Published public var status: Status = .idle
     @Published public var showUpdateSheet: Bool = false
@@ -77,16 +79,67 @@ public final class AppUpdateManager: ObservableObject {
         return false
     }
 
-    /// Verify hex SHA-256 digest of a downloaded file.
+    /// Verify hex SHA-256 digest of a downloaded file. Fails closed when the expected digest is empty or malformed.
     public nonisolated static func verifySHA256(fileURL: URL, expectedHex: String) throws -> Bool {
-        let normalizedExpected = expectedHex.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-        if normalizedExpected.isEmpty {
-            return true
+        var normalizedExpected = expectedHex.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        if normalizedExpected.hasPrefix("sha256:") {
+            normalizedExpected.removeFirst("sha256:".count)
+        }
+        guard normalizedExpected.count == 64,
+            normalizedExpected.unicodeScalars.allSatisfy({
+                ("0"..."9").contains($0) || ("a"..."f").contains($0)
+            })
+        else {
+            return false
         }
         let data = try Data(contentsOf: fileURL, options: .mappedIfSafe)
         let digest = SHA256.hash(data: data)
         let actualHex = digest.map { String(format: "%02x", $0) }.joined()
         return actualHex == normalizedExpected
+    }
+
+    /// Designated requirement for verifying a staged release app bundle against Folio's release bundle ID and team ID.
+    public nonisolated static func codeSigningRequirement(
+        bundleIdentifier: String = expectedBundleIdentifier,
+        teamID: String = expectedTeamID
+    ) -> String {
+        #"identifier "\#(bundleIdentifier)" and anchor apple generic and certificate leaf[subject.OU] = "\#(teamID)""#
+    }
+
+    /// Verify that a staged `.app` bundle has a valid code signature satisfying the given requirement.
+    public nonisolated static func verifyCodeSignature(
+        appBundleURL: URL,
+        requirement: String = codeSigningRequirement()
+    ) throws {
+        let proc = Process()
+        let stderrPipe = Pipe()
+        proc.executableURL = URL(fileURLWithPath: "/usr/bin/codesign")
+        proc.arguments = [
+            "--verify",
+            "--deep",
+            "--strict",
+            "-R=\(requirement)",
+            appBundleURL.path
+        ]
+        proc.standardOutput = FileHandle.nullDevice
+        proc.standardError = stderrPipe
+        try proc.run()
+        proc.waitUntilExit()
+        guard proc.terminationStatus == 0 else {
+            let stderrData = stderrPipe.fileHandleForReading.readDataToEndOfFile()
+            let details =
+                String(data: stderrData, encoding: .utf8)?
+                .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            let message =
+                details.isEmpty
+                ? "Staged Folio.app failed code signature verification."
+                : "Staged Folio.app failed code signature verification: \(details)"
+            throw NSError(
+                domain: "AppUpdateManager",
+                code: Int(proc.terminationStatus),
+                userInfo: [NSLocalizedDescriptionKey: message]
+            )
+        }
     }
 
     public var latestReleaseAPIURL: URL {
@@ -222,7 +275,8 @@ public final class AppUpdateManager: ObservableObject {
     nonisolated static func mountExtractAndScheduleSwap(
         dmgURL: URL,
         workDir: URL,
-        currentVersion: AppVersionInfo? = nil
+        currentVersion: AppVersionInfo? = nil,
+        codeSigningRequirement: String = codeSigningRequirement()
     ) throws -> (AppVersionInfo?, Bool) {
         let mountPoint = workDir.appendingPathComponent("mnt", isDirectory: true)
         let stagedApp = workDir.appendingPathComponent("Folio.app", isDirectory: true)
@@ -230,7 +284,7 @@ public final class AppUpdateManager: ObservableObject {
 
         let attachProc = Process()
         attachProc.executableURL = URL(fileURLWithPath: "/usr/bin/hdiutil")
-        attachProc.arguments = ["attach", "-nobrowse", "-readonly", "-noverify", "-mountpoint", mountPoint.path, dmgURL.path]
+        attachProc.arguments = ["attach", "-nobrowse", "-readonly", "-mountpoint", mountPoint.path, dmgURL.path]
         try attachProc.run()
         attachProc.waitUntilExit()
         guard attachProc.terminationStatus == 0 else {
@@ -271,12 +325,19 @@ public final class AppUpdateManager: ObservableObject {
         try dittoProc.run()
         dittoProc.waitUntilExit()
         detachMount()
+        guard dittoProc.terminationStatus == 0 else {
+            try? FileManager.default.removeItem(at: workDir)
+            throw NSError(
+                domain: "AppUpdateManager", code: Int(dittoProc.terminationStatus),
+                userInfo: [NSLocalizedDescriptionKey: "ditto failed to stage Folio.app"])
+        }
 
-        let xattrProc = Process()
-        xattrProc.executableURL = URL(fileURLWithPath: "/usr/bin/xattr")
-        xattrProc.arguments = ["-cr", stagedApp.path]
-        try? xattrProc.run()
-        xattrProc.waitUntilExit()
+        do {
+            try verifyCodeSignature(appBundleURL: stagedApp, requirement: codeSigningRequirement)
+        } catch {
+            try? FileManager.default.removeItem(at: workDir)
+            throw error
+        }
 
         let runningBundleURL = Bundle.main.bundleURL
         let targetAppPath =
