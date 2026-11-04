@@ -116,13 +116,23 @@ public struct SelectionCommentsSidebarView: View {
     }
 }
 
+private final class TitlebarPillContainerView: NSView {
+    override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
+    override var mouseDownCanMoveWindow: Bool { false }
+}
+
+private final class TitlebarPillButton: NSButton {
+    override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
+    override var mouseDownCanMoveWindow: Bool { false }
+}
+
 final class CommentsTitlebarAnchorView: NSView {
     let glassView = NSGlassEffectView(frame: .zero)
-    let containerView = NSView(frame: .zero)
-    let hideButton = NSButton(frame: .zero)
-    let copyButton = NSButton(frame: .zero)
-    let deleteButton = NSButton(frame: .zero)
-    let showButton = NSButton(frame: .zero)
+    let containerView: NSView = TitlebarPillContainerView(frame: .zero)
+    let hideButton: NSButton = TitlebarPillButton(frame: .zero)
+    let copyButton: NSButton = TitlebarPillButton(frame: .zero)
+    let deleteButton: NSButton = TitlebarPillButton(frame: .zero)
+    let showButton: NSButton = TitlebarPillButton(frame: .zero)
 
     var hasComments: Bool = false { didSet { syncTitlebarPill() } }
     var isCommentsSidebarVisible: Bool = false { didSet { syncTitlebarPill() } }
@@ -175,6 +185,10 @@ final class CommentsTitlebarAnchorView: NSView {
                 self, selector: #selector(handleWindowLayout(_:)),
                 name: NSSplitView.didResizeSubviewsNotification, object: nil
             )
+            NotificationCenter.default.addObserver(
+                self, selector: #selector(handleWindowLayout(_:)),
+                name: NSView.frameDidChangeNotification, object: nil
+            )
             syncTitlebarPill()
             DispatchQueue.main.async { [weak self] in self?.syncTitlebarPill() }
         } else {
@@ -186,7 +200,15 @@ final class CommentsTitlebarAnchorView: NSView {
         NotificationCenter.default.removeObserver(self)
     }
 
-    @objc private func handleWindowLayout(_ notification: Notification) { syncTitlebarPill() }
+    @objc private func handleWindowLayout(_ notification: Notification) {
+        if let view = notification.object as? NSView {
+            guard view.window === window,
+                view !== glassView,
+                !view.isDescendant(of: glassView)
+            else { return }
+        }
+        syncTitlebarPill()
+    }
     override func layout() {
         super.layout()
         syncTitlebarPill()
@@ -198,34 +220,58 @@ final class CommentsTitlebarAnchorView: NSView {
             return
         }
         let hostView = Self.findSubview(named: "NSTitlebarView", in: themeFrame) ?? themeFrame
-        if glassView.superview !== hostView || hostView.subviews.last !== glassView {
+        if glassView.superview !== hostView {
             hostView.addSubview(glassView, positioned: .above, relativeTo: nil)
+        } else if hostView.subviews.last !== glassView,
+            RunLoop.current.currentMode != .eventTracking
+        {
+            hostView.sortSubviews(
+                { view1, view2, context in
+                    guard let context else { return .orderedSame }
+                    let target = Unmanaged<NSView>.fromOpaque(context).takeUnretainedValue()
+                    if view1 === target { return .orderedDescending }
+                    if view2 === target { return .orderedAscending }
+                    return .orderedSame
+                },
+                context: Unmanaged.passUnretained(glassView).toOpaque()
+            )
         }
-        glassView.isHidden = !hasComments
+        if glassView.isHidden != !hasComments {
+            glassView.isHidden = !hasComments
+        }
         guard hasComments else { return }
 
         let pillHeight: CGFloat = 28
         let pillWidth: CGFloat = isCommentsSidebarVisible ? 104 : 36
         let y = Self.toolbarRowCenterY(in: hostView, window: window, themeFrame: themeFrame) - round(pillHeight / 2.0)
         let x = max(280.0, round(hostView.bounds.width - pillWidth - 12.0))
-        glassView.frame = NSRect(x: x, y: y, width: pillWidth, height: pillHeight)
-        glassView.layoutSubtreeIfNeeded()
-        containerView.frame = glassView.bounds
+        let targetGlassFrame = NSRect(x: x, y: y, width: pillWidth, height: pillHeight)
+        if glassView.frame != targetGlassFrame {
+            glassView.frame = targetGlassFrame
+            glassView.layoutSubtreeIfNeeded()
+        }
+        if containerView.frame != glassView.bounds {
+            containerView.frame = glassView.bounds
+        }
 
         if isCommentsSidebarVisible {
-            hideButton.isHidden = false
-            copyButton.isHidden = false
-            deleteButton.isHidden = false
-            showButton.isHidden = true
-            hideButton.frame = NSRect(x: 4, y: 2, width: 30, height: 24)
-            copyButton.frame = NSRect(x: 37, y: 2, width: 30, height: 24)
-            deleteButton.frame = NSRect(x: 70, y: 2, width: 30, height: 24)
+            if hideButton.isHidden { hideButton.isHidden = false }
+            if copyButton.isHidden { copyButton.isHidden = false }
+            if deleteButton.isHidden { deleteButton.isHidden = false }
+            if !showButton.isHidden { showButton.isHidden = true }
+            let hideFrame = NSRect(x: 4, y: 2, width: 30, height: 24)
+            let copyFrame = NSRect(x: 37, y: 2, width: 30, height: 24)
+            let deleteFrame = NSRect(x: 70, y: 2, width: 30, height: 24)
+            if hideButton.frame != hideFrame { hideButton.frame = hideFrame }
+            if copyButton.frame != copyFrame { copyButton.frame = copyFrame }
+            if deleteButton.frame != deleteFrame { deleteButton.frame = deleteFrame }
         } else {
-            hideButton.isHidden = true
-            copyButton.isHidden = true
-            deleteButton.isHidden = true
-            showButton.isHidden = false
-            showButton.frame = NSRect(x: 3, y: 2, width: 30, height: 24)
+            if !hideButton.isHidden { hideButton.isHidden = true }
+            if !copyButton.isHidden { copyButton.isHidden = true }
+            if !deleteButton.isHidden { deleteButton.isHidden = true }
+            if showButton.isHidden { showButton.isHidden = false }
+            let showFrame = NSRect(x: 3, y: 2, width: 30, height: 24)
+            if showButton.frame != showFrame { showButton.frame = showFrame }
         }
     }
 
@@ -257,6 +303,7 @@ struct CommentsTitlebarAccessory: NSViewRepresentable {
 
         @MainActor @objc func hideComments(_ sender: NSButton) {
             viewModel.showCommentsSidebar = false
+            anchorView?.isCommentsSidebarVisible = viewModel.isCommentsSidebarVisible
         }
 
         @MainActor @objc func copyAllComments(_ sender: NSButton) {
@@ -270,10 +317,13 @@ struct CommentsTitlebarAccessory: NSViewRepresentable {
 
         @MainActor @objc func deleteAllComments(_ sender: NSButton) {
             viewModel.clearAllSelectionComments()
+            anchorView?.hasComments = !viewModel.selectionComments.isEmpty
+            anchorView?.isCommentsSidebarVisible = viewModel.isCommentsSidebarVisible
         }
 
         @MainActor @objc func showComments(_ sender: NSButton) {
             viewModel.showCommentsSidebar = true
+            anchorView?.isCommentsSidebarVisible = viewModel.isCommentsSidebarVisible
         }
     }
 
