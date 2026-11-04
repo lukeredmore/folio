@@ -8,8 +8,9 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: write
-  actions: write
+  contents: read
+
+cache-mode: write
 
 concurrency:
   group: release-macos-${{ github.event.pull_request.number || github.ref }}
