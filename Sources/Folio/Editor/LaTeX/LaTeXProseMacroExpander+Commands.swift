@@ -31,10 +31,12 @@ private let proseCommands: [String: LaTeXProseCommand] = {
         "textup": .style { $0.italic = false },
         "texttt": .style { $0.monospace = true },
         "textsf": .style {
-            $0.sans = true; $0.monospace = false
+            $0.sans = true
+            $0.monospace = false
         },
         "textrm": .style {
-            $0.sans = false; $0.monospace = false
+            $0.sans = false
+            $0.monospace = false
         },
         "textsc": .style { $0.smallCaps = true },
         "textnormal": .style { resetFont(&$0) },
@@ -53,15 +55,18 @@ private let proseCommands: [String: LaTeXProseCommand] = {
         "slshape": .declaration { $0.italic = true },
         "em": .declaration { $0.italic.toggle() },
         "upshape": .declaration {
-            $0.italic = false; $0.smallCaps = false
+            $0.italic = false
+            $0.smallCaps = false
         },
         "scshape": .declaration { $0.smallCaps = true },
         "ttfamily": .declaration { $0.monospace = true },
         "sffamily": .declaration {
-            $0.sans = true; $0.monospace = false
+            $0.sans = true
+            $0.monospace = false
         },
         "rmfamily": .declaration {
-            $0.sans = false; $0.monospace = false
+            $0.sans = false
+            $0.monospace = false
         },
         "normalfont": .declaration { resetFont(&$0) },
         "text": .wrapper(braces: 0, brackets: 0),

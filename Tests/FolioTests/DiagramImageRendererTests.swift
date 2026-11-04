@@ -10,8 +10,16 @@ final class DiagramImageRendererTests: XCTestCase {
     private final class RenderLog: @unchecked Sendable {
         private let lock = NSLock()
         private var sources: [String] = []
-        func record(_ source: String) { lock.lock(); sources.append(source); lock.unlock() }
-        var all: [String] { lock.lock(); defer { lock.unlock() }; return sources }
+        func record(_ source: String) {
+            lock.lock()
+            sources.append(source)
+            lock.unlock()
+        }
+        var all: [String] {
+            lock.lock()
+            defer { lock.unlock() }
+            return sources
+        }
     }
 
     private static func image() -> NSImage {
@@ -106,7 +114,8 @@ final class DiagramImageRendererTests: XCTestCase {
         )
         XCTAssertTrue(
             analysis.decorations.contains {
-                if case .mermaidBlockRendered = $0.kind { return true }; return false
+                if case .mermaidBlockRendered = $0.kind { return true }
+                return false
             })
         XCTAssertTrue(DiagramImageRenderer.shared.waitUntilIdle())
         XCTAssertNotNil(DiagramImageRenderer.shared.image(for: key), "Styling queues the diagram for background rendering")

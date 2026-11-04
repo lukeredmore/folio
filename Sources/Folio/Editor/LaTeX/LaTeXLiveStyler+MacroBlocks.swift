@@ -68,7 +68,10 @@ extension LaTeXLiveStyler {
         var idx = openBraceLocation + 1
         while idx < fullLength {
             let ch = nsString.character(at: idx)
-            if ch == 0x5C { idx += 2; continue }
+            if ch == 0x5C {
+                idx += 2
+                continue
+            }
             if ch == 0x25 {
                 while idx < fullLength && nsString.character(at: idx) != 0x0A { idx += 1 }
                 continue

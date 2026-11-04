@@ -50,7 +50,8 @@ final class LaTeXProseMacroExpansionTests: XCTestCase {
                 .text(
                     "file",
                     style {
-                        $0.bold = true; $0.italic = true
+                        $0.bold = true
+                        $0.italic = true
                     })
             ]
         )

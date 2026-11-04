@@ -47,8 +47,10 @@ extension LaTeXLiveStyler {
                 MarkdownLiveStyler.collapseWhitespaceRange(in: storage, range: commentRange)
                 if isWholeLineComment {
                     let pStyle = NSMutableParagraphStyle()
-                    pStyle.minimumLineHeight = 2.0; pStyle.maximumLineHeight = 2.0
-                    pStyle.lineSpacing = 0; pStyle.paragraphSpacing = 0
+                    pStyle.minimumLineHeight = 2.0
+                    pStyle.maximumLineHeight = 2.0
+                    pStyle.lineSpacing = 0
+                    pStyle.paragraphSpacing = 0
                     storage.addAttributes(
                         [
                             .font: NSFont.systemFont(ofSize: 1.0),
@@ -249,9 +251,13 @@ extension LaTeXLiveStyler {
             if let entry = docIndex.bibEntries[k] {
                 labels.append(entry.shortCitation)
                 tooltips.append(entry.title.isEmpty ? entry.key : "\(entry.author) (\(entry.year)) — \(entry.title)")
-                if firstLoc == nil { firstLoc = entry.characterLocation; firstURL = entry.fileURL }
+                if firstLoc == nil {
+                    firstLoc = entry.characterLocation
+                    firstURL = entry.fileURL
+                }
             } else {
-                labels.append(k); tooltips.append("Citation key: \(k)")
+                labels.append(k)
+                tooltips.append("Citation key: \(k)")
             }
         }
         let pillLabel = "[\(labels.joined(separator: "; "))]"

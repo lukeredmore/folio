@@ -122,7 +122,10 @@ extension FolioCLIManager {
         var treatRemainingAsPaths = false
 
         for arg in arguments.dropFirst() {
-            if skipNext { skipNext = false; continue }
+            if skipNext {
+                skipNext = false
+                continue
+            }
             if !treatRemainingAsPaths {
                 if arg == "--" {
                     treatRemainingAsPaths = true

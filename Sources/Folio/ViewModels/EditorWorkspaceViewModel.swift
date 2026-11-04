@@ -138,31 +138,66 @@ public final class EditorWorkspaceViewModel: ObservableObject, HybridMarkdownWor
         }
     }
     @Published public var sourceCodeMode: Bool = false {
-        didSet { if !isRestoringState { userDefaults.set(sourceCodeMode, forKey: Self.sourceCodeModeDefaultsKey); sharePreference(\.sourceCodeMode) } }
+        didSet {
+            if !isRestoringState {
+                userDefaults.set(sourceCodeMode, forKey: Self.sourceCodeModeDefaultsKey)
+                sharePreference(\.sourceCodeMode)
+            }
+        }
     }
     @Published public var prettyModeEnabled: Bool = true
     @Published public var focusMode: Bool = false {
-        didSet { if !isRestoringState { userDefaults.set(focusMode, forKey: Self.focusModeDefaultsKey); sharePreference(\.focusMode) } }
+        didSet {
+            if !isRestoringState {
+                userDefaults.set(focusMode, forKey: Self.focusModeDefaultsKey)
+                sharePreference(\.focusMode)
+            }
+        }
     }
     @Published public var typewriterMode: Bool = false {
-        didSet { if !isRestoringState { userDefaults.set(typewriterMode, forKey: Self.typewriterModeDefaultsKey); sharePreference(\.typewriterMode) } }
+        didSet {
+            if !isRestoringState {
+                userDefaults.set(typewriterMode, forKey: Self.typewriterModeDefaultsKey)
+                sharePreference(\.typewriterMode)
+            }
+        }
     }
     @Published public var spellCheckEnabled: Bool = false {
-        didSet { if !isRestoringState { userDefaults.set(spellCheckEnabled, forKey: Self.spellCheckEnabledDefaultsKey); sharePreference(\.spellCheckEnabled) } }
+        didSet {
+            if !isRestoringState {
+                userDefaults.set(spellCheckEnabled, forKey: Self.spellCheckEnabledDefaultsKey)
+                sharePreference(\.spellCheckEnabled)
+            }
+        }
     }
     /// Column width that edited paragraphs are hard-wrapped to in the Markdown source (0 = off).
     @Published public var sourceLineWidth: Int = MarkdownSourceReflow.defaultWidth {
-        didSet { if !isRestoringState { userDefaults.set(sourceLineWidth, forKey: Self.sourceLineWidthDefaultsKey); sharePreference(\.sourceLineWidth) } }
+        didSet {
+            if !isRestoringState {
+                userDefaults.set(sourceLineWidth, forKey: Self.sourceLineWidthDefaultsKey)
+                sharePreference(\.sourceLineWidth)
+            }
+        }
     }
     /// Editor-wide alignment for prose.
     @Published public var textAlignment: EditorTextAlignment = .left {
-        didSet { if !isRestoringState { userDefaults.set(textAlignment.rawValue, forKey: Self.textAlignmentDefaultsKey); sharePreference(\.textAlignment) } }
+        didSet {
+            if !isRestoringState {
+                userDefaults.set(textAlignment.rawValue, forKey: Self.textAlignmentDefaultsKey)
+                sharePreference(\.textAlignment)
+            }
+        }
     }
     /// Mermaid diagram shown in the pan-and-zoom sheet.
     @Published public var expandedDiagram: ExpandedDiagram?
     /// Paper size used by Print.
     @Published public var printPaperSize: PrintPaperSize = .letter {
-        didSet { if !isRestoringState { userDefaults.set(printPaperSize.rawValue, forKey: Self.printPaperSizeDefaultsKey); sharePreference(\.printPaperSize) } }
+        didSet {
+            if !isRestoringState {
+                userDefaults.set(printPaperSize.rawValue, forKey: Self.printPaperSizeDefaultsKey)
+                sharePreference(\.printPaperSize)
+            }
+        }
     }
     /// Page orientation used by Print (unless overridden in the document).
     @Published public var printOrientation: PrintOrientation = .portrait {
