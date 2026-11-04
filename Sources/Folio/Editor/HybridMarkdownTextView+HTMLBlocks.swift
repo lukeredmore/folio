@@ -27,9 +27,12 @@ extension HybridMarkdownTextView: HTMLBlockWebViewDelegate {
         htmlBlockSelection?.sourceRange ?? selectedRange()
     }
 
-    /// True while a block's web view loads, or a measured height still waits for its restyle.
+    /// True while a block's web view loads, measures its height, or waits for its restyle.
     package var hasPendingHTMLBlockLayout: Bool {
-        pendingHTMLBlockRestyle != nil || pendingHTMLBlockSourceToggle != nil || isHTMLBlockOverlaySyncScheduled || htmlBlockOverlays.contains { !$0.isReady }
+        pendingHTMLBlockRestyle != nil
+            || pendingHTMLBlockSourceToggle != nil
+            || isHTMLBlockOverlaySyncScheduled
+            || htmlBlockOverlays.contains { !$0.isReady || $0.hasPendingHeightReport }
     }
 
     var htmlBlockBaseDirectoryURL: URL? {
@@ -102,10 +105,10 @@ extension HybridMarkdownTextView: HTMLBlockWebViewDelegate {
                 addSubview(view)
             }
             view.blockRange = block.range
-            view.layoutWidth = block.width
-            if let frame = htmlBlockFrame(for: view), view.frame != frame {
+            if let frame = htmlBlockFrame(for: view, layoutWidth: block.width), view.frame != frame {
                 view.frame = frame
             }
+            view.layoutWidth = block.width
             view.setDimFactor(block.dimFactor)
             next.append(view)
         }
@@ -131,9 +134,9 @@ extension HybridMarkdownTextView: HTMLBlockWebViewDelegate {
 
     /// Frame of a block's web view: the column width, from the block's first hidden line, as
     /// tall as the measured page (or the reserved lines before it is measured).
-    func htmlBlockFrame(for view: HTMLBlockWebView) -> NSRect? {
+    func htmlBlockFrame(for view: HTMLBlockWebView, layoutWidth: CGFloat? = nil) -> NSRect? {
         guard let reserved = htmlBlockReservedRect(for: view.blockRange) else { return nil }
-        let width = min(reserved.width, max(1.0, view.layoutWidth))
+        let width = min(reserved.width, max(1.0, layoutWidth ?? view.layoutWidth))
         let height = min(reserved.height, view.measuredHeight ?? reserved.height)
         return NSRect(x: reserved.minX, y: reserved.minY, width: width, height: max(1.0, height))
     }
