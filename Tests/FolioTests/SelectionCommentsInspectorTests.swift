@@ -9,8 +9,17 @@ import XCTest
 @testable import FolioWorkspace
 @testable import FolioWorkspaceTestSupport
 
+private final class InspectorTestWindow: NSWindow {
+    override var canBecomeKey: Bool { true }
+    override var isKeyWindow: Bool { true }
+    override func constrainFrameRect(_ frameRect: NSRect, to screen: NSScreen?) -> NSRect {
+        frameRect
+    }
+}
+
 @MainActor
 final class SelectionCommentsInspectorTests: XCTestCase {
+    private var nextEventNumber: Int = 1
 
     private func findSubviews<T: NSView>(of type: T.Type, in root: NSView) -> [T] {
         var results: [T] = []
@@ -24,13 +33,30 @@ final class SelectionCommentsInspectorTests: XCTestCase {
     }
 
     private func sendClick(at point: NSPoint, in window: NSWindow) {
-        if let themeFrame = window.contentView?.superview,
-            let hit = themeFrame.hitTest(point),
-            String(describing: type(of: hit)).contains("ClippedItemsIndicator")
+        let themeFrame = window.contentView?.superview
+        if let themeFrame {
+            for anchor in findSubviews(of: CommentsTitlebarAnchorView.self, in: themeFrame) {
+                anchor.syncTitlebarPill()
+            }
+        }
+        let hitView = themeFrame?.hitTest(point)
+        if let hitView,
+            String(describing: type(of: hitView)).contains("ClippedItemsIndicator")
         {
             XCTFail("Refusing to click NSToolbarClippedItemsIndicator at \(point) which would open a modal NSMenu")
             return
         }
+        while NSApplication.shared.nextEvent(
+            matching: [.leftMouseDown, .leftMouseUp, .leftMouseDragged],
+            until: nil,
+            inMode: .default,
+            dequeue: true
+        ) != nil {}
+
+        let downNumber = nextEventNumber
+        let upNumber = nextEventNumber + 1
+        nextEventNumber += 2
+
         guard
             let down = NSEvent.mouseEvent(
                 with: .leftMouseDown,
@@ -39,7 +65,7 @@ final class SelectionCommentsInspectorTests: XCTestCase {
                 timestamp: ProcessInfo.processInfo.systemUptime,
                 windowNumber: window.windowNumber,
                 context: nil,
-                eventNumber: 1,
+                eventNumber: downNumber,
                 clickCount: 1,
                 pressure: 1.0
             ),
@@ -50,7 +76,7 @@ final class SelectionCommentsInspectorTests: XCTestCase {
                 timestamp: ProcessInfo.processInfo.systemUptime + 0.01,
                 windowNumber: window.windowNumber,
                 context: nil,
-                eventNumber: 2,
+                eventNumber: upNumber,
                 clickCount: 1,
                 pressure: 0.0
             )
@@ -58,7 +84,7 @@ final class SelectionCommentsInspectorTests: XCTestCase {
             XCTFail("Failed to construct mouse events")
             return
         }
-        NSApplication.shared.postEvent(up, atStart: false)
+        NSApplication.shared.postEvent(up, atStart: true)
         window.sendEvent(down)
         if let pendingUp = NSApplication.shared.nextEvent(
             matching: .leftMouseUp,
@@ -66,7 +92,20 @@ final class SelectionCommentsInspectorTests: XCTestCase {
             inMode: .default,
             dequeue: true
         ) {
-            window.sendEvent(pendingUp)
+            if let button = hitView as? NSButton {
+                NSApplication.shared.postEvent(pendingUp, atStart: true)
+                button.mouseDown(with: down)
+                if let remainingUp = NSApplication.shared.nextEvent(
+                    matching: .leftMouseUp,
+                    until: nil,
+                    inMode: .default,
+                    dequeue: true
+                ) {
+                    window.sendEvent(remainingUp)
+                }
+            } else {
+                window.sendEvent(pendingUp)
+            }
         }
     }
 
@@ -91,7 +130,7 @@ final class SelectionCommentsInspectorTests: XCTestCase {
         XCTAssertEqual(vm.selectionComments.count, 2)
 
         let hostingView = NSHostingView(rootView: MainWindowView(viewModel: vm))
-        let window = NSWindow(
+        let window = InspectorTestWindow(
             contentRect: NSRect(x: 0, y: 0, width: 1120, height: 760),
             styleMask: [.titled, .closable, .resizable, .fullSizeContentView],
             backing: .buffered,
@@ -209,6 +248,8 @@ final class SelectionCommentsInspectorTests: XCTestCase {
 
         let showRect = showView.convert(showView.bounds, to: nil)
         XCTAssertGreaterThan(showRect.minX, window.frame.width - 120, "Show Comments bubble button must be in the top-right")
+        let showHit = themeFrame.hitTest(NSPoint(x: showRect.midX, y: showRect.midY))
+        XCTAssertTrue(showHit?.isDescendant(of: showView) ?? false, "Show Comments button must be hit-testable")
         sendClick(at: NSPoint(x: showRect.midX, y: showRect.midY), in: window)
         RunLoop.current.run(until: Date().addingTimeInterval(0.25))
         hostingView.layoutSubtreeIfNeeded()
