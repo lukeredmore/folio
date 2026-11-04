@@ -70,14 +70,14 @@ extension DocumentLineDiff {
         // Compute UTF-16 character ranges for changedLineNumbers in newText
         var changedRanges: [NSRange] = []
         if !changedLineNumbers.isEmpty && !newText.isEmpty {
-            let nsNew = newText as NSString
+            let newUTF16Len = newText.utf16.count
             var currentLocation = 0
             for (zeroIdx, line) in newLines.enumerated() {
-                let lineLen = (line as NSString).length
+                let lineLen = line.utf16.count
                 let fullLen = zeroIdx < newLines.count - 1 ? lineLen + 1 : lineLen
                 if changedLineNumbers.contains(zeroIdx + 1) {
-                    let safeLoc = min(currentLocation, nsNew.length)
-                    let safeLen = max(0, min(fullLen, nsNew.length - safeLoc))
+                    let safeLoc = min(currentLocation, newUTF16Len)
+                    let safeLen = max(0, min(fullLen, newUTF16Len - safeLoc))
                     changedRanges.append(NSRange(location: safeLoc, length: safeLen))
                 }
                 currentLocation += fullLen
@@ -113,81 +113,98 @@ extension DocumentLineDiff {
         let clampedOldLoc = max(0, min(oldLen, oldSelection.location))
         var prefixLen = 0
         let minLen = min(oldLen, newLen)
-        while prefixLen < minLen && oldNS.character(at: prefixLen) == newNS.character(at: prefixLen) {
-            prefixLen += 1
+        let prefixLimit = min(minLen, clampedOldLoc)
+        if prefixLimit > 0 {
+            let checkRange = NSRange(location: 0, length: prefixLimit)
+            if oldNS.substring(with: checkRange) == newNS.substring(with: checkRange) {
+                prefixLen = prefixLimit
+            } else {
+                while prefixLen < prefixLimit && oldNS.character(at: prefixLen) == newNS.character(at: prefixLen) {
+                    prefixLen += 1
+                }
+            }
         }
-
-        var suffixLen = 0
-        while suffixLen < (oldLen - prefixLen)
-            && suffixLen < (newLen - prefixLen)
-            && oldNS.character(at: oldLen - 1 - suffixLen) == newNS.character(at: newLen - 1 - suffixLen)
-        {
-            suffixLen += 1
-        }
-
-        let oldChangedEnd = oldLen - suffixLen
-        let delta = newLen - oldLen
 
         let rawNewLoc: Int
         if clampedOldLoc <= prefixLen {
             rawNewLoc = clampedOldLoc
-        } else if clampedOldLoc >= oldChangedEnd {
-            rawNewLoc = max(prefixLen, min(newLen, clampedOldLoc + delta))
         } else {
-            // Cursor is between the first and last changed character (e.g. an unchanged middle section
-            // when edits occurred at both the top and bottom of the document). Use line-level LCS matching
-            // to shift the cursor by the exact cumulative UTF-16 delta of edits above it.
-            let oldLines = splitLines(oldText)
-            let newLines = splitLines(newText)
-            let matches = computeLCSMatches(oldLines: oldLines, newLines: newLines)
-
-            var oldLineStarts: [Int] = []
-            oldLineStarts.reserveCapacity(oldLines.count)
-            var offset = 0
-            for (i, line) in oldLines.enumerated() {
-                oldLineStarts.append(offset)
-                offset += (line as NSString).length + (i < oldLines.count - 1 ? 1 : 0)
-            }
-
-            var newLineStarts: [Int] = []
-            newLineStarts.reserveCapacity(newLines.count)
-            offset = 0
-            for (i, line) in newLines.enumerated() {
-                newLineStarts.append(offset)
-                offset += (line as NSString).length + (i < newLines.count - 1 ? 1 : 0)
-            }
-
-            var targetOldLine = 0
-            for i in 0..<oldLines.count {
-                if clampedOldLoc >= oldLineStarts[i] {
-                    targetOldLine = i
+            var suffixLen = 0
+            let suffixLimit = min(min(oldLen - prefixLen, newLen - prefixLen), oldLen - clampedOldLoc)
+            if suffixLimit > 0 {
+                let oldSuffixRange = NSRange(location: oldLen - suffixLimit, length: suffixLimit)
+                let newSuffixRange = NSRange(location: newLen - suffixLimit, length: suffixLimit)
+                if oldNS.substring(with: oldSuffixRange) == newNS.substring(with: newSuffixRange) {
+                    suffixLen = suffixLimit
                 } else {
-                    break
+                    while suffixLen < suffixLimit
+                        && oldNS.character(at: oldLen - 1 - suffixLen) == newNS.character(at: newLen - 1 - suffixLen)
+                    {
+                        suffixLen += 1
+                    }
                 }
             }
-            let intraLineOffset = clampedOldLoc - oldLineStarts[targetOldLine]
 
-            var matchedNewLineMap: [Int: Int] = [:]
-            matchedNewLineMap.reserveCapacity(matches.count)
-            for (oIdx, nIdx) in matches {
-                matchedNewLineMap[oIdx] = nIdx
-            }
-
-            if let exactNewLine = matchedNewLineMap[targetOldLine] {
-                let maxIntra = (newLines[exactNewLine] as NSString).length
-                rawNewLoc = min(newLen, newLineStarts[exactNewLine] + min(intraLineOffset, maxIntra))
+            let oldChangedEnd = oldLen - suffixLen
+            let delta = newLen - oldLen
+            if clampedOldLoc >= oldChangedEnd {
+                rawNewLoc = max(prefixLen, min(newLen, clampedOldLoc + delta))
             } else {
-                var precedingPair: (Int, Int)? = nil
-                for pair in matches where pair.0 < targetOldLine {
-                    precedingPair = pair
+                // Cursor is between the first and last changed character (e.g. an unchanged middle section
+                // when edits occurred at both the top and bottom of the document). Use line-level LCS matching
+                // to shift the cursor by the exact cumulative UTF-16 delta of edits above it.
+                let oldLines = splitLines(oldText)
+                let newLines = splitLines(newText)
+                let matches = computeLCSMatches(oldLines: oldLines, newLines: newLines)
+
+                var oldLineStarts: [Int] = []
+                oldLineStarts.reserveCapacity(oldLines.count)
+                var offset = 0
+                for (i, line) in oldLines.enumerated() {
+                    oldLineStarts.append(offset)
+                    offset += line.utf16.count + (i < oldLines.count - 1 ? 1 : 0)
                 }
-                if let (prevOld, prevNew) = precedingPair {
-                    let oldAnchor = oldLineStarts[prevOld] + (oldLines[prevOld] as NSString).length
-                    let newAnchor = newLineStarts[prevNew] + (newLines[prevNew] as NSString).length
-                    let localDelta = newAnchor - oldAnchor
-                    rawNewLoc = max(0, min(newLen, clampedOldLoc + localDelta))
+
+                var newLineStarts: [Int] = []
+                newLineStarts.reserveCapacity(newLines.count)
+                offset = 0
+                for (i, line) in newLines.enumerated() {
+                    newLineStarts.append(offset)
+                    offset += line.utf16.count + (i < newLines.count - 1 ? 1 : 0)
+                }
+
+                var targetOldLine = 0
+                for i in 0..<oldLines.count {
+                    if clampedOldLoc >= oldLineStarts[i] {
+                        targetOldLine = i
+                    } else {
+                        break
+                    }
+                }
+                let intraLineOffset = clampedOldLoc - oldLineStarts[targetOldLine]
+
+                var matchedNewLineMap: [Int: Int] = [:]
+                matchedNewLineMap.reserveCapacity(matches.count)
+                for (oIdx, nIdx) in matches {
+                    matchedNewLineMap[oIdx] = nIdx
+                }
+
+                if let exactNewLine = matchedNewLineMap[targetOldLine] {
+                    let maxIntra = newLines[exactNewLine].utf16.count
+                    rawNewLoc = min(newLen, newLineStarts[exactNewLine] + min(intraLineOffset, maxIntra))
                 } else {
-                    rawNewLoc = min(newLen, clampedOldLoc)
+                    var precedingPair: (Int, Int)? = nil
+                    for pair in matches where pair.0 < targetOldLine {
+                        precedingPair = pair
+                    }
+                    if let (prevOld, prevNew) = precedingPair {
+                        let oldAnchor = oldLineStarts[prevOld] + oldLines[prevOld].utf16.count
+                        let newAnchor = newLineStarts[prevNew] + newLines[prevNew].utf16.count
+                        let localDelta = newAnchor - oldAnchor
+                        rawNewLoc = max(0, min(newLen, clampedOldLoc + localDelta))
+                    } else {
+                        rawNewLoc = min(newLen, clampedOldLoc)
+                    }
                 }
             }
         }

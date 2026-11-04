@@ -187,6 +187,14 @@ public enum DocumentLineDiff {
                         j += 1
                     }
                 }
+            } else if midM == midN,
+                midM > 4,
+                oldLines[midOldStart + 1] != oldLines[midOldStart + 2],
+                oldLines[(midOldStart + 1)..<(midOldEnd - 1)] == newLines[(midNewStart + 1)..<(midNewEnd - 1)]
+            {
+                for k in 1..<(midM - 1) {
+                    matches.append((midOldStart + k, midNewStart + k))
+                }
             } else {
                 // Patience-style unique-line anchoring: find non-empty lines appearing exactly once in both slices
                 var oldCounts: [String: Int] = [:]
@@ -197,22 +205,21 @@ public enum DocumentLineDiff {
                         oldCounts[line] = oldCounts[line] == nil ? idx : -1
                     }
                 }
-                var newCounts: [String: Int] = [:]
-                newCounts.reserveCapacity(midN)
+                var matchedNewForOld = Array(repeating: -2, count: midM)
                 for idx in midNewStart..<midNewEnd {
                     let line = newLines[idx]
                     if !line.isEmpty, let oldIdx = oldCounts[line], oldIdx >= 0 {
-                        newCounts[line] = newCounts[line] == nil ? idx : -1
+                        let slot = oldIdx - midOldStart
+                        matchedNewForOld[slot] = matchedNewForOld[slot] == -2 ? idx : -1
                     }
                 }
 
                 var uniquePairs: [(Int, Int)] = []
-                for idx in midOldStart..<midOldEnd {
-                    let line = oldLines[idx]
-                    if let oldIdx = oldCounts[line], oldIdx >= 0,
-                        let newIdx = newCounts[line], newIdx >= 0
-                    {
-                        uniquePairs.append((oldIdx, newIdx))
+                uniquePairs.reserveCapacity(min(midM, midN))
+                for slot in 0..<midM {
+                    let newIdx = matchedNewForOld[slot]
+                    if newIdx >= 0 {
+                        uniquePairs.append((midOldStart + slot, newIdx))
                     }
                 }
 
@@ -277,6 +284,14 @@ public enum DocumentLineDiff {
     /// Computes the Longest Increasing Subsequence (by second element) of `(oldIdx, newIdx)` pairs in $O(K \log K)$.
     static func longestIncreasingSubsequence(of pairs: [(Int, Int)]) -> [(Int, Int)] {
         guard !pairs.isEmpty else { return [] }
+        var isStrictlyIncreasing = true
+        for i in 1..<pairs.count where pairs[i].1 <= pairs[i - 1].1 {
+            isStrictlyIncreasing = false
+            break
+        }
+        if isStrictlyIncreasing {
+            return pairs
+        }
         var tails: [Int] = []
         var predecessors = Array(repeating: -1, count: pairs.count)
 

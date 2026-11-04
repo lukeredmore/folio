@@ -363,13 +363,15 @@ swift_library(
 )
 
 # The seeded restyle property tests take most of the Swift test time. One shard per fixture keeps
-# each shard well inside the test timeout and allows all 4 shards to run in parallel.
+# each shard well inside the test timeout; exclusive keeps them off the machine while the
+# timing-sensitive perf tests in FolioWorkspaceTests and FolioUITests run.
 swift_test(
     name = "FolioRestyleEquivalenceTests",
     copts = _SWIFT_TEST_COPTS,
     data = _SWIFT_TEST_DATA,
     linkopts = _SWIFT_TEST_LINKOPTS,
     shard_count = 4,
+    tags = ["exclusive"],
     deps = [":FolioRestyleEquivalenceTestsLib"],
 )
 
