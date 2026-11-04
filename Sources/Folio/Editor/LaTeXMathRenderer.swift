@@ -34,8 +34,11 @@ public struct MathLayoutBox {
         usesNativeOpenTypeMath: Bool = false,
         drawBox: @escaping (_ x: CGFloat, _ baselineY: CGFloat, _ color: NSColor) -> Void
     ) {
-        self.width = width; self.ascent = ascent; self.descent = descent
-        self.tag = tag; self.usesNativeOpenTypeMath = usesNativeOpenTypeMath
+        self.width = width
+        self.ascent = ascent
+        self.descent = descent
+        self.tag = tag
+        self.usesNativeOpenTypeMath = usesNativeOpenTypeMath
         self.drawBox = drawBox
     }
 

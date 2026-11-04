@@ -252,21 +252,28 @@ public struct DocumentPageLayout: Equatable, Sendable {
             if let pt = parsePoints(lowerVal), pt >= 8, pt <= 28 { layout.baseFontSizePoints = pt }
         case "margin", "margins":
             if let pt = parsePoints(lowerVal) {
-                layout.topMargin = pt; layout.bottomMargin = pt; layout.leftMargin = pt; layout.rightMargin = pt
+                layout.topMargin = pt
+                layout.bottomMargin = pt
+                layout.leftMargin = pt
+                layout.rightMargin = pt
             }
         case "hmargin":
             let parts = lowerVal.split(separator: ",").compactMap { parsePoints(String($0)) }
             if parts.count == 2 {
-                layout.leftMargin = parts[0]; layout.rightMargin = parts[1]
+                layout.leftMargin = parts[0]
+                layout.rightMargin = parts[1]
             } else if let pt = parts.first {
-                layout.leftMargin = pt; layout.rightMargin = pt
+                layout.leftMargin = pt
+                layout.rightMargin = pt
             }
         case "vmargin":
             let parts = lowerVal.split(separator: ",").compactMap { parsePoints(String($0)) }
             if parts.count == 2 {
-                layout.topMargin = parts[0]; layout.bottomMargin = parts[1]
+                layout.topMargin = parts[0]
+                layout.bottomMargin = parts[1]
             } else if let pt = parts.first {
-                layout.topMargin = pt; layout.bottomMargin = pt
+                layout.topMargin = pt
+                layout.bottomMargin = pt
             }
         case "top", "tmargin", "margin-top", "top-margin":
             if let pt = parsePoints(lowerVal) { layout.topMargin = pt }

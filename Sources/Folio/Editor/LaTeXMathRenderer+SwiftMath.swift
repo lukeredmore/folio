@@ -182,7 +182,10 @@ extension LaTeXMathRenderer {
                     var depth = 1
                     var k = j + 1
                     while k < chars.count && depth > 0 {
-                        if chars[k] == "\\" { k += 2; continue }
+                        if chars[k] == "\\" {
+                            k += 2
+                            continue
+                        }
                         if chars[k] == "{" { depth += 1 } else if chars[k] == "}" { depth -= 1 }
                         k += 1
                     }

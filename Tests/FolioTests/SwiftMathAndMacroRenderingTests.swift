@@ -386,15 +386,18 @@ final class SwiftMathAndMacroRenderingTests: XCTestCase {
         )
         XCTAssertTrue(
             analysis.decorations.contains {
-                if case .latexPreambleCard = $0.kind { return true }; return false
+                if case .latexPreambleCard = $0.kind { return true }
+                return false
             })
         XCTAssertTrue(
             analysis.decorations.contains {
-                if case .latexInlineText("$5.60", _, _, _) = $0.kind { return true }; return false
+                if case .latexInlineText("$5.60", _, _, _) = $0.kind { return true }
+                return false
             })
         XCTAssertTrue(
             analysis.decorations.contains {
-                if case .latexInlineText("“", _, _, _) = $0.kind { return true }; return false
+                if case .latexInlineText("“", _, _, _) = $0.kind { return true }
+                return false
             })
     }
 }

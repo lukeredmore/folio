@@ -93,7 +93,8 @@ final class PageLayoutAndPrintTests: XCTestCase {
         )
         XCTAssertTrue(
             view.lineDecorations.contains {
-                if case .mermaidBlockRendered = $0.kind { return true }; return false
+                if case .mermaidBlockRendered = $0.kind { return true }
+                return false
             })
     }
 
@@ -221,13 +222,15 @@ final class PageLayoutAndPrintTests: XCTestCase {
         XCTAssertEqual(view.frame.width, expectedWidth, accuracy: 0.5)
         XCTAssertFalse(
             view.lineDecorations.contains {
-                if case .latexPreambleCard = $0.kind { return true }; return false
+                if case .latexPreambleCard = $0.kind { return true }
+                return false
             },
             "Print view should strip the interactive preamble banner card"
         )
         XCTAssertTrue(
             view.lineDecorations.contains {
-                if case .mathBlockRendered = $0.kind { return true }; return false
+                if case .mathBlockRendered = $0.kind { return true }
+                return false
             },
             "Print view should include rendered LaTeX equations"
         )
