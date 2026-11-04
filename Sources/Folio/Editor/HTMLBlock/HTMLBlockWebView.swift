@@ -46,10 +46,12 @@ final class HTMLBlockWebView: WKWebView, WKNavigationDelegate {
     var layoutWidth: CGFloat {
         didSet {
             guard isReady, Int(layoutWidth.rounded()) != Int(oldValue.rounded()) else { return }
+            hasPendingHeightReport = true
             runBridge("window.__folioReportHeight()")
         }
     }
     private(set) var isReady = false
+    private(set) var hasPendingHeightReport = true
     private(set) var selection: Selection?
     private(set) var measuredHeight: CGFloat?
 
@@ -120,6 +122,7 @@ final class HTMLBlockWebView: WKWebView, WKNavigationDelegate {
 
     private func loadPage() {
         allowsInitialNavigation = true
+        hasPendingHeightReport = true
         loadHTMLString(HTMLBlockPage.document(source: source, style: style), baseURL: HTMLBlockPage.baseURL)
     }
 
@@ -219,6 +222,7 @@ final class HTMLBlockWebView: WKWebView, WKNavigationDelegate {
             }
             blockDelegate?.htmlBlockWebViewDidBecomeReady(self)
         case "height":
+            hasPendingHeightReport = false
             guard let height = (message["height"] as? NSNumber)?.doubleValue, height >= 0 else { return }
             measuredHeight = CGFloat(height)
             blockDelegate?.htmlBlockWebView(self, didMeasureHeight: CGFloat(height))
