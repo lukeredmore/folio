@@ -316,11 +316,63 @@ public struct RemoteFileEntry: Equatable, Sendable {
     }
 }
 
+/// One supported document in a remote directory listing.
+public struct RemoteFileStat: Equatable, Sendable {
+    public let name: String
+    public let modificationTimestamp: TimeInterval
+    public let size: Int
+
+    public init(name: String, modificationTimestamp: TimeInterval, size: Int) {
+        self.name = name
+        self.modificationTimestamp = modificationTimestamp
+        self.size = size
+    }
+}
+
+/// One level of a directory inside a folder mount.
+public struct RemoteDirectoryListing: Equatable, Sendable {
+    /// Path relative to the mount root. Empty for the root.
+    public let relativePath: String
+    /// False when the directory is no longer on the host.
+    public let exists: Bool
+    public let subdirectoryNames: [String]
+    public let files: [RemoteFileStat]
+
+    public init(relativePath: String, exists: Bool, subdirectoryNames: [String], files: [RemoteFileStat]) {
+        self.relativePath = relativePath
+        self.exists = exists
+        self.subdirectoryNames = subdirectoryNames
+        self.files = files
+    }
+}
+
+/// Whether an unlisted remote directory holds a shown document, and when that was checked.
+public struct RemoteDirectoryProbe: Equatable, Sendable {
+    public let hasDocuments: Bool
+    public let checkedAt: Date
+}
+
 /// Pluggable transport abstraction for remote file & folder synchronization.
 /// Production uses `SSHRemoteTransport` (multiplexed non-interactive OpenSSH),
 /// while unit tests can inject deterministic or fault-injecting mock transports.
 public protocol RemoteFileTransport: Sendable {
-    func fetchSnapshot(for mount: RemoteMountSpec) async throws -> [RemoteFileEntry]
+    /// Lists one level of each directory in `relativePaths` inside a folder mount.
+    /// The listing reports only files whose extension is in `fileExtensions`.
+    func listDirectories(
+        _ relativePaths: [String],
+        fileExtensions: Set<String>,
+        for mount: RemoteMountSpec
+    ) async throws -> [RemoteDirectoryListing]
+    /// Reports, for each directory in `relativePaths`, whether it or any folder below it holds a file
+    /// with one of `fileExtensions`. Hidden, ignored, and `excludedPaths` folders are skipped.
+    func probeDirectories(
+        _ relativePaths: [String],
+        fileExtensions: Set<String>,
+        excludedPaths: Set<String>,
+        for mount: RemoteMountSpec
+    ) async throws -> [String: Bool]
+    /// Downloads the files at `relativePaths`. A file mount always downloads its target.
+    func fetchFiles(_ relativePaths: [String], for mount: RemoteMountSpec) async throws -> [RemoteFileEntry]
     func pushFile(content: String, relativePath: String, for mount: RemoteMountSpec) async throws -> TimeInterval
     func deleteFile(relativePath: String, for mount: RemoteMountSpec) async throws
 }

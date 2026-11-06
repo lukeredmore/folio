@@ -87,6 +87,8 @@ public struct WorkspaceFileNode: Identifiable, Hashable, Sendable {
     public var isLocalRoot: Bool
     public var remoteConnectionString: String?
     public var syncStatus: RemoteFileSyncStatus?
+    /// True for the "Loading…" row inside a remote folder that is not listed yet.
+    public var isLoadingPlaceholder: Bool
 
     public init(
         url: URL,
@@ -99,7 +101,8 @@ public struct WorkspaceFileNode: Identifiable, Hashable, Sendable {
         isRemoteRoot: Bool = false,
         isLocalRoot: Bool = false,
         remoteConnectionString: String? = nil,
-        syncStatus: RemoteFileSyncStatus? = nil
+        syncStatus: RemoteFileSyncStatus? = nil,
+        isLoadingPlaceholder: Bool = false
     ) {
         self.url = url
         self.name = name
@@ -112,6 +115,7 @@ public struct WorkspaceFileNode: Identifiable, Hashable, Sendable {
         self.isLocalRoot = isLocalRoot
         self.remoteConnectionString = remoteConnectionString
         self.syncStatus = syncStatus
+        self.isLoadingPlaceholder = isLoadingPlaceholder
     }
 
     public var id: URL { url }
@@ -124,6 +128,22 @@ public struct WorkspaceFileNode: Identifiable, Hashable, Sendable {
     public static let markdownExtensions: Set<String> = ["md", "markdown", "mdown", "mkd", "txt", "textbundle"]
     public static let latexExtensions: Set<String> = ["tex", "sty", "cls", "ltx"]
     public static let bibtexExtensions: Set<String> = ["bib"]
+
+    /// Directory names that the sidebar never shows.
+    public static let ignoredDirectoryNames: Set<String> = [
+        ".build", ".git", "node_modules", "DerivedData", ".swiftpm",
+        "target", "bazel-bin", "bazel-out", "bazel-testlogs", "bazel-Folio",
+        "Folio.app", "vendor", "dist", "build"
+    ]
+
+    public static func isIgnoredDirectoryName(_ name: String) -> Bool {
+        name.hasPrefix(".") || ignoredDirectoryNames.contains(name) || name.hasPrefix("bazel-") || name.hasSuffix(".app")
+    }
+
+    /// File extensions that a remote listing reports. `textbundle` is a directory, so it is excluded.
+    public static var remoteDocumentExtensions: Set<String> {
+        markdownExtensions.subtracting(["textbundle"]).union(latexExtensions).union(bibtexExtensions)
+    }
 
     public var isMarkdownFile: Bool {
         let lowerName = url.lastPathComponent.lowercased()

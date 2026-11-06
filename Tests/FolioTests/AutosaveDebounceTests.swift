@@ -21,9 +21,30 @@ final class AutosaveDebounceTests: XCTestCase {
         var pushed: [String] { lock.withLock { pushes } }
         var peakConcurrency: Int { lock.withLock { maxConcurrent } }
 
-        func fetchSnapshot(for mount: RemoteMountSpec) async throws -> [RemoteFileEntry] {
+        func listDirectories(
+            _ relativePaths: [String],
+            fileExtensions: Set<String>,
+            for mount: RemoteMountSpec
+        ) async throws -> [RemoteDirectoryListing] {
             let snapshot = lock.withLock { files }
-            return snapshot.map { RemoteFileEntry(relativePath: $0.key, modificationTimestamp: 0, content: $0.value) }
+            return mockDirectoryListings(relativePaths, fileExtensions: fileExtensions, files: snapshot, modificationTimestamps: [:])
+        }
+
+        func probeDirectories(
+            _ relativePaths: [String],
+            fileExtensions: Set<String>,
+            excludedPaths: Set<String>,
+            for mount: RemoteMountSpec
+        ) async throws -> [String: Bool] {
+            let snapshot = lock.withLock { files }
+            return mockDirectoryProbes(relativePaths, fileExtensions: fileExtensions, excludedPaths: excludedPaths, files: snapshot)
+        }
+
+        func fetchFiles(_ relativePaths: [String], for mount: RemoteMountSpec) async throws -> [RemoteFileEntry] {
+            let snapshot = lock.withLock { files }
+            return relativePaths.compactMap { path in
+                snapshot[path].map { RemoteFileEntry(relativePath: path, modificationTimestamp: 0, content: $0) }
+            }
         }
 
         func pushFile(content: String, relativePath: String, for mount: RemoteMountSpec) async throws -> TimeInterval {

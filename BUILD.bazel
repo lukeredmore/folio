@@ -38,10 +38,12 @@ _FOLIO_MODELS_SRCS = glob(
     "Sources/Folio/Services/FolioCLIManager+LauncherScript.swift",
     "Sources/Folio/Services/RemoteHostHistory.swift",
     "Sources/Folio/Services/RemoteWorkspaceManager+Delete.swift",
+    "Sources/Folio/Services/RemoteWorkspaceManager+DirectoryListing.swift",
     "Sources/Folio/Services/RemoteWorkspaceManagerSync.swift",
     "Sources/Folio/Services/RemoteWorkspaceModels.swift",
     "Sources/Folio/Services/RemoteWorkspaceService.swift",
     "Sources/Folio/Services/SSHRemoteTransport.swift",
+    "Sources/Folio/Services/SSHRemoteTransport+DirectoryListing.swift",
 ]
 
 _FOLIO_COORDINATOR_SRCS = [
@@ -180,8 +182,10 @@ _WORKSPACE_TESTS = [
     "Tests/FolioTests/PageLayoutAndPrintTests.swift",
     "Tests/FolioTests/RemoteImageSSHAuthTests.swift",
     "Tests/FolioTests/RemoteImageUrlAndAuthTests.swift",
+    "Tests/FolioTests/RemoteLazyDirectoryListingTests.swift",
     "Tests/FolioTests/RemoteWorkspaceTests.swift",
     "Tests/FolioTests/SidebarFoldersTests.swift",
+    "Tests/FolioTests/SidebarRootFilterTests.swift",
     "Tests/FolioTests/SoftLineBreakTests.swift",
     "Tests/FolioTests/ThemeAndTypographyTests.swift",
     "Tests/FolioTests/WorkspaceFileDeletionTests.swift",

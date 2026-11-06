@@ -70,6 +70,48 @@ final class RemoteWorkspaceTests: XCTestCase {
         XCTAssertEqual(entries[0].content, "# Remote Readme\nHello from SSH!\n")
         XCTAssertEqual(entries[1].relativePath, "guides/setup.md")
         XCTAssertEqual(entries[1].content, "## Subfolder Note\nFast local mirror.")
+
+        // 6. Directory listing parser
+        let listingStream = """
+            ===FOLIO_DIR===\t
+            D\tworktrees
+            F\tREADME.md\t1729300000 42
+            ===FOLIO_MISSING===\tgone
+            ===FOLIO_DIR===\tworktrees/api client
+            F\tnotes.md\t1729300500 7
+            """
+        XCTAssertEqual(
+            SSHRemoteTransport.parseDirectoryListingOutput(listingStream),
+            [
+                RemoteDirectoryListing(
+                    relativePath: "",
+                    exists: true,
+                    subdirectoryNames: ["worktrees"],
+                    files: [RemoteFileStat(name: "README.md", modificationTimestamp: 1_729_300_000, size: 42)]
+                ),
+                RemoteDirectoryListing(relativePath: "gone", exists: false, subdirectoryNames: [], files: []),
+                RemoteDirectoryListing(
+                    relativePath: "worktrees/api client",
+                    exists: true,
+                    subdirectoryNames: [],
+                    files: [RemoteFileStat(name: "notes.md", modificationTimestamp: 1_729_300_500, size: 7)]
+                )
+            ]
+        )
+        let pattern = SSHRemoteTransport.documentNameCasePattern(for: WorkspaceFileNode.remoteDocumentExtensions)
+        XCTAssertTrue(pattern.contains("*.[mM][dD]"))
+        XCTAssertFalse(pattern.contains("textbundle"))
+        XCTAssertEqual(SSHRemoteTransport.documentNameCasePattern(for: ["md", "txt"]), "*.[mM][dD]|*.[tT][xX][tT]")
+        XCTAssertEqual(SSHRemoteTransport.documentNameCasePattern(for: []), "__folio_no_documents__")
+
+        // 7. Directory probe parser and find arguments
+        XCTAssertEqual(
+            SSHRemoteTransport.parseProbeOutput("===FOLIO_PROBE===\tdocs\t1\n===FOLIO_PROBE===\tlogs/old\t0\nnoise\n"),
+            ["docs": true, "logs/old": false]
+        )
+        let findArguments = SSHRemoteTransport.probeFindArguments(fileExtensions: ["md", "txt"], excludedPaths: ["logs/old"])
+        XCTAssertTrue(findArguments.hasPrefix("\\( -name '.*' -o -name 'bazel-*' -o -name '*.app' -o -name '.build'"))
+        XCTAssertTrue(findArguments.hasSuffix("-o -path 'logs/old' \\) -prune -o -type f \\( -iname '*.md' -o -iname '*.txt' \\) -print"))
     }
 
     @MainActor
@@ -123,7 +165,12 @@ final class RemoteWorkspaceTests: XCTestCase {
         await vm.connectRemoteMount(folderSpec)
         await vm.connectRemoteMount(singleFileSpec)
 
-        // 1. Verify unified multi-root sidebar tree & flatMarkdownFiles include local + remote folder + remote file
+        // 1. Verify unified multi-root sidebar tree & flatMarkdownFiles include local + remote folder + remote file.
+        // A remote subfolder is listed only after it is expanded.
+        XCTAssertEqual(Set(vm.flatMarkdownFiles.map(\.name)), ["local_todo.md", "index.md", "runbook.md"])
+        let architectureURL = remoteManager.mirrorRootURL(for: folderSpec).appendingPathComponent("architecture", isDirectory: true)
+        let architectureLoaded = await remoteManager.loadRemoteDirectory(at: architectureURL)
+        XCTAssertTrue(architectureLoaded)
         let allFlatNames = Set(vm.flatMarkdownFiles.map(\.name))
         XCTAssertEqual(allFlatNames, ["local_todo.md", "index.md", "design.md", "runbook.md"])
 

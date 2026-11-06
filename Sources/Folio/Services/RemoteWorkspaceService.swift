@@ -43,6 +43,19 @@ public final class RemoteWorkspaceManager: ObservableObject {
     /// remote changes from local dirty edits.
     var lastSyncedContentHashes: [URL: String] = [:]
     var retryCounts: [UUID: Int] = [:]
+
+    /// Mount-relative directories that each sync lists, per mount. Persisted. The root is implied.
+    var loadedRemoteDirectories: [UUID: Set<String>] = [:]
+    /// Directories listed successfully in this session, per mount.
+    var listedRemoteDirectories: [UUID: Set<String>] = [:]
+    /// Directory loads in progress, keyed by `mountID/relativePath`.
+    var inFlightDirectoryLoads: Set<String> = []
+    /// Whether each unlisted directory holds a shown document, per mount.
+    var directoryProbes: [UUID: [String: RemoteDirectoryProbe]] = [:]
+    /// How long a directory probe stays valid during background syncs.
+    public var directoryProbeLifetimeSeconds: TimeInterval = 60
+    /// File types and folders that each folder mount hides. Persisted.
+    @Published public internal(set) var sidebarFilters: [UUID: SidebarRootFilter] = [:]
     nonisolated(unsafe) var retryTasks: [UUID: Task<Void, Never>] = [:]
     nonisolated(unsafe) var pollingTask: Task<Void, Never>?
 
@@ -83,6 +96,14 @@ public final class RemoteWorkspaceManager: ObservableObject {
             let decoded = try? JSONDecoder().decode([RemoteMountSpec].self, from: savedData)
         {
             self.mounts = decoded
+            if let filterData = userDefaults.data(forKey: sidebarFiltersDefaultsKey),
+                let filters = try? JSONDecoder().decode([UUID: SidebarRootFilter].self, from: filterData)
+            {
+                self.sidebarFilters = filters
+            }
+            self.loadedRemoteDirectories = Self.decodeLoadedDirectories(
+                userDefaults.dictionary(forKey: loadedDirectoriesDefaultsKey) ?? [:]
+            )
             for mount in decoded {
                 let dir = localMirrorDirectory(for: mount)
                 try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
@@ -189,6 +210,11 @@ public final class RemoteWorkspaceManager: ObservableObject {
         retryTasks.removeValue(forKey: id)
         retryCounts.removeValue(forKey: id)
         connectionStates.removeValue(forKey: id)
+        loadedRemoteDirectories.removeValue(forKey: id)
+        listedRemoteDirectories.removeValue(forKey: id)
+        persistLoadedDirectories()
+        sidebarFilters.removeValue(forKey: id)
+        persistSidebarFilters()
         pendingWriteQueue.removeAll(where: { $0.mountID == id })
 
         if let mount = mounts.first(where: { $0.id == id }) {

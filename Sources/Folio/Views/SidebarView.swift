@@ -234,14 +234,21 @@ public struct SidebarView: View {
         )
     }
 
+    @ViewBuilder
     private func fileRow(for node: WorkspaceFileNode) -> some View {
-        SidebarFileRow(
-            node: node,
-            accentColor: viewModel.theme.linkColor,
-            mountConnectionState: node.remoteMountID.flatMap { remoteManager.connectionStates[$0] },
-            liveSyncStatus: remoteManager.syncStatus(forLocalURL: node.url),
-            actions: rowActions(for: node)
-        )
+        if node.isLoadingPlaceholder {
+            SidebarLoadingRow {
+                viewModel.loadRemoteDirectory(at: node.url.deletingLastPathComponent())
+            }
+        } else {
+            SidebarFileRow(
+                node: node,
+                accentColor: viewModel.theme.linkColor,
+                mountConnectionState: node.remoteMountID.flatMap { remoteManager.connectionStates[$0] },
+                liveSyncStatus: remoteManager.syncStatus(forLocalURL: node.url),
+                actions: rowActions(for: node)
+            )
+        }
     }
 
     private func rowActions(for node: WorkspaceFileNode) -> SidebarNodeActions {
@@ -257,7 +264,11 @@ public struct SidebarView: View {
             disconnectMount: { viewModel.disconnectRemoteMount(id: $0) },
             removeLocalFolder: { viewModel.removeLocalFolder($0) },
             deleteItem: { viewModel.requestDeleteWorkspaceItem(at: $0) },
-            openInNewTab: { viewModel.openInNewTab($0) }
+            openInNewTab: { viewModel.openInNewTab($0) },
+            rootFilter: node.isSidebarRoot && node.isDirectory ? viewModel.sidebarFilter(forRoot: node.url) : nil,
+            setFileTypeShown: { viewModel.setFileType($0, shown: $1, forRoot: node.url) },
+            excludeFolder: { viewModel.excludeFolderFromSidebar($0) },
+            includeExcludedFolder: { viewModel.includeExcludedFolder($0, forRoot: node.url) }
         )
     }
 }

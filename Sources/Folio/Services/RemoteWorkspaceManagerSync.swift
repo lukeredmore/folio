@@ -30,8 +30,8 @@ extension RemoteWorkspaceManager {
 
     /// Synchronizes a single mount:
     /// 1. Flushes any queued local writes for this mount first so offline/optimistic saves are never overwritten.
-    /// 2. Fetches the latest remote snapshot.
-    /// 3. Updates local mirror files on disk and notifies the workspace view model.
+    /// 2. Lists each loaded directory of a folder mount, or fetches the target of a file mount.
+    /// 3. Downloads changed files into the local mirror and notifies the workspace view model.
     /// 4. If an error occurs, transitions into `.reconnecting` and schedules an automatic self-healing retry.
     @discardableResult
     public func syncMount(id: UUID, isManualRetry: Bool = false, isBackground: Bool = true) async -> Bool {
@@ -49,11 +49,18 @@ extension RemoteWorkspaceManager {
             // Step 1: Flush pending optimistic writes for this mount before pulling remote state
             try await flushPendingWrites(for: mount)
 
-            // Step 2: Fetch remote snapshot
-            let entries = try await transport.fetchSnapshot(for: mount)
-
-            // Step 3: Reconcile local mirror directory
-            let updatedURLs = reconcileLocalMirror(for: mount, with: entries)
+            // Steps 2 and 3: List loaded directories and download changed files
+            let updatedURLs: [URL]
+            switch mount.targetKind {
+            case .folder:
+                updatedURLs = try await refreshFolderMount(
+                    mount,
+                    directories: loadedDirectories(for: mount.id),
+                    refreshAllProbes: isManualRetry || !isBackground
+                )
+            case .file:
+                updatedURLs = try await refreshFileMount(mount)
+            }
 
             // Step 4: Clear any previous error/retry state — connection is healthy!
             retryTasks[id]?.cancel()
@@ -153,66 +160,6 @@ extension RemoteWorkspaceManager {
                 throw error
             }
         }
-    }
-
-    // MARK: - Mirror Reconciliation
-
-    func reconcileLocalMirror(for mount: RemoteMountSpec, with entries: [RemoteFileEntry]) -> [URL] {
-        let rootDir = localMirrorDirectory(for: mount).standardizedFileURL
-        try? FileManager.default.createDirectory(at: rootDir, withIntermediateDirectories: true)
-
-        var changedURLs: [URL] = []
-        var validLocalURLs: Set<URL> = []
-        let pendingURLs = Set(pendingWriteQueue.filter { $0.mountID == mount.id }.map { $0.localFileURL })
-
-        for entry in entries {
-            let fileURL = localFileURL(for: entry.relativePath, in: mount)
-            validLocalURLs.insert(fileURL)
-
-            // Do not overwrite a file that has an unpushed local write queued
-            if pendingURLs.contains(fileURL) {
-                continue
-            }
-
-            let existingDiskText = try? String(contentsOf: fileURL, encoding: .utf8)
-            let remoteHash = entry.contentHash
-
-            if existingDiskText != entry.content {
-                let parentDir = fileURL.deletingLastPathComponent()
-                try? FileManager.default.createDirectory(at: parentDir, withIntermediateDirectories: true)
-                try? entry.content.write(to: fileURL, atomically: true, encoding: .utf8)
-                if entry.modificationTimestamp > 0 {
-                    try? FileManager.default.setAttributes(
-                        [.modificationDate: Date(timeIntervalSince1970: entry.modificationTimestamp)],
-                        ofItemAtPath: fileURL.path
-                    )
-                }
-                changedURLs.append(fileURL)
-            }
-
-            lastSyncedContentHashes[fileURL] = remoteHash
-            fileSyncStatuses[fileURL] = .synced
-        }
-
-        // Prune deleted remote files from local mirror (unless they have a pending upload)
-        if let enumerator = FileManager.default.enumerator(
-            at: rootDir,
-            includingPropertiesForKeys: [.isDirectoryKey],
-            options: [.skipsHiddenFiles]
-        ) {
-            for case let fileURL as URL in enumerator {
-                let stdURL = fileURL.standardizedFileURL
-                let isDir = (try? stdURL.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) ?? false
-                if !isDir && !validLocalURLs.contains(stdURL) && !pendingURLs.contains(stdURL) {
-                    try? FileManager.default.removeItem(at: stdURL)
-                    lastSyncedContentHashes.removeValue(forKey: stdURL)
-                    fileSyncStatuses.removeValue(forKey: stdURL)
-                    changedURLs.append(stdURL)
-                }
-            }
-        }
-
-        return changedURLs
     }
 
     // MARK: - Self-Healing Error & Auto-Reconnect Handling
