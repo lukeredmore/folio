@@ -285,6 +285,15 @@ public final class EditorWorkspaceViewModel: ObservableObject, HybridMarkdownWor
             userDefaults.set(Array(collapsedDirectoryPaths).sorted(), forKey: Self.collapsedDirectoryPathsDefaultsKey)
         }
     }
+    /// File types and folders that each local sidebar folder hides, keyed by the folder's standardized path.
+    @Published public var localSidebarFilters: [String: SidebarRootFilter] = [:] {
+        didSet {
+            guard !isRestoringState else { return }
+            if let data = try? JSONEncoder().encode(localSidebarFilters) {
+                userDefaults.set(data, forKey: Self.localSidebarFiltersDefaultsKey)
+            }
+        }
+    }
     @Published public var outlineFilterText: String = ""
 
     // MARK: - Modals & Banners

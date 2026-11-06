@@ -22,6 +22,13 @@ public enum FileDisplayStyle: String, CaseIterable {
     case list = "List"
 }
 
+/// The sidebar root that a tree scan is inside.
+struct SidebarScanScope {
+    /// The mount of a remote root. Nil for a local folder.
+    let remoteMountID: UUID?
+    let filter: SidebarRootFilter
+}
+
 extension EditorWorkspaceViewModel {
 
     // MARK: - Workspace Folder Tree & Multi-file Search
@@ -38,8 +45,11 @@ extension EditorWorkspaceViewModel {
         for folderURL in sidebarLocalFolderURLs {
             let children = scanDirectory(
                 at: folderURL,
-                depth: 0,
-                remoteMountID: nil,
+                relativePath: "",
+                scope: SidebarScanScope(
+                    remoteMountID: nil,
+                    filter: localSidebarFilters[folderURL.standardizedFileURL.path] ?? SidebarRootFilter()
+                ),
                 flatAccumulator: &flatList,
                 watchedDirectoryKeys: &activeWatchedDirectoryKeys
             )
@@ -59,13 +69,14 @@ extension EditorWorkspaceViewModel {
             let mirrorDir = remoteWorkspaceManager.localMirrorDirectory(for: mount)
             switch mount.targetKind {
             case .folder:
-                let remoteChildren = scanDirectory(
-                    at: mirrorDir,
-                    depth: 0,
-                    remoteMountID: mount.id,
-                    flatAccumulator: &flatList,
-                    watchedDirectoryKeys: &activeWatchedDirectoryKeys
-                )
+                let remoteChildren =
+                    remoteDirectoryChildren(
+                        at: mirrorDir,
+                        relativePath: "",
+                        scope: SidebarScanScope(remoteMountID: mount.id, filter: remoteWorkspaceManager.sidebarFilter(for: mount.id)),
+                        flatAccumulator: &flatList,
+                        watchedDirectoryKeys: &activeWatchedDirectoryKeys
+                    ) ?? []
                 let rootNode = WorkspaceFileNode(
                     url: mirrorDir,
                     name: mount.effectiveDisplayName,
@@ -119,15 +130,18 @@ extension EditorWorkspaceViewModel {
         }
     }
 
+    /// Lists the documents and folders at `url`, which is `relativePath` inside a sidebar root.
     func scanDirectory(
         at url: URL,
-        depth: Int,
-        remoteMountID: UUID?,
+        relativePath: String,
+        scope: SidebarScanScope,
         flatAccumulator: inout [WorkspaceFileNode],
         watchedDirectoryKeys: inout Set<String>
     ) -> [WorkspaceFileNode] {
-        guard depth < 4 else { return [] }
+        let remoteMountID = scope.remoteMountID
         if remoteMountID == nil {
+            let depth = relativePath.isEmpty ? 0 : relativePath.split(separator: "/").count
+            guard depth < 4 else { return [] }
             recordWatchedWorkspaceDirectory(url, activeKeys: &watchedDirectoryKeys)
         }
         let fm = FileManager.default
@@ -141,16 +155,12 @@ extension EditorWorkspaceViewModel {
             return []
         }
 
-        let ignoredDirs: Set<String> = [
-            ".build", ".git", "node_modules", "DerivedData", ".swiftpm",
-            "target", "bazel-bin", "bazel-out", "bazel-testlogs", "bazel-Folio",
-            "Folio.app", "vendor", "dist", "build"
-        ]
         var nodes: [WorkspaceFileNode] = []
 
         for itemURL in contents {
             let name = itemURL.lastPathComponent
-            if ignoredDirs.contains(name) || name.hasPrefix("bazel-") || name.hasSuffix(".app") { continue }
+            if WorkspaceFileNode.isIgnoredDirectoryName(name) { continue }
+            let itemRelativePath = relativePath.isEmpty ? name : relativePath + "/" + name
 
             let resourceValues = try? itemURL.resourceValues(forKeys: [.isDirectoryKey, .contentModificationDateKey, .creationDateKey])
             let isDir = resourceValues?.isDirectory ?? false
@@ -158,14 +168,26 @@ extension EditorWorkspaceViewModel {
             let createDate = resourceValues?.creationDate ?? Date.distantPast
 
             if isDir {
-                let children = scanDirectory(
-                    at: itemURL,
-                    depth: depth + 1,
-                    remoteMountID: remoteMountID,
-                    flatAccumulator: &flatAccumulator,
-                    watchedDirectoryKeys: &watchedDirectoryKeys
-                )
-                if !children.isEmpty {
+                if scope.filter.excludedPaths.contains(itemRelativePath) { continue }
+                let children: [WorkspaceFileNode]?
+                if remoteMountID != nil {
+                    children = remoteDirectoryChildren(
+                        at: itemURL,
+                        relativePath: itemRelativePath,
+                        scope: scope,
+                        flatAccumulator: &flatAccumulator,
+                        watchedDirectoryKeys: &watchedDirectoryKeys
+                    )
+                } else {
+                    children = scanDirectory(
+                        at: itemURL,
+                        relativePath: itemRelativePath,
+                        scope: scope,
+                        flatAccumulator: &flatAccumulator,
+                        watchedDirectoryKeys: &watchedDirectoryKeys
+                    )
+                }
+                if let children, !children.isEmpty {
                     let node = WorkspaceFileNode(
                         url: itemURL,
                         name: name,
@@ -190,7 +212,7 @@ extension EditorWorkspaceViewModel {
                     remoteMountID: remoteMountID,
                     syncStatus: syncStat
                 )
-                if node.isSupportedDocumentFile {
+                if node.isSupportedDocumentFile, scope.filter.showsFile(named: name) {
                     nodes.append(node)
                     flatAccumulator.append(node)
                 }
@@ -198,6 +220,48 @@ extension EditorWorkspaceViewModel {
         }
 
         return sortNodesArray(nodes, by: fileSortOrder)
+    }
+
+    /// Children of a remote mirror directory. A directory that is not listed yet gets one loading row.
+    /// Returns nil for a directory with no shown documents, so the tree hides it.
+    func remoteDirectoryChildren(
+        at url: URL,
+        relativePath: String,
+        scope: SidebarScanScope,
+        flatAccumulator: inout [WorkspaceFileNode],
+        watchedDirectoryKeys: inout Set<String>
+    ) -> [WorkspaceFileNode]? {
+        let placeholder = [
+            WorkspaceFileNode(
+                url: url.appendingPathComponent(".folio-loading", isDirectory: false),
+                name: "Loading…",
+                isDirectory: false,
+                modificationDate: Date.distantPast,
+                creationDate: Date.distantPast,
+                children: nil,
+                remoteMountID: scope.remoteMountID,
+                isLoadingPlaceholder: true
+            )
+        ]
+        guard remoteWorkspaceManager.isRemoteDirectoryLoaded(at: url) else {
+            return remoteWorkspaceManager.remoteDirectoryHasDocuments(at: url) == false ? nil : placeholder
+        }
+        let children = scanDirectory(
+            at: url,
+            relativePath: relativePath,
+            scope: scope,
+            flatAccumulator: &flatAccumulator,
+            watchedDirectoryKeys: &watchedDirectoryKeys
+        )
+        if !children.isEmpty { return children }
+        return remoteWorkspaceManager.hasListedRemoteDirectory(at: url) ? nil : placeholder
+    }
+
+    /// Lists a remote folder after the sidebar shows its loading row.
+    public func loadRemoteDirectory(at url: URL) {
+        Task { @MainActor in
+            await remoteWorkspaceManager.loadRemoteDirectory(at: url)
+        }
     }
 
     public func sortFileNodes() {

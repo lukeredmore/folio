@@ -30,6 +30,7 @@ extension EditorWorkspaceViewModel {
     public static let fileDisplayStyleDefaultsKey = "Folio.FileDisplayStyle.v1"
     public static let fileSortOrderDefaultsKey = "Folio.FileSortOrder.v1"
     public static let collapsedDirectoryPathsDefaultsKey = "Folio.CollapsedDirectoryPaths.v1"
+    public static let localSidebarFiltersDefaultsKey = "Folio.LocalSidebarFilters.v1"
     public static let selectedCursorLocationDefaultsKey = "Folio.SelectedCursorLocation.v1"
     public static let undoTimelinesDefaultsKey = "Folio.PerFileUndoTimelines.v1"
 

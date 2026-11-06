@@ -64,47 +64,59 @@ public struct SSHRemoteTransport: RemoteFileTransport {
         return "'\(escaped)'"
     }
 
-    public func fetchSnapshot(for mount: RemoteMountSpec) async throws -> [RemoteFileEntry] {
-        let escapedTarget = Self.shellEscapePath(mount.remotePath)
+    /// Quotes a mount-relative path for a POSIX shell. It never expands `~`.
+    static func shellQuote(_ value: String) -> String {
+        "'" + value.replacingOccurrences(of: "'", with: "'\\''") + "'"
+    }
 
-        let remoteScript: String
+    /// Shell function `fetch_file PATH LABEL`: prints one snapshot record for PATH, named LABEL.
+    static let fetchFileFunction = """
+        fetch_file() {
+            [ -f "$1" ] || return 0
+            MTIME=$(stat -c %Y "$1" 2>/dev/null || stat -f %m "$1" 2>/dev/null || echo 0)
+            printf "===FOLIO_FILE===\\t%s\\t%s\\n" "$2" "$MTIME"
+            base64 < "$1" | tr -d '\\r\\n'
+            printf "\\n===FOLIO_END===\\n"
+        }
+        """
+
+    public func fetchFiles(_ relativePaths: [String], for mount: RemoteMountSpec) async throws -> [RemoteFileEntry] {
+        let escapedTarget = Self.shellEscapePath(mount.remotePath)
+        let calls: String
+        let directoryCheck: String
         switch mount.targetKind {
         case .file:
-            remoteScript = """
-                TARGET=\(escapedTarget)
+            guard !relativePaths.isEmpty else { return [] }
+            directoryCheck = """
                 if [ ! -f "$TARGET" ]; then
                     echo "__FOLIO_ERR_NOT_FOUND__" >&2
                     exit 44
                 fi
-                BASENAME=$(basename "$TARGET")
-                MTIME=$(date -r "$TARGET" +%s 2>/dev/null || stat -c %Y "$TARGET" 2>/dev/null || stat -f %m "$TARGET" 2>/dev/null || echo 0)
-                printf "===FOLIO_FILE===\\t%s\\t%s\\n" "$BASENAME" "$MTIME"
-                base64 < "$TARGET" | tr -d '\\r\\n'
-                printf "\\n===FOLIO_END===\\n"
                 """
+            calls = "fetch_file \"$TARGET\" \"$(basename \"$TARGET\")\""
         case .folder:
-            remoteScript = """
-                TARGET=\(escapedTarget)
+            let cleanPaths = relativePaths.map { $0.trimmingCharacters(in: CharacterSet(charactersIn: "/")) }.filter { !$0.isEmpty }
+            guard !cleanPaths.isEmpty else { return [] }
+            directoryCheck = """
                 if [ ! -d "$TARGET" ]; then
                     echo "__FOLIO_ERR_NOT_FOUND__" >&2
                     exit 44
                 fi
                 cd "$TARGET" || exit 44
-                find . -maxdepth 4 \\( -name .git -o -name node_modules -o -name target -o -name .build -o -name DerivedData -o -name dist -o -name build \\) -prune -o -type f \\( -iname '*.md' -o -iname '*.markdown' -o -iname '*.mdown' -o -iname '*.mkd' -o -iname '*.txt' \\) -print | while IFS= read -r f; do
-                    REL="${f#./}"
-                    MTIME=$(date -r "$f" +%s 2>/dev/null || stat -c %Y "$f" 2>/dev/null || stat -f %m "$f" 2>/dev/null || echo 0)
-                    printf "===FOLIO_FILE===\\t%s\\t%s\\n" "$REL" "$MTIME"
-                    base64 < "$f" | tr -d '\\r\\n'
-                    printf "\\n===FOLIO_END===\\n"
-                done
                 """
+            calls = cleanPaths.map { "fetch_file \(Self.shellQuote($0)) \(Self.shellQuote($0))" }.joined(separator: "\n")
         }
+        let remoteScript = """
+            TARGET=\(escapedTarget)
+            \(directoryCheck)
+            \(Self.fetchFileFunction)
+            \(calls)
+            """
 
         let (stdout, stderr, status) = try await runSSHScript(for: mount, script: remoteScript)
         guard status == 0 else {
             throw mapSSHError(mount: mount, status: status, stderr: stderr)
         }
-
         return Self.parseSnapshotOutput(stdout)
     }
 

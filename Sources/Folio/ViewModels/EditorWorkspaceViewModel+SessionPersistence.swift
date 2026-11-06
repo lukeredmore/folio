@@ -107,6 +107,14 @@ extension EditorWorkspaceViewModel {
             self.collapsedDirectoryPaths = []
         }
 
+        if let filterData = resolvedDefaults.data(forKey: Self.localSidebarFiltersDefaultsKey),
+            let filters = try? JSONDecoder().decode([String: SidebarRootFilter].self, from: filterData)
+        {
+            self.localSidebarFilters = filters
+        } else {
+            self.localSidebarFilters = [:]
+        }
+
         if !undoTimelineStore.hasLoaded {
             if let savedTimelinesData = resolvedDefaults.data(forKey: Self.undoTimelinesDefaultsKey),
                 let decodedTimelines = try? JSONDecoder().decode([String: DocumentUndoTimeline].self, from: savedTimelinesData)

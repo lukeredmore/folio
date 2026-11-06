@@ -13,6 +13,11 @@ struct SidebarNodeActions {
     let removeLocalFolder: (URL) -> Void
     let deleteItem: (URL) -> Void
     let openInNewTab: (URL) -> Void
+    /// The filter of a folder sidebar root. Nil for every other row.
+    let rootFilter: SidebarRootFilter?
+    let setFileTypeShown: (SidebarFileType, Bool) -> Void
+    let excludeFolder: (URL) -> Void
+    let includeExcludedFolder: (String) -> Void
 }
 
 struct SidebarArticleRow: View {
@@ -101,6 +106,23 @@ struct SidebarFileRow: View {
     }
 }
 
+/// The child row of a remote folder that is not listed yet. Showing it starts the listing.
+struct SidebarLoadingRow: View {
+    let load: () -> Void
+
+    var body: some View {
+        HStack(spacing: 6) {
+            ProgressView()
+                .controlSize(.small)
+                .frame(width: SidebarArticleRow.iconColumnWidth)
+            Text("Loading…")
+                .foregroundStyle(.secondary)
+        }
+        .tag(Optional<URL>.none)
+        .onAppear(perform: load)
+    }
+}
+
 struct SidebarNodeContextMenu: View {
     let node: WorkspaceFileNode
     let actions: SidebarNodeActions
@@ -126,6 +148,17 @@ struct SidebarNodeContextMenu: View {
                 Label("New LaTeX File (.tex)", systemImage: "function")
             }
             Divider()
+            if let filter = actions.rootFilter {
+                SidebarRootFilterMenuItems(filter: filter, actions: actions)
+                Divider()
+            } else {
+                Button {
+                    actions.excludeFolder(node.url)
+                } label: {
+                    Label("Exclude from Sidebar", systemImage: "eye.slash")
+                }
+                Divider()
+            }
         }
         if let mountID = node.remoteMountID {
             Button {
@@ -193,6 +226,41 @@ struct SidebarNodeContextMenu: View {
                 actions.deleteItem(node.url)
             } label: {
                 Label(node.isRemote ? "Delete from Remote…" : "Move to Trash", systemImage: "trash")
+            }
+        }
+    }
+}
+
+/// File type checkboxes and excluded folder rows for the context menu of a sidebar root.
+struct SidebarRootFilterMenuItems: View {
+    let filter: SidebarRootFilter
+    let actions: SidebarNodeActions
+
+    var body: some View {
+        Section("Show File Types") {
+            ForEach(SidebarFileType.allCases) { type in
+                Toggle(
+                    type.menuTitle,
+                    isOn: Binding(
+                        get: { !filter.hiddenFileTypes.contains(type) },
+                        set: { actions.setFileTypeShown(type, $0) }
+                    ))
+            }
+        }
+        if !filter.excludedPaths.isEmpty {
+            Section("Excluded Folders") {
+                ForEach(filter.excludedPaths.sorted(), id: \.self) { path in
+                    Toggle(
+                        path,
+                        isOn: Binding(
+                            get: { true },
+                            set: { isExcluded in
+                                if !isExcluded {
+                                    actions.includeExcludedFolder(path)
+                                }
+                            }
+                        ))
+                }
             }
         }
     }
