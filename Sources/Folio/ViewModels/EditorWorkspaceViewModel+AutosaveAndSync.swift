@@ -235,20 +235,32 @@ extension EditorWorkspaceViewModel {
             wasAutoMerged: wasAutoMerged,
             sourceDescription: sourceDescription
         )
-        externalUpdateHighlightRanges = diff.changedCharacterRanges
+        scheduleExternalUpdateHighlights(diff.changedCharacterRanges)
+    }
 
+    func scheduleExternalUpdateHighlights(_ ranges: [NSRange]) {
         externalHighlightClearTask?.cancel()
+        externalUpdateHighlightRanges = ranges
+        guard !ranges.isEmpty else { return }
+        let duration = externalHighlightDurationNanoseconds
         externalHighlightClearTask = Task { @MainActor [weak self] in
-            try? await Task.sleep(nanoseconds: 8_000_000_000)
+            try? await Task.sleep(nanoseconds: duration)
             guard !Task.isCancelled, let self = self else { return }
             self.externalUpdateHighlightRanges = []
         }
     }
 
-    public func dismissExternalUpdateNotice() {
+    func clearExternalUpdateHighlights() {
         externalHighlightClearTask?.cancel()
+        externalHighlightClearTask = nil
+        if !externalUpdateHighlightRanges.isEmpty {
+            externalUpdateHighlightRanges = []
+        }
+    }
+
+    public func dismissExternalUpdateNotice() {
+        clearExternalUpdateHighlights()
         externalUpdateNotice = nil
-        externalUpdateHighlightRanges = []
         showExternalUpdateDiffModal = false
     }
 
@@ -324,7 +336,7 @@ extension EditorWorkspaceViewModel {
 
         performDiskWrite(resolved, to: conflict.fileURL)
         let diff = DocumentLineDiff.computeDiff(from: baselineForUndo, to: resolved)
-        externalUpdateHighlightRanges = diff.changedCharacterRanges
+        scheduleExternalUpdateHighlights(diff.changedCharacterRanges)
         persistDocumentSessionState()
     }
 }

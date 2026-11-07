@@ -13,6 +13,7 @@ public final class EditorWorkspaceViewModel: ObservableObject, HybridMarkdownWor
         didSet {
             guard !isRestoringState else { return }
             if !isApplyingInternalStateChange && markdownText != oldValue {
+                clearExternalUpdateHighlights()
                 let allowCoalesce = isLiveKeystrokeInProgress && canCoalesceLiveTyping
                 recordUndoStep(
                     from: oldValue,
@@ -72,7 +73,14 @@ public final class EditorWorkspaceViewModel: ObservableObject, HybridMarkdownWor
     @Published public var canUndo: Bool = false
     @Published public var canRedo: Bool = false
     @Published public var externalUpdateNotice: ExternalUpdateNotice?
-    @Published public var externalUpdateHighlightRanges: [NSRange] = []
+    @Published public var externalUpdateHighlightRanges: [NSRange] = [] {
+        didSet {
+            if let tv = activeTextView, tv.externalUpdateHighlightRanges != externalUpdateHighlightRanges {
+                tv.externalUpdateHighlightRanges = externalUpdateHighlightRanges
+            }
+        }
+    }
+    public var externalHighlightDurationNanoseconds: UInt64 = 8_000_000_000
     @Published public var showExternalUpdateDiffModal: Bool = false
     @Published public var activeConflict: DocumentConflict?
     @Published public var showConflictResolverModal: Bool = false

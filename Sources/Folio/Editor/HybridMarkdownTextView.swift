@@ -127,7 +127,16 @@ public final class HybridMarkdownTextView: NSTextView {
 
     public var externalUpdateHighlightRanges: [NSRange] = [] {
         didSet {
-            if externalUpdateHighlightRanges != oldValue { needsDisplay = true }
+            guard externalUpdateHighlightRanges != oldValue else { return }
+            if let layoutManager = self.layoutManager {
+                let nsLen = (self.string as NSString).length
+                for rawRange in oldValue + externalUpdateHighlightRanges {
+                    let loc = max(0, min(rawRange.location, nsLen))
+                    let len = max(0, min(rawRange.length, nsLen - loc))
+                    layoutManager.invalidateDisplay(forCharacterRange: NSRange(location: loc, length: len))
+                }
+            }
+            needsDisplay = true
         }
     }
 

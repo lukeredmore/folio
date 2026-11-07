@@ -240,4 +240,51 @@ final class ExternalSyncAndConflictTests: XCTestCase {
         XCTAssertEqual(vm.lastSavedDiskContent, afterFirstEdit)
         XCTAssertTrue(vm.isDirty)
     }
+
+    @MainActor
+    func testExternalUpdateHighlightRangesExpireAndClearOnUserEditOrConflictResolution() async throws {
+        let tempDir = try makeTemporaryDirectory("FolioHighlightExpiryTest")
+        let fileURL = tempDir.appendingPathComponent("Notes.md")
+        let initial = "- grid\n  - pagination\n  - query taps\n"
+        try initial.write(to: fileURL, atomically: true, encoding: .utf8)
+
+        let vm = makeIsolatedViewModel()
+        vm.autoSaveDelay = 0
+        vm.externalHighlightDurationNanoseconds = 60_000_000 // 60 ms
+        vm.openFile(at: fileURL)
+
+        // 1. External update highlights changed lines and automatically clears after the timer expires
+        let updated1 = "- grid\n  - pagination\n  - client-side exclusions from filter\n  - query taps\n"
+        try updated1.write(to: fileURL, atomically: true, encoding: .utf8)
+        vm.checkForExternalFileChanges(for: fileURL)
+        XCTAssertFalse(vm.externalUpdateHighlightRanges.isEmpty)
+
+        try await Task.sleep(nanoseconds: 140_000_000)
+        XCTAssertTrue(vm.externalUpdateHighlightRanges.isEmpty, "External update highlight must clear after timer expires")
+
+        // 2. User edit immediately clears any active external update highlight without waiting for timer
+        vm.externalHighlightDurationNanoseconds = 60_000_000_000
+        let updated2 = "- grid\n  - pagination\n  - client-side exclusions from filter\n  - filters spacing\n  - query taps\n"
+        try updated2.write(to: fileURL, atomically: true, encoding: .utf8)
+        vm.checkForExternalFileChanges(for: fileURL)
+        XCTAssertFalse(vm.externalUpdateHighlightRanges.isEmpty)
+
+        let userEdited = updated2.replacingOccurrences(of: "pagination", with: "~~pagination~~")
+        vm.handleEditorTextEdited(userEdited, selectedRange: NSRange(location: 10, length: 0))
+        XCTAssertTrue(vm.externalUpdateHighlightRanges.isEmpty, "Editing the document must immediately clear stale external update highlights")
+
+        // 3. Conflict resolution highlights also expire automatically
+        vm.externalHighlightDurationNanoseconds = 60_000_000
+        let diskConflict = userEdited.replacingOccurrences(of: "query taps", with: "query taps (remote)")
+        try diskConflict.write(to: fileURL, atomically: true, encoding: .utf8)
+        let localConflict = userEdited.replacingOccurrences(of: "query taps", with: "query taps (local)")
+        vm.handleEditorTextEdited(localConflict, selectedRange: NSRange(location: 10, length: 0))
+        XCTAssertNotNil(vm.activeConflict)
+
+        vm.resolveConflict(using: .keepBoth)
+        XCTAssertFalse(vm.externalUpdateHighlightRanges.isEmpty)
+
+        try await Task.sleep(nanoseconds: 140_000_000)
+        XCTAssertTrue(vm.externalUpdateHighlightRanges.isEmpty, "Conflict resolution highlight must also clear after timer expires")
+    }
 }

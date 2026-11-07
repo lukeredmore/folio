@@ -233,6 +233,7 @@ extension EditorWorkspaceViewModel {
     }
 
     func applyHistoricalTextState(_ targetText: String, selectedRange: NSRange) {
+        clearExternalUpdateHighlights()
         let clampedLoc = max(0, min((targetText as NSString).length, selectedRange.location))
         let clampedLen = max(0, min((targetText as NSString).length - clampedLoc, selectedRange.length))
         let clampedRange = NSRange(location: clampedLoc, length: clampedLen)

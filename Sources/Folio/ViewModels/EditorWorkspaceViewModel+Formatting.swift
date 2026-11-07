@@ -46,6 +46,7 @@ extension EditorWorkspaceViewModel {
         currentSelectedRange = selectedRange
         if markdownText != newText {
             let oldText = markdownText
+            clearExternalUpdateHighlights()
             isApplyingInternalStateChange = true
             markdownText = newText
             isApplyingInternalStateChange = false
