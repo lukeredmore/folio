@@ -233,4 +233,37 @@ final class WindowTabBarLayoutTests: XCTestCase {
             "Editor canvas must return to the top edge of the window once the tab bar is gone"
         )
     }
+
+    func testExternalUpdateHighlightClearsOnTextViewWhenTimerExpires() throws {
+        let tempDir = try makeTemporaryDirectory("FolioHostedHighlightTest")
+        let fileURL = tempDir.appendingPathComponent("Hosted.md")
+        let initial = "# Notes\n\n- grid\n  - pagination\n  - query taps\n"
+        try initial.write(to: fileURL, atomically: true, encoding: .utf8)
+
+        let vm = makeIsolatedViewModel()
+        vm.externalHighlightDurationNanoseconds = 80_000_000 // 80 ms
+        let hosted = HostedMainWindow(viewModel: vm, showSidebar: true, markdown: initial)
+        defer { hosted.close() }
+
+        vm.openFile(at: fileURL)
+        hosted.pump(0.1)
+        let textView = try XCTUnwrap(vm.activeTextView)
+        XCTAssertTrue(textView.externalUpdateHighlightRanges.isEmpty)
+
+        let updated = "# Notes\n\n- grid\n  - pagination\n  - client-side exclusions from filter\n  - query taps\n"
+        try updated.write(to: fileURL, atomically: true, encoding: .utf8)
+        vm.checkForExternalFileChanges(for: fileURL)
+        XCTAssertFalse(vm.externalUpdateHighlightRanges.isEmpty)
+        XCTAssertFalse(
+            textView.externalUpdateHighlightRanges.isEmpty,
+            "Text view must receive external update highlight ranges immediately"
+        )
+
+        hosted.pump(0.25)
+        XCTAssertTrue(vm.externalUpdateHighlightRanges.isEmpty)
+        XCTAssertTrue(
+            textView.externalUpdateHighlightRanges.isEmpty,
+            "Text view must clear external update highlight ranges when the timer expires even while the notice remains visible"
+        )
+    }
 }
