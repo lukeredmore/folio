@@ -100,9 +100,12 @@ final class PageLayoutAndPrintTests: XCTestCase {
 
     func testDarkThemesPrintWithTheLightTheme() {
         let vm = makeIsolatedViewModel()
-        vm.theme = .midnight
+        vm.selectTheme(.editorial)
+        vm.appearanceMode = .dark
         XCTAssertTrue(vm.theme.isDark)
         XCTAssertFalse(vm.printTheme.isDark)
+        XCTAssertEqual(vm.printTheme.id, "Editorial")
+        XCTAssertEqual(vm.printTheme.editorBackground, EditorTheme.editorial.lightPalette.editorBackground)
         XCTAssertEqual(vm.printTheme.typography, vm.typography)
     }
 

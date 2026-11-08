@@ -53,12 +53,12 @@ Folio reads the master's preamble and the files that the preamble `\input`s when
 User macros with arguments render as styled text, also when their arguments continue on later lines (up to 40 lines, and not past a blank line). A macro whose body only does layout, such as `\settowidth` or `\item`, hides its name and braces and shows its arguments, with a separator between them. Macros that lay out `\\`-separated alternatives in an `array` show them stacked, or as `{a | b}` when the array has an opening brace. Lines that hold only layout commands (font switches, spacing, rules, page styles, lengths, and definitions) fold, and their font switches style the lines after them until the group or environment ends. The cursor line, or every line of the macro call that holds the cursor, shows the source.
 
 ### Included macOS App Themes
-1. **Daylight** (`#ffffff` background, `#4183C4` links, SF Pro / Helvetica Neue)
-2. **Midnight** (`#363B40` dark canvas, `#2E3033` sidebar, `#B8BFC6` body text, `#e0b27e` links)
-3. **Parchment** (`#f3f2ee` warm paper canvas, `#1f0909` ink text, PT Serif / Georgia typography)
-4. **Editorial** (Charter / Georgia generous editorial typography, `#0076df` accents)
-5. **Classic** (`#fefefe` centered serif headings, justified Palatino body)
-6. **Modernist** (`#fcfcfc` geometric sans-serif with uppercase centered H1)
+Each built-in theme provides both Light and Dark mode swatch variants that switch with the app appearance (`System`, `Light`, or `Dark` under the **Themes** menu):
+1. **Daylight** (`#ffffff` light / `#363B40` dark canvas, `#4183C4` / `#e0b27e` links, SF Pro / Helvetica Neue)
+2. **Parchment** (`#f3f2ee` warm paper / `#25211d` espresso dark canvas, PT Serif / Georgia typography)
+3. **Editorial** (Charter / Georgia generous editorial typography, `#0076df` / `#58a6ff` accents)
+4. **Classic** (`#fefefe` light / `#20232a` oxford dark canvas, centered serif headings, Palatino body)
+5. **Modernist** (`#fcfcfc` light / `#19191a` carbon dark canvas, geometric sans-serif with uppercase centered H1)
 
 ---
 

@@ -16,6 +16,7 @@ extension EditorWorkspaceViewModel {
     public static let hasSavedDocumentSessionDefaultsKey = "Folio.HasSavedDocumentSession.v1"
     public static let recentFilePathsDefaultsKey = "Folio.RecentFilePaths.v1"
     public static let themeDefaultsKey = "Folio.EditorTheme.v1"
+    public static let appearanceModeDefaultsKey = "Folio.AppearanceMode.v1"
     public static let sourceCodeModeDefaultsKey = "Folio.SourceCodeMode.v1"
     public static let focusModeDefaultsKey = "Folio.FocusMode.v1"
     public static let typewriterModeDefaultsKey = "Folio.TypewriterMode.v1"

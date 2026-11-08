@@ -41,11 +41,7 @@ pub struct ZedThemeOverrides {
 impl ZedThemeOverrides {
     pub fn for_appearance(is_dark: bool) -> Self {
         let appearance = ZedAppearanceMode::from_is_dark(is_dark);
-        let m = ThemeMetrics::for_theme(if is_dark {
-            ThemeId::Midnight
-        } else {
-            ThemeId::Daylight
-        });
+        let m = ThemeMetrics::for_theme(ThemeId::Daylight, is_dark);
         Self {
             appearance,
             is_dark: m.is_dark,

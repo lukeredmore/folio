@@ -68,7 +68,7 @@ extension EditorWorkspaceViewModel {
         ---
         ## Key Features
         - [x] **Seamless Hybrid WYSIWYG Editor** (`HybridMarkdownTextView`) with zero-latency native TextKit layout
-        - [x] **6 Curated Themes**: *Daylight*, *Midnight*, *Parchment*, *Editorial*, *Classic*, and *Modernist*
+        - [x] **5 Curated Themes**: *Daylight*, *Parchment*, *Editorial*, *Classic*, and *Modernist* (each with Light & Dark mode swatch variants)
         - [x] **Focus Mode** (`F8`) & **Typewriter Mode** (`F9`) & **Source Code Mode** (`Cmd+/`)
         - [x] **Hierarchical Sidebar** (`Cmd+Shift+L`): Document **Outline**, **Files** (Tree & List views), and **Global Search**
         - [x] **Quick Open Modal** (`Cmd+P`) for instant fuzzy file switching

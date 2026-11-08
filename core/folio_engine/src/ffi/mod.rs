@@ -127,8 +127,8 @@ pub unsafe extern "C" fn ot_engine_free_string(str_ptr: *mut c_char) {
 }
 
 #[no_mangle]
-pub extern "C" fn ot_engine_theme_metrics(theme_id: u32) -> OTThemeMetrics {
-    let m = ThemeMetrics::for_theme(ThemeId::from_u32(theme_id));
+pub extern "C" fn ot_engine_theme_metrics(theme_id: u32, is_dark: bool) -> OTThemeMetrics {
+    let m = ThemeMetrics::for_theme(ThemeId::from_u32(theme_id), is_dark);
     OTThemeMetrics {
         is_dark: m.is_dark,
         base_font_size: m.base_font_size,

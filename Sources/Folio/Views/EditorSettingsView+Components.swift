@@ -119,19 +119,17 @@ extension EditorSettingsView {
         selection: Binding<String>,
         options: [(label: String, value: String)]
     ) -> some View {
-        HStack {
+        let extraFamilies = EditorTheme.additionalSystemFontFamilies(excluding: options)
+        return HStack {
             Text(title)
                 .font(.system(size: 12))
             Spacer()
-            Picker(title, selection: selection) {
-                ForEach(options, id: \.value) { option in
-                    Text(option.label).tag(option.value)
-                }
-                if !options.contains(where: { $0.value == selection.wrappedValue }) {
-                    Text(selection.wrappedValue).tag(selection.wrappedValue)
-                }
-            }
-            .labelsHidden()
+            FontFamilyPopUpButton(
+                title: title,
+                selection: selection,
+                options: options,
+                extraFamilies: extraFamilies
+            )
             .frame(width: 245)
         }
     }
@@ -201,6 +199,83 @@ extension EditorSettingsView {
                 .font(.system(size: 11.5, design: .monospaced))
                 .foregroundColor(.secondary)
                 .frame(width: 58, alignment: .trailing)
+        }
+    }
+}
+
+private struct FontFamilyPopUpButton: NSViewRepresentable {
+    let title: String
+    @Binding var selection: String
+    let options: [(label: String, value: String)]
+    let extraFamilies: [String]
+
+    func makeCoordinator() -> Coordinator { Coordinator(selection: $selection) }
+
+    func makeNSView(context: Context) -> NSPopUpButton {
+        let popUp = NSPopUpButton(frame: .zero, pullsDown: false)
+        popUp.setAccessibilityTitle(title)
+        context.coordinator.configureMenu(for: popUp, options: options, extraFamilies: extraFamilies, selection: selection)
+        return popUp
+    }
+
+    func updateNSView(_ nsView: NSPopUpButton, context: Context) {
+        context.coordinator.selection = $selection
+        context.coordinator.configureMenu(for: nsView, options: options, extraFamilies: extraFamilies, selection: selection)
+    }
+
+    @MainActor
+    final class Coordinator: NSObject {
+        var selection: Binding<String>
+
+        init(selection: Binding<String>) { self.selection = selection }
+
+        func configureMenu(
+            for popUp: NSPopUpButton,
+            options: [(label: String, value: String)],
+            extraFamilies: [String],
+            selection: String
+        ) {
+            let menu = NSMenu(title: popUp.accessibilityTitle() ?? "Font")
+            var itemToSelect: NSMenuItem?
+
+            func makeItem(title: String, value: String) -> NSMenuItem {
+                let item = NSMenuItem(title: title, action: #selector(selectFontItem(_:)), keyEquivalent: "")
+                item.target = self
+                item.representedObject = value
+                item.state = (value == selection) ? .on : .off
+                return item
+            }
+
+            for option in options {
+                let item = makeItem(title: option.label, value: option.value)
+                if option.value == selection { itemToSelect = item }
+                menu.addItem(item)
+            }
+
+            if itemToSelect == nil {
+                let customItem = makeItem(title: selection, value: selection)
+                menu.addItem(customItem)
+                itemToSelect = customItem
+            }
+
+            if !extraFamilies.isEmpty {
+                menu.addItem(.separator())
+                let moreItem = NSMenuItem(title: "More", action: nil, keyEquivalent: "")
+                let submenu = NSMenu(title: "More")
+                for family in extraFamilies {
+                    submenu.addItem(makeItem(title: family, value: family))
+                }
+                moreItem.submenu = submenu
+                menu.addItem(moreItem)
+            }
+
+            popUp.menu = menu
+            if let itemToSelect { popUp.select(itemToSelect) }
+        }
+
+        @objc func selectFontItem(_ sender: NSMenuItem) {
+            guard let value = sender.representedObject as? String else { return }
+            selection.wrappedValue = value
         }
     }
 }

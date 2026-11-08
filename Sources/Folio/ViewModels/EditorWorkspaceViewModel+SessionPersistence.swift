@@ -9,6 +9,21 @@ extension EditorWorkspaceViewModel {
         resolvedDefaults: UserDefaults,
         manager: RemoteWorkspaceManager
     ) {
+        if resolvedDefaults === UserDefaults.standard {
+            self.systemIsDark = EditorAppearanceMode.currentSystemIsDark
+            if let app = NSApp {
+                app.publisher(for: \.effectiveAppearance)
+                    .receive(on: RunLoop.main)
+                    .sink { [weak self] appearance in
+                        let isDark = appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
+                        self?.systemIsDark = isDark
+                    }
+                    .store(in: &cancellables)
+            }
+        } else {
+            self.systemIsDark = false
+        }
+
         let loadedCustomThemes: [EditorTheme]
         if let customData = resolvedDefaults.data(forKey: Self.customThemesDefaultsKey),
             let decodedCustom = try? JSONDecoder().decode([EditorTheme].self, from: customData)
@@ -25,12 +40,14 @@ extension EditorWorkspaceViewModel {
             let decodedActive = try? JSONDecoder().decode(EditorTheme.self, from: activeData)
         {
             restoredTheme = decodedActive
-        } else if let rawTheme = resolvedDefaults.string(forKey: Self.themeDefaultsKey),
-            let matched = allAvailable.first(where: {
+        } else if let rawTheme = resolvedDefaults.string(forKey: Self.themeDefaultsKey) {
+            if let matched = allAvailable.first(where: {
                 $0.id.caseInsensitiveCompare(rawTheme) == .orderedSame || $0.name.caseInsensitiveCompare(rawTheme) == .orderedSame
-            }) ?? EditorTheme(rawValue: rawTheme)
-        {
-            restoredTheme = matched
+            }) ?? EditorTheme(rawValue: rawTheme) {
+                restoredTheme = matched
+            } else {
+                restoredTheme = .daylight
+            }
             if let data = resolvedDefaults.data(forKey: Self.typographyDefaultsKey),
                 let decodedTypo = try? JSONDecoder().decode(EditorTypographySettings.self, from: data)
             {
@@ -45,6 +62,15 @@ extension EditorWorkspaceViewModel {
             }
         }
 
+        if let rawAppearance = resolvedDefaults.string(forKey: Self.appearanceModeDefaultsKey),
+            let decodedAppearance = EditorAppearanceMode(rawValue: rawAppearance)
+        {
+            self.appearanceMode = decodedAppearance
+        } else {
+            self.appearanceMode = .system
+        }
+
+        restoredTheme.isDark = self.effectiveIsDark
         self.theme = restoredTheme
         self.typography = restoredTheme.typography
 

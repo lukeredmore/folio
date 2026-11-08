@@ -87,7 +87,8 @@ final class WorkspaceAndPersistenceTests: XCTestCase {
             vm1.openFile(at: fileB)
             vm1.updateSelectionStats(selectedRange: NSRange(location: 16, length: 0))
 
-            vm1.theme = .midnight
+            vm1.selectTheme(.editorial)
+            vm1.appearanceMode = .dark
             vm1.sourceCodeMode = true
             vm1.focusMode = true
             vm1.typewriterMode = true
@@ -112,7 +113,8 @@ final class WorkspaceAndPersistenceTests: XCTestCase {
             XCTAssertEqual(vm2.headings.map(\.title), ["Beta Heading"])
             XCTAssertEqual(vm2.pendingScrollToCharacterLocation, 16)
 
-            XCTAssertEqual(vm2.theme, .midnight)
+            XCTAssertEqual(vm2.theme, EditorTheme.editorial.withAppearance(isDark: true))
+            XCTAssertEqual(vm2.appearanceMode, .dark)
             XCTAssertTrue(vm2.sourceCodeMode)
             XCTAssertTrue(vm2.focusMode)
             XCTAssertTrue(vm2.typewriterMode)
@@ -344,5 +346,41 @@ final class WorkspaceAndPersistenceTests: XCTestCase {
         let proseWidth = min(max(viewportWidth - 72, 200), vm.typography.maxColumnWidth)
         let expectedInset = max((viewportWidth - proseWidth) / 2.0, 36.0)
         XCTAssertEqual(tv.textContainerOrigin.x, expectedInset, accuracy: 0.5)
+    }
+
+    @MainActor
+    func testEditorSettingsFontPickerMoreSubmenu() throws {
+        let vm = makeIsolatedViewModel()
+        let hostingView = NSHostingView(rootView: EditorSettingsView(viewModel: vm, initialTab: .fonts))
+        hostingView.frame = NSRect(x: 0, y: 0, width: 460, height: 635)
+        hostingView.layoutSubtreeIfNeeded()
+        RunLoop.current.run(until: Date().addingTimeInterval(0.05))
+        hostingView.layoutSubtreeIfNeeded()
+
+        func collectPopUpButtons(in view: NSView) -> [NSPopUpButton] {
+            var result: [NSPopUpButton] = []
+            if let popUp = view as? NSPopUpButton {
+                result.append(popUp)
+            }
+            for sub in view.subviews {
+                result.append(contentsOf: collectPopUpButtons(in: sub))
+            }
+            return result
+        }
+
+        let popUps = collectPopUpButtons(in: hostingView)
+        let moreMenus = popUps.compactMap { popUp in
+            popUp.menu?.items.first(where: { $0.title == "More" && $0.submenu != nil })?.submenu
+        }
+        XCTAssertGreaterThanOrEqual(moreMenus.count, 3, "Body, Heading, and Code font pickers must each include a 'More' submenu")
+        for submenu in moreMenus {
+            XCTAssertGreaterThan(submenu.items.count, 5, "'More' submenu should list available system fonts")
+        }
+
+        // Selecting a font from the Body Font "More" submenu updates vm.theme.bodyFontFamily
+        let bodySubmenu = try XCTUnwrap(moreMenus.first)
+        let firstExtraFont = try XCTUnwrap(bodySubmenu.items.first?.title)
+        bodySubmenu.performActionForItem(at: 0)
+        XCTAssertEqual(vm.theme.bodyFontFamily, firstExtraFont)
     }
 }

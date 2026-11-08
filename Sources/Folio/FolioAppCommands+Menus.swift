@@ -195,6 +195,22 @@ extension FolioAppCommands {
     @CommandsBuilder
     var themesCommandMenu: some Commands {
         CommandMenu("Themes") {
+            Section("Appearance") {
+                ForEach(EditorAppearanceMode.allCases) { mode in
+                    Button {
+                        viewModel.appearanceMode = mode
+                    } label: {
+                        if viewModel.appearanceMode == mode {
+                            Text("✓ \(mode.displayName)")
+                        } else {
+                            Text("   \(mode.displayName)")
+                        }
+                    }
+                }
+            }
+
+            Divider()
+
             ForEach(EditorTheme.builtInThemes) { themeOption in
                 Button {
                     viewModel.selectTheme(themeOption)

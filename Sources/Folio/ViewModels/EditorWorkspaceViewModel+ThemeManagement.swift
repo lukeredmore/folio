@@ -47,10 +47,10 @@ extension EditorWorkspaceViewModel {
     /// True when the active theme has unsaved font, color, or spacing modifications relative to its saved definition.
     public var isCurrentThemeModified: Bool {
         guard let reference = savedReferenceForCurrentTheme else { return true }
-        return reference != theme
+        return !theme.hasSameDefinition(as: reference)
     }
 
-    /// If the active theme is one of the built-in preset-named themes (`Daylight`, `Midnight`, `Parchment`, `Editorial`, `Classic`, `Modernist`),
+    /// If the active theme is one of the built-in preset-named themes (`Daylight`, `Parchment`, `Editorial`, `Classic`, `Modernist`),
     /// returns its factory default definition.
     public var defaultPresetForCurrentTheme: EditorTheme? {
         theme.defaultPreset
@@ -59,7 +59,7 @@ extension EditorWorkspaceViewModel {
     /// True when the active theme is a preset-named theme and differs from its factory default (either via unsaved edits or saved modifications).
     public var canResetCurrentPresetToDefault: Bool {
         guard let factoryDefault = defaultPresetForCurrentTheme else { return false }
-        return theme != factoryDefault
+        return !theme.hasSameDefinition(as: factoryDefault)
     }
 
     /// Switches to a built-in or custom saved theme by value.
@@ -98,7 +98,7 @@ extension EditorWorkspaceViewModel {
             savedPreset.isBuiltIn = true
             savedPreset.basePresetID = preset.id
 
-            if savedPreset == preset {
+            if savedPreset.hasSameDefinition(as: preset) {
                 customThemes.removeAll {
                     $0.id.caseInsensitiveCompare(preset.id) == .orderedSame || $0.name.caseInsensitiveCompare(preset.name) == .orderedSame
                 }
