@@ -89,6 +89,7 @@ fn test_replace_code_fence_language_and_table_headers() {
 
 #[test]
 fn test_all_five_themes_light_and_dark_variants() {
+    let mut dark_bgs = Vec::new();
     for &theme in ThemeId::all() {
         let light = ThemeMetrics::for_theme(theme, false);
         let dark = ThemeMetrics::for_theme(theme, true);
@@ -100,6 +101,12 @@ fn test_all_five_themes_light_and_dark_variants() {
         assert_eq!(light.max_write_width, dark.max_write_width);
         assert_ne!(light.editor_bg, dark.editor_bg);
         assert_ne!(light.text_fg, dark.text_fg);
+        dark_bgs.push(dark.editor_bg);
+    }
+    for i in 0..dark_bgs.len() {
+        for j in (i + 1)..dark_bgs.len() {
+            assert_ne!(dark_bgs[i], dark_bgs[j]);
+        }
     }
 }
 
