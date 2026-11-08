@@ -88,14 +88,19 @@ fn test_replace_code_fence_language_and_table_headers() {
 }
 
 #[test]
-fn test_all_six_themes() {
+fn test_all_five_themes_light_and_dark_variants() {
     for &theme in ThemeId::all() {
-        let m = ThemeMetrics::for_theme(theme);
-        assert!(m.base_font_size > 12.0);
-        assert!(m.max_write_width > 600.0);
+        let light = ThemeMetrics::for_theme(theme, false);
+        let dark = ThemeMetrics::for_theme(theme, true);
+        assert!(!light.is_dark);
+        assert!(dark.is_dark);
+        assert!(light.base_font_size > 12.0);
+        assert!(light.max_write_width > 600.0);
+        assert_eq!(light.base_font_size, dark.base_font_size);
+        assert_eq!(light.max_write_width, dark.max_write_width);
+        assert_ne!(light.editor_bg, dark.editor_bg);
+        assert_ne!(light.text_fg, dark.text_fg);
     }
-    assert!(ThemeMetrics::for_theme(ThemeId::Midnight).is_dark);
-    assert!(!ThemeMetrics::for_theme(ThemeId::Daylight).is_dark);
 }
 
 #[test]

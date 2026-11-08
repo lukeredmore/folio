@@ -117,43 +117,81 @@ extension EditorSettingsView {
     @ViewBuilder
     var colorsSection: some View {
         VStack(alignment: .leading, spacing: 10) {
-            settingsCard(title: "WINDOW APPEARANCE") {
+            settingsCard(title: "APPEARANCE VARIANTS") {
                 HStack {
                     VStack(alignment: .leading, spacing: 1) {
-                        Text("Dark Appearance")
+                        Text("Different Swatches for Light & Dark Mode")
                             .font(.system(size: 12, weight: .medium))
-                        Text("Controls window chrome, scrollbars, and dark syntax contrast")
+                        Text("Automatically switch palette colors with the app appearance set in the Themes menu")
                             .font(.system(size: 10.5))
                             .foregroundColor(.secondary)
                     }
                     Spacer()
-                    Toggle("", isOn: $viewModel.theme.isDark)
+                    Toggle("", isOn: $viewModel.theme.usesSeparateDarkPalette)
                         .labelsHidden()
                         .toggleStyle(.switch)
                         .controlSize(.small)
                 }
             }
 
-            settingsCard(title: "PALETTE SWATCHES") {
-                LazyVGrid(
-                    columns: [
-                        GridItem(.flexible(), spacing: 10),
-                        GridItem(.flexible(), spacing: 10)
-                    ],
-                    alignment: .leading,
-                    spacing: 8
-                ) {
-                    themeColorRow("Editor Surface", color: $viewModel.theme.editorBackground)
-                    themeColorRow("Sidebar Surface", color: $viewModel.theme.sidebarBackground)
-                    themeColorRow("Body Text", color: $viewModel.theme.text)
-                    themeColorRow("Heading Text", color: $viewModel.theme.heading)
-                    themeColorRow("Secondary Text", color: $viewModel.theme.secondaryText)
-                    themeColorRow("Links & Accent", color: $viewModel.theme.link)
-                    themeColorRow("Code Block Fill", color: $viewModel.theme.codeBackground)
-                    themeColorRow("Inline Code", color: $viewModel.theme.inlineCode)
-                    themeColorRow("Syntax Tokens", color: $viewModel.theme.markdownToken)
-                    themeColorRow("Blockquotes", color: $viewModel.theme.blockquoteText)
+            if viewModel.theme.usesSeparateDarkPalette {
+                paletteSwatchesCard(
+                    title: "LIGHT MODE SWATCHES",
+                    palette: $viewModel.theme.lightPalette,
+                    isActive: !viewModel.effectiveIsDark
+                )
+
+                paletteSwatchesCard(
+                    title: "DARK MODE SWATCHES",
+                    palette: $viewModel.theme.darkPalette,
+                    isActive: viewModel.effectiveIsDark
+                )
+            } else {
+                paletteSwatchesCard(
+                    title: "PALETTE SWATCHES",
+                    palette: $viewModel.theme.lightPalette,
+                    isActive: false
+                )
+            }
+        }
+    }
+
+    func paletteSwatchesCard(
+        title: String,
+        palette: Binding<ThemeColorPalette>,
+        isActive: Bool
+    ) -> some View {
+        settingsCard(
+            title: title,
+            trailingHeader: {
+                if isActive {
+                    Text("Active")
+                        .font(.system(size: 9.5, weight: .semibold))
+                        .foregroundColor(.accentColor)
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 1.5)
+                        .background(Capsule().fill(Color.accentColor.opacity(0.14)))
                 }
+            }
+        ) {
+            LazyVGrid(
+                columns: [
+                    GridItem(.flexible(), spacing: 10),
+                    GridItem(.flexible(), spacing: 10)
+                ],
+                alignment: .leading,
+                spacing: 8
+            ) {
+                themeColorRow("Editor Surface", color: palette.editorBackground)
+                themeColorRow("Sidebar Surface", color: palette.sidebarBackground)
+                themeColorRow("Body Text", color: palette.text)
+                themeColorRow("Heading Text", color: palette.heading)
+                themeColorRow("Secondary Text", color: palette.secondaryText)
+                themeColorRow("Links & Accent", color: palette.link)
+                themeColorRow("Code Block Fill", color: palette.codeBackground)
+                themeColorRow("Inline Code", color: palette.inlineCode)
+                themeColorRow("Syntax Tokens", color: palette.markdownToken)
+                themeColorRow("Blockquotes", color: palette.blockquoteText)
             }
         }
     }

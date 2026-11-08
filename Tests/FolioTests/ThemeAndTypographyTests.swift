@@ -1,5 +1,4 @@
 import AppKit
-import SwiftUI
 import XCTest
 @testable import FolioEditor
 @testable import FolioEditorTestSupport
@@ -18,18 +17,32 @@ final class ThemeAndTypographyTests: XCTestCase {
         XCTAssertEqual(stats.selectedCharacters, 11)
     }
 
-    func testBuiltInThemesMatchTheirDarkFlagAndKeepTextReadable() {
+    func testBuiltInThemesHaveLightAndDarkSwatchVariantsAndKeepTextReadable() {
         XCTAssertEqual(EditorTheme.allCases.map(\.id), EditorTheme.builtInThemes.map(\.id))
+        XCTAssertEqual(
+            EditorTheme.builtInThemes.map(\.id),
+            ["Daylight", "Parchment", "Editorial", "Classic", "Modernist"]
+        )
+        XCTAssertFalse(EditorTheme.builtInThemes.contains(where: { $0.id.caseInsensitiveCompare("Midnight") == .orderedSame }))
         XCTAssertEqual(Set(EditorTheme.allCases.map(\.id)).count, EditorTheme.allCases.count, "Theme IDs are unique")
-        for theme in EditorTheme.allCases {
-            let background = Self.relativeLuminance(theme.editorBackground)
-            let text = Self.relativeLuminance(theme.text)
-            XCTAssertEqual(theme.isDark, background < text, "\(theme.id): isDark must match its colors")
-            let contrast = (max(background, text) + 0.05) / (min(background, text) + 0.05)
-            XCTAssertGreaterThanOrEqual(contrast, 4.5, "\(theme.id): body text needs WCAG AA contrast")
+
+        for preset in EditorTheme.allCases {
+            XCTAssertTrue(preset.usesSeparateDarkPalette, "\(preset.id) must provide separate light and dark swatch variants")
+
+            let lightVariant = preset.withAppearance(isDark: false)
+            let lightBg = Self.relativeLuminance(lightVariant.editorBackground)
+            let lightText = Self.relativeLuminance(lightVariant.text)
+            XCTAssertFalse(lightBg < lightText, "\(preset.id) light variant: background must be lighter than text")
+            let lightContrast = (max(lightBg, lightText) + 0.05) / (min(lightBg, lightText) + 0.05)
+            XCTAssertGreaterThanOrEqual(lightContrast, 4.5, "\(preset.id) light variant: body text needs WCAG AA contrast")
+
+            let darkVariant = preset.withAppearance(isDark: true)
+            let darkBg = Self.relativeLuminance(darkVariant.editorBackground)
+            let darkText = Self.relativeLuminance(darkVariant.text)
+            XCTAssertTrue(darkBg < darkText, "\(preset.id) dark variant: background must be darker than text")
+            let darkContrast = (max(darkBg, darkText) + 0.05) / (min(darkBg, darkText) + 0.05)
+            XCTAssertGreaterThanOrEqual(darkContrast, 4.5, "\(preset.id) dark variant: body text needs WCAG AA contrast")
         }
-        XCTAssertTrue(EditorTheme.midnight.isDark)
-        XCTAssertFalse(EditorTheme.daylight.isDark)
     }
 
     /// WCAG 2 relative luminance of an sRGB color.
@@ -88,15 +101,16 @@ final class ThemeAndTypographyTests: XCTestCase {
     func testExtensibleThemeSystemAndTypographyDefaults() throws {
         let testDefaults = isolatedDefaults()
 
-        // 1. Default presets are available as built-in themes
+        // 1. Default presets are available as built-in themes (Midnight removed)
         XCTAssertEqual(
             EditorTheme.builtInThemes.map(\.name),
             [
-                "Daylight", "Midnight", "Parchment", "Editorial", "Classic", "Modernist"
+                "Daylight", "Parchment", "Editorial", "Classic", "Modernist"
             ])
 
         let vm1 = makeIsolatedViewModel(defaults: testDefaults)
         XCTAssertEqual(vm1.theme, .daylight)
+        XCTAssertEqual(vm1.appearanceMode, .system)
         XCTAssertEqual(vm1.typography, .default)
         XCTAssertFalse(vm1.isCurrentThemeModified)
 
@@ -105,6 +119,18 @@ final class ThemeAndTypographyTests: XCTestCase {
         XCTAssertEqual(vm1.theme.name, "Editorial")
         XCTAssertFalse(vm1.isCurrentThemeModified)
 
+        // Switching app appearance mode between Light, Dark, and System switches active swatches without marking theme as modified
+        vm1.appearanceMode = .dark
+        XCTAssertTrue(vm1.theme.isDark)
+        XCTAssertEqual(vm1.theme.editorBackground, EditorTheme.editorial.darkPalette.editorBackground)
+        XCTAssertFalse(vm1.isCurrentThemeModified)
+
+        vm1.appearanceMode = .light
+        XCTAssertFalse(vm1.theme.isDark)
+        XCTAssertEqual(vm1.theme.editorBackground, EditorTheme.editorial.lightPalette.editorBackground)
+        XCTAssertFalse(vm1.isCurrentThemeModified)
+
+        vm1.appearanceMode = .dark
         vm1.theme.bodyFontFamily = "Avenir Next"
         vm1.theme.headingFontFamily = "Baskerville"
         vm1.theme.codeFontFamily = "Menlo"
@@ -112,7 +138,6 @@ final class ThemeAndTypographyTests: XCTestCase {
         vm1.theme.headingWeightStyle = .bold
         vm1.theme.italicH3 = false
         vm1.theme.italicBlockquotes = true
-        vm1.theme.isDark = true
         vm1.theme.editorBackground = ThemeColorRGBA(r: 0.08, g: 0.09, b: 0.12)
         vm1.theme.text = ThemeColorRGBA(r: 0.92, g: 0.93, b: 0.95)
         vm1.theme.link = ThemeColorRGBA(r: 0.40, g: 0.75, b: 0.98)
@@ -137,12 +162,13 @@ final class ThemeAndTypographyTests: XCTestCase {
         XCTAssertFalse(savedTheme.isBuiltIn)
         XCTAssertEqual(savedTheme.name, "Noir Journal")
         XCTAssertEqual(vm1.theme, savedTheme)
-        XCTAssertEqual(vm1.customThemes, [savedTheme])
+        XCTAssertEqual(vm1.customThemes.map(\.name), ["Noir Journal"])
         XCTAssertFalse(vm1.isCurrentThemeModified)
 
-        // 4. Verify persistence of custom themes and active theme across launches
+        // 4. Verify persistence of custom themes, appearance mode, and active theme across launches
         let vm2 = makeIsolatedViewModel(defaults: testDefaults)
         XCTAssertEqual(vm2.customThemes.count, 1)
+        XCTAssertEqual(vm2.appearanceMode, .dark)
         XCTAssertEqual(vm2.theme, savedTheme)
         XCTAssertEqual(vm2.theme.bodyFontFamily, "Avenir Next")
         XCTAssertEqual(vm2.theme.headingFontFamily, "Baskerville")
@@ -188,10 +214,10 @@ final class ThemeAndTypographyTests: XCTestCase {
         XCTAssertNotNil(bodyFont)
         XCTAssertEqual(bodyFont?.pointSize ?? 0, 20.0 * 1.15, accuracy: 0.5)
 
-        // 8. Delete custom theme falls back cleanly to its base preset (.editorial)
+        // 8. Delete custom theme falls back cleanly to its base preset (.editorial) while keeping dark appearance
         vm2.deleteCustomTheme(id: savedTheme.id)
         XCTAssertTrue(vm2.customThemes.isEmpty)
-        XCTAssertEqual(vm2.theme, .editorial)
+        XCTAssertEqual(vm2.theme, EditorTheme.editorial.withAppearance(isDark: true))
 
         // 9. Preset-named themes can be modified and saved in-place, then reset to factory default
         XCTAssertFalse(vm2.canResetCurrentPresetToDefault)
@@ -209,15 +235,70 @@ final class ThemeAndTypographyTests: XCTestCase {
 
         // Switching to another preset and back preserves the saved preset modifications
         vm2.selectTheme(id: "Daylight")
-        XCTAssertEqual(vm2.theme, .daylight)
+        XCTAssertEqual(vm2.theme, EditorTheme.daylight.withAppearance(isDark: true))
         vm2.selectTheme(id: "Editorial")
         XCTAssertEqual(vm2.theme.baseFontSize, 19.0, accuracy: 0.001)
         XCTAssertEqual(vm2.typography.lineSpacing, 6.0, accuracy: 0.001)
 
         // Resetting the preset to default restores the factory Editorial preset
         vm2.resetCurrentThemeToDefault()
-        XCTAssertEqual(vm2.theme, .editorial)
+        XCTAssertEqual(vm2.theme, EditorTheme.editorial.withAppearance(isDark: true))
         XCTAssertFalse(vm2.canResetCurrentPresetToDefault)
         XCTAssertFalse(vm2.isCurrentThemeModified)
+    }
+
+    @MainActor
+    func testAppearanceModesAndSeparateLightDarkSwatchesToggle() {
+        let vm = makeIsolatedViewModel()
+        vm.selectTheme(.parchment)
+
+        // System mode tracks systemIsDark
+        vm.appearanceMode = .system
+        vm.systemIsDark = false
+        XCTAssertFalse(vm.effectiveIsDark)
+        XCTAssertFalse(vm.theme.isDark)
+        XCTAssertEqual(vm.theme.editorBackground, EditorTheme.parchment.lightPalette.editorBackground)
+
+        vm.systemIsDark = true
+        XCTAssertTrue(vm.effectiveIsDark)
+        XCTAssertTrue(vm.theme.isDark)
+        XCTAssertEqual(vm.theme.editorBackground, EditorTheme.parchment.darkPalette.editorBackground)
+
+        // Explicit Light mode overrides systemIsDark = true
+        vm.appearanceMode = .light
+        XCTAssertFalse(vm.effectiveIsDark)
+        XCTAssertFalse(vm.theme.isDark)
+        XCTAssertEqual(vm.theme.editorBackground, EditorTheme.parchment.lightPalette.editorBackground)
+
+        // Explicit Dark mode overrides systemIsDark = false
+        vm.systemIsDark = false
+        vm.appearanceMode = .dark
+        XCTAssertTrue(vm.effectiveIsDark)
+        XCTAssertTrue(vm.theme.isDark)
+        XCTAssertEqual(vm.theme.editorBackground, EditorTheme.parchment.darkPalette.editorBackground)
+
+        // When a theme disables separate dark swatches, it uses its single palette in both Light and Dark mode
+        vm.theme.usesSeparateDarkPalette = false
+        XCTAssertEqual(vm.theme.editorBackground, EditorTheme.parchment.lightPalette.editorBackground)
+        vm.appearanceMode = .light
+        XCTAssertEqual(vm.theme.editorBackground, EditorTheme.parchment.lightPalette.editorBackground)
+    }
+
+    @MainActor
+    func testSystemFontSelectionResolution() throws {
+        let allFamilies = EditorTheme.allSystemFontFamilies
+        XCTAssertFalse(allFamilies.isEmpty)
+        let extraBodyFamilies = EditorTheme.additionalSystemFontFamilies(excluding: EditorTheme.bodyFontChoices)
+        XCTAssertFalse(extraBodyFamilies.isEmpty, "System must have additional font families beyond the curated subset")
+
+        let vm = makeIsolatedViewModel()
+        let pickedFont = try XCTUnwrap(extraBodyFamilies.first)
+        vm.theme.bodyFontFamily = pickedFont
+        vm.theme.headingFontFamily = pickedFont
+        vm.theme.codeFontFamily = pickedFont
+
+        XCTAssertNotNil(vm.theme.bodyFont(size: 16))
+        XCTAssertNotNil(vm.theme.headingFont(level: 1))
+        XCTAssertNotNil(vm.theme.codeFont(size: 14))
     }
 }

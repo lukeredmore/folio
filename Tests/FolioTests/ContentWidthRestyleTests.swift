@@ -64,7 +64,7 @@ final class ContentWidthRestyleTests: XCTestCase {
         let harness = try openChapter()
         defer { harness.tearDown() }
         harness.moveCursor(toLine: 2)
-        harness.viewModel.theme = EditorTheme.builtInThemes.first { $0.isDark } ?? .daylight
+        harness.viewModel.appearanceMode = .dark
         harness.drainUntilIdle()
         assertMatchesFullRestyle(harness, "after a theme change")
         var typography = harness.viewModel.typography

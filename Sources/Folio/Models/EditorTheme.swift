@@ -80,6 +80,72 @@ public struct ThemeColorRGBA: Equatable, Hashable, Codable, Sendable {
     }
 }
 
+/// Color swatch palette for one appearance variant (light or dark) of an `EditorTheme`.
+public struct ThemeColorPalette: Equatable, Hashable, Codable, Sendable {
+    public var editorBackground: ThemeColorRGBA
+    public var sidebarBackground: ThemeColorRGBA
+    public var text: ThemeColorRGBA
+    public var heading: ThemeColorRGBA
+    public var secondaryText: ThemeColorRGBA
+    public var link: ThemeColorRGBA
+    public var codeBackground: ThemeColorRGBA
+    public var inlineCode: ThemeColorRGBA
+    public var markdownToken: ThemeColorRGBA
+    public var blockquoteText: ThemeColorRGBA
+
+    public init(metrics m: OTThemeMetrics) {
+        self.editorBackground = ThemeColorRGBA(rgba: m.editor_bg)
+        self.sidebarBackground = ThemeColorRGBA(rgba: m.sidebar_bg)
+        self.text = ThemeColorRGBA(rgba: m.text_fg)
+        self.heading = ThemeColorRGBA(rgba: m.heading_fg)
+        self.secondaryText = ThemeColorRGBA(rgba: m.secondary_text_fg)
+        self.link = ThemeColorRGBA(rgba: m.link_fg)
+        self.codeBackground = ThemeColorRGBA(rgba: m.code_bg)
+        self.inlineCode = ThemeColorRGBA(rgba: m.inline_code_fg)
+        self.markdownToken = ThemeColorRGBA(rgba: m.markdown_token_fg)
+        self.blockquoteText = ThemeColorRGBA(rgba: m.blockquote_fg)
+    }
+}
+
+/// App-wide appearance mode selectable under the Themes menu.
+public enum EditorAppearanceMode: String, CaseIterable, Identifiable, Codable, Sendable {
+    case system = "system"
+    case light = "light"
+    case dark = "dark"
+
+    public var id: String { rawValue }
+
+    public var displayName: String {
+        switch self {
+        case .system: return "System"
+        case .light: return "Light"
+        case .dark: return "Dark"
+        }
+    }
+
+    public var preferredColorScheme: ColorScheme? {
+        switch self {
+        case .system: return nil
+        case .light: return .light
+        case .dark: return .dark
+        }
+    }
+
+    public func resolvedIsDark(systemIsDark: Bool) -> Bool {
+        switch self {
+        case .light: return false
+        case .dark: return true
+        case .system: return systemIsDark
+        }
+    }
+
+    @MainActor
+    public static var currentSystemIsDark: Bool {
+        let appearance = NSApp?.effectiveAppearance ?? NSAppearance.currentDrawing()
+        return appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
+    }
+}
+
 /// Controls how heading font weights are applied across H1–H6.
 public enum HeadingWeightStyle: String, CaseIterable, Identifiable, Codable, Sendable {
     case semibold = "semibold"
@@ -99,27 +165,72 @@ public enum HeadingWeightStyle: String, CaseIterable, Identifiable, Codable, Sen
     }
 }
 
-/// Extensible editor theme encapsulating colors, fonts, heading styles, and character/line/spacing settings.
-/// Built-in presets (`Daylight`, `Midnight`, `Parchment`, `Editorial`, `Classic`, `Modernist`) act as default
-/// themes, and any combination of fonts, colors, and typography settings can be customized and saved as a theme.
+/// Extensible editor theme encapsulating light and dark color swatch variants, fonts, heading styles,
+/// and character/line/spacing settings.
 public struct EditorTheme: Identifiable, Equatable, Hashable, Codable, Sendable {
     public var id: String
     public var name: String
     public var isBuiltIn: Bool
     public var basePresetID: String?
     public var isDark: Bool
+    /// When true, the theme switches between `lightPalette` and `darkPalette` based on the app appearance.
+    /// When false, `lightPalette` is used in both light and dark mode.
+    public var usesSeparateDarkPalette: Bool
+    public var lightPalette: ThemeColorPalette
+    public var darkPalette: ThemeColorPalette
 
-    // MARK: - Palette Colors
-    public var editorBackground: ThemeColorRGBA
-    public var sidebarBackground: ThemeColorRGBA
-    public var text: ThemeColorRGBA
-    public var heading: ThemeColorRGBA
-    public var secondaryText: ThemeColorRGBA
-    public var link: ThemeColorRGBA
-    public var codeBackground: ThemeColorRGBA
-    public var inlineCode: ThemeColorRGBA
-    public var markdownToken: ThemeColorRGBA
-    public var blockquoteText: ThemeColorRGBA
+    // MARK: - Active Palette Colors
+    public var activePalette: ThemeColorPalette {
+        get { (isDark && usesSeparateDarkPalette) ? darkPalette : lightPalette }
+        set {
+            if isDark && usesSeparateDarkPalette {
+                darkPalette = newValue
+            } else {
+                lightPalette = newValue
+            }
+        }
+    }
+
+    public var editorBackground: ThemeColorRGBA {
+        get { activePalette.editorBackground }
+        set { activePalette.editorBackground = newValue }
+    }
+    public var sidebarBackground: ThemeColorRGBA {
+        get { activePalette.sidebarBackground }
+        set { activePalette.sidebarBackground = newValue }
+    }
+    public var text: ThemeColorRGBA {
+        get { activePalette.text }
+        set { activePalette.text = newValue }
+    }
+    public var heading: ThemeColorRGBA {
+        get { activePalette.heading }
+        set { activePalette.heading = newValue }
+    }
+    public var secondaryText: ThemeColorRGBA {
+        get { activePalette.secondaryText }
+        set { activePalette.secondaryText = newValue }
+    }
+    public var link: ThemeColorRGBA {
+        get { activePalette.link }
+        set { activePalette.link = newValue }
+    }
+    public var codeBackground: ThemeColorRGBA {
+        get { activePalette.codeBackground }
+        set { activePalette.codeBackground = newValue }
+    }
+    public var inlineCode: ThemeColorRGBA {
+        get { activePalette.inlineCode }
+        set { activePalette.inlineCode = newValue }
+    }
+    public var markdownToken: ThemeColorRGBA {
+        get { activePalette.markdownToken }
+        set { activePalette.markdownToken = newValue }
+    }
+    public var blockquoteText: ThemeColorRGBA {
+        get { activePalette.blockquoteText }
+        set { activePalette.blockquoteText = newValue }
+    }
 
     // MARK: - Font & Heading Configuration
     /// Empty string or `"System Sans"` uses the system sans-serif font.
@@ -135,55 +246,18 @@ public struct EditorTheme: Identifiable, Equatable, Hashable, Codable, Sendable 
 
     // MARK: - Character, Line & Spacing Settings
     public var typography: EditorTypographySettings
+}
 
-    public init(
-        id: String,
-        name: String,
-        isBuiltIn: Bool = false,
-        basePresetID: String? = nil,
-        isDark: Bool,
-        editorBackground: ThemeColorRGBA,
-        sidebarBackground: ThemeColorRGBA,
-        text: ThemeColorRGBA,
-        heading: ThemeColorRGBA,
-        secondaryText: ThemeColorRGBA,
-        link: ThemeColorRGBA,
-        codeBackground: ThemeColorRGBA,
-        inlineCode: ThemeColorRGBA,
-        markdownToken: ThemeColorRGBA,
-        blockquoteText: ThemeColorRGBA,
-        bodyFontFamily: String = "",
-        headingFontFamily: String = "",
-        codeFontFamily: String = "",
-        baseFontSize: CGFloat = 16.0,
-        headingWeightStyle: HeadingWeightStyle = .semibold,
-        italicH3: Bool = false,
-        italicBlockquotes: Bool = false,
-        typography: EditorTypographySettings = .default
-    ) {
-        self.id = id
-        self.name = name
-        self.isBuiltIn = isBuiltIn
-        self.basePresetID = basePresetID
-        self.isDark = isDark
-        self.editorBackground = editorBackground
-        self.sidebarBackground = sidebarBackground
-        self.text = text
-        self.heading = heading
-        self.secondaryText = secondaryText
-        self.link = link
-        self.codeBackground = codeBackground
-        self.inlineCode = inlineCode
-        self.markdownToken = markdownToken
-        self.blockquoteText = blockquoteText
-        self.bodyFontFamily = bodyFontFamily
-        self.headingFontFamily = headingFontFamily
-        self.codeFontFamily = codeFontFamily
-        self.baseFontSize = baseFontSize
-        self.headingWeightStyle = headingWeightStyle
-        self.italicH3 = italicH3
-        self.italicBlockquotes = italicBlockquotes
-        self.typography = typography
+extension EditorTheme {
+    public func withAppearance(isDark: Bool) -> EditorTheme {
+        var copy = self
+        copy.isDark = isDark
+        return copy
+    }
+
+    /// Compares theme definitions independent of the active runtime `isDark` state.
+    public func hasSameDefinition(as other: EditorTheme) -> Bool {
+        withAppearance(isDark: false) == other.withAppearance(isDark: false)
     }
 
     // MARK: - RawValue & Built-in Preset Compatibility
@@ -205,12 +279,11 @@ public struct EditorTheme: Identifiable, Equatable, Hashable, Codable, Sendable 
         let key = (basePresetID ?? id).lowercased()
         switch key {
         case "daylight": return 0
-        case "midnight": return 1
-        case "parchment": return 2
-        case "editorial": return 3
-        case "classic": return 4
-        case "modernist": return 5
-        default: return isDark ? 1 : 0
+        case "parchment": return 1
+        case "editorial": return 2
+        case "classic": return 3
+        case "modernist": return 4
+        default: return 0
         }
     }
 }

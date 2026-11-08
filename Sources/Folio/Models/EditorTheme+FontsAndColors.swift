@@ -180,7 +180,10 @@ extension EditorTheme {
 
         var baseFont: NSFont?
         for family in familyCandidates {
-            if let f = NSFont(name: family, size: size) {
+            if let f = NSFont(name: family, size: size)
+                ?? NSFontManager.shared.font(withFamily: family, traits: [], weight: 5, size: size)
+                ?? NSFont(descriptor: NSFontDescriptor(fontAttributes: [.family: family]), size: size)
+            {
                 baseFont = f
                 break
             }
@@ -262,7 +265,10 @@ extension EditorTheme {
         if trimmed.isEmpty || trimmed == "System Mono" {
             return NSFont.monospacedSystemFont(ofSize: targetSize, weight: .regular)
         }
-        if let customFont = NSFont(name: trimmed, size: targetSize) {
+        if let customFont = NSFont(name: trimmed, size: targetSize)
+            ?? NSFontManager.shared.font(withFamily: trimmed, traits: [], weight: 5, size: targetSize)
+            ?? NSFont(descriptor: NSFontDescriptor(fontAttributes: [.family: trimmed]), size: targetSize)
+        {
             return customFont
         }
         return NSFont.monospacedSystemFont(ofSize: targetSize, weight: .regular)

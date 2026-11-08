@@ -85,7 +85,7 @@ final class LaTeXBlockStyleCacheInputTests: XCTestCase {
         let storage = NSTextStorage(string: text)
         var typography = EditorTheme.daylight.typography
         assertRestyleMatchesFullRestyle(storage, parameters(), "first restyle")
-        let dark = EditorTheme.builtInThemes.first { $0.isDark } ?? .daylight
+        let dark = EditorTheme.daylight.withAppearance(isDark: true)
         assertRestyleMatchesFullRestyle(storage, parameters(theme: dark), "theme change")
         typography.fontSizeScale = 1.2
         typography.lineHeightMultiple = 1.5

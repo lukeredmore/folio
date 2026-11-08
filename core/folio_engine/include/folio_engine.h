@@ -128,8 +128,8 @@ typedef struct OTThemeMetrics {
     OTRgbaColor blockquote_fg;
 } OTThemeMetrics;
 
-// theme_id: 0=Daylight, 1=Midnight, 2=Parchment, 3=Editorial, 4=Classic, 5=Modernist
-OTThemeMetrics ot_engine_theme_metrics(uint32_t theme_id);
+// theme_id: 0=Daylight, 1=Parchment, 2=Editorial, 3=Classic, 4=Modernist
+OTThemeMetrics ot_engine_theme_metrics(uint32_t theme_id, bool is_dark);
 
 OTRgbaColor ot_engine_language_accent_color(const char* language_utf8, bool is_dark);
 

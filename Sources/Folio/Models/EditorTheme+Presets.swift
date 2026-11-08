@@ -12,29 +12,23 @@ extension EditorTheme {
         italicH3: Bool = false,
         italicBlockquotes: Bool = false
     ) -> EditorTheme {
-        let m = ot_engine_theme_metrics(engineID)
+        let lightMetrics = ot_engine_theme_metrics(engineID, false)
+        let darkMetrics = ot_engine_theme_metrics(engineID, true)
         var typo = EditorTypographySettings.default
-        typo.maxColumnWidth = CGFloat(m.max_write_width)
+        typo.maxColumnWidth = CGFloat(lightMetrics.max_write_width)
         return EditorTheme(
             id: id,
             name: id,
             isBuiltIn: true,
             basePresetID: id,
-            isDark: m.is_dark,
-            editorBackground: ThemeColorRGBA(rgba: m.editor_bg),
-            sidebarBackground: ThemeColorRGBA(rgba: m.sidebar_bg),
-            text: ThemeColorRGBA(rgba: m.text_fg),
-            heading: ThemeColorRGBA(rgba: m.heading_fg),
-            secondaryText: ThemeColorRGBA(rgba: m.secondary_text_fg),
-            link: ThemeColorRGBA(rgba: m.link_fg),
-            codeBackground: ThemeColorRGBA(rgba: m.code_bg),
-            inlineCode: ThemeColorRGBA(rgba: m.inline_code_fg),
-            markdownToken: ThemeColorRGBA(rgba: m.markdown_token_fg),
-            blockquoteText: ThemeColorRGBA(rgba: m.blockquote_fg),
+            isDark: false,
+            usesSeparateDarkPalette: true,
+            lightPalette: ThemeColorPalette(metrics: lightMetrics),
+            darkPalette: ThemeColorPalette(metrics: darkMetrics),
             bodyFontFamily: bodyFontFamily,
             headingFontFamily: "",
             codeFontFamily: "",
-            baseFontSize: CGFloat(m.base_font_size),
+            baseFontSize: CGFloat(lightMetrics.base_font_size),
             headingWeightStyle: headingWeightStyle,
             italicH3: italicH3,
             italicBlockquotes: italicBlockquotes,
@@ -49,16 +43,9 @@ extension EditorTheme {
         headingWeightStyle: .semibold
     )
 
-    public static let midnight = makeBuiltInPreset(
-        id: "Midnight",
-        engineID: 1,
-        bodyFontFamily: "",
-        headingWeightStyle: .semibold
-    )
-
     public static let parchment = makeBuiltInPreset(
         id: "Parchment",
-        engineID: 2,
+        engineID: 1,
         bodyFontFamily: "PT Serif",
         headingWeightStyle: .bold,
         italicBlockquotes: true
@@ -66,7 +53,7 @@ extension EditorTheme {
 
     public static let editorial = makeBuiltInPreset(
         id: "Editorial",
-        engineID: 3,
+        engineID: 2,
         bodyFontFamily: "Charter",
         headingWeightStyle: .bold,
         italicBlockquotes: true
@@ -74,7 +61,7 @@ extension EditorTheme {
 
     public static let classic = makeBuiltInPreset(
         id: "Classic",
-        engineID: 4,
+        engineID: 3,
         bodyFontFamily: "Palatino",
         headingWeightStyle: .classic,
         italicH3: true
@@ -82,14 +69,13 @@ extension EditorTheme {
 
     public static let modernist = makeBuiltInPreset(
         id: "Modernist",
-        engineID: 5,
+        engineID: 4,
         bodyFontFamily: "Avenir Next",
         headingWeightStyle: .classic
     )
 
     public static let builtInThemes: [EditorTheme] = [
         .daylight,
-        .midnight,
         .parchment,
         .editorial,
         .classic,
@@ -106,7 +92,7 @@ extension EditorTheme {
         }
     }
 
-    /// If this theme is one of the preset-named themes (`Daylight`, `Midnight`, `Parchment`, `Editorial`, `Classic`, `Modernist`),
+    /// If this theme is one of the preset-named themes (`Daylight`, `Parchment`, `Editorial`, `Classic`, `Modernist`),
     /// returns its factory default preset definition.
     public var defaultPreset: EditorTheme? {
         Self.builtInPreset(id: id) ?? Self.builtInPreset(id: name)
@@ -120,10 +106,10 @@ extension EditorTheme {
     /// True if this theme is a preset-named theme whose settings differ from its factory default preset.
     public var isModifiedFromDefaultPreset: Bool {
         guard let preset = defaultPreset else { return false }
-        return self != preset
+        return !hasSameDefinition(as: preset)
     }
 
-    // MARK: - Curated Font Choices
+    // MARK: - Curated & System Font Choices
     public static let bodyFontChoices: [(label: String, value: String)] = [
         ("System Sans (SF Pro)", ""),
         ("System Serif (New York)", "System Serif"),
@@ -168,6 +154,22 @@ extension EditorTheme {
         ("JetBrains Mono", "JetBrains Mono"),
         ("Fira Code", "Fira Code")
     ]
+
+    /// All non-hidden font families installed on the system, sorted alphabetically.
+    public static var allSystemFontFamilies: [String] {
+        let families = NSFontManager.shared.availableFontFamilies
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty && !$0.hasPrefix(".") }
+        return Array(Set(families)).sorted {
+            $0.localizedStandardCompare($1) == .orderedAscending
+        }
+    }
+
+    /// System font families not already present in the given curated option list.
+    public static func additionalSystemFontFamilies(excluding options: [(label: String, value: String)]) -> [String] {
+        let curated = Set(options.map { $0.value.lowercased() })
+        return allSystemFontFamilies.filter { !curated.contains($0.lowercased()) }
+    }
 
     // MARK: - Theme Mutation & Cloning Helpers
     /// Resets only the character/line/spacing settings back to `EditorTypographySettings.default`

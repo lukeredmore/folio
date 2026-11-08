@@ -102,6 +102,35 @@ public final class EditorWorkspaceViewModel: ObservableObject, HybridMarkdownWor
 
     // MARK: - Editor Modes, Theme & Typography
     var isSyncingThemeTypography: Bool = false
+    var isSyncingThemeAppearance: Bool = false
+
+    @Published public var appearanceMode: EditorAppearanceMode = .system {
+        didSet {
+            syncThemeAppearance()
+            guard !isRestoringState else { return }
+            userDefaults.set(appearanceMode.rawValue, forKey: Self.appearanceModeDefaultsKey)
+            sharePreference(\.appearanceMode)
+        }
+    }
+
+    @Published public var systemIsDark: Bool = false {
+        didSet {
+            syncThemeAppearance()
+        }
+    }
+
+    public var effectiveIsDark: Bool {
+        appearanceMode.resolvedIsDark(systemIsDark: systemIsDark)
+    }
+
+    func syncThemeAppearance() {
+        let dark = effectiveIsDark
+        if !isSyncingThemeAppearance && theme.isDark != dark {
+            isSyncingThemeAppearance = true
+            theme.isDark = dark
+            isSyncingThemeAppearance = false
+        }
+    }
 
     @Published public var customThemes: [EditorTheme] = [] {
         didSet {
@@ -115,6 +144,13 @@ public final class EditorWorkspaceViewModel: ObservableObject, HybridMarkdownWor
 
     @Published public var theme: EditorTheme = .daylight {
         didSet {
+            let dark = effectiveIsDark
+            if !isSyncingThemeAppearance && theme.isDark != dark {
+                isSyncingThemeAppearance = true
+                theme.isDark = dark
+                isSyncingThemeAppearance = false
+                return
+            }
             if !isSyncingThemeTypography && typography != theme.typography {
                 isSyncingThemeTypography = true
                 typography = theme.typography

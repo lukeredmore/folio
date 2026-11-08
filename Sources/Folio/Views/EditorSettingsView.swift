@@ -71,6 +71,21 @@ public struct EditorSettingsView: View {
                 .foregroundColor(.accentColor)
 
             Menu {
+                Section("Appearance") {
+                    ForEach(EditorAppearanceMode.allCases) { mode in
+                        Button {
+                            viewModel.appearanceMode = mode
+                        } label: {
+                            HStack {
+                                Text(mode.displayName)
+                                if viewModel.appearanceMode == mode {
+                                    Image(systemName: "checkmark")
+                                }
+                            }
+                        }
+                    }
+                }
+
                 Section("Default Themes") {
                     ForEach(EditorTheme.builtInThemes) { themeOption in
                         Button {
@@ -218,7 +233,7 @@ public struct EditorSettingsView: View {
 
     func themeSwatchCard(for candidate: EditorTheme) -> some View {
         let isSelected = viewModel.theme.id == candidate.id
-        let displayTheme = isSelected ? viewModel.theme : candidate
+        let displayTheme = isSelected ? viewModel.theme : candidate.withAppearance(isDark: viewModel.effectiveIsDark)
 
         return Button {
             viewModel.selectTheme(candidate)

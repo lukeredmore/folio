@@ -41,11 +41,14 @@ extension EditorWorkspaceViewModel {
         )
     }
 
-    /// Theme used for printing: the current theme, or the light preset with the current
-    /// typography when the current theme is dark.
+    /// Theme used for printing: the current theme's light appearance variant, or the light
+    /// preset with the current typography when the current theme uses a single dark palette.
     var printTheme: EditorTheme {
         guard theme.isDark else { return theme }
-        var light = EditorTheme.daylight
+        if theme.usesSeparateDarkPalette {
+            return theme.withAppearance(isDark: false)
+        }
+        var light = EditorTheme.daylight.withAppearance(isDark: false)
         light.typography = typography
         return light
     }
