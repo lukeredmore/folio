@@ -2,6 +2,41 @@ import AppKit
 import AVFoundation
 import Foundation
 
+/// Load status for a media source referenced by Markdown, HTML, or LaTeX.
+public enum FolioMediaLoadState: Equatable, Sendable {
+    case loaded
+    case loading
+    case missingLocalFile(resolvedPath: String)
+    case failedRemote
+    case invalidMedia
+}
+
+/// Presentation copy and state for an unloaded media placeholder card.
+public struct FolioMediaPlaceholderInfo: Equatable, Sendable {
+    public let state: FolioMediaLoadState
+    public let badgeLabel: String
+    public let titleText: String
+    public let subtitleText: String
+    public let isError: Bool
+    public let tooltipText: String?
+
+    public init(
+        state: FolioMediaLoadState,
+        badgeLabel: String,
+        titleText: String,
+        subtitleText: String,
+        isError: Bool,
+        tooltipText: String?
+    ) {
+        self.state = state
+        self.badgeLabel = badgeLabel
+        self.titleText = titleText
+        self.subtitleText = subtitleText
+        self.isError = isError
+        self.tooltipText = tooltipText
+    }
+}
+
 /// Shared cache and loader for local, data-URI, remote, SVG, and Mermaid-generated `NSImage` assets.
 public final class FolioMediaImageCache: @unchecked Sendable {
     public static let shared = FolioMediaImageCache()
@@ -215,20 +250,139 @@ public final class FolioMediaImageCache: @unchecked Sendable {
         return nil
     }
 
+    public func loadState(
+        for rawSource: String,
+        baseDirectoryURL: URL? = nil,
+        isDark: Bool = false
+    ) -> FolioMediaLoadState {
+        let trimmed = rawSource.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return .invalidMedia }
+
+        if let remoteURL = Self.resolveRemoteURL(from: trimmed) {
+            let remoteKey = Self.remoteCacheKey(for: remoteURL)
+            lock.lock()
+            if imageCache[remoteKey] != nil {
+                lock.unlock()
+                return .loaded
+            }
+            if failedRemoteURLs.contains(remoteKey) {
+                lock.unlock()
+                return .failedRemote
+            }
+            if inFlightRemoteURLs.contains(remoteKey) {
+                lock.unlock()
+                return .loading
+            }
+            lock.unlock()
+            triggerRemoteFetchIfNeeded(url: remoteURL, cacheKey: remoteKey)
+            return .loading
+        }
+
+        let cacheKey = "\(baseDirectoryURL?.path ?? "")|\(isDark ? "1" : "0")|\(trimmed)"
+        lock.lock()
+        if imageCache[cacheKey] != nil {
+            lock.unlock()
+            return .loaded
+        }
+        lock.unlock()
+
+        if trimmed.lowercased().hasPrefix("<svg") || trimmed.lowercased().hasPrefix("data:") {
+            return image(for: rawSource, baseDirectoryURL: baseDirectoryURL, isDark: isDark) != nil
+                ? .loaded
+                : .invalidMedia
+        }
+
+        guard let fileURL = resolveLocalFileURL(from: trimmed, baseDirectoryURL: baseDirectoryURL) else {
+            return .invalidMedia
+        }
+        guard FileManager.default.fileExists(atPath: fileURL.path) else {
+            return .missingLocalFile(resolvedPath: fileURL.path)
+        }
+        return image(for: rawSource, baseDirectoryURL: baseDirectoryURL, isDark: isDark) != nil
+            ? .loaded
+            : .invalidMedia
+    }
+
+    public func placeholderInfo(
+        for rawSource: String,
+        alt: String,
+        baseDirectoryURL: URL? = nil,
+        isDark: Bool = false
+    ) -> FolioMediaPlaceholderInfo {
+        let trimmed = rawSource.trimmingCharacters(in: .whitespacesAndNewlines)
+        let isVideo = isKnownVideo(for: trimmed, baseDirectoryURL: baseDirectoryURL)
+        let state = loadState(for: trimmed, baseDirectoryURL: baseDirectoryURL, isDark: isDark)
+        let fallbackName = (trimmed as NSString).lastPathComponent
+        let titleText = alt.isEmpty ? (fallbackName.isEmpty ? trimmed : fallbackName) : alt
+
+        switch state {
+        case .loading:
+            return FolioMediaPlaceholderInfo(
+                state: state,
+                badgeLabel: isVideo ? "▶ LOADING VIDEO" : "LOADING IMAGE",
+                titleText: titleText,
+                subtitleText: trimmed,
+                isError: false,
+                tooltipText: alt.isEmpty ? "Loading \(trimmed)…" : "\(alt) (Loading \(trimmed)…)"
+            )
+        case .missingLocalFile(let resolvedPath):
+            return FolioMediaPlaceholderInfo(
+                state: state,
+                badgeLabel: isVideo ? "MISSING VIDEO" : "MISSING IMAGE",
+                titleText: titleText,
+                subtitleText: "File not found · \(trimmed)",
+                isError: true,
+                tooltipText: alt.isEmpty
+                    ? "File not found: \(resolvedPath)"
+                    : "\(alt) — File not found: \(resolvedPath)"
+            )
+        case .failedRemote:
+            return FolioMediaPlaceholderInfo(
+                state: state,
+                badgeLabel: isVideo ? "VIDEO FAILED" : "IMAGE FAILED",
+                titleText: titleText,
+                subtitleText: "Failed to load · \(trimmed)",
+                isError: true,
+                tooltipText: alt.isEmpty
+                    ? "Failed to load: \(trimmed)"
+                    : "\(alt) — Failed to load: \(trimmed)"
+            )
+        case .invalidMedia, .loaded:
+            return FolioMediaPlaceholderInfo(
+                state: state,
+                badgeLabel: isVideo ? "INVALID VIDEO" : "INVALID IMAGE",
+                titleText: titleText,
+                subtitleText: "Cannot decode · \(trimmed)",
+                isError: true,
+                tooltipText: alt.isEmpty ? nil : alt
+            )
+        }
+    }
+
     func resolveLocalFileURL(from trimmed: String, baseDirectoryURL: URL?) -> URL? {
         if trimmed.lowercased().hasPrefix("file://"), let url = URL(string: trimmed) {
             return url
         }
         let unescaped = trimmed.removingPercentEncoding ?? trimmed
+        let resolved: URL
         if unescaped.hasPrefix("~/") {
             let expanded = (unescaped as NSString).expandingTildeInPath
-            return URL(fileURLWithPath: expanded)
+            resolved = URL(fileURLWithPath: expanded)
         } else if unescaped.hasPrefix("/") {
-            return URL(fileURLWithPath: unescaped)
+            resolved = URL(fileURLWithPath: unescaped)
         } else {
             let baseDir = baseDirectoryURL ?? URL(fileURLWithPath: FileManager.default.currentDirectoryPath, isDirectory: true)
-            return baseDir.appendingPathComponent(unescaped).standardizedFileURL
+            resolved = baseDir.appendingPathComponent(unescaped).standardizedFileURL
         }
+        if !FileManager.default.fileExists(atPath: resolved.path), resolved.pathExtension.isEmpty {
+            for ext in ["png", "jpg", "jpeg", "svg", "gif", "webp"] {
+                let withExt = resolved.appendingPathExtension(ext)
+                if FileManager.default.fileExists(atPath: withExt.path) {
+                    return withExt
+                }
+            }
+        }
+        return resolved
     }
 
     func storeAndDecodeImageData(_ data: Data, forKey key: String) -> NSImage? {

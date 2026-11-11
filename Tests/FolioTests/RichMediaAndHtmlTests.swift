@@ -172,4 +172,132 @@ final class RichMediaAndHtmlTests: XCTestCase {
         XCTAssertTrue(stateMermaid.contains("Live Buffer Folds &amp; Inlays"))
         XCTAssertFalse(stateMermaid.contains(">Inlays\"</text>"))
     }
+
+    @MainActor
+    func testMissingLocalMediaPlaceholderAndExtensionlessResolution() throws {
+        let rootTempDir = FileManager.default.temporaryDirectory
+            .appendingPathComponent("folio-media-tests-\(UUID().uuidString)", isDirectory: true)
+        let spacedDir =
+            rootTempDir
+            .appendingPathComponent("trying stuff out", isDirectory: true)
+            .appendingPathComponent("May 2022", isDirectory: true)
+        try FileManager.default.createDirectory(at: spacedDir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: rootTempDir) }
+
+        // Write a real local PNG ("Globe_High.png") inside a directory with spaces in its path
+        let sampleImg = NSImage(size: NSSize(width: 96, height: 48))
+        sampleImg.lockFocus()
+        NSColor.systemBlue.setFill()
+        NSRect(x: 0, y: 0, width: 96, height: 48).fill()
+        sampleImg.unlockFocus()
+        let tiff = try XCTUnwrap(sampleImg.tiffRepresentation)
+        let bitmap = try XCTUnwrap(NSBitmapImageRep(data: tiff))
+        let pngData = try XCTUnwrap(bitmap.representation(using: .png, properties: [:]))
+        let existingImageURL = spacedDir.appendingPathComponent("Globe_High.png")
+        try pngData.write(to: existingImageURL)
+
+        // 1. Existing local image loads both by exact filename and extensionless stem (LaTeX \includegraphics)
+        XCTAssertEqual(
+            FolioMediaImageCache.shared.loadState(for: "Globe_High.png", baseDirectoryURL: spacedDir),
+            .loaded
+        )
+        XCTAssertEqual(
+            FolioMediaImageCache.shared.loadState(for: "Globe_High", baseDirectoryURL: spacedDir),
+            .loaded
+        )
+        let loadedByStem = try XCTUnwrap(
+            FolioMediaImageCache.shared.image(for: "Globe_High", baseDirectoryURL: spacedDir)
+        )
+        XCTAssertEqual(loadedByStem.size, NSSize(width: 96, height: 48))
+
+        // 2. Missing local image and video report .missingLocalFile with explicit MISSING badge and resolved path tooltip
+        let expectedMissingPath = spacedDir.appendingPathComponent("mmayer.png").standardizedFileURL.path
+        let missingImgInfo = FolioMediaImageCache.shared.placeholderInfo(
+            for: "mmayer.png",
+            alt: "Marissa Mayer's résumé, re-created with AltaCV",
+            baseDirectoryURL: spacedDir
+        )
+        XCTAssertEqual(missingImgInfo.state, .missingLocalFile(resolvedPath: expectedMissingPath))
+        XCTAssertEqual(missingImgInfo.badgeLabel, "MISSING IMAGE")
+        XCTAssertEqual(missingImgInfo.titleText, "Marissa Mayer's résumé, re-created with AltaCV")
+        XCTAssertEqual(missingImgInfo.subtitleText, "File not found · mmayer.png")
+        XCTAssertTrue(missingImgInfo.isError)
+        XCTAssertEqual(
+            missingImgInfo.tooltipText,
+            "Marissa Mayer's résumé, re-created with AltaCV — File not found: \(expectedMissingPath)"
+        )
+
+        let missingVideoInfo = FolioMediaImageCache.shared.placeholderInfo(
+            for: "sample.mp4",
+            alt: "",
+            baseDirectoryURL: spacedDir
+        )
+        XCTAssertEqual(missingVideoInfo.badgeLabel, "MISSING VIDEO")
+        XCTAssertEqual(missingVideoInfo.titleText, "sample.mp4")
+        XCTAssertEqual(missingVideoInfo.subtitleText, "File not found · sample.mp4")
+        XCTAssertTrue(missingVideoInfo.isError)
+
+        // 3. Invalid data URI reports .invalidMedia with INVALID IMAGE badge
+        let invalidDataInfo = FolioMediaImageCache.shared.placeholderInfo(
+            for: "data:image/png;base64,!!!invalid!!!",
+            alt: "Broken Inline",
+            baseDirectoryURL: spacedDir
+        )
+        XCTAssertEqual(invalidDataInfo.state, .invalidMedia)
+        XCTAssertEqual(invalidDataInfo.badgeLabel, "INVALID IMAGE")
+        XCTAssertEqual(invalidDataInfo.subtitleText, "Cannot decode · data:image/png;base64,!!!invalid!!!")
+        XCTAssertTrue(invalidDataInfo.isError)
+
+        // 4. Verify HybridMarkdownTextView hover tooltip over a missing local image card
+        let textStorage = NSTextStorage()
+        let layoutManager = WideBlockLayoutManager()
+        textStorage.addLayoutManager(layoutManager)
+        let textContainer = WideBlockTextContainer(containerSize: NSSize(width: 680, height: 1000))
+        textContainer.lineFragmentPadding = 0
+        layoutManager.addTextContainer(textContainer)
+        let textView = HybridMarkdownTextView(frame: NSRect(x: 0, y: 0, width: 760, height: 400), textContainer: textContainer)
+        textView.textContainerInset = NSSize(width: 40, height: 20)
+        textView.proseColumnWidth = 680
+
+        let doc = """
+            # Samples
+
+            <img src="mmayer.png" alt="Marissa Mayer's résumé, re-created with AltaCV" width="600px">
+            """
+        textView.string = doc
+        let analysis = MarkdownLiveStyler.applyStyles(
+            to: textStorage,
+            theme: .daylight,
+            sourceCodeMode: false,
+            focusMode: false,
+            selectedRange: NSRange(location: 0, length: 0),
+            containerWidth: 680,
+            prettyMode: true,
+            baseDirectoryURL: spacedDir
+        )
+        textView.lineDecorations = analysis.decorations
+        layoutManager.ensureLayout(for: textContainer)
+
+        let imgDec = try XCTUnwrap(
+            analysis.decorations.first {
+                if case .imageRendered = $0.kind { return true }
+                return false
+            }
+        )
+        var xOffsets: [Int: CGFloat] = [:]
+        let cardRect = try XCTUnwrap(
+            textView.mediaDecorationHitRect(
+                for: imgDec,
+                layoutManager: layoutManager,
+                origin: textView.textContainerOrigin,
+                contentWidth: 680,
+                imageXOffsetByLineLocation: &xOffsets
+            )
+        )
+        let hoverTip = textView.imageAltTooltip(at: NSPoint(x: cardRect.midX, y: cardRect.midY))
+        XCTAssertEqual(
+            hoverTip,
+            "Marissa Mayer's résumé, re-created with AltaCV — File not found: \(expectedMissingPath)"
+        )
+    }
 }
