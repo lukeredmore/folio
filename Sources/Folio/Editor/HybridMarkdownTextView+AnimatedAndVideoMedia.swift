@@ -242,7 +242,7 @@ extension HybridMarkdownTextView {
                 height: drawH
             )
         }
-        let cardWidth = min(remainingWidth, max(200.0, min(380.0, explicitWidth ?? 360.0)))
+        let cardWidth = min(remainingWidth, max(220.0, min(440.0, explicitWidth ?? 400.0)))
         let cardHeight = min(50.0, max(38.0, lineFrag.height - 6.0))
         imageXOffsetByLineLocation[lineKey] = (startX - origin.x) + cardWidth + 8.0
         return NSRect(

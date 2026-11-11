@@ -80,7 +80,7 @@ extension HybridMarkdownTextView {
                 )
                 imageXOffsetByLineLocation[lineKey] = (startX - origin.x) + drawW + 8.0
             } else {
-                let cardWidth = min(remainingWidth, max(200.0, min(380.0, explicitWidth ?? 360.0)))
+                let cardWidth = min(remainingWidth, max(220.0, min(440.0, explicitWidth ?? 400.0)))
                 let cardHeight = min(50.0, max(38.0, lineFrag.height - 6.0))
                 hitRect = NSRect(
                     x: startX,
@@ -92,7 +92,15 @@ extension HybridMarkdownTextView {
             }
 
             if hitRect.contains(point) {
-                return alt.isEmpty ? nil : alt
+                if loadedImg != nil {
+                    return alt.isEmpty ? nil : alt
+                }
+                return FolioMediaImageCache.shared.placeholderInfo(
+                    for: url,
+                    alt: alt,
+                    baseDirectoryURL: baseDirectoryURL,
+                    isDark: currentTheme.isDark
+                ).tooltipText
             }
         }
         return nil

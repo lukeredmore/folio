@@ -174,7 +174,13 @@ extension HybridMarkdownTextView {
                 imageXOffsetByLineLocation[lineKey] = (startX - origin.x) + drawW + 8.0
             } else {
                 // Compact placeholder card for pending/missing image or video
-                let cardWidth = min(remainingWidth, max(200.0, min(380.0, explicitWidth ?? 360.0)))
+                let placeholder = FolioMediaImageCache.shared.placeholderInfo(
+                    for: url,
+                    alt: alt,
+                    baseDirectoryURL: baseDirectoryURL,
+                    isDark: currentTheme.isDark
+                )
+                let cardWidth = min(remainingWidth, max(220.0, min(440.0, explicitWidth ?? 400.0)))
                 let cardHeight = min(50.0, max(38.0, lineFrag.height - 6.0))
                 let cardRect = NSRect(
                     x: startX,
@@ -187,21 +193,33 @@ extension HybridMarkdownTextView {
                 currentTheme.codeBackgroundNSColor.withAlphaComponent(dimFactor).setFill()
                 NSBezierPath(roundedRect: cardRect, xRadius: 7.0, yRadius: 7.0).fill()
 
-                let cardBorder =
+                let warningAccent =
                     currentTheme.isDark
-                    ? NSColor.white.withAlphaComponent(0.10 * dimFactor)
-                    : NSColor.black.withAlphaComponent(0.08 * dimFactor)
+                    ? NSColor(srgbRed: 0.96, green: 0.62, blue: 0.24, alpha: 1.0)
+                    : NSColor(srgbRed: 0.80, green: 0.38, blue: 0.06, alpha: 1.0)
+                let badgeColor = (placeholder.isError ? warningAccent : currentTheme.linkNSColor)
+                    .withAlphaComponent(dimFactor)
+
+                let cardBorder =
+                    placeholder.isError
+                    ? badgeColor.withAlphaComponent(0.38 * dimFactor)
+                    : (currentTheme.isDark
+                        ? NSColor.white.withAlphaComponent(0.10 * dimFactor)
+                        : NSColor.black.withAlphaComponent(0.08 * dimFactor))
                 cardBorder.setStroke()
                 let strokePath = NSBezierPath(roundedRect: cardRect.insetBy(dx: 0.5, dy: 0.5), xRadius: 7.0, yRadius: 7.0)
                 strokePath.lineWidth = 1.0
+                if placeholder.isError {
+                    let pattern: [CGFloat] = [4.0, 3.0]
+                    strokePath.setLineDash(pattern, count: pattern.count, phase: 0)
+                }
                 strokePath.stroke()
 
-                let badgeLabel = isVideo ? "▶ VIDEO" : "IMAGE"
                 let badgeAttrs: [NSAttributedString.Key: Any] = [
                     .font: NSFont.monospacedSystemFont(ofSize: 10.5, weight: .semibold),
-                    .foregroundColor: currentTheme.linkNSColor.withAlphaComponent(dimFactor)
+                    .foregroundColor: badgeColor
                 ]
-                let badgeStr = badgeLabel as NSString
+                let badgeStr = placeholder.badgeLabel as NSString
                 let badgeSize = badgeStr.size(withAttributes: badgeAttrs)
                 let pillRect = NSRect(
                     x: cardRect.minX + 12.0,
@@ -209,14 +227,13 @@ extension HybridMarkdownTextView {
                     width: badgeSize.width + 12.0,
                     height: badgeSize.height + 6.0
                 )
-                currentTheme.linkNSColor.withAlphaComponent(0.14 * dimFactor).setFill()
+                badgeColor.withAlphaComponent(0.14 * dimFactor).setFill()
                 NSBezierPath(roundedRect: pillRect, xRadius: 4.5, yRadius: 4.5).fill()
                 badgeStr.draw(
                     at: NSPoint(x: pillRect.minX + 6.0, y: pillRect.minY + 3.0),
                     withAttributes: badgeAttrs
                 )
 
-                let titleText = alt.isEmpty ? (url as NSString).lastPathComponent : alt
                 let titleAttrs: [NSAttributedString.Key: Any] = [
                     .font: currentTheme.bodyFont(size: 12.0, bold: true),
                     .foregroundColor: currentTheme.textNSColor.withAlphaComponent(dimFactor)
@@ -228,11 +245,11 @@ extension HybridMarkdownTextView {
                 let textX = pillRect.maxX + 10.0
                 NSGraphicsContext.saveGraphicsState()
                 NSBezierPath(rect: cardRect.insetBy(dx: 8.0, dy: 2.0)).addClip()
-                (titleText as NSString).draw(
+                (placeholder.titleText as NSString).draw(
                     at: NSPoint(x: textX, y: cardRect.midY - 14.0),
                     withAttributes: titleAttrs
                 )
-                (url as NSString).draw(
+                (placeholder.subtitleText as NSString).draw(
                     at: NSPoint(x: textX, y: cardRect.midY + 1.0),
                     withAttributes: subAttrs
                 )
