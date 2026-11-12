@@ -197,12 +197,12 @@ extension HybridMarkdownTextView {
                     currentTheme.isDark
                     ? NSColor(srgbRed: 0.96, green: 0.62, blue: 0.24, alpha: 1.0)
                     : NSColor(srgbRed: 0.80, green: 0.38, blue: 0.06, alpha: 1.0)
-                let badgeColor = (placeholder.isError ? warningAccent : currentTheme.linkNSColor)
+                let borderAccent = (placeholder.isError ? warningAccent : currentTheme.linkNSColor)
                     .withAlphaComponent(dimFactor)
 
                 let cardBorder =
                     placeholder.isError
-                    ? badgeColor.withAlphaComponent(0.38 * dimFactor)
+                    ? borderAccent.withAlphaComponent(0.38 * dimFactor)
                     : (currentTheme.isDark
                         ? NSColor.white.withAlphaComponent(0.10 * dimFactor)
                         : NSColor.black.withAlphaComponent(0.08 * dimFactor))
@@ -215,25 +215,6 @@ extension HybridMarkdownTextView {
                 }
                 strokePath.stroke()
 
-                let badgeAttrs: [NSAttributedString.Key: Any] = [
-                    .font: NSFont.monospacedSystemFont(ofSize: 10.5, weight: .semibold),
-                    .foregroundColor: badgeColor
-                ]
-                let badgeStr = placeholder.badgeLabel as NSString
-                let badgeSize = badgeStr.size(withAttributes: badgeAttrs)
-                let pillRect = NSRect(
-                    x: cardRect.minX + 12.0,
-                    y: cardRect.midY - badgeSize.height * 0.5 - 3.0,
-                    width: badgeSize.width + 12.0,
-                    height: badgeSize.height + 6.0
-                )
-                badgeColor.withAlphaComponent(0.14 * dimFactor).setFill()
-                NSBezierPath(roundedRect: pillRect, xRadius: 4.5, yRadius: 4.5).fill()
-                badgeStr.draw(
-                    at: NSPoint(x: pillRect.minX + 6.0, y: pillRect.minY + 3.0),
-                    withAttributes: badgeAttrs
-                )
-
                 let titleAttrs: [NSAttributedString.Key: Any] = [
                     .font: currentTheme.bodyFont(size: 12.0, bold: true),
                     .foregroundColor: currentTheme.textNSColor.withAlphaComponent(dimFactor)
@@ -242,7 +223,7 @@ extension HybridMarkdownTextView {
                     .font: currentTheme.codeFont(size: 10.5),
                     .foregroundColor: currentTheme.secondaryTextNSColor.withAlphaComponent(dimFactor * 0.85)
                 ]
-                let textX = pillRect.maxX + 10.0
+                let textX = cardRect.minX + 12.0
                 NSGraphicsContext.saveGraphicsState()
                 NSBezierPath(rect: cardRect.insetBy(dx: 8.0, dy: 2.0)).addClip()
                 (placeholder.titleText as NSString).draw(
