@@ -14,7 +14,6 @@ public enum FolioMediaLoadState: Equatable, Sendable {
 /// Presentation copy and state for an unloaded media placeholder card.
 public struct FolioMediaPlaceholderInfo: Equatable, Sendable {
     public let state: FolioMediaLoadState
-    public let badgeLabel: String
     public let titleText: String
     public let subtitleText: String
     public let isError: Bool
@@ -22,14 +21,12 @@ public struct FolioMediaPlaceholderInfo: Equatable, Sendable {
 
     public init(
         state: FolioMediaLoadState,
-        badgeLabel: String,
         titleText: String,
         subtitleText: String,
         isError: Bool,
         tooltipText: String?
     ) {
         self.state = state
-        self.badgeLabel = badgeLabel
         self.titleText = titleText
         self.subtitleText = subtitleText
         self.isError = isError
@@ -310,7 +307,6 @@ public final class FolioMediaImageCache: @unchecked Sendable {
         isDark: Bool = false
     ) -> FolioMediaPlaceholderInfo {
         let trimmed = rawSource.trimmingCharacters(in: .whitespacesAndNewlines)
-        let isVideo = isKnownVideo(for: trimmed, baseDirectoryURL: baseDirectoryURL)
         let state = loadState(for: trimmed, baseDirectoryURL: baseDirectoryURL, isDark: isDark)
         let fallbackName = (trimmed as NSString).lastPathComponent
         let titleText = alt.isEmpty ? (fallbackName.isEmpty ? trimmed : fallbackName) : alt
@@ -319,7 +315,6 @@ public final class FolioMediaImageCache: @unchecked Sendable {
         case .loading:
             return FolioMediaPlaceholderInfo(
                 state: state,
-                badgeLabel: isVideo ? "▶ LOADING VIDEO" : "LOADING IMAGE",
                 titleText: titleText,
                 subtitleText: trimmed,
                 isError: false,
@@ -328,7 +323,6 @@ public final class FolioMediaImageCache: @unchecked Sendable {
         case .missingLocalFile(let resolvedPath):
             return FolioMediaPlaceholderInfo(
                 state: state,
-                badgeLabel: isVideo ? "MISSING VIDEO" : "MISSING IMAGE",
                 titleText: titleText,
                 subtitleText: "File not found · \(trimmed)",
                 isError: true,
@@ -339,7 +333,6 @@ public final class FolioMediaImageCache: @unchecked Sendable {
         case .failedRemote:
             return FolioMediaPlaceholderInfo(
                 state: state,
-                badgeLabel: isVideo ? "VIDEO FAILED" : "IMAGE FAILED",
                 titleText: titleText,
                 subtitleText: "Failed to load · \(trimmed)",
                 isError: true,
@@ -350,7 +343,6 @@ public final class FolioMediaImageCache: @unchecked Sendable {
         case .invalidMedia, .loaded:
             return FolioMediaPlaceholderInfo(
                 state: state,
-                badgeLabel: isVideo ? "INVALID VIDEO" : "INVALID IMAGE",
                 titleText: titleText,
                 subtitleText: "Cannot decode · \(trimmed)",
                 isError: true,

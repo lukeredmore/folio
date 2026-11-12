@@ -210,7 +210,7 @@ final class RichMediaAndHtmlTests: XCTestCase {
         )
         XCTAssertEqual(loadedByStem.size, NSSize(width: 96, height: 48))
 
-        // 2. Missing local image and video report .missingLocalFile with explicit MISSING badge and resolved path tooltip
+        // 2. Missing local image and video report .missingLocalFile with diagnostic subtitle and resolved path tooltip
         let expectedMissingPath = spacedDir.appendingPathComponent("mmayer.png").standardizedFileURL.path
         let missingImgInfo = FolioMediaImageCache.shared.placeholderInfo(
             for: "mmayer.png",
@@ -218,7 +218,6 @@ final class RichMediaAndHtmlTests: XCTestCase {
             baseDirectoryURL: spacedDir
         )
         XCTAssertEqual(missingImgInfo.state, .missingLocalFile(resolvedPath: expectedMissingPath))
-        XCTAssertEqual(missingImgInfo.badgeLabel, "MISSING IMAGE")
         XCTAssertEqual(missingImgInfo.titleText, "Marissa Mayer's résumé, re-created with AltaCV")
         XCTAssertEqual(missingImgInfo.subtitleText, "File not found · mmayer.png")
         XCTAssertTrue(missingImgInfo.isError)
@@ -232,19 +231,17 @@ final class RichMediaAndHtmlTests: XCTestCase {
             alt: "",
             baseDirectoryURL: spacedDir
         )
-        XCTAssertEqual(missingVideoInfo.badgeLabel, "MISSING VIDEO")
         XCTAssertEqual(missingVideoInfo.titleText, "sample.mp4")
         XCTAssertEqual(missingVideoInfo.subtitleText, "File not found · sample.mp4")
         XCTAssertTrue(missingVideoInfo.isError)
 
-        // 3. Invalid data URI reports .invalidMedia with INVALID IMAGE badge
+        // 3. Invalid data URI reports .invalidMedia with diagnostic subtitle
         let invalidDataInfo = FolioMediaImageCache.shared.placeholderInfo(
             for: "data:image/png;base64,!!!invalid!!!",
             alt: "Broken Inline",
             baseDirectoryURL: spacedDir
         )
         XCTAssertEqual(invalidDataInfo.state, .invalidMedia)
-        XCTAssertEqual(invalidDataInfo.badgeLabel, "INVALID IMAGE")
         XCTAssertEqual(invalidDataInfo.subtitleText, "Cannot decode · data:image/png;base64,!!!invalid!!!")
         XCTAssertTrue(invalidDataInfo.isError)
 
