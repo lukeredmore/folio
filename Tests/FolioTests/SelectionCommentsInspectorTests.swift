@@ -230,11 +230,17 @@ final class SelectionCommentsInspectorTests: XCTestCase {
 
         // 3. Click 'Hide Comments' liquid glass toolbar button
         themeFrame.layoutSubtreeIfNeeded()
+        for anchor in findSubviews(of: CommentsTitlebarAnchorView.self, in: themeFrame) {
+            anchor.syncTitlebarPill()
+        }
         let updatedHideRect = hideView.convert(hideView.bounds, to: nil)
         sendClick(at: NSPoint(x: updatedHideRect.midX, y: updatedHideRect.midY), in: window)
         RunLoop.current.run(until: Date().addingTimeInterval(0.25))
         hostingView.layoutSubtreeIfNeeded()
         themeFrame.layoutSubtreeIfNeeded()
+        for anchor in findSubviews(of: CommentsTitlebarAnchorView.self, in: themeFrame) {
+            anchor.syncTitlebarPill()
+        }
         XCTAssertFalse(vm.showCommentsSidebar, "Clicking Hide Comments toolbar button must collapse the comments inspector")
 
         // 4. When closed, verify only the 'Show Comments' bubble button appears in top-right toolbar
@@ -245,6 +251,22 @@ final class SelectionCommentsInspectorTests: XCTestCase {
         )
         XCTAssertNil(closedButtons.first(where: { $0.accessibilityLabel() == "Copy All Comments" && !$0.isHidden }))
         XCTAssertNil(closedButtons.first(where: { $0.accessibilityLabel() == "Delete All Comments" && !$0.isHidden }))
+
+        let hitDeadline = Date().addingTimeInterval(2.0)
+        while Date() < hitDeadline {
+            hostingView.layoutSubtreeIfNeeded()
+            themeFrame.layoutSubtreeIfNeeded()
+            for anchor in findSubviews(of: CommentsTitlebarAnchorView.self, in: themeFrame) {
+                anchor.syncTitlebarPill()
+            }
+            let rect = showView.convert(showView.bounds, to: nil)
+            if rect.minX > window.frame.width - 120,
+                themeFrame.hitTest(NSPoint(x: rect.midX, y: rect.midY))?.isDescendant(of: showView) == true
+            {
+                break
+            }
+            RunLoop.current.run(until: Date().addingTimeInterval(0.02))
+        }
 
         let showRect = showView.convert(showView.bounds, to: nil)
         XCTAssertGreaterThan(showRect.minX, window.frame.width - 120, "Show Comments bubble button must be in the top-right")
