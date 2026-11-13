@@ -259,7 +259,10 @@ final class ExternalSyncAndConflictTests: XCTestCase {
         vm.checkForExternalFileChanges(for: fileURL)
         XCTAssertFalse(vm.externalUpdateHighlightRanges.isEmpty)
 
-        try await Task.sleep(nanoseconds: 140_000_000)
+        for _ in 0..<250 {
+            if vm.externalUpdateHighlightRanges.isEmpty { break }
+            try await Task.sleep(nanoseconds: 20_000_000)
+        }
         XCTAssertTrue(vm.externalUpdateHighlightRanges.isEmpty, "External update highlight must clear after timer expires")
 
         // 2. User edit immediately clears any active external update highlight without waiting for timer
@@ -284,7 +287,10 @@ final class ExternalSyncAndConflictTests: XCTestCase {
         vm.resolveConflict(using: .keepBoth)
         XCTAssertFalse(vm.externalUpdateHighlightRanges.isEmpty)
 
-        try await Task.sleep(nanoseconds: 140_000_000)
+        for _ in 0..<250 {
+            if vm.externalUpdateHighlightRanges.isEmpty { break }
+            try await Task.sleep(nanoseconds: 20_000_000)
+        }
         XCTAssertTrue(vm.externalUpdateHighlightRanges.isEmpty, "Conflict resolution highlight must also clear after timer expires")
     }
 }
