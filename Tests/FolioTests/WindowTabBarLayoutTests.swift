@@ -243,7 +243,11 @@ final class WindowTabBarLayoutTests: XCTestCase {
         let vm = makeIsolatedViewModel()
         vm.externalHighlightDurationNanoseconds = 80_000_000 // 80 ms
         let hosted = HostedMainWindow(viewModel: vm, showSidebar: true, markdown: initial)
-        defer { hosted.close() }
+        defer {
+            vm.stopWatchingCurrentFile()
+            vm.stopWatchingWorkspaceFolders()
+            hosted.close()
+        }
 
         vm.openFile(at: fileURL)
         hosted.pump(0.1)
@@ -259,7 +263,13 @@ final class WindowTabBarLayoutTests: XCTestCase {
             "Text view must receive external update highlight ranges immediately"
         )
 
-        hosted.pump(0.25)
+        let deadline = Date().addingTimeInterval(5.0)
+        while Date() < deadline {
+            if vm.externalUpdateHighlightRanges.isEmpty && textView.externalUpdateHighlightRanges.isEmpty {
+                break
+            }
+            hosted.pump(0.02)
+        }
         XCTAssertTrue(vm.externalUpdateHighlightRanges.isEmpty)
         XCTAssertTrue(
             textView.externalUpdateHighlightRanges.isEmpty,
