@@ -9,6 +9,7 @@ on:
 
 permissions:
   contents: read
+  actions: write
 
 cache-mode: write
 
@@ -60,6 +61,16 @@ jobs:
             ~/.cache/bazel-repo
             ~/.cache/bazel-disk
           key: ${{ steps.bazel_test_cache.outputs.cache-primary-key }}
+
+      - name: Prune superseded Bazel test caches
+        if: always() && steps.bazel_test_cache.outputs.cache-hit != 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          for id in $(gh cache list --repo "${{ github.repository }}" --limit 100 --json id,key,createdAt \
+            --jq '[.[] | select(.key | startswith("bazel-test-macos26-"))] | sort_by(.createdAt) | reverse | .[1:] | .[].id' 2>/dev/null || true); do
+            gh cache delete "$id" --repo "${{ github.repository }}" || true
+          done
 
   build-folio-dmg:
     name: Build & Package Folio.dmg
@@ -217,9 +228,17 @@ jobs:
 
       - name: Clean up temporary signing keychain
         if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
           rm -f "$RUNNER_TEMP/certificate.p12"
           security delete-keychain "$RUNNER_TEMP/folio-signing.keychain-db" 2>/dev/null || true
+          for prefix in "bazel-opt-macos26-" "folio-dmg-artifact-macos26-"; do
+            for id in $(gh cache list --repo "${{ github.repository }}" --limit 100 --json id,key,createdAt \
+              --jq "[.[] | select(.key | startswith(\"$prefix\"))] | sort_by(.createdAt) | reverse | .[1:] | .[].id" 2>/dev/null || true); do
+              gh cache delete "$id" --repo "${{ github.repository }}" || true
+            done
+          done
 
       - name: Upload Folio.dmg artifact
         uses: actions/upload-artifact@v7

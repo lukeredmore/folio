@@ -26,6 +26,8 @@ common:ci --curses=no
 common:ci --show_timestamps
 common:ci --repository_cache=~/.cache/bazel-repo
 build:ci --disk_cache=~/.cache/bazel-disk
+build:ci --experimental_disk_cache_gc_max_size=2G
+build:ci --experimental_disk_cache_gc_idle_delay=0
 build:ci --action_env=CI=true
 
 # Release builds: optimized, and stamped by tools/release/workspace_status.sh.
