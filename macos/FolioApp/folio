@@ -2,13 +2,22 @@
 # Folio CLI launcher — opens Markdown files and folders in Folio.app
 set -euo pipefail
 
-QUEUE_FILE="${FOLIO_CLI_QUEUE_FILE:-}"
-FALLBACK_APP="${FOLIO_FALLBACK_APP:-/Applications/Folio.app}"
+DEFAULT_QUEUE_FILE=''
+DEFAULT_FALLBACK_APP='/Applications/Folio.app'
+EXPECTED_BUNDLE_ID=""
+
+QUEUE_FILE="${FOLIO_CLI_QUEUE_FILE:-${DEFAULT_QUEUE_FILE}}"
+FALLBACK_APP="${FOLIO_FALLBACK_APP:-${DEFAULT_FALLBACK_APP}}"
+EXPECTED_BUNDLE_ID="${FOLIO_EXPECTED_BUNDLE_ID:-${EXPECTED_BUNDLE_ID}}"
 CALLER_CWD="${FOLIO_CALLER_CWD:-${BUILD_WORKING_DIRECTORY:-$(pwd -P)}}"
 RELEASE_BUNDLE_ID="app.folio.macos"
 
 bundle_identifier() {
     /usr/libexec/PlistBuddy -c "Print :CFBundleIdentifier" "$1/Contents/Info.plist" 2>/dev/null || true
+}
+
+matches_expected_bundle() {
+    [[ -z "${EXPECTED_BUNDLE_ID}" || "$(bundle_identifier "$1")" == "${EXPECTED_BUNDLE_ID}" ]]
 }
 
 # Names the Application Support folder for bundle ID $1.
@@ -67,16 +76,17 @@ resolve_app_bundle() {
         "${0}.runfiles/_main/macos/FolioApp/FolioApp_archive-root/Folio.app" \
         "${BUILD_WORKSPACE_DIRECTORY:-}/Folio.app" \
         "${BUILD_WORKSPACE_DIRECTORY:-}/bazel-bin/macos/FolioApp/FolioApp_archive-root/Folio.app" \
+        "${FALLBACK_APP}" \
         "/Applications/Folio.app" \
-        "$HOME/Applications/Folio.app" \
-        "${FALLBACK_APP}"; do
-        if [[ -n "${candidate}" && -d "${candidate}" ]]; then
+        "$HOME/Applications/Folio.app"; do
+        if [[ -n "${candidate}" && -d "${candidate}" ]] && matches_expected_bundle "${candidate}"; then
             echo "${candidate}"
             return 0
         fi
     done
+    local target_bundle_id="${EXPECTED_BUNDLE_ID:-${RELEASE_BUNDLE_ID}}"
     local found
-    found="$(mdfind "kMDItemCFBundleIdentifier == '${RELEASE_BUNDLE_ID}'" 2>/dev/null | head -n 1 || true)"
+    found="$(mdfind "kMDItemCFBundleIdentifier == '${target_bundle_id}'" 2>/dev/null | head -n 1 || true)"
     if [[ -n "${found}" && -d "${found}" ]]; then
         echo "${found}"
         return 0
@@ -93,7 +103,7 @@ Open files or folders in Folio.
 Options:
   -n, --new          Open in a new Folio instance
   -a, --add          Open in the existing Folio instance
-  -w, --wait         Wait for files to be opened
+  -w, --wait         Wait for files to be closed before returning
       --foreground   Run Folio in the foreground attached to the terminal
   -v, --version      Print the Folio version and exit
   -h, --help         Print this help message and exit
@@ -116,8 +126,34 @@ print_version() {
     echo "folio ${version}"
 }
 
+wait_for_sentinel() {
+    local wait_file="$1"
+    local bundle_id="$2"
+    local observed_pid="$3"
+    local startup_polls=0
+    local max_startup_polls="${FOLIO_WAIT_STARTUP_POLLS:-50}"
+
+    while [[ -e "${wait_file}" ]]; do
+        local pids
+        pids="$(running_pids_for_bundle_id "${bundle_id}")"
+        if [[ -n "${pids}" ]]; then
+            observed_pid=1
+        elif (( observed_pid == 1 )); then
+            return 0
+        else
+            startup_polls=$(( startup_polls + 1 ))
+            if (( startup_polls >= max_startup_polls )); then
+                return 0
+            fi
+        fi
+        sleep 0.1
+    done
+    return 0
+}
+
 FOREGROUND=0
 NEW_INSTANCE=0
+WAIT=0
 PARSE_FLAGS=1
 RAW_PATHS=()
 
@@ -140,20 +176,40 @@ for arg in "$@"; do
                 NEW_INSTANCE=1
                 continue
                 ;;
-            -a|--add|-e|--existing|-w|--wait)
+            -w|--wait)
+                WAIT=1
+                continue
+                ;;
+            -nw|-wn)
+                NEW_INSTANCE=1
+                WAIT=1
+                continue
+                ;;
+            -a|--add|-e|--existing)
                 continue
                 ;;
             --)
                 PARSE_FLAGS=0
                 continue
                 ;;
-            -*)
+            -)
+                RAW_PATHS+=("${arg}")
                 continue
+                ;;
+            -*)
+                echo "folio: unknown option: ${arg}" >&2
+                echo "Run 'folio --help' for usage." >&2
+                exit 2
                 ;;
         esac
     fi
     RAW_PATHS+=("${arg}")
 done
+
+if ! APP_BUNDLE="$(resolve_app_bundle)"; then
+    echo "folio: could not locate Folio.app. Move Folio.app to /Applications or set FOLIO_APP_PATH." >&2
+    exit 1
+fi
 
 ABS_PATHS=()
 if (( ${#RAW_PATHS[@]} > 0 )); then
@@ -195,11 +251,6 @@ if (( ${#RAW_PATHS[@]} > 0 )); then
     done
 fi
 
-if ! APP_BUNDLE="$(resolve_app_bundle)"; then
-    echo "folio: could not locate Folio.app. Move Folio.app to /Applications or set FOLIO_APP_PATH." >&2
-    exit 1
-fi
-
 if (( FOREGROUND == 1 )); then
     export FOLIO_CALLER_CWD="${CALLER_CWD}"
     APP_EXEC="${APP_BUNDLE}/Contents/MacOS/Folio"
@@ -214,16 +265,37 @@ if (( FOREGROUND == 1 )); then
 fi
 
 BUNDLE_ID="$(bundle_identifier "${APP_BUNDLE}")"
-BUNDLE_ID="${BUNDLE_ID:-${RELEASE_BUNDLE_ID}}"
+BUNDLE_ID="${BUNDLE_ID:-${EXPECTED_BUNDLE_ID:-${RELEASE_BUNDLE_ID}}}"
 if [[ -z "${QUEUE_FILE}" ]]; then
     QUEUE_FILE="$HOME/Library/Application Support/$(state_directory_name "${BUNDLE_ID}")/cli_open_requests.txt"
 fi
 
-if (( ${#ABS_PATHS[@]} > 0 )); then
+WAIT_FILE=""
+cleanup_wait_file() {
+    if [[ -n "${WAIT_FILE:-}" ]]; then
+        rm -f "${WAIT_FILE}"
+    fi
+}
+if (( WAIT == 1 && ${#ABS_PATHS[@]} > 0 )); then
+    WAIT_FILE="$(mktemp "${TMPDIR:-/tmp}/folio-wait.XXXXXXXX")"
+    trap cleanup_wait_file EXIT
+    trap 'cleanup_wait_file; exit 130' INT
+    trap 'cleanup_wait_file; exit 143' TERM
+fi
+
+if (( ${#ABS_PATHS[@]} > 0 && (NEW_INSTANCE == 0 || WAIT == 0) )); then
     mkdir -p "$(dirname "${QUEUE_FILE}")"
-    for p in "${ABS_PATHS[@]}"; do
-        printf '%s\n' "${p}" >> "${QUEUE_FILE}"
-    done
+    PAYLOAD=""
+    if [[ -n "${WAIT_FILE}" ]]; then
+        for p in "${ABS_PATHS[@]}"; do
+            PAYLOAD+="--wait-token=${WAIT_FILE}"$'\t'"${p}"$'\n'
+        done
+    else
+        for p in "${ABS_PATHS[@]}"; do
+            PAYLOAD+="${p}"$'\n'
+        done
+    fi
+    printf '%s' "${PAYLOAD}" >> "${QUEUE_FILE}"
 fi
 
 if (( NEW_INSTANCE == 0 )); then
@@ -233,6 +305,15 @@ if (( NEW_INSTANCE == 0 )); then
             kill -USR1 "${pid}" 2>/dev/null || true
         done
         osascript -e "tell application \"System Events\" to set frontmost of every process whose bundle identifier is \"${BUNDLE_ID}\" to true" >/dev/null 2>&1 || true
+        if (( WAIT == 1 )); then
+            if [[ -n "${WAIT_FILE}" ]]; then
+                wait_for_sentinel "${WAIT_FILE}" "${BUNDLE_ID}" 1
+            else
+                while [[ -n "$(running_pids_for_bundle_id "${BUNDLE_ID}")" ]]; do
+                    sleep 0.1
+                done
+            fi
+        fi
         exit 0
     fi
 fi
@@ -241,8 +322,17 @@ OPEN_FLAGS=(-a "${APP_BUNDLE}")
 if (( NEW_INSTANCE == 1 )); then
     OPEN_FLAGS=(-n -a "${APP_BUNDLE}")
 fi
+if (( WAIT == 1 && ${#ABS_PATHS[@]} == 0 )); then
+    OPEN_FLAGS=(-W "${OPEN_FLAGS[@]}")
+fi
+
 if (( ${#ABS_PATHS[@]} > 0 )); then
-    open "${OPEN_FLAGS[@]}" --args "${ABS_PATHS[@]}"
+    if [[ -n "${WAIT_FILE}" ]]; then
+        open "${OPEN_FLAGS[@]}" --args --wait-token "${WAIT_FILE}" "${ABS_PATHS[@]}"
+        wait_for_sentinel "${WAIT_FILE}" "${BUNDLE_ID}" 0
+    else
+        open "${OPEN_FLAGS[@]}" --args "${ABS_PATHS[@]}"
+    fi
 else
     open "${OPEN_FLAGS[@]}"
 fi

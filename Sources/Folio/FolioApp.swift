@@ -188,7 +188,7 @@ public final class FolioAppDelegate: NSObject, NSApplicationDelegate {
     }
 
     public func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
-        registry.isTerminating = true
+        registry.prepareForTermination()
         return .terminateNow
     }
 
@@ -245,11 +245,11 @@ public struct FolioApp: App {
         appDelegate.registry = registry
         NSApplication.shared.activate(ignoringOtherApps: true)
         FolioCLIManager.shared.setupCLIOnFirstLaunchIfNeeded(userDefaults: registry.userDefaults)
-        let cliArgs = FolioCLIManager.extractCommandLinePaths(from: ProcessInfo.processInfo.arguments)
-        let queuedPaths = FolioCLIManager.drainPendingOpenRequests()
-        registry.openPaths(FolioCLIManager.deduplicateCommandLinePaths(cliArgs + queuedPaths))
-        FolioCLIManager.shared.startListeningForCLIOpenSignal { [registry] paths in
-            registry.openPaths(FolioCLIManager.deduplicateCommandLinePaths(paths))
+        let cliRequest = FolioCLIManager.extractCommandLineOpenRequest(from: ProcessInfo.processInfo.arguments)
+        let queuedRequests = FolioCLIManager.drainPendingOpenRequestItems()
+        registry.openRequests(FolioCLIManager.mergeOpenRequests([cliRequest] + queuedRequests))
+        FolioCLIManager.shared.startListeningForCLIOpenRequests { [registry] requests in
+            registry.openRequests(requests)
             NSApplication.shared.activate(ignoringOtherApps: true)
         }
         updateManager.checkForUpdatesOnLaunchIfNeeded()

@@ -106,7 +106,7 @@ extension EditorWorkspaceViewModel {
 
     /// Saves pending edits and deletes this window's session keys after the user closes the window.
     func closeDocumentWindowSession(isTerminating: Bool) {
-        flushPendingAutoSave()
+        flushPendingAutoSaveBeforeSwitchingFile()
         if hasUnpersistedUndoChanges { persistUndoTimelines() }
         guard !isTerminating else { return }
         discardUntouchedNewFile()
@@ -116,6 +116,13 @@ extension EditorWorkspaceViewModel {
         for base in Self.windowScopedSessionKeys {
             userDefaults.removeObject(forKey: windowSessionKey(base))
         }
+    }
+
+    /// Flushes debounced edits and cleans up untouched template files during app termination while preserving session keys.
+    func flushPendingAutoSaveForTermination() {
+        flushPendingAutoSaveBeforeSwitchingFile()
+        if hasUnpersistedUndoChanges { persistUndoTimelines() }
+        discardUntouchedNewFile()
     }
 
     // MARK: - Tabs

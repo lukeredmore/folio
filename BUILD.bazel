@@ -70,9 +70,24 @@ _FOLIO_UI_SRCS = glob(
     exclude = _FOLIO_MODELS_SRCS + _FOLIO_EDITOR_SRCS + _FOLIO_WORKSPACE_SRCS,
 )
 
+genrule(
+    name = "folio_cli_script_swift",
+    srcs = ["//macos/FolioApp:folio"],
+    outs = ["FolioCLILauncherTemplate.generated.swift"],
+    cmd = """
+{
+    printf '%s\\n' 'extension FolioCLIManager {'
+    printf '%s\\n' '    static let canonicalCLILauncherScript = ####\"\"\"'
+    cat $(execpath //macos/FolioApp:folio)
+    printf '\\n%s\\n' '\"\"\"####'
+    printf '%s\\n' '}'
+} > $@
+""",
+)
+
 swift_library(
     name = "FolioModels",
-    srcs = _FOLIO_MODELS_SRCS,
+    srcs = _FOLIO_MODELS_SRCS + [":folio_cli_script_swift"],
     copts = _SWIFT_LIB_COPTS,
     module_name = "FolioModels",
     deps = [

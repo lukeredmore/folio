@@ -229,32 +229,35 @@ extension EditorWorkspaceViewModel {
         }
     }
 
+    func resolveCLIPathCandidate(for rawPath: String) -> QuickOpenPathCandidate? {
+        if let candidate = resolveQuickOpenPathCandidate(for: rawPath, preferWorkingDirectory: true) {
+            return candidate
+        }
+        let trimmed = rawPath.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return nil }
+        let unquoted = Self.stripSurroundingQuotes(from: trimmed)
+        let (pathPart, parsedLine, parsedCol, _) = FolioCLIManager.splitPathAndLineColumnSuffix(unquoted)
+        let expanded = (pathPart as NSString).expandingTildeInPath
+        guard !expanded.isEmpty else { return nil }
+        let cwd = FolioCLIManager.effectiveWorkingDirectoryPath()
+        let url =
+            expanded.hasPrefix("/")
+            ? URL(fileURLWithPath: expanded).standardizedFileURL
+            : URL(fileURLWithPath: cwd)
+                .appendingPathComponent(expanded).standardizedFileURL
+        var isDir: ObjCBool = false
+        let exists = FileManager.default.fileExists(atPath: url.path, isDirectory: &isDir)
+        return QuickOpenPathCandidate(
+            url: url,
+            isDirectory: isDir.boolValue,
+            exists: exists,
+            lineNumber: parsedLine,
+            columnNumber: parsedCol
+        )
+    }
+
     public func openPathFromCLI(_ rawPath: String) {
-        guard
-            let candidate = resolveQuickOpenPathCandidate(for: rawPath, preferWorkingDirectory: true)
-                ?? {
-                    let trimmed = rawPath.trimmingCharacters(in: .whitespacesAndNewlines)
-                    guard !trimmed.isEmpty else { return nil }
-                    let unquoted = Self.stripSurroundingQuotes(from: trimmed)
-                    let (pathPart, parsedLine, parsedCol, _) = FolioCLIManager.splitPathAndLineColumnSuffix(unquoted)
-                    let expanded = (pathPart as NSString).expandingTildeInPath
-                    let cwd = FolioCLIManager.effectiveWorkingDirectoryPath()
-                    let url =
-                        expanded.hasPrefix("/")
-                        ? URL(fileURLWithPath: expanded).standardizedFileURL
-                        : URL(fileURLWithPath: cwd)
-                            .appendingPathComponent(expanded).standardizedFileURL
-                    var isDir: ObjCBool = false
-                    let exists = FileManager.default.fileExists(atPath: url.path, isDirectory: &isDir)
-                    return QuickOpenPathCandidate(
-                        url: url,
-                        isDirectory: isDir.boolValue,
-                        exists: exists,
-                        lineNumber: parsedLine,
-                        columnNumber: parsedCol
-                    )
-                }()
-        else {
+        guard let candidate = resolveCLIPathCandidate(for: rawPath) else {
             return
         }
 
@@ -299,7 +302,7 @@ extension EditorWorkspaceViewModel {
             || unquoted.hasPrefix("file://")
     }
 
-    private func navigateToLineNumber(_ lineNumber: Int, columnNumber: Int? = nil) {
+    func navigateToLineNumber(_ lineNumber: Int, columnNumber: Int? = nil) {
         let lines = markdownText.components(separatedBy: "\n")
         let targetIdx = max(0, min(lineNumber - 1, lines.count - 1))
         var charOffset = 0
