@@ -1,5 +1,8 @@
-use crate::inlay_folding::{analyze_buffer_for_zed_with_options, ZedBlockDecoration, ZedFoldRange};
+use crate::inlay_folding::{
+    compute_zed_folds, translate_block_decorations, ZedBlockDecoration, ZedFoldRange,
+};
 use crate::math_canvas::{build_gpui_math_canvas, GpuiMathCanvasDescriptor};
+use crate::text_navigation::snap_char_boundary_left;
 use crate::theme_sync::ZedThemeOverrides;
 use folio_engine::markdown::{
     analyze_markdown_document_with_options, compute_newline_continuation,
@@ -61,18 +64,14 @@ impl FolioZedModSession {
         cursor_byte_range: Range<usize>,
     ) -> FolioZedRenderFrame {
         let theme = ZedThemeOverrides::for_appearance(self.is_dark);
-        let sel_len = cursor_byte_range
-            .end
-            .saturating_sub(cursor_byte_range.start);
-        let stats = DocumentStats::compute(buffer_text, Some((cursor_byte_range.start, sel_len)));
+        let start = snap_char_boundary_left(buffer_text, cursor_byte_range.start);
+        let end = snap_char_boundary_left(buffer_text, cursor_byte_range.end).max(start);
+        let selected_utf16_range = utf16_selection_range(buffer_text, start..end);
+        let stats = DocumentStats::compute(buffer_text, selected_utf16_range);
 
         if !self.enabled {
-            let raw_analysis = folio_engine::markdown::analyze_markdown_document(
-                buffer_text,
-                cursor_byte_range.start,
-                true,
-                false,
-            );
+            let raw_analysis =
+                folio_engine::markdown::analyze_markdown_document(buffer_text, start, true, false);
             return FolioZedRenderFrame {
                 folds: Vec::new(),
                 block_decorations: Vec::new(),
@@ -87,18 +86,15 @@ impl FolioZedModSession {
 
         let analysis = analyze_markdown_document_with_options(
             buffer_text,
-            cursor_byte_range.start,
+            start,
             false,
             false,
             self.pretty_mode,
             theme.is_dark,
         );
-        let (folds, block_decorations) = analyze_buffer_for_zed_with_options(
-            buffer_text,
-            cursor_byte_range,
-            theme.is_dark,
-            self.pretty_mode,
-        );
+        let folds = compute_zed_folds(&analysis.syntax_fold_spans, &analysis.block_decorations);
+        let block_decorations =
+            translate_block_decorations(&analysis.block_decorations, theme.is_dark);
 
         let mut display_math_canvases = Vec::new();
         for dec in &block_decorations {
@@ -154,7 +150,7 @@ impl FolioZedModSession {
     /// Applies smart newline continuation at `cursor_byte` on `buffer_text`.
     pub fn apply_newline(&self, buffer_text: &str, cursor_byte: usize) -> (String, usize) {
         if !self.enabled {
-            let clamped = cursor_byte.min(buffer_text.len());
+            let clamped = snap_char_boundary_left(buffer_text, cursor_byte);
             let mut out = String::with_capacity(buffer_text.len() + 1);
             out.push_str(&buffer_text[..clamped]);
             out.push('\n');
@@ -195,10 +191,8 @@ impl FolioZedModSession {
 
     /// Toggles a Markdown task checkbox `- [ ]` <-> `- [x]` at the given byte offset in the buffer.
     pub fn toggle_task_checkbox(buffer_text: &str, checkbox_byte_offset: usize) -> Option<String> {
-        if checkbox_byte_offset + 3 > buffer_text.len() {
-            return None;
-        }
-        let slice = &buffer_text[checkbox_byte_offset..checkbox_byte_offset + 3];
+        let end_offset = checkbox_byte_offset.checked_add(3)?;
+        let slice = buffer_text.get(checkbox_byte_offset..end_offset)?;
         let replacement = match slice {
             "[ ]" => "[x]",
             "[x]" | "[X]" => "[ ]",
@@ -207,7 +201,7 @@ impl FolioZedModSession {
         let mut updated = String::with_capacity(buffer_text.len());
         updated.push_str(&buffer_text[..checkbox_byte_offset]);
         updated.push_str(replacement);
-        updated.push_str(&buffer_text[checkbox_byte_offset + 3..]);
+        updated.push_str(&buffer_text[end_offset..]);
         Some(updated)
     }
 
@@ -220,4 +214,13 @@ impl FolioZedModSession {
     ) -> Option<String> {
         replace_code_fence_language(buffer_text, fence_start_byte_offset, new_language)
     }
+}
+
+fn utf16_selection_range(text: &str, selection_bytes: Range<usize>) -> Option<(usize, usize)> {
+    if selection_bytes.start >= selection_bytes.end {
+        return None;
+    }
+    let utf16_start = text[..selection_bytes.start].encode_utf16().count();
+    let utf16_len = text[selection_bytes].encode_utf16().count();
+    Some((utf16_start, utf16_len))
 }
