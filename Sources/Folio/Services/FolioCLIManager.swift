@@ -11,7 +11,8 @@ public final class FolioCLIManager {
     public static let cliInstalledPathDefaultsKey = "Folio.CLIInstalledPath.v1"
 
     nonisolated(unsafe) private var signalSource: DispatchSourceSignal?
-    private var onOpenPathsHandler: (([String]) -> Void)?
+    private var activeQueueFileURL = FolioCLIManager.defaultQueueFileURL
+    private var onOpenRequestsHandler: (@MainActor ([FolioCLIOpenRequest]) -> Void)?
 
     public init() {}
 
@@ -140,37 +141,65 @@ public final class FolioCLIManager {
         alert.runModal()
     }
 
-    public static func drainPendingOpenRequests(from queueFileURL: URL = defaultQueueFileURL) -> [String] {
-        guard FileManager.default.fileExists(atPath: queueFileURL.path),
-            let content = try? String(contentsOf: queueFileURL, encoding: .utf8)
-        else {
+    /// Atomically renames `queueFileURL` to a unique sibling before reading and removing it,
+    /// preventing concurrent CLI invocations from losing queued open requests.
+    public static func drainPendingOpenRequestItems(
+        from queueFileURL: URL = defaultQueueFileURL
+    ) -> [FolioCLIOpenRequest] {
+        let fm = FileManager.default
+        let drainingURL =
+            queueFileURL
+            .deletingLastPathComponent()
+            .appendingPathComponent("cli_open_requests.draining.\(UUID().uuidString).txt")
+        do {
+            try fm.moveItem(at: queueFileURL, to: drainingURL)
+        } catch {
             return []
         }
-        try? FileManager.default.removeItem(at: queueFileURL)
-        return
-            content
-            .components(separatedBy: .newlines)
-            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
-            .filter { !$0.isEmpty }
+        defer {
+            try? fm.removeItem(at: drainingURL)
+        }
+        guard let content = try? String(contentsOf: drainingURL, encoding: .utf8) else {
+            return []
+        }
+        return parseQueuedOpenRequests(content)
+    }
+
+    public static func drainPendingOpenRequests(from queueFileURL: URL = defaultQueueFileURL) -> [String] {
+        drainPendingOpenRequestItems(from: queueFileURL).flatMap(\.paths)
+    }
+
+    public func startListeningForCLIOpenRequests(
+        queueFileURL: URL = defaultQueueFileURL,
+        onOpenRequests: @escaping @MainActor ([FolioCLIOpenRequest]) -> Void
+    ) {
+        self.activeQueueFileURL = queueFileURL
+        self.onOpenRequestsHandler = onOpenRequests
+        guard signalSource == nil else { return }
+        signal(SIGUSR1, SIG_IGN)
+        let source = DispatchSource.makeSignalSource(signal: SIGUSR1, queue: .main)
+        source.setEventHandler { [weak self] in
+            MainActor.assumeIsolated {
+                guard let self else { return }
+                let requests = Self.drainPendingOpenRequestItems(from: self.activeQueueFileURL)
+                if !requests.isEmpty {
+                    self.onOpenRequestsHandler?(requests)
+                }
+            }
+        }
+        source.resume()
+        signalSource = source
     }
 
     public func startListeningForCLIOpenSignal(
         queueFileURL: URL = defaultQueueFileURL,
         onOpenPaths: @escaping @MainActor ([String]) -> Void
     ) {
-        self.onOpenPathsHandler = onOpenPaths
-        guard signalSource == nil else { return }
-        signal(SIGUSR1, SIG_IGN)
-        let source = DispatchSource.makeSignalSource(signal: SIGUSR1, queue: .main)
-        source.setEventHandler {
-            MainActor.assumeIsolated {
-                let paths = Self.drainPendingOpenRequests(from: queueFileURL)
-                if !paths.isEmpty {
-                    onOpenPaths(paths)
-                }
+        startListeningForCLIOpenRequests(queueFileURL: queueFileURL) { requests in
+            let paths = requests.flatMap(\.paths)
+            if !paths.isEmpty {
+                onOpenPaths(paths)
             }
         }
-        source.resume()
-        signalSource = source
     }
 }

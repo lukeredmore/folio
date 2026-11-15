@@ -53,6 +53,11 @@ public final class EditorWorkspaceViewModel: ObservableObject, HybridMarkdownWor
             persistCurrentFileBookmark()
             persistDocumentSessionState()
             refreshUndoRedoAvailability()
+            if oldValue?.resolvingSymlinksInPath().standardizedFileURL
+                != currentFileURL?.resolvingSymlinksInPath().standardizedFileURL
+            {
+                windowRegistry?.viewModelDidChangeCurrentFile(self, to: currentFileURL)
+            }
         }
     }
     @Published public var isDirty: Bool = false {

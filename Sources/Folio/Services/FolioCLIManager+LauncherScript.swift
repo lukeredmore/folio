@@ -2,10 +2,10 @@ import Foundation
 
 extension FolioCLIManager {
 
-    /// Marks launchers that signal only the app with their bundle ID. Setup replaces launchers without it.
-    static let cliScriptMarker = "running_pids_for_bundle_id"
+    /// Marks launchers generated from the unified script with bundle-ID isolation and `--wait` support.
+    static let cliScriptMarker = "wait_for_sentinel"
 
-    /// Generates the executable `folio` shell script (similar to VS Code's `code` and Zed's `zed` CLI launcher).
+    /// Generates an executable `folio` shell script stamped from the canonical `macos/FolioApp/folio` launcher.
     ///
     /// The script opens an app with `bundleIdentifier` and signals only running processes of the bundle ID
     /// that it opens. The queue file comes from that bundle ID unless `queueFilePath` is set.
@@ -14,194 +14,50 @@ extension FolioCLIManager {
         queueFilePath: String? = nil,
         bundleIdentifier: String = FolioAppIdentity.current.bundleIdentifier
     ) -> String {
-        """
-        #!/usr/bin/env bash
-        # Folio CLI launcher — opens Markdown files and folders in Folio.app
-        set -euo pipefail
-        QUEUE_FILE="${FOLIO_CLI_QUEUE_FILE:-\(queueFilePath ?? "")}"
-        FALLBACK_APP="${FOLIO_FALLBACK_APP:-\(fallbackAppBundlePath)}"
-        EXPECTED_BUNDLE_ID="\(bundleIdentifier)"
-        CALLER_CWD="${FOLIO_CALLER_CWD:-${BUILD_WORKING_DIRECTORY:-$(pwd -P)}}"
+        var script = Self.canonicalCLILauncherScript
+        script = replaceHeaderLine(
+            "DEFAULT_QUEUE_FILE=''",
+            with: "DEFAULT_QUEUE_FILE=\(shellSingleQuoted(queueFilePath ?? ""))",
+            in: script
+        )
+        script = replaceHeaderLine(
+            "DEFAULT_FALLBACK_APP='/Applications/Folio.app'",
+            with: "DEFAULT_FALLBACK_APP=\(shellSingleQuoted(fallbackAppBundlePath))",
+            in: script
+        )
+        script = replaceHeaderLine(
+            "EXPECTED_BUNDLE_ID=\"\"",
+            with: "EXPECTED_BUNDLE_ID=\"\(shellDoubleQuotedContent(bundleIdentifier))\"",
+            in: script
+        )
+        return script
+    }
 
-        bundle_identifier() {
-            /usr/libexec/PlistBuddy -c "Print :CFBundleIdentifier" "$1/Contents/Info.plist" 2>/dev/null || true
+    private static func replaceHeaderLine(_ target: String, with replacement: String, in script: String) -> String {
+        guard let range = script.range(of: target) else {
+            preconditionFailure("Missing header sentinel '\(target)' in canonical CLI launcher script")
         }
+        var updated = script
+        updated.replaceSubrange(range, with: replacement)
+        return updated
+    }
 
-        state_directory_name() {
-            if [[ "$1" == "\(FolioAppIdentity.releaseBundleIdentifier)" ]]; then echo "Folio"; else echo "Folio-$1"; fi
+    private static func shellSingleQuoted(_ value: String) -> String {
+        "'" + value.replacingOccurrences(of: "'", with: "'\\''") + "'"
+    }
+
+    private static func shellDoubleQuotedContent(_ value: String) -> String {
+        var escaped = ""
+        escaped.reserveCapacity(value.count)
+        for char in value {
+            switch char {
+            case "\\", "\"", "$", "`":
+                escaped.append("\\")
+                escaped.append(char)
+            default:
+                escaped.append(char)
+            }
         }
-
-        running_pids_for_bundle_id() {
-            local pid exe
-            for pid in $({ pgrep -x Folio; pgrep -x FolioApp; } 2>/dev/null || true); do
-                exe="$(ps -p "${pid}" -o comm= 2>/dev/null || true)"
-                if [[ "${exe}" != /* ]]; then
-                    exe="$(/usr/sbin/lsof -a -p "${pid}" -d txt -Fn 2>/dev/null | sed -n 's/^n//p' | grep -m 1 '/Contents/MacOS/' || true)"
-                fi
-                [[ "${exe}" == */Contents/MacOS/* ]] || continue
-                if [[ "$(bundle_identifier "${exe%/Contents/MacOS/*}")" == "$1" ]]; then
-                    echo "${pid}"
-                fi
-            done
-        }
-
-        resolve_self_app_bundle() {
-            local source="${BASH_SOURCE[0]}"
-            while [[ -L "${source}" ]]; do
-                local dir
-                dir="$(cd -P "$(dirname "${source}")" && pwd)"
-                source="$(readlink "${source}")"
-                if [[ "${source}" != /* ]]; then source="${dir}/${source}"; fi
-            done
-            local script_dir
-            script_dir="$(cd -P "$(dirname "${source}")" && pwd)"
-            local candidate="${script_dir}"
-            while [[ "${candidate}" != "/" && "${candidate}" != "." ]]; do
-                if [[ "${candidate}" == *.app && -d "${candidate}" ]]; then
-                    echo "${candidate}"
-                    return 0
-                fi
-                candidate="$(dirname "${candidate}")"
-            done
-            return 1
-        }
-
-        resolve_app_bundle() {
-            if [[ -n "${FOLIO_APP_PATH:-}" && -d "${FOLIO_APP_PATH}" ]]; then
-                echo "${FOLIO_APP_PATH}"
-                return 0
-            fi
-            local self_bundle
-            if self_bundle="$(resolve_self_app_bundle)"; then
-                echo "${self_bundle}"
-                return 0
-            fi
-            for candidate in "${FALLBACK_APP}" "/Applications/Folio.app" "$HOME/Applications/Folio.app"; do
-                if [[ -n "${candidate}" && -d "${candidate}" && "$(bundle_identifier "${candidate}")" == "${EXPECTED_BUNDLE_ID}" ]]; then
-                    echo "${candidate}"
-                    return 0
-                fi
-            done
-            local found
-            found="$(mdfind "kMDItemCFBundleIdentifier == '${EXPECTED_BUNDLE_ID}'" 2>/dev/null | head -n 1 || true)"
-            if [[ -n "${found}" && -d "${found}" ]]; then
-                echo "${found}"
-                return 0
-            fi
-            return 1
-        }
-
-        FOREGROUND=0
-        NEW_INSTANCE=0
-        PARSE_FLAGS=1
-        RAW_PATHS=()
-        for arg in "$@"; do
-            if (( PARSE_FLAGS == 1 )); then
-                case "${arg}" in
-                    -h|--help)
-                        echo "Usage: folio [options] [path[:line[:column]] ...]"
-                        echo "Open files or folders in Folio."
-                        exit 0
-                        ;;
-                    -v|--version)
-                        echo "folio 1.0.0"
-                        exit 0
-                        ;;
-                    --foreground) FOREGROUND=1; continue ;;
-                    -n|--new) NEW_INSTANCE=1; continue ;;
-                    -a|--add|-e|--existing|-w|--wait) continue ;;
-                    --) PARSE_FLAGS=0; continue ;;
-                    -*) continue ;;
-                esac
-            fi
-            RAW_PATHS+=("${arg}")
-        done
-
-        ABS_PATHS=()
-        if (( ${#RAW_PATHS[@]} > 0 )); then
-            for raw_arg in "${RAW_PATHS[@]}"; do
-                cleaned="${raw_arg#file://}"
-                line_suffix=""
-                path_part="${cleaned}"
-                if [[ "${path_part}" == "~" ]]; then
-                    path_part="$HOME"
-                elif [[ "${path_part}" == "~/"* ]]; then
-                    path_part="$HOME/${path_part:2}"
-                fi
-                if [[ "${path_part}" != /* ]]; then
-                    path_part="${CALLER_CWD}/${path_part}"
-                fi
-                if [[ ! -e "${path_part}" ]]; then
-                    if [[ "${path_part}" =~ ^(.+):([0-9]+:[0-9]+)$ ]]; then
-                        path_part="${BASH_REMATCH[1]}"
-                        line_suffix=":${BASH_REMATCH[2]}"
-                    elif [[ "${path_part}" =~ ^(.+):([0-9]+)$ ]]; then
-                        path_part="${BASH_REMATCH[1]}"
-                        line_suffix=":${BASH_REMATCH[2]}"
-                    fi
-                fi
-                if [[ -d "${path_part}" ]]; then
-                    ABS_PATHS+=("$(cd "${path_part}" && pwd -P)${line_suffix}")
-                else
-                    if [[ ! -e "${path_part}" ]]; then
-                        mkdir -p "$(dirname "${path_part}")"
-                        touch "${path_part}"
-                    fi
-                    dir_part="$(cd "$(dirname "${path_part}")" && pwd -P)"
-                    ABS_PATHS+=("${dir_part}/$(basename "${path_part}")${line_suffix}")
-                fi
-            done
-        fi
-
-        if ! APP_BUNDLE="$(resolve_app_bundle)"; then
-            echo "folio: could not locate Folio.app. Move Folio.app to /Applications or set FOLIO_APP_PATH." >&2
-            exit 1
-        fi
-
-        if (( FOREGROUND == 1 )); then
-            export FOLIO_CALLER_CWD="${CALLER_CWD}"
-            APP_EXEC="${APP_BUNDLE}/Contents/MacOS/Folio"
-            if [[ ! -x "${APP_EXEC}" && -x "${APP_BUNDLE}/Contents/MacOS/FolioApp" ]]; then
-                APP_EXEC="${APP_BUNDLE}/Contents/MacOS/FolioApp"
-            fi
-            if (( ${#ABS_PATHS[@]} > 0 )); then
-                exec "${APP_EXEC}" "${ABS_PATHS[@]}"
-            else
-                exec "${APP_EXEC}"
-            fi
-        fi
-
-        BUNDLE_ID="$(bundle_identifier "${APP_BUNDLE}")"
-        BUNDLE_ID="${BUNDLE_ID:-\(FolioAppIdentity.releaseBundleIdentifier)}"
-        if [[ -z "${QUEUE_FILE}" ]]; then
-            QUEUE_FILE="$HOME/Library/Application Support/$(state_directory_name "${BUNDLE_ID}")/cli_open_requests.txt"
-        fi
-
-        if (( ${#ABS_PATHS[@]} > 0 )); then
-            mkdir -p "$(dirname "${QUEUE_FILE}")"
-            for p in "${ABS_PATHS[@]}"; do
-                printf '%s\\n' "${p}" >> "${QUEUE_FILE}"
-            done
-        fi
-
-        if (( NEW_INSTANCE == 0 )); then
-            RUNNING_PIDS="$(running_pids_for_bundle_id "${BUNDLE_ID}")"
-            if [[ -n "${RUNNING_PIDS}" ]]; then
-                for pid in ${RUNNING_PIDS}; do
-                    kill -USR1 "${pid}" 2>/dev/null || true
-                done
-                osascript -e "tell application \\"System Events\\" to set frontmost of every process whose bundle identifier is \\"${BUNDLE_ID}\\" to true" >/dev/null 2>&1 || true
-                exit 0
-            fi
-        fi
-
-        OPEN_FLAGS=(-a "${APP_BUNDLE}")
-        if (( NEW_INSTANCE == 1 )); then OPEN_FLAGS=(-n -a "${APP_BUNDLE}"); fi
-        if (( ${#ABS_PATHS[@]} > 0 )); then
-            open "${OPEN_FLAGS[@]}" --args "${ABS_PATHS[@]}"
-        else
-            open "${OPEN_FLAGS[@]}"
-        fi
-        """
+        return escaped
     }
 }

@@ -86,6 +86,8 @@ extension EditorWorkspaceViewModel {
             markdownText != lastSavedDiskContent
         else { return }
         performDiskWrite(markdownText, to: url)
+        isDirty = false
+        persistDocumentSessionState()
     }
 
     /// Checks whether the currently open file on disk has been modified by an external process,

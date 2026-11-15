@@ -6,6 +6,16 @@ public enum FolioCLIImmediateAction: Equatable {
     case printVersion(String)
 }
 
+public struct FolioCLIOpenRequest: Equatable, Sendable {
+    public var paths: [String]
+    public var waitTokenPath: String?
+
+    public init(paths: [String], waitTokenPath: String? = nil) {
+        self.paths = paths
+        self.waitTokenPath = waitTokenPath
+    }
+}
+
 extension FolioCLIManager {
 
     public static var helpText: String {
@@ -17,7 +27,7 @@ extension FolioCLIManager {
         Options:
           -n, --new          Open in a new Folio instance
           -a, --add          Open in the existing Folio instance
-          -w, --wait         Wait for files to be opened
+          -w, --wait         Wait for files to be closed before returning
               --foreground   Run Folio in the foreground attached to the terminal
           -v, --version      Print the Folio version and exit
           -h, --help         Print this help message and exit
@@ -40,8 +50,17 @@ extension FolioCLIManager {
         bundleInfoDictionary: [String: Any]? = Bundle.main.infoDictionary
     ) -> FolioCLIImmediateAction? {
         guard arguments.count > 1 else { return nil }
+        var skipNext = false
         for arg in arguments.dropFirst() {
+            if skipNext {
+                skipNext = false
+                continue
+            }
             if arg == "--" { break }
+            if arg == "--wait-token" {
+                skipNext = true
+                continue
+            }
             if arg == "-h" || arg == "--help" {
                 return .printHelp(helpText)
             }
@@ -112,16 +131,25 @@ extension FolioCLIManager {
         return (rawPath, nil, nil, nil)
     }
 
-    public static func extractCommandLinePaths(
+    public static func extractCommandLineOpenRequest(
         from arguments: [String],
         currentDirectoryPath: String = effectiveWorkingDirectoryPath()
-    ) -> [String] {
-        guard arguments.count > 1 else { return [] }
+    ) -> FolioCLIOpenRequest {
+        guard arguments.count > 1 else { return FolioCLIOpenRequest(paths: []) }
         var paths: [String] = []
+        var waitTokenPath: String?
         var skipNext = false
+        var captureWaitTokenNext = false
         var treatRemainingAsPaths = false
 
         for arg in arguments.dropFirst() {
+            if captureWaitTokenNext {
+                captureWaitTokenNext = false
+                if !arg.isEmpty {
+                    waitTokenPath = arg
+                }
+                continue
+            }
             if skipNext {
                 skipNext = false
                 continue
@@ -129,6 +157,17 @@ extension FolioCLIManager {
             if !treatRemainingAsPaths {
                 if arg == "--" {
                     treatRemainingAsPaths = true
+                    continue
+                }
+                if arg == "--wait-token" {
+                    captureWaitTokenNext = true
+                    continue
+                }
+                if arg.hasPrefix("--wait-token=") {
+                    let token = String(arg.dropFirst("--wait-token=".count))
+                    if !token.isEmpty {
+                        waitTokenPath = token
+                    }
                     continue
                 }
                 if arg.hasPrefix("-NS") || arg.hasPrefix("-Apple") || arg.hasPrefix("-psn_") || arg == "-XCTest" {
@@ -167,7 +206,14 @@ extension FolioCLIManager {
                 paths.append(resolvedURL.path)
             }
         }
-        return paths
+        return FolioCLIOpenRequest(paths: paths, waitTokenPath: waitTokenPath)
+    }
+
+    public static func extractCommandLinePaths(
+        from arguments: [String],
+        currentDirectoryPath: String = effectiveWorkingDirectoryPath()
+    ) -> [String] {
+        extractCommandLineOpenRequest(from: arguments, currentDirectoryPath: currentDirectoryPath).paths
     }
 
     public static func deduplicateCommandLinePaths(_ paths: [String]) -> [String] {
@@ -177,5 +223,55 @@ extension FolioCLIManager {
             result.append(path)
         }
         return result
+    }
+
+    public static func parseQueuedOpenRequests(_ content: String) -> [FolioCLIOpenRequest] {
+        let waitPrefix = "--wait-token="
+        var rawRequests: [FolioCLIOpenRequest] = []
+
+        for rawLine in content.split(omittingEmptySubsequences: false, whereSeparator: \.isNewline) {
+            let line = String(rawLine)
+            if line.hasPrefix(waitPrefix) {
+                let remainder = line.dropFirst(waitPrefix.count)
+                if let tabIndex = remainder.firstIndex(of: "\t") {
+                    let token = String(remainder[..<tabIndex]).trimmingCharacters(in: .whitespaces)
+                    let path = String(remainder[remainder.index(after: tabIndex)...]).trimmingCharacters(in: .whitespacesAndNewlines)
+                    if !token.isEmpty {
+                        rawRequests.append(FolioCLIOpenRequest(paths: path.isEmpty ? [] : [path], waitTokenPath: token))
+                    }
+                } else {
+                    let token = String(remainder).trimmingCharacters(in: .whitespacesAndNewlines)
+                    if !token.isEmpty {
+                        rawRequests.append(FolioCLIOpenRequest(paths: [], waitTokenPath: token))
+                    }
+                }
+            } else {
+                let trimmed = line.trimmingCharacters(in: .whitespacesAndNewlines)
+                if !trimmed.isEmpty {
+                    rawRequests.append(FolioCLIOpenRequest(paths: [trimmed], waitTokenPath: nil))
+                }
+            }
+        }
+        return mergeOpenRequests(rawRequests)
+    }
+
+    public static func mergeOpenRequests(_ requests: [FolioCLIOpenRequest]) -> [FolioCLIOpenRequest] {
+        var merged: [FolioCLIOpenRequest] = []
+        var indexByKey: [String: Int] = [:]
+
+        for request in requests {
+            let cleanPaths = deduplicateCommandLinePaths(request.paths)
+            if cleanPaths.isEmpty && request.waitTokenPath == nil {
+                continue
+            }
+            let key = request.waitTokenPath.map { "wait:\($0)" } ?? "plain"
+            if let existingIndex = indexByKey[key] {
+                merged[existingIndex].paths = deduplicateCommandLinePaths(merged[existingIndex].paths + cleanPaths)
+            } else {
+                indexByKey[key] = merged.count
+                merged.append(FolioCLIOpenRequest(paths: cleanPaths, waitTokenPath: request.waitTokenPath))
+            }
+        }
+        return merged
     }
 }

@@ -213,4 +213,144 @@ final class CLILauncherAndBazelRunTests: XCTestCase {
         XCTAssertTrue(FileManager.default.fileExists(atPath: workDir.appendingPathComponent("new_doc.md").path))
         XCTAssertFalse(FileManager.default.fileExists(atPath: workDir.appendingPathComponent("new_doc.md:15:2").path))
     }
+
+    func testExtractCommandLineOpenRequestParsesWaitTokensWithoutOpeningTokenFile() {
+        let separateTokenArgs = [
+            "/Applications/Folio.app/Contents/MacOS/FolioApp",
+            "--wait-token",
+            "/tmp/folio-wait.ABC123",
+            "docs/commit_msg.md:4:2"
+        ]
+        let separateRequest = FolioCLIManager.extractCommandLineOpenRequest(
+            from: separateTokenArgs,
+            currentDirectoryPath: "/Users/dev/repo"
+        )
+        XCTAssertEqual(separateRequest.waitTokenPath, "/tmp/folio-wait.ABC123")
+        XCTAssertEqual(separateRequest.paths, ["/Users/dev/repo/docs/commit_msg.md:4:2"])
+        XCTAssertEqual(
+            FolioCLIManager.extractCommandLinePaths(from: separateTokenArgs, currentDirectoryPath: "/Users/dev/repo"),
+            ["/Users/dev/repo/docs/commit_msg.md:4:2"]
+        )
+
+        let equalsTokenArgs = [
+            "/Applications/Folio.app/Contents/MacOS/FolioApp",
+            "--wait-token=/tmp/folio-wait.XYZ999",
+            "a.md",
+            "b.md:10",
+            "--",
+            "--wait-token"
+        ]
+        let equalsRequest = FolioCLIManager.extractCommandLineOpenRequest(
+            from: equalsTokenArgs,
+            currentDirectoryPath: "/Users/dev/repo"
+        )
+        XCTAssertEqual(equalsRequest.waitTokenPath, "/tmp/folio-wait.XYZ999")
+        XCTAssertEqual(
+            equalsRequest.paths,
+            [
+                "/Users/dev/repo/a.md",
+                "/Users/dev/repo/b.md:10",
+                "/Users/dev/repo/--wait-token"
+            ]
+        )
+    }
+
+    func testAtomicDrainPendingOpenRequestsPreservesPlainAndWaitedItemsAndCleansTemporaryFiles() throws {
+        let queueDir = try makeTemporaryDirectory("folio-atomic-drain")
+        let queueFile = queueDir.appendingPathComponent("cli_open_requests.txt")
+
+        let firstBatch = [
+            "--wait-token=/tmp/folio-wait.111\t/tmp/commit_a.md",
+            "--wait-token=/tmp/folio-wait.111\t/tmp/commit_b.md:7:2",
+            "/tmp/plain_note.md:3",
+            "--wait-token=/tmp/folio-wait.222\t/tmp/second_wait.md",
+            ""
+        ].joined(separator: "\n")
+        try Data(firstBatch.utf8).write(to: queueFile, options: .atomic)
+
+        let drainedFirst = FolioCLIManager.drainPendingOpenRequestItems(from: queueFile)
+        XCTAssertEqual(
+            drainedFirst,
+            [
+                FolioCLIOpenRequest(
+                    paths: ["/tmp/commit_a.md", "/tmp/commit_b.md:7:2"],
+                    waitTokenPath: "/tmp/folio-wait.111"
+                ),
+                FolioCLIOpenRequest(
+                    paths: ["/tmp/plain_note.md:3"],
+                    waitTokenPath: nil
+                ),
+                FolioCLIOpenRequest(
+                    paths: ["/tmp/second_wait.md"],
+                    waitTokenPath: "/tmp/folio-wait.222"
+                )
+            ]
+        )
+        XCTAssertFalse(FileManager.default.fileExists(atPath: queueFile.path))
+        let remainingAfterFirst = try FileManager.default.contentsOfDirectory(atPath: queueDir.path)
+        XCTAssertEqual(remainingAfterFirst, [], "Draining temp files must be cleaned up")
+
+        // Writing a new request right after atomic drain works cleanly and draining an empty queue returns []
+        try Data("/tmp/follow_up.md\n".utf8).write(to: queueFile, options: .atomic)
+        XCTAssertEqual(FolioCLIManager.drainPendingOpenRequests(from: queueFile), ["/tmp/follow_up.md"])
+        XCTAssertEqual(FolioCLIManager.drainPendingOpenRequestItems(from: queueFile), [])
+    }
+
+    func testRegistryWaitSessionOpensInNewTabWhenBusyAndCompletesOnNavigateAwayOrMultiFileClose() throws {
+        let tempDir = try makeTemporaryDirectory("folio-registry-wait")
+        let defaults = isolatedDefaults()
+        let mirrorDir = tempDir.appendingPathComponent("mirror", isDirectory: true)
+        try FileManager.default.createDirectory(at: mirrorDir, withIntermediateDirectories: true)
+        let registry = DocumentWindowRegistry(
+            userDefaults: defaults,
+            remoteWorkspaceManager: RemoteWorkspaceManager(mirrorBaseDirectory: mirrorDir, userDefaults: defaults)
+        )
+
+        let existingFile = tempDir.appendingPathComponent("existing.md")
+        let waitedA = tempDir.appendingPathComponent("waited_a.md")
+        let waitedB = tempDir.appendingPathComponent("waited_b.md")
+        let otherFile = tempDir.appendingPathComponent("other.md")
+        try "# Existing\n".write(to: existingFile, atomically: true, encoding: .utf8)
+        try "# Waited A\n".write(to: waitedA, atomically: true, encoding: .utf8)
+        try "# Waited B\nLine 2\nLine 3\n".write(to: waitedB, atomically: true, encoding: .utf8)
+        try "# Other\n".write(to: otherFile, atomically: true, encoding: .utf8)
+
+        let firstVM = registry.makeViewModel(for: DocumentWindowValue())
+        XCTAssertTrue(registry.claimLaunchSetup(for: firstVM))
+        firstVM.openFile(at: existingFile)
+
+        let waitToken = tempDir.appendingPathComponent("folio-wait.token")
+        try Data().write(to: waitToken)
+
+        // Opening two waited files while `firstVM` already has `existing.md` open creates two new tabs
+        // without clobbering `existing.md`.
+        registry.openRequests([
+            FolioCLIOpenRequest(paths: [waitedA.path, "\(waitedB.path):3:1"], waitTokenPath: waitToken.path)
+        ])
+
+        XCTAssertEqual(firstVM.currentFileURL?.standardizedFileURL, existingFile.standardizedFileURL)
+        XCTAssertEqual(registry.viewModels.count, 3)
+        XCTAssertTrue(FileManager.default.fileExists(atPath: waitToken.path))
+
+        let vmA = try XCTUnwrap(registry.viewModels.first { $0.isShowing(waitedA) })
+        let vmB = try XCTUnwrap(registry.viewModels.first { $0.isShowing(waitedB) })
+        vmA.autoSaveDelay = 60
+        vmB.autoSaveDelay = 60
+
+        // Edit `waited_a.md` and navigate `vmA` to `other.md`: pending autosave flushes,
+        // while `waitToken` stays alive until `vmB` also finishes.
+        vmA.handleEditorTextEdited("# Waited A edited\n", selectedRange: NSRange(location: 18, length: 0))
+        XCTAssertTrue(vmA.isDirty)
+        vmA.openFile(at: otherFile)
+        XCTAssertEqual(try String(contentsOf: waitedA, encoding: .utf8), "# Waited A edited\n")
+        XCTAssertTrue(FileManager.default.fileExists(atPath: waitToken.path), "Still waiting on waited_b.md")
+
+        // Edit `waited_b.md` and close `vmB`: pending autosave flushes BEFORE `waitToken` is unlinked.
+        vmB.handleEditorTextEdited("# Waited B edited\n", selectedRange: NSRange(location: 18, length: 0))
+        XCTAssertTrue(vmB.isDirty)
+        registry.closeWindow(for: vmB)
+
+        XCTAssertEqual(try String(contentsOf: waitedB, encoding: .utf8), "# Waited B edited\n")
+        XCTAssertFalse(FileManager.default.fileExists(atPath: waitToken.path))
+    }
 }
