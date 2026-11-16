@@ -48,6 +48,7 @@ extension EditorWorkspaceViewModel {
         if markdownText != newText {
             let oldText = markdownText
             clearExternalUpdateHighlights()
+            updateStatsWithoutRedundantPublish(for: newText, selectedRange: selectedRange)
             isApplyingInternalStateChange = true
             markdownText = newText
             isApplyingInternalStateChange = false
@@ -80,13 +81,14 @@ extension EditorWorkspaceViewModel {
                 headings = analysis.headings
             }
             scheduleAutoSave()
+        } else {
+            let updatedStats = DocumentStats.compute(for: markdownText, selectedRange: selectedRange)
+            if stats != updatedStats {
+                stats = updatedStats
+            }
         }
         if !isRestoringState && (!isLiveKeystrokeInProgress || autoSaveDelay <= 0) {
             setSessionValue(selectedRange.location, forKey: Self.selectedCursorLocationDefaultsKey)
-        }
-        let updatedStats = DocumentStats.compute(for: markdownText, selectedRange: selectedRange)
-        if stats != updatedStats {
-            stats = updatedStats
         }
         updateSelectionTooltipAnchor(for: selectedRange)
     }

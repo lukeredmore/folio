@@ -82,12 +82,19 @@ struct DoubleShiftEventMonitorAccessor: NSViewRepresentable {
 
     func makeNSView(context: Context) -> PassThroughAccessorNSView {
         let view = PassThroughAccessorNSView(frame: .zero)
-        context.coordinator.startMonitoring()
+        let coordinator = context.coordinator
+        view.onMoveToWindow = { [weak coordinator] window in
+            coordinator?.attachedWindow = window
+        }
+        coordinator.startMonitoring()
         return view
     }
 
     func updateNSView(_ nsView: PassThroughAccessorNSView, context: Context) {
         context.coordinator.viewModel = viewModel
+        if let window = nsView.window {
+            context.coordinator.attachedWindow = window
+        }
     }
 
     static func dismantleNSView(_ nsView: PassThroughAccessorNSView, coordinator: Coordinator) {
@@ -97,11 +104,17 @@ struct DoubleShiftEventMonitorAccessor: NSViewRepresentable {
     @MainActor
     final class Coordinator: NSObject {
         weak var viewModel: EditorWorkspaceViewModel?
+        weak var attachedWindow: NSWindow?
         var detector = DoubleShiftDetector()
         nonisolated(unsafe) var localMonitor: Any?
 
-        init(viewModel: EditorWorkspaceViewModel) {
+        var owningWindow: NSWindow? {
+            attachedWindow ?? viewModel?.hostWindow
+        }
+
+        init(viewModel: EditorWorkspaceViewModel, attachedWindow: NSWindow? = nil) {
             self.viewModel = viewModel
+            self.attachedWindow = attachedWindow
         }
 
         deinit {
@@ -115,17 +128,7 @@ struct DoubleShiftEventMonitorAccessor: NSViewRepresentable {
             localMonitor = NSEvent.addLocalMonitorForEvents(
                 matching: [.flagsChanged, .keyDown, .leftMouseDown, .rightMouseDown]
             ) { [weak self] event in
-                let (eventType, modifierFlags, timestamp, keyCode) = Self.extractEventFields(from: event)
-                let shouldConsume = MainActor.assumeIsolated {
-                    guard let self = self else { return false }
-                    return self.handleEvent(
-                        type: eventType,
-                        modifierFlags: modifierFlags,
-                        timestamp: timestamp,
-                        keyCode: keyCode
-                    )
-                }
-                return shouldConsume ? nil : event
+                self?.processMonitoredEvent(event) ?? event
             }
         }
 
@@ -143,6 +146,10 @@ struct DoubleShiftEventMonitorAccessor: NSViewRepresentable {
         }
 
         func processMonitoredEvent(_ event: NSEvent) -> NSEvent? {
+            guard shouldProcessEvent(event) else {
+                detector.cancelSequence()
+                return event
+            }
             let (eventType, modifierFlags, timestamp, keyCode) = Self.extractEventFields(from: event)
             let shouldConsume = handleEvent(
                 type: eventType,
@@ -151,6 +158,23 @@ struct DoubleShiftEventMonitorAccessor: NSViewRepresentable {
                 keyCode: keyCode
             )
             return shouldConsume ? nil : event
+        }
+
+        private func shouldProcessEvent(_ event: NSEvent) -> Bool {
+            if let window = owningWindow {
+                guard window.isKeyWindow else { return false }
+                if let eventWindow = event.window {
+                    return eventWindow === window
+                }
+                if event.windowNumber != 0, window.windowNumber > 0 {
+                    return event.windowNumber == window.windowNumber
+                }
+                return true
+            }
+            if let viewModel, viewModel.documentWindow != nil, !viewModel.isActiveDocumentWindow {
+                return false
+            }
+            return true
         }
 
         func stopMonitoring() {

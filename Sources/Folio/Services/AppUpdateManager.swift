@@ -64,6 +64,9 @@ public final class AppUpdateManager: ObservableObject {
         if versionOrder == .orderedDescending {
             return true
         }
+        if versionOrder == .orderedAscending {
+            return false
+        }
         if remote.buildNumber > current.buildNumber {
             return true
         }
@@ -143,7 +146,13 @@ public final class AppUpdateManager: ObservableObject {
     }
 
     public var latestReleaseAPIURL: URL {
-        URL(string: "https://api.github.com/repos/\(currentVersion.repository)/releases/latest")!
+        var components = URLComponents()
+        components.scheme = "https"
+        components.host = "api.github.com"
+        let repositoryPath = currentVersion.repository.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+        let effectiveRepo = repositoryPath.isEmpty ? "lukeredmore/folio" : repositoryPath
+        components.path = "/repos/\(effectiveRepo)/releases/latest"
+        return components.url ?? URL(fileURLWithPath: "/")
     }
 
     public func checkForUpdatesOnLaunchIfNeeded() {
@@ -212,6 +221,12 @@ public final class AppUpdateManager: ObservableObject {
         do {
             let tempRoot = FileManager.default.temporaryDirectory
                 .appendingPathComponent("folio-update-\(UUID().uuidString)", isDirectory: true)
+            var preserveTempRootForSwap = false
+            defer {
+                if !preserveTempRootForSwap {
+                    try? FileManager.default.removeItem(at: tempRoot)
+                }
+            }
             try FileManager.default.createDirectory(at: tempRoot, withIntermediateDirectories: true)
 
             let downloadedDMG = tempRoot.appendingPathComponent("Folio.dmg")
@@ -219,6 +234,7 @@ public final class AppUpdateManager: ObservableObject {
             guard let httpResponse = response as? HTTPURLResponse,
                 (200...299).contains(httpResponse.statusCode)
             else {
+                try? FileManager.default.removeItem(at: tempFileURL)
                 status = .error("Failed to download Folio.dmg from GitHub Releases.")
                 return
             }
@@ -242,6 +258,7 @@ public final class AppUpdateManager: ObservableObject {
                     currentVersion: runningVersion
                 )
             }.value
+            preserveTempRootForSwap = scheduledSwap
 
             let resolvedVersion = installedVersion ?? currentVersion
             lastInstalledUpdateToken = AppVersionInfo.installedUpdateToken(
@@ -272,12 +289,69 @@ public final class AppUpdateManager: ObservableObject {
         }
     }
 
+    /// Positional-argument bundle swap script (`$1` = staged `.app`, `$2` = target `.app`,
+    /// `$3` = temp work directory, `$4` = optional PID to await, `$5` = `"1"` to relaunch or `"0"` to skip).
+    /// Backs up any existing target bundle before moving the staged bundle into place and rolls back on failure.
+    package nonisolated static let bundleSwapScript = """
+        set -euo pipefail
+        STAGED_APP="$1"
+        TARGET_APP="$2"
+        WORK_DIR="$3"
+        WAIT_PID="${4:-}"
+        RELAUNCH="${5:-1}"
+        BACKUP_APP="${WORK_DIR}/Folio.backup.app"
+        SWAP_COMMITTED=0
+
+        cleanup() {
+            if [ "$SWAP_COMMITTED" = "0" ] && [ -e "$BACKUP_APP" ] && [ ! -e "$TARGET_APP" ]; then
+                mv -- "$BACKUP_APP" "$TARGET_APP" || true
+            fi
+            rm -rf -- "$WORK_DIR" || true
+        }
+        trap cleanup EXIT
+
+        if [ -n "$WAIT_PID" ]; then
+            for _ in {1..10}; do
+                kill -0 "$WAIT_PID" 2>/dev/null || break
+                sleep 0.2
+            done
+            if kill -0 "$WAIT_PID" 2>/dev/null; then
+                kill -TERM "$WAIT_PID" 2>/dev/null || true
+                sleep 0.3
+                kill -9 "$WAIT_PID" 2>/dev/null || true
+            fi
+        fi
+
+        rm -rf -- "$BACKUP_APP"
+        if [ -e "$TARGET_APP" ]; then
+            mv -- "$TARGET_APP" "$BACKUP_APP"
+        fi
+
+        if ! mv -- "$STAGED_APP" "$TARGET_APP"; then
+            rm -rf -- "$TARGET_APP" || true
+            exit 1
+        fi
+
+        SWAP_COMMITTED=1
+        rm -rf -- "$BACKUP_APP"
+        if [ "$RELAUNCH" = "1" ]; then
+            open -n -- "$TARGET_APP" || true
+        fi
+        """
+
     nonisolated static func mountExtractAndScheduleSwap(
         dmgURL: URL,
         workDir: URL,
         currentVersion: AppVersionInfo? = nil,
         codeSigningRequirement: String = codeSigningRequirement()
     ) throws -> (AppVersionInfo?, Bool) {
+        var preserveWorkDir = false
+        defer {
+            if !preserveWorkDir {
+                try? FileManager.default.removeItem(at: workDir)
+            }
+        }
+
         let mountPoint = workDir.appendingPathComponent("mnt", isDirectory: true)
         let stagedApp = workDir.appendingPathComponent("Folio.app", isDirectory: true)
         try FileManager.default.createDirectory(at: mountPoint, withIntermediateDirectories: true)
@@ -314,8 +388,6 @@ public final class AppUpdateManager: ObservableObject {
 
         let mountedVersion = AppVersionInfo.fromAppBundle(at: mountedApp)
         if let currentVersion, let mountedVersion, currentVersion.matchesReleaseIdentity(of: mountedVersion) {
-            detachMount()
-            try? FileManager.default.removeItem(at: workDir)
             return (mountedVersion, false)
         }
 
@@ -326,18 +398,12 @@ public final class AppUpdateManager: ObservableObject {
         dittoProc.waitUntilExit()
         detachMount()
         guard dittoProc.terminationStatus == 0 else {
-            try? FileManager.default.removeItem(at: workDir)
             throw NSError(
                 domain: "AppUpdateManager", code: Int(dittoProc.terminationStatus),
                 userInfo: [NSLocalizedDescriptionKey: "ditto failed to stage Folio.app"])
         }
 
-        do {
-            try verifyCodeSignature(appBundleURL: stagedApp, requirement: codeSigningRequirement)
-        } catch {
-            try? FileManager.default.removeItem(at: workDir)
-            throw error
-        }
+        try verifyCodeSignature(appBundleURL: stagedApp, requirement: codeSigningRequirement)
 
         // Release builds are signed with a pinned Apple Development certificate (Team ID XU8E27A586)
         // without Developer ID notarization, so clear quarantine only after code signature verification succeeds.
@@ -353,33 +419,24 @@ public final class AppUpdateManager: ObservableObject {
             ? runningBundleURL.path : "/Applications/Folio.app"
 
         let currentPID = ProcessInfo.processInfo.processIdentifier
-        let updaterScript = workDir.appendingPathComponent("apply_update.sh")
-        let scriptContents = """
-            #!/usr/bin/env bash
-            set -euo pipefail
-            for _ in {1..10}; do
-                kill -0 \(currentPID) 2>/dev/null || break
-                sleep 0.2
-            done
-            if kill -0 \(currentPID) 2>/dev/null; then
-                kill -TERM \(currentPID) 2>/dev/null || true
-                sleep 0.3
-                kill -9 \(currentPID) 2>/dev/null || true
-            fi
-            rm -rf "\(targetAppPath)"
-            mv "\(stagedApp.path)" "\(targetAppPath)"
-            open -n "\(targetAppPath)"
-            rm -rf "\(workDir.path)"
-            """
-        try scriptContents.write(to: updaterScript, atomically: true, encoding: .utf8)
-
         let swapProc = Process()
         swapProc.executableURL = URL(fileURLWithPath: "/usr/bin/nohup")
-        swapProc.arguments = ["/bin/bash", updaterScript.path]
+        swapProc.arguments = [
+            "/bin/bash",
+            "-c",
+            bundleSwapScript,
+            "folio-apply-update",
+            stagedApp.path,
+            targetAppPath,
+            workDir.path,
+            String(currentPID),
+            "1"
+        ]
         swapProc.standardInput = FileHandle.nullDevice
         swapProc.standardOutput = FileHandle.nullDevice
         swapProc.standardError = FileHandle.nullDevice
         try swapProc.run()
+        preserveWorkDir = true
         return (mountedVersion, true)
     }
 }

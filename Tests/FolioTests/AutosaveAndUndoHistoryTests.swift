@@ -184,4 +184,67 @@ final class AutosaveAndUndoHistoryTests: XCTestCase {
         XCTAssertEqual(splitAttempt.location % 2, 0, "Adjusted selection location must never split a UTF-16 surrogate pair")
         XCTAssertEqual((splitAttempt.location + splitAttempt.length) % 2, 0, "Adjusted selection end must never split a UTF-16 surrogate pair")
     }
+
+    @MainActor
+    func testFailedDiskWriteKeepsDirtyStatePreservesLastSavedContentAndBlocksSilentSwitchLoss() throws {
+        let tempDir = try makeTemporaryDirectory("FolioCheckedDiskWriteTest")
+        let firstURL = tempDir.appendingPathComponent("LockedNote.md")
+        let secondURL = tempDir.appendingPathComponent("OtherNote.md")
+        let initialContent = "# Locked Note\n\nSaved baseline paragraph.\n"
+        let secondContent = "# Other Note\n\nSecond file content.\n"
+        try initialContent.write(to: firstURL, atomically: true, encoding: .utf8)
+        try secondContent.write(to: secondURL, atomically: true, encoding: .utf8)
+
+        let vm = makeIsolatedViewModel()
+        vm.autoSaveEnabled = true
+        vm.autoSaveDelay = 60.0
+        vm.openFile(at: firstURL)
+        XCTAssertEqual(vm.lastSavedDiskContent, initialContent)
+        XCTAssertFalse(vm.isDirty)
+
+        // Make both the file and parent directory read-only so atomic temp-file creation and direct writes fail.
+        try FileManager.default.setAttributes([.posixPermissions: 0o444], ofItemAtPath: firstURL.path)
+        try FileManager.default.setAttributes([.posixPermissions: 0o555], ofItemAtPath: tempDir.path)
+        var restoredPermissions = false
+        defer {
+            if !restoredPermissions {
+                try? FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: tempDir.path)
+                try? FileManager.default.setAttributes([.posixPermissions: 0o644], ofItemAtPath: firstURL.path)
+            }
+        }
+
+        let unsavedEdit = "# Locked Note\n\nUnsaved user edit that cannot be written yet.\n"
+        vm.handleEditorTextEdited(unsavedEdit, selectedRange: NSRange(location: 14, length: 0))
+        XCTAssertTrue(vm.isDirty)
+
+        let writeSucceeded = vm.performDiskWrite(unsavedEdit, to: firstURL)
+        XCTAssertFalse(writeSucceeded, "performDiskWrite must report false when atomic write fails")
+        XCTAssertTrue(vm.isDirty, "Failed disk write must keep isDirty == true")
+        XCTAssertEqual(
+            vm.lastSavedDiskContent,
+            initialContent,
+            "Failed disk write must preserve lastSavedDiskContent rather than recording unwritten text"
+        )
+        XCTAssertFalse(
+            vm.recentSelfWrites.contains(unsavedEdit),
+            "Failed disk write must not record unwritten content in recentSelfWrites"
+        )
+
+        // Attempting to switch files while flushing fails must NOT discard the unsaved buffer!
+        vm.openFile(at: secondURL)
+        XCTAssertEqual(vm.currentFileURL?.standardizedFileURL, firstURL.standardizedFileURL)
+        XCTAssertEqual(vm.markdownText, unsavedEdit)
+        XCTAssertTrue(vm.isDirty)
+
+        // Restore write permissions and verify flushing and switching now succeed cleanly.
+        try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: tempDir.path)
+        try FileManager.default.setAttributes([.posixPermissions: 0o644], ofItemAtPath: firstURL.path)
+        restoredPermissions = true
+
+        vm.openFile(at: secondURL)
+        XCTAssertEqual(vm.currentFileURL?.standardizedFileURL, secondURL.standardizedFileURL)
+        XCTAssertEqual(vm.markdownText, secondContent)
+        XCTAssertFalse(vm.isDirty)
+        XCTAssertEqual(try String(contentsOf: firstURL, encoding: .utf8), unsavedEdit)
+    }
 }

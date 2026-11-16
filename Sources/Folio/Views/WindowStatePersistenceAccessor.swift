@@ -35,6 +35,10 @@ struct WindowStatePersistenceAccessor: NSViewRepresentable {
         }
     }
 
+    static func dismantleNSView(_ nsView: PassThroughAccessorNSView, coordinator: Coordinator) {
+        coordinator.removeFullScreenToolbarMouseMonitor()
+    }
+
     @MainActor
     final class Coordinator: NSObject {
         let userDefaults: UserDefaults
@@ -106,7 +110,7 @@ struct WindowStatePersistenceAccessor: NSViewRepresentable {
             }
             attachedWindow = window
             configureWindowAppearance(window)
-            installFullScreenToolbarMouseMonitorIfNeeded()
+            syncFullScreenToolbarMouseMonitor()
             if !window.styleMask.contains(.fullScreen),
                 let savedFrameString = userDefaults.string(forKey: WindowStatePersistenceAccessor.windowFrameDefaultsKey)
             {
@@ -131,15 +135,30 @@ struct WindowStatePersistenceAccessor: NSViewRepresentable {
             }
         }
 
-        private func installFullScreenToolbarMouseMonitorIfNeeded() {
+        private func syncFullScreenToolbarMouseMonitor() {
+            guard let window = attachedWindow, window.styleMask.contains(.fullScreen) else {
+                removeFullScreenToolbarMouseMonitor()
+                return
+            }
             guard mouseMonitor == nil else { return }
             mouseMonitor = NSEvent.addLocalMonitorForEvents(matching: [.leftMouseDown, .leftMouseDragged, .leftMouseUp]) { [weak self] event in
                 self?.handleFullScreenToolbarMouseEvent(event) ?? event
             }
         }
 
+        func removeFullScreenToolbarMouseMonitor() {
+            forwardedToolbarMouseWindow = nil
+            if let monitor = mouseMonitor {
+                NSEvent.removeMonitor(monitor)
+                mouseMonitor = nil
+            }
+        }
+
         func handleFullScreenToolbarMouseEvent(_ event: NSEvent) -> NSEvent? {
-            guard let mainWindow = attachedWindow, mainWindow.styleMask.contains(.fullScreen) else {
+            guard let mainWindow = attachedWindow,
+                mainWindow.styleMask.contains(.fullScreen),
+                mainWindow.isKeyWindow
+            else {
                 forwardedToolbarMouseWindow = nil
                 return event
             }
@@ -193,6 +212,7 @@ struct WindowStatePersistenceAccessor: NSViewRepresentable {
         @objc func windowDidTransitionFullScreen(_ notification: Notification) {
             guard let window = attachedWindow else { return }
             configureWindowAppearance(window)
+            syncFullScreenToolbarMouseMonitor()
         }
 
         @objc func windowDidChangeFrame(_ notification: Notification) {

@@ -225,7 +225,15 @@ final class WindowTabBarLayoutTests: XCTestCase {
         )
 
         hosted.tabWindow?.close()
-        hosted.pump(0.4)
+        let settleDeadline = Date().addingTimeInterval(1.5)
+        while Date() < settleDeadline {
+            hosted.pump(0.02)
+            let isTabBarVisible = hosted.window.tabGroup?.isTabBarVisible ?? false
+            let currentRect = scrollView.convert(scrollView.bounds, to: nil)
+            if !isTabBarVisible && abs(currentRect.maxY - hosted.hostingView.bounds.height) <= 1.0 {
+                break
+            }
+        }
         XCTAssertFalse(hosted.window.tabGroup?.isTabBarVisible ?? false, "Tab bar must hide after the second tab closes")
         let untabbedRect = scrollView.convert(scrollView.bounds, to: nil)
         XCTAssertEqual(

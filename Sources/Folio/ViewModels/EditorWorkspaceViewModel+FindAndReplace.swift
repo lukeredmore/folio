@@ -209,8 +209,11 @@ extension EditorWorkspaceViewModel {
                 )
                 if updated != markdownText {
                     applyWorkspaceReplacementToActiveDocument(updated)
-                    performDiskWrite(updated, to: fileNode.url)
-                    modifiedFilesCount += 1
+                    if performDiskWrite(updated, to: fileNode.url) {
+                        modifiedFilesCount += 1
+                    } else {
+                        isDirty = true
+                    }
                 }
             } else if let diskText = try? String(contentsOf: fileNode.url, encoding: .utf8) {
                 let nsLen = (diskText as NSString).length
@@ -221,11 +224,12 @@ extension EditorWorkspaceViewModel {
                     withTemplate: template
                 )
                 if updated != diskText {
-                    try? Data(updated.utf8).write(to: fileNode.url, options: .atomic)
-                    if remoteWorkspaceManager.isRemoteURL(fileNode.url) {
-                        enqueueRemoteUpload(updated, to: fileNode.url)
+                    if (try? Data(updated.utf8).write(to: fileNode.url, options: .atomic)) != nil {
+                        if remoteWorkspaceManager.isRemoteURL(fileNode.url) {
+                            enqueueRemoteUpload(updated, to: fileNode.url)
+                        }
+                        modifiedFilesCount += 1
                     }
-                    modifiedFilesCount += 1
                 }
             }
         }
@@ -251,8 +255,8 @@ extension EditorWorkspaceViewModel {
             )
             if updated != markdownText {
                 applyWorkspaceReplacementToActiveDocument(updated)
-                if let url = currentFileURL {
-                    performDiskWrite(updated, to: url)
+                if let url = currentFileURL, !performDiskWrite(updated, to: url) {
+                    isDirty = true
                 }
             }
         } else if let diskText = try? String(contentsOf: match.fileURL, encoding: .utf8) {
@@ -264,8 +268,9 @@ extension EditorWorkspaceViewModel {
                 range: match.matchRangeInFile,
                 withTemplate: template
             )
-            if updated != diskText {
-                try? Data(updated.utf8).write(to: match.fileURL, options: .atomic)
+            if updated != diskText,
+                (try? Data(updated.utf8).write(to: match.fileURL, options: .atomic)) != nil
+            {
                 if remoteWorkspaceManager.isRemoteURL(match.fileURL) {
                     enqueueRemoteUpload(updated, to: match.fileURL)
                 }

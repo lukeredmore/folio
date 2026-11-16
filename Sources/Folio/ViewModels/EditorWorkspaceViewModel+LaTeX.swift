@@ -49,32 +49,25 @@ extension EditorWorkspaceViewModel {
         """
 
     public func newLaTeXDocument() {
-        flushPendingAutoSaveBeforeSwitchingFile()
+        guard flushPendingAutoSaveBeforeSwitchingFile() else { return }
         discardUntouchedNewFile()
         stopWatchingCurrentFile()
         activeConflict = nil
         dismissExternalUpdateNotice()
+        clearAllSelectionComments(deleteCompanionFile: false)
+        let initial = Self.defaultLaTeXDocument + "\n"
         isApplyingInternalStateChange = true
         currentFileURL = nil
-        let initial = Self.defaultLaTeXDocument + "\n"
-        markdownText = initial
         lastSavedDiskContent = initial
         isDirty = false
-        currentSelectedRange = NSRange(location: 0, length: 0)
+        pendingScrollToCharacterLocation = nil
         isApplyingInternalStateChange = false
+        applyProgrammaticBufferState(
+            initial,
+            selectedRange: NSRange(location: 0, length: 0),
+            reconcileComments: false
+        )
         setSessionValue(0, forKey: Self.selectedCursorLocationDefaultsKey)
-        stats = DocumentStats.compute(for: markdownText)
-        if activeTextView == nil {
-            let analysis = MarkdownLiveStyler.applyStyles(
-                to: NSTextStorage(string: markdownText),
-                theme: theme,
-                typography: typography,
-                sourceCodeMode: sourceCodeMode,
-                focusMode: focusMode,
-                selectedRange: NSRange(location: 0, length: 0)
-            )
-            headings = analysis.headings
-        }
         refreshUndoRedoAvailability()
         persistDocumentSessionState()
     }

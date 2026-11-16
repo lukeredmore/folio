@@ -66,57 +66,31 @@ extension EditorWorkspaceViewModel {
 
     // MARK: - Selection Comment Reconciliation & Tooltip Anchor
     internal func reconcileSelectionComments(from oldText: String, to newText: String) {
-        guard !selectionComments.isEmpty else { return }
-        let oldNS = oldText as NSString
-        let newNS = newText as NSString
-        let delta = newNS.length - oldNS.length
-
-        // Find common prefix length to locate edit point
-        var prefixLen = 0
-        let minLen = min(oldNS.length, newNS.length)
-        while prefixLen < minLen && oldNS.character(at: prefixLen) == newNS.character(at: prefixLen) {
-            prefixLen += 1
-        }
-
+        guard !selectionComments.isEmpty, oldText != newText else { return }
         let previousComments = selectionComments
         var updated: [SelectionComment] = []
-        updated.reserveCapacity(selectionComments.count)
+        updated.reserveCapacity(previousComments.count)
 
-        for var comment in selectionComments {
-            let safeLoc = max(0, min(comment.range.location, newNS.length))
-            let safeLen = max(0, min(comment.range.length, newNS.length - safeLoc))
-            let directCandidate = NSRange(location: safeLoc, length: safeLen)
-
-            if directCandidate.length == comment.range.length,
-                newNS.substring(with: directCandidate) == comment.selectedRawText
-            {
-                comment.range = directCandidate
-                updated.append(comment)
+        for comment in previousComments {
+            guard var reconciled = comment.reconciled(from: oldText, to: newText) else {
                 continue
             }
-
-            if comment.range.location >= prefixLen {
-                let shiftedLoc = comment.range.location + delta
-                if shiftedLoc >= 0, shiftedLoc + comment.range.length <= newNS.length {
-                    let shiftedCandidate = NSRange(location: shiftedLoc, length: comment.range.length)
-                    if newNS.substring(with: shiftedCandidate) == comment.selectedRawText {
-                        comment.range = shiftedCandidate
-                        updated.append(comment)
-                        continue
-                    }
-                }
+            if reconciled.selectedRawText != comment.selectedRawText {
+                reconciled.selectedFormattedText = MarkdownCopyFormatter.strippedPlainText(
+                    in: newText,
+                    range: reconciled.range,
+                    theme: theme,
+                    typography: typography
+                )
             }
-
-            // Fallback: locate the nearest occurrence of the commented markdown text
-            let found = newNS.range(of: comment.selectedRawText)
-            if found.location != NSNotFound && found.length > 0 {
-                comment.range = found
-                updated.append(comment)
-            }
+            updated.append(reconciled)
         }
 
-        selectionComments = updated
         if updated != previousComments {
+            selectionComments = updated
+            if let activeID = activeCommentID, !updated.contains(where: { $0.id == activeID }) {
+                activeCommentID = updated.first?.id
+            }
             autoSaveCompanionCommentsIfNeeded()
         }
     }

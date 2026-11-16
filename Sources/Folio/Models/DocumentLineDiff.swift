@@ -74,10 +74,9 @@ public struct ExternalUpdateNotice: Identifiable, Equatable, Sendable {
         self.timestamp = timestamp
     }
 
-    public var wasThreeWayMerged: Bool { wasAutoMerged }
     public var addedLines: Int { addedLinesCount }
     public var removedLines: Int { removedLinesCount }
-    public var hunks: [ExternalUpdateDiffHunk] { diffHunks }
+    public var wasThreeWayMerged: Bool { wasAutoMerged }
 
     public var headlineText: String {
         if wasAutoMerged {
@@ -163,14 +162,19 @@ public enum DocumentLineDiff {
 
         if midM > 0 && midN > 0 {
             if midM * midN <= 65_536 {
-                var dp = Array(repeating: Array(repeating: 0, count: midN + 1), count: midM + 1)
+                let rowStride = midN + 1
+                var dp = Array(repeating: 0, count: (midM + 1) * rowStride)
                 for i in stride(from: midM - 1, through: 0, by: -1) {
                     let oldLine = oldLines[midOldStart + i]
+                    let rowOffset = i * rowStride
+                    let nextRowOffset = rowOffset + rowStride
                     for j in stride(from: midN - 1, through: 0, by: -1) {
                         if oldLine == newLines[midNewStart + j] {
-                            dp[i][j] = 1 + dp[i + 1][j + 1]
+                            dp[rowOffset + j] = 1 + dp[nextRowOffset + j + 1]
                         } else {
-                            dp[i][j] = max(dp[i + 1][j], dp[i][j + 1])
+                            let down = dp[nextRowOffset + j]
+                            let right = dp[rowOffset + j + 1]
+                            dp[rowOffset + j] = down >= right ? down : right
                         }
                     }
                 }
@@ -181,7 +185,7 @@ public enum DocumentLineDiff {
                         matches.append((midOldStart + i, midNewStart + j))
                         i += 1
                         j += 1
-                    } else if dp[i + 1][j] >= dp[i][j + 1] {
+                    } else if dp[(i + 1) * rowStride + j] >= dp[i * rowStride + j + 1] {
                         i += 1
                     } else {
                         j += 1

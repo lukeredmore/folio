@@ -23,8 +23,19 @@ extension RemoteWorkspaceManager {
     }
 
     public func syncAllMounts(isBackground: Bool = true) async {
-        for mount in mounts {
-            _ = await syncMount(id: mount.id, isManualRetry: !isBackground, isBackground: isBackground)
+        let currentMounts = mounts
+        let manager = self
+        await withTaskGroup(of: Void.self) { group in
+            for mount in currentMounts {
+                let mountID = mount.id
+                group.addTask {
+                    _ = await manager.syncMount(
+                        id: mountID,
+                        isManualRetry: !isBackground,
+                        isBackground: isBackground
+                    )
+                }
+            }
         }
     }
 
@@ -37,6 +48,10 @@ extension RemoteWorkspaceManager {
     public func syncMount(id: UUID, isManualRetry: Bool = false, isBackground: Bool = true) async -> Bool {
         guard let mount = mounts.first(where: { $0.id == id }) else { return false }
 
+        if let inFlight = inFlightMountSyncs[id] {
+            return await inFlight.task.value
+        }
+
         if isManualRetry || !isBackground {
             retryTasks[id]?.cancel()
             retryTasks.removeValue(forKey: id)
@@ -45,35 +60,47 @@ extension RemoteWorkspaceManager {
             connectionStates[id] = .syncing(detail: "Syncing \(mount.effectiveDisplayName)…")
         }
 
-        do {
-            // Step 1: Flush pending optimistic writes for this mount before pulling remote state
-            try await flushPendingWrites(for: mount)
-
-            // Steps 2 and 3: List loaded directories and download changed files
-            let updatedURLs: [URL]
-            switch mount.targetKind {
-            case .folder:
-                updatedURLs = try await refreshFolderMount(
-                    mount,
-                    directories: loadedDirectories(for: mount.id),
-                    refreshAllProbes: isManualRetry || !isBackground
-                )
-            case .file:
-                updatedURLs = try await refreshFileMount(mount)
+        let syncToken = UUID()
+        let task = Task { @MainActor [weak self] () -> Bool in
+            guard let self else { return false }
+            defer {
+                if self.inFlightMountSyncs[id]?.token == syncToken {
+                    self.inFlightMountSyncs.removeValue(forKey: id)
+                }
             }
+            guard let currentMount = self.mounts.first(where: { $0.id == id }) else { return false }
+            do {
+                try await self.flushPendingWrites(for: currentMount)
 
-            // Step 4: Clear any previous error/retry state — connection is healthy!
-            retryTasks[id]?.cancel()
-            retryTasks.removeValue(forKey: id)
-            retryCounts[id] = 0
-            connectionStates[id] = .connected
+                let updatedURLs: [URL]
+                switch currentMount.targetKind {
+                case .folder:
+                    updatedURLs = try await self.refreshFolderMount(
+                        currentMount,
+                        directories: self.loadedDirectories(for: currentMount.id),
+                        refreshAllProbes: isManualRetry || !isBackground
+                    )
+                case .file:
+                    updatedURLs = try await self.refreshFileMount(currentMount)
+                }
 
-            notifyMirrorUpdated(mount.id, updatedURLs)
-            return true
-        } catch {
-            handleTransportFailure(for: mount, error: error)
-            return false
+                guard !Task.isCancelled, self.mounts.contains(where: { $0.id == id }) else { return false }
+
+                self.retryTasks[id]?.cancel()
+                self.retryTasks.removeValue(forKey: id)
+                self.retryCounts[id] = 0
+                self.connectionStates[id] = .connected
+
+                self.notifyMirrorUpdated(currentMount.id, updatedURLs)
+                return true
+            } catch {
+                guard !Task.isCancelled, self.mounts.contains(where: { $0.id == id }) else { return false }
+                self.handleTransportFailure(for: currentMount, error: error)
+                return false
+            }
         }
+        inFlightMountSyncs[id] = (syncToken, task)
+        return await task.value
     }
 
     // MARK: - Optimistic Local Write + Background Push
@@ -89,44 +116,53 @@ extension RemoteWorkspaceManager {
             relativePath = (mount.remotePath as NSString).lastPathComponent
         }
 
-        // 1. Ensure parent directories exist in local mirror and write immediately
+        let stdURL = url.standardizedFileURL
+        nextPendingWriteRevision &+= 1
+        let writeRevision = nextPendingWriteRevision
+        latestWriteRevisions[stdURL] = writeRevision
+
         let parentDir = url.deletingLastPathComponent()
         try? FileManager.default.createDirectory(at: parentDir, withIntermediateDirectories: true)
         try? content.write(to: url, atomically: true, encoding: .utf8)
 
-        let stdURL = url.standardizedFileURL
         fileSyncStatuses[stdURL] = .syncing
 
-        // 2. Enqueue or update pending write
-        pendingWriteQueue.removeAll(where: { $0.localFileURL == stdURL })
+        pendingWriteQueue.removeAll(where: { $0.localFileURL == stdURL && $0.revision < writeRevision })
         pendingWriteQueue.append(
             PendingRemoteWrite(
                 mountID: mount.id,
                 relativePath: relativePath,
                 localFileURL: stdURL,
-                queuedAt: Date()
+                queuedAt: Date(),
+                revision: writeRevision
             ))
 
-        // 3. Attempt immediate push via transport
         do {
             let mtime = try await transport.pushFile(content: content, relativePath: relativePath, for: mount)
-            try? FileManager.default.setAttributes(
-                [.modificationDate: Date(timeIntervalSince1970: mtime)],
-                ofItemAtPath: stdURL.path
-            )
             let newHash = SHA256.hash(data: Data(content.utf8)).map { String(format: "%02x", $0) }.joined()
-            lastSyncedContentHashes[stdURL] = newHash
-            pendingWriteQueue.removeAll(where: { $0.localFileURL == stdURL })
-            fileSyncStatuses[stdURL] = .synced
+            pendingWriteQueue.removeAll(where: { $0.localFileURL == stdURL && $0.revision <= writeRevision })
 
-            // Mark connection healthy if it was previously reconnecting
+            let hasNewerRevision =
+                (latestWriteRevisions[stdURL] ?? writeRevision) > writeRevision
+                || pendingWriteQueue.contains(where: { $0.localFileURL == stdURL })
+            if !hasNewerRevision {
+                try? FileManager.default.setAttributes(
+                    [.modificationDate: Date(timeIntervalSince1970: mtime)],
+                    ofItemAtPath: stdURL.path
+                )
+                lastSyncedContentHashes[stdURL] = newHash
+                fileSyncStatuses[stdURL] = .synced
+            }
+
             retryTasks[mount.id]?.cancel()
             retryTasks.removeValue(forKey: mount.id)
             retryCounts[mount.id] = 0
             connectionStates[mount.id] = .connected
             notifyMirrorUpdated(mount.id, [stdURL])
         } catch {
-            fileSyncStatuses[stdURL] = .pendingUpload
+            if pendingWriteQueue.contains(where: { $0.localFileURL == stdURL }) {
+                fileSyncStatuses[stdURL] = .pendingUpload
+            }
             handleTransportFailure(for: mount, error: error)
         }
     }
@@ -136,8 +172,12 @@ extension RemoteWorkspaceManager {
         guard !itemsForMount.isEmpty else { return }
 
         for item in itemsForMount {
+            guard pendingWriteQueue.contains(where: { $0.localFileURL == item.localFileURL && $0.revision >= item.revision }) else {
+                continue
+            }
+            let snapshotRevision = max(item.revision, latestWriteRevisions[item.localFileURL] ?? item.revision)
             guard let localContent = try? String(contentsOf: item.localFileURL, encoding: .utf8) else {
-                pendingWriteQueue.removeAll(where: { $0.localFileURL == item.localFileURL })
+                pendingWriteQueue.removeAll(where: { $0.localFileURL == item.localFileURL && $0.revision <= snapshotRevision })
                 continue
             }
             fileSyncStatuses[item.localFileURL] = .syncing
@@ -147,16 +187,24 @@ extension RemoteWorkspaceManager {
                     relativePath: item.relativePath,
                     for: mount
                 )
-                try? FileManager.default.setAttributes(
-                    [.modificationDate: Date(timeIntervalSince1970: mtime)],
-                    ofItemAtPath: item.localFileURL.path
-                )
                 let newHash = SHA256.hash(data: Data(localContent.utf8)).map { String(format: "%02x", $0) }.joined()
-                lastSyncedContentHashes[item.localFileURL] = newHash
-                pendingWriteQueue.removeAll(where: { $0.localFileURL == item.localFileURL })
-                fileSyncStatuses[item.localFileURL] = .synced
+                pendingWriteQueue.removeAll(where: { $0.localFileURL == item.localFileURL && $0.revision <= snapshotRevision })
+
+                let hasNewerRevision =
+                    (latestWriteRevisions[item.localFileURL] ?? snapshotRevision) > snapshotRevision
+                    || pendingWriteQueue.contains(where: { $0.localFileURL == item.localFileURL })
+                if !hasNewerRevision {
+                    try? FileManager.default.setAttributes(
+                        [.modificationDate: Date(timeIntervalSince1970: mtime)],
+                        ofItemAtPath: item.localFileURL.path
+                    )
+                    lastSyncedContentHashes[item.localFileURL] = newHash
+                    fileSyncStatuses[item.localFileURL] = .synced
+                }
             } catch {
-                fileSyncStatuses[item.localFileURL] = .pendingUpload
+                if pendingWriteQueue.contains(where: { $0.localFileURL == item.localFileURL }) {
+                    fileSyncStatuses[item.localFileURL] = .pendingUpload
+                }
                 throw error
             }
         }

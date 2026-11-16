@@ -280,4 +280,329 @@ final class RemoteWorkspaceTests: XCTestCase {
             "Queued offline edit must be flushed to the remote server upon reconnection"
         )
     }
+
+    @MainActor
+    func testSSHRemoteTransportPreservesLaTeXAndBibFilesAndAvoidsPipeDeadlock() async throws {
+        let tempRoot = try makeTemporaryDirectory("FolioSSHShimTest")
+        let remoteFolder = tempRoot.appendingPathComponent("remote-repo", isDirectory: true)
+        let nestedTexDir = remoteFolder.appendingPathComponent("chapters", isDirectory: true)
+        let mirrorBase = tempRoot.appendingPathComponent("local-mirror", isDirectory: true)
+        try FileManager.default.createDirectory(at: nestedTexDir, withIntermediateDirectories: true)
+
+        let texURL = remoteFolder.appendingPathComponent("paper.tex")
+        let latexURL = remoteFolder.appendingPathComponent("appendix.latex")
+        let styURL = remoteFolder.appendingPathComponent("macros.sty")
+        let bibURL = remoteFolder.appendingPathComponent("references.bib")
+        let mdURL = remoteFolder.appendingPathComponent("README.md")
+        let nestedChapterURL = nestedTexDir.appendingPathComponent("intro.tex")
+
+        try "\\documentclass{article}\n\\begin{document}\nInitial\\end{document}\n"
+            .write(to: texURL, atomically: true, encoding: .utf8)
+        try "\\section{Appendix}\n".write(to: latexURL, atomically: true, encoding: .utf8)
+        try "\\ProvidesPackage{macros}\n".write(to: styURL, atomically: true, encoding: .utf8)
+        try "@article{folio2026, title={Folio}}\n".write(to: bibURL, atomically: true, encoding: .utf8)
+        try "# Project Notes\n".write(to: mdURL, atomically: true, encoding: .utf8)
+        try "\\section{Intro}\n".write(to: nestedChapterURL, atomically: true, encoding: .utf8)
+
+        let commandLogURL = tempRoot.appendingPathComponent("ssh-commands.log")
+        let sshShimURL = tempRoot.appendingPathComponent("ssh-shim.sh")
+        let shimScript = """
+            #!/bin/sh
+            set -eu
+            SAW_DOUBLE_DASH=0
+            while [ "$#" -gt 0 ]; do
+                if [ "$1" = "--" ]; then
+                    SAW_DOUBLE_DASH=1
+                    shift
+                    break
+                fi
+                shift
+            done
+            if [ "$SAW_DOUBLE_DASH" != "1" ]; then
+                echo "Missing -- before SSH destination" >&2
+                exit 64
+            fi
+            DEST="$1"
+            shift
+            CMD="$*"
+            printf '%s\\n---CMD---\\n' "$CMD" >> "\(commandLogURL.path)"
+            head -c 98304 /dev/zero | tr '\\0' 'w' >&2
+            exec /bin/sh -c "$CMD"
+            """
+        try shimScript.write(to: sshShimURL, atomically: true, encoding: .utf8)
+        try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: sshShimURL.path)
+
+        let sshTransport = SSHRemoteTransport(connectTimeoutSeconds: 5, sshExecutableURL: sshShimURL)
+        let mountSpec = RemoteMountSpec(
+            host: "localhost",
+            user: "researcher",
+            remotePath: remoteFolder.path,
+            targetKind: .folder
+        )
+
+        let listings = try await sshTransport.listDirectories([""], for: mountSpec)
+        let listedNames = Set(listings.first?.files.map(\.name) ?? [])
+        XCTAssertEqual(
+            listedNames,
+            ["README.md", "appendix.latex", "macros.sty", "paper.tex", "references.bib"],
+            "SSHRemoteTransport.listDirectories must include .tex, .latex, .sty, and .bib alongside Markdown"
+        )
+        let probes = try await sshTransport.probeDirectories(["chapters"], for: mountSpec)
+        XCTAssertEqual(probes["chapters"], true, "SSHRemoteTransport.probeDirectories must detect .tex-only subdirectories")
+
+        let defaults = isolatedDefaults()
+        let remoteManager = RemoteWorkspaceManager(
+            transport: sshTransport,
+            mirrorBaseDirectory: mirrorBase,
+            userDefaults: defaults
+        )
+        defer { remoteManager.stopBackgroundSyncLoop() }
+
+        let added = await remoteManager.addMount(mountSpec)
+        XCTAssertTrue(added)
+
+        let localTexURL = remoteManager.mirrorRootURL(for: mountSpec).appendingPathComponent("paper.tex")
+        let localBibURL = remoteManager.mirrorRootURL(for: mountSpec).appendingPathComponent("references.bib")
+        XCTAssertTrue(FileManager.default.fileExists(atPath: localTexURL.path))
+        XCTAssertTrue(FileManager.default.fileExists(atPath: localBibURL.path))
+
+        // Push a >128 KB .tex payload while the shim simultaneously emits >96 KB on stderr.
+        let largeBody = String(repeating: "% Section content line for pipe backpressure verification.\n", count: 2500)
+        let updatedTex = "\\documentclass{article}\n\\begin{document}\n\(largeBody)\\end{document}\n"
+        XCTAssertGreaterThan(updatedTex.utf8.count, 131_072)
+        let updatedBib = "@article{folio2026, title={Folio Updated}}\n"
+
+        await remoteManager.saveRemoteFile(at: localTexURL, content: updatedTex)
+        await remoteManager.saveRemoteFile(at: localBibURL, content: updatedBib)
+        XCTAssertEqual(remoteManager.syncStatus(forLocalURL: localTexURL), .synced)
+        XCTAssertEqual(remoteManager.syncStatus(forLocalURL: localBibURL), .synced)
+
+        // Subsequent sync must NOT delete saved .tex or .bib files from local mirror!
+        _ = await remoteManager.syncMount(id: mountSpec.id)
+        XCTAssertTrue(
+            FileManager.default.fileExists(atPath: localTexURL.path),
+            "Reconciling local mirror after sync must preserve .tex files"
+        )
+        XCTAssertTrue(
+            FileManager.default.fileExists(atPath: localBibURL.path),
+            "Reconciling local mirror after sync must preserve .bib files"
+        )
+        XCTAssertEqual(try String(contentsOf: texURL, encoding: .utf8), updatedTex)
+        XCTAssertEqual(try String(contentsOf: bibURL, encoding: .utf8), updatedBib)
+
+        let loggedCommands = try String(contentsOf: commandLogURL, encoding: .utf8)
+        let samplePayloadPrefix = Data(updatedTex.utf8).base64EncodedString().prefix(64)
+        XCTAssertFalse(
+            loggedCommands.contains(samplePayloadPrefix),
+            "pushFile must stream base64 payload once via stdin instead of interpolating it into the shell command"
+        )
+    }
+
+    @MainActor
+    func testSaveRemoteFilePreservesNewerQueuedRevisionDuringInFlightPush() async throws {
+        let transport = GatedPushRemoteTransport()
+        let tempMirror = try makeTemporaryDirectory("FolioQueueRaceMirror")
+        let defaults = isolatedDefaults()
+        let spec = RemoteMountSpec(
+            host: "cluster.internal",
+            user: "dev",
+            remotePath: "/srv/docs",
+            targetKind: .folder
+        )
+        transport.seedFiles(for: spec.id, files: ["notes.md": "# Initial\n"])
+
+        let manager = RemoteWorkspaceManager(
+            transport: transport,
+            mirrorBaseDirectory: tempMirror,
+            userDefaults: defaults
+        )
+        manager.retryBackoffBaseSeconds = 60.0
+        defer { manager.stopBackgroundSyncLoop() }
+
+        let connected = await manager.addMount(spec)
+        XCTAssertTrue(connected)
+
+        let localNotesURL = manager.mirrorRootURL(for: spec).appendingPathComponent("notes.md")
+        transport.pauseFirstPush()
+
+        let firstSaveTask = Task {
+            await manager.saveRemoteFile(at: localNotesURL, content: "# Revision 1\n")
+        }
+        await transport.waitUntilFirstPushEntersTransport()
+
+        // Simulate a newer edit queued while Revision 1 is mid-upload, and fail the second push so it stays queued.
+        transport.failSubsequentPushes = true
+        await manager.saveRemoteFile(at: localNotesURL, content: "# Revision 2 (newer)\n")
+
+        // Now let Revision 1 succeed: its completion must NOT wipe Revision 2 from pendingWriteQueue!
+        transport.resumeFirstPush()
+        await firstSaveTask.value
+
+        XCTAssertEqual(
+            manager.pendingWriteQueue.count,
+            1,
+            "Completing an older in-flight push must not dequeue a newer pending revision for the same file"
+        )
+        XCTAssertEqual(try String(contentsOf: localNotesURL, encoding: .utf8), "# Revision 2 (newer)\n")
+        XCTAssertEqual(manager.syncStatus(forLocalURL: localNotesURL), .pendingUpload)
+
+        // Once connectivity recovers, flushing uploads Revision 2 to the remote server.
+        transport.failSubsequentPushes = false
+        _ = await manager.syncMount(id: spec.id)
+        XCTAssertTrue(manager.pendingWriteQueue.isEmpty)
+        XCTAssertEqual(manager.syncStatus(forLocalURL: localNotesURL), .synced)
+        XCTAssertEqual(transport.remoteFile(for: spec.id, relativePath: "notes.md"), "# Revision 2 (newer)\n")
+    }
+}
+
+private final class GatedPushRemoteTransport: RemoteFileTransport, @unchecked Sendable {
+    private let lock = NSLock()
+    private var files: [UUID: [String: String]] = [:]
+    private var stamps: [UUID: [String: TimeInterval]] = [:]
+    private var nextStamp: TimeInterval = 1_800_000_000
+    private var shouldPauseFirstPush = false
+    private var hasPausedPush = false
+    private var enteredContinuation: CheckedContinuation<Void, Never>?
+    private var resumeContinuation: CheckedContinuation<Void, Never>?
+    var failSubsequentPushes = false
+
+    func seedFiles(for mountID: UUID, files seeded: [String: String]) {
+        lock.withLock {
+            files[mountID] = seeded
+            var mountStamps: [String: TimeInterval] = [:]
+            for key in seeded.keys {
+                nextStamp += 1
+                mountStamps[key] = nextStamp
+            }
+            stamps[mountID] = mountStamps
+        }
+    }
+
+    func remoteFile(for mountID: UUID, relativePath: String) -> String? {
+        lock.withLock { files[mountID]?[relativePath] }
+    }
+
+    func pauseFirstPush() {
+        lock.withLock {
+            shouldPauseFirstPush = true
+            hasPausedPush = false
+        }
+    }
+
+    func waitUntilFirstPushEntersTransport() async {
+        let alreadyPaused = lock.withLock { hasPausedPush }
+        if alreadyPaused { return }
+        await withCheckedContinuation { continuation in
+            let immediate = lock.withLock { () -> Bool in
+                if hasPausedPush {
+                    return true
+                }
+                enteredContinuation = continuation
+                return false
+            }
+            if immediate {
+                continuation.resume()
+            }
+        }
+    }
+
+    func resumeFirstPush() {
+        let cont = lock.withLock { () -> CheckedContinuation<Void, Never>? in
+            shouldPauseFirstPush = false
+            let saved = resumeContinuation
+            resumeContinuation = nil
+            return saved
+        }
+        cont?.resume()
+    }
+
+    func listDirectories(
+        _ relativePaths: [String],
+        fileExtensions: Set<String>,
+        for mount: RemoteMountSpec
+    ) async throws -> [RemoteDirectoryListing] {
+        let (mountFiles, mountStamps) = lock.withLock {
+            (files[mount.id] ?? [:], stamps[mount.id] ?? [:])
+        }
+        return mockDirectoryListings(
+            relativePaths,
+            fileExtensions: fileExtensions,
+            files: mountFiles,
+            modificationTimestamps: mountStamps
+        )
+    }
+
+    func probeDirectories(
+        _ relativePaths: [String],
+        fileExtensions: Set<String>,
+        excludedPaths: Set<String>,
+        for mount: RemoteMountSpec
+    ) async throws -> [String: Bool] {
+        let mountFiles = lock.withLock { files[mount.id] ?? [:] }
+        return mockDirectoryProbes(
+            relativePaths,
+            fileExtensions: fileExtensions,
+            excludedPaths: excludedPaths,
+            files: mountFiles
+        )
+    }
+
+    func fetchFiles(_ relativePaths: [String], for mount: RemoteMountSpec) async throws -> [RemoteFileEntry] {
+        let (mountFiles, mountStamps) = lock.withLock {
+            (files[mount.id] ?? [:], stamps[mount.id] ?? [:])
+        }
+        return relativePaths.compactMap { path in
+            mountFiles[path].map {
+                RemoteFileEntry(relativePath: path, modificationTimestamp: mountStamps[path] ?? 0, content: $0)
+            }
+        }
+    }
+
+    func pushFile(content: String, relativePath: String, for mount: RemoteMountSpec) async throws -> TimeInterval {
+        let pauseThisCall = lock.withLock { () -> Bool in
+            if shouldPauseFirstPush && !hasPausedPush {
+                hasPausedPush = true
+                return true
+            }
+            return false
+        }
+
+        if pauseThisCall {
+            let entered = lock.withLock { () -> CheckedContinuation<Void, Never>? in
+                let saved = enteredContinuation
+                enteredContinuation = nil
+                return saved
+            }
+            entered?.resume()
+            await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+                let shouldResumeImmediately = lock.withLock { () -> Bool in
+                    if !shouldPauseFirstPush {
+                        return true
+                    }
+                    resumeContinuation = continuation
+                    return false
+                }
+                if shouldResumeImmediately {
+                    continuation.resume()
+                }
+            }
+        } else if lock.withLock({ failSubsequentPushes }) {
+            throw RemoteWorkspaceError.transportTimeout(host: mount.host)
+        }
+
+        return lock.withLock {
+            nextStamp += 1
+            let stamp = nextStamp
+            files[mount.id, default: [:]][relativePath] = content
+            stamps[mount.id, default: [:]][relativePath] = stamp
+            return stamp
+        }
+    }
+
+    func deleteFile(relativePath: String, for mount: RemoteMountSpec) async throws {
+        lock.withLock {
+            _ = files[mount.id]?.removeValue(forKey: relativePath)
+            _ = stamps[mount.id]?.removeValue(forKey: relativePath)
+        }
+    }
 }

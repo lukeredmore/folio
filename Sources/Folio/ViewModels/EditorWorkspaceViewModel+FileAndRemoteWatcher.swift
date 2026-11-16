@@ -4,17 +4,11 @@ import Foundation
 import SwiftUI
 import UniformTypeIdentifiers
 
-struct WatchedDirectoryEntry {
-    let source: DispatchSourceFileSystemObject
-    let descriptor: Int32
-    let inode: UInt64
-}
-
 extension EditorWorkspaceViewModel {
 
     // MARK: - File & Workspace Operations
     public func newDocument() {
-        flushPendingAutoSaveBeforeSwitchingFile()
+        guard flushPendingAutoSaveBeforeSwitchingFile() else { return }
         discardUntouchedNewFile()
         stopWatchingCurrentFile()
         activeConflict = nil
@@ -22,27 +16,16 @@ extension EditorWorkspaceViewModel {
         clearAllSelectionComments(deleteCompanionFile: false)
         isApplyingInternalStateChange = true
         currentFileURL = nil
-        markdownText = "# Untitled\n\n"
-        lastSavedDiskContent = "# Untitled\n\n"
+        lastSavedDiskContent = Self.untitledDocumentTemplate
         isDirty = false
-        currentSelectedRange = NSRange(location: 0, length: 0)
         pendingScrollToCharacterLocation = nil
         isApplyingInternalStateChange = false
+        applyProgrammaticBufferState(
+            Self.untitledDocumentTemplate,
+            selectedRange: NSRange(location: 0, length: 0),
+            reconcileComments: false
+        )
         setSessionValue(0, forKey: Self.selectedCursorLocationDefaultsKey)
-        stats = DocumentStats.compute(for: markdownText)
-        if let tv = activeTextView {
-            tv.applyProgrammaticDocumentText(markdownText, selectedRange: NSRange(location: 0, length: 0))
-        } else {
-            let analysis = MarkdownLiveStyler.applyStyles(
-                to: NSTextStorage(string: markdownText),
-                theme: theme,
-                typography: typography,
-                sourceCodeMode: sourceCodeMode,
-                focusMode: focusMode,
-                selectedRange: NSRange(location: 0, length: 0)
-            )
-            headings = analysis.headings
-        }
         refreshUndoRedoAvailability()
         persistDocumentSessionState()
     }
@@ -86,7 +69,7 @@ extension EditorWorkspaceViewModel {
 
     public func openFile(at url: URL) {
         if currentFileURL?.standardizedFileURL != url.standardizedFileURL {
-            flushPendingAutoSaveBeforeSwitchingFile()
+            guard flushPendingAutoSaveBeforeSwitchingFile() else { return }
             discardUntouchedNewFile()
         } else {
             pendingAutoSaveWorkItem?.cancel()
@@ -100,30 +83,17 @@ extension EditorWorkspaceViewModel {
             recentSelfWrites.removeAll()
             isApplyingInternalStateChange = true
             currentFileURL = url
-            markdownText = content
             lastSavedDiskContent = content
             isDirty = false
-            currentSelectedRange = NSRange(location: 0, length: 0)
             pendingScrollToCharacterLocation = nil
             isApplyingInternalStateChange = false
+            applyProgrammaticBufferState(
+                content,
+                selectedRange: NSRange(location: 0, length: 0),
+                reconcileComments: false
+            )
             loadCompanionComments(for: url, documentText: content)
             setSessionValue(0, forKey: Self.selectedCursorLocationDefaultsKey)
-            stats = DocumentStats.compute(for: content)
-            if let tv = activeTextView {
-                tv.applyProgrammaticDocumentText(content, selectedRange: NSRange(location: 0, length: 0))
-            } else {
-                let analysis = MarkdownLiveStyler.applyStyles(
-                    to: NSTextStorage(string: content),
-                    theme: theme,
-                    typography: typography,
-                    sourceCodeMode: sourceCodeMode,
-                    focusMode: focusMode,
-                    selectedRange: NSRange(location: 0, length: 0),
-                    baseDirectoryURL: url.deletingLastPathComponent(),
-                    fileURL: url
-                )
-                headings = analysis.headings
-            }
             addRecentFile(url)
             watchCurrentFile(url)
             refreshUndoRedoAvailability()
@@ -149,7 +119,7 @@ extension EditorWorkspaceViewModel {
         panel.directoryURL = workspaceFolderURL ?? currentFileURL?.deletingLastPathComponent()
         panel.allowedContentTypes = [.plainText]
         if panel.runModal() == .OK, let url = panel.url {
-            writeDocument(to: url)
+            guard writeDocument(to: url) else { return }
             currentFileURL = url
             addRecentFile(url)
             watchCurrentFile(url)
@@ -185,23 +155,26 @@ extension EditorWorkspaceViewModel {
         untouchedNewFile = (targetURL, template)
     }
 
-    func writeDocument(to url: URL) {
-        performDiskWrite(markdownText, to: url)
-        saveCompanionCommentsToDisk(for: url)
+    @discardableResult
+    func writeDocument(to url: URL) -> Bool {
+        let wrote = performDiskWrite(markdownText, to: url)
+        if wrote {
+            saveCompanionCommentsToDisk(for: url)
+        }
         persistDocumentSessionState()
+        return wrote
     }
 
     // MARK: - Remote Mount Operations
 
     @discardableResult
-    public func addRemoteMount(_ spec: RemoteMountSpec) async -> Bool {
+    public func connectRemoteMount(_ spec: RemoteMountSpec) async -> Bool {
         remoteConnectionBannerDismissed = false
         let ok = await remoteWorkspaceManager.addMount(spec)
         reloadWorkspaceTree()
         showSidebar = true
         activeSidebarTab = .files
 
-        // If the user mounted a single remote file, open it immediately once mirrored
         if spec.targetKind == .file {
             let filename = (spec.remotePath as NSString).lastPathComponent
             let mirroredURL = remoteWorkspaceManager.localFileURL(for: filename, in: spec)
@@ -212,18 +185,9 @@ extension EditorWorkspaceViewModel {
         return ok
     }
 
-    @discardableResult
-    public func connectRemoteMount(_ spec: RemoteMountSpec) async -> Bool {
-        await addRemoteMount(spec)
-    }
-
-    public func removeRemoteMount(id: UUID) {
+    public func disconnectRemoteMount(id: UUID) {
         remoteWorkspaceManager.removeMount(id: id)
         reloadWorkspaceTree()
-    }
-
-    public func disconnectRemoteMount(id: UUID) {
-        removeRemoteMount(id: id)
     }
 
     public func syncRemoteMountNow(id: UUID) {
@@ -246,29 +210,14 @@ extension EditorWorkspaceViewModel {
         }
     }
 
-    // MARK: - POSIX DispatchSource File & Parent Directory Watcher
+    // MARK: - POSIX DispatchSource File & Workspace Folder Watcher
 
     public nonisolated static func isSystemTemporaryRootDirectory(_ url: URL) -> Bool {
-        let stdPath = url.standardizedFileURL.path
-        let resolvedPath = url.resolvingSymlinksInPath().standardizedFileURL.path
-        let systemTempRoots: Set<String> = [
-            "/",
-            "/tmp",
-            "/private/tmp",
-            "/var/tmp",
-            "/private/var/tmp",
-            FileManager.default.temporaryDirectory.standardizedFileURL.path,
-            FileManager.default.temporaryDirectory.resolvingSymlinksInPath().standardizedFileURL.path
-        ]
-        return systemTempRoots.contains(stdPath) || systemTempRoots.contains(resolvedPath)
+        POSIXWorkspaceFileWatcher.isSystemTemporaryRootDirectory(url)
     }
 
     nonisolated static func fileInode(for url: URL) -> UInt64 {
-        var st = stat()
-        if stat(url.path, &st) == 0 {
-            return UInt64(st.st_ino)
-        }
-        return 0
+        POSIXWorkspaceFileWatcher.fileInode(for: url)
     }
 
     func watchCurrentFile(_ url: URL) {
@@ -278,164 +227,60 @@ extension EditorWorkspaceViewModel {
     }
 
     func watchFileDescriptorOnly(_ url: URL) {
-        fileWatchSource?.cancel()
-        fileWatchSource = nil
-        fileWatchDescriptor = -1
-
-        let fd = open(url.path, O_EVTONLY)
-        guard fd >= 0 else { return }
-        fileWatchDescriptor = fd
-        watchedFileInode = Self.fileInode(for: url)
-
-        let source = DispatchSource.makeFileSystemObjectSource(
-            fileDescriptor: fd,
-            eventMask: [.write, .extend, .attrib, .delete, .rename, .link, .revoke],
-            queue: .main
-        )
-        source.setEventHandler { [weak self, weak source] in
-            let flags = source?.data ?? []
-            MainActor.assumeIsolated {
-                guard let self = self, self.currentFileURL != nil else { return }
-                self.checkForExternalFileChanges()
-                if flags.contains(.delete) || flags.contains(.rename) || flags.contains(.revoke) || flags.contains(.link) {
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.02) { [weak self] in
-                        guard let self = self, let activeURL = self.currentFileURL else { return }
-                        self.watchFileDescriptorOnly(activeURL)
-                        self.checkForExternalFileChanges()
-                    }
+        workspaceFileWatcher.watchFileDescriptorOnly(url) { [weak self] flags in
+            guard let self, self.currentFileURL != nil else { return }
+            self.checkForExternalFileChanges()
+            if flags.contains(.delete) || flags.contains(.rename) || flags.contains(.revoke) || flags.contains(.link) {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.02) { [weak self] in
+                    guard let self, let activeURL = self.currentFileURL else { return }
+                    self.watchFileDescriptorOnly(activeURL)
+                    self.checkForExternalFileChanges()
                 }
             }
         }
-        source.setCancelHandler {
-            close(fd)
-        }
-        source.resume()
-        fileWatchSource = source
     }
 
     func watchParentDirectoryOnly(_ parentURL: URL) {
-        parentDirWatchSource?.cancel()
-        parentDirWatchSource = nil
-        parentDirWatchDescriptor = -1
-
-        guard !Self.isSystemTemporaryRootDirectory(parentURL) else { return }
-
-        let dirFD = open(parentURL.path, O_EVTONLY)
-        guard dirFD >= 0 else { return }
-        parentDirWatchDescriptor = dirFD
-
-        let source = DispatchSource.makeFileSystemObjectSource(
-            fileDescriptor: dirFD,
-            eventMask: [.write, .rename, .extend, .attrib],
-            queue: .main
-        )
-        source.setEventHandler { [weak self] in
-            MainActor.assumeIsolated {
-                guard let self = self else { return }
-                self.checkForExternalFileChanges()
-                // A sibling such as the master file or its macros file may have changed.
-                if let url = self.currentFileURL, self.isCurrentDocumentLaTeX {
-                    LaTeXProjectContext.scheduleRefresh(forFile: url)
-                }
+        workspaceFileWatcher.watchParentDirectoryOnly(parentURL) { [weak self] in
+            guard let self else { return }
+            self.checkForExternalFileChanges()
+            if let url = self.currentFileURL, self.isCurrentDocumentLaTeX {
+                LaTeXProjectContext.scheduleRefresh(forFile: url)
             }
         }
-        source.setCancelHandler {
-            close(dirFD)
-        }
-        source.resume()
-        parentDirWatchSource = source
     }
 
     nonisolated func stopWatchingCurrentFile() {
-        fileWatchSource?.cancel()
-        fileWatchSource = nil
-        fileWatchDescriptor = -1
-        parentDirWatchSource?.cancel()
-        parentDirWatchSource = nil
-        parentDirWatchDescriptor = -1
-        watchedFileInode = 0
+        workspaceFileWatcher.stopWatchingCurrentFile()
     }
-
-    // MARK: - POSIX DispatchSource Workspace Folder Tree Watcher
 
     static let maxWatchedWorkspaceDirectories = 256
 
     func recordWatchedWorkspaceDirectory(_ url: URL, activeKeys: inout Set<String>) {
-        guard !Self.isSystemTemporaryRootDirectory(url), !url.path.contains(".runfiles") else { return }
-        let key = url.resolvingSymlinksInPath().standardizedFileURL.path
-        guard !activeKeys.contains(key) else { return }
-        let currentInode = Self.fileInode(for: url)
-        guard currentInode != 0 else { return }
-
-        if let existing = folderWatchEntries[key] {
-            if existing.inode == currentInode {
-                activeKeys.insert(key)
-                return
-            }
-            existing.source.cancel()
-            folderWatchEntries.removeValue(forKey: key)
+        workspaceFileWatcher.recordWatchedWorkspaceDirectory(
+            url,
+            activeKeys: &activeKeys,
+            maxDirectories: Self.maxWatchedWorkspaceDirectories
+        ) { [weak self] in
+            self?.scheduleWorkspaceTreeReloadFromWatcher()
         }
-
-        guard folderWatchEntries.count < Self.maxWatchedWorkspaceDirectories else { return }
-        let dirFD = open(url.path, O_EVTONLY)
-        guard dirFD >= 0 else { return }
-
-        let source = DispatchSource.makeFileSystemObjectSource(
-            fileDescriptor: dirFD,
-            eventMask: [.write, .rename, .extend, .attrib, .delete, .link, .revoke],
-            queue: .main
-        )
-        source.setEventHandler { [weak self, weak source] in
-            let flags = source?.data ?? []
-            MainActor.assumeIsolated {
-                guard let self = self else { return }
-                if flags.contains(.delete) || flags.contains(.rename) || flags.contains(.revoke) {
-                    if let removed = self.folderWatchEntries.removeValue(forKey: key) {
-                        removed.source.cancel()
-                    }
-                }
-                self.scheduleWorkspaceTreeReloadFromWatcher()
-            }
-        }
-        source.setCancelHandler {
-            close(dirFD)
-        }
-        source.resume()
-        folderWatchEntries[key] = WatchedDirectoryEntry(source: source, descriptor: dirFD, inode: currentInode)
-        activeKeys.insert(key)
     }
 
     func pruneWatchedWorkspaceDirectories(keeping activeKeys: Set<String>) {
-        let staleKeys = folderWatchEntries.keys.filter { !activeKeys.contains($0) }
-        for key in staleKeys {
-            if let entry = folderWatchEntries.removeValue(forKey: key) {
-                entry.source.cancel()
-            }
-        }
+        workspaceFileWatcher.pruneWatchedWorkspaceDirectories(keeping: activeKeys)
     }
 
     func scheduleWorkspaceTreeReloadFromWatcher() {
-        pendingFolderWatchReloadWorkItem?.cancel()
-        let work = DispatchWorkItem { [weak self] in
-            MainActor.assumeIsolated {
-                guard let self = self else { return }
-                self.pendingFolderWatchReloadWorkItem = nil
-                self.reloadWorkspaceTree()
-                if !self.workspaceSearchQuery.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                    self.performWorkspaceSearch()
-                }
+        workspaceFileWatcher.scheduleReload { [weak self] in
+            guard let self else { return }
+            self.reloadWorkspaceTree()
+            if !self.workspaceSearchQuery.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                self.performWorkspaceSearch()
             }
         }
-        pendingFolderWatchReloadWorkItem = work
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.02, execute: work)
     }
 
     nonisolated func stopWatchingWorkspaceFolders() {
-        pendingFolderWatchReloadWorkItem?.cancel()
-        pendingFolderWatchReloadWorkItem = nil
-        for (_, entry) in folderWatchEntries {
-            entry.source.cancel()
-        }
-        folderWatchEntries.removeAll()
+        workspaceFileWatcher.stopWatchingWorkspaceFolders()
     }
 }
