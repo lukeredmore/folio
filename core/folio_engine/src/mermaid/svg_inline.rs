@@ -1,3 +1,5 @@
+use crate::markdown::inline_helpers::{extract_xml_attr, set_xml_attr};
+
 use super::theme::FolioMermaidColors;
 
 /// Inlines explicit SVG 1.1 presentation attributes (`fill`, `stroke`, `stroke-width`,
@@ -27,18 +29,19 @@ pub(super) fn inline_core_svg_styles(svg: &str, c: FolioMermaidColors) -> String
 }
 
 fn replace_style_block(svg: &str, c: FolioMermaidColors) -> String {
-    let (Some(s_start), Some(s_end)) = (svg.find("<style>"), svg.find("</style>")) else {
+    let Some(s_start) = svg.find("<style>") else {
         return svg.to_string();
     };
+    let after_open = s_start + "<style>".len();
+    let Some(close_rel) = svg[after_open..].find("</style>") else {
+        return svg.to_string();
+    };
+    let after_close = after_open + close_rel + "</style>".len();
     let (text, line, border, surface) = (c.text, c.line, c.border, c.surface);
     let minimal_style = format!(
         r#"<style>svg {{ font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", sans-serif; font-size: 14px; fill: {text}; }} .edgePath .path, .flowchart-link, .transition, .relation, .relationshipLine {{ fill: none; stroke: {line}; stroke-width: 1.5px; }} .label-container {{ fill: {surface}; stroke: {border}; stroke-width: 1.5px; }}</style>"#
     );
-    format!(
-        "{}{minimal_style}{}",
-        &svg[..s_start],
-        &svg[s_end + "</style>".len()..]
-    )
+    format!("{}{minimal_style}{}", &svg[..s_start], &svg[after_close..])
 }
 
 fn rewrite_tag(tag: &str, c: FolioMermaidColors) -> String {
@@ -301,15 +304,7 @@ fn rewrite_text_tag(tag: &str, class: &str, style: &str, c: FolioMermaidColors) 
 }
 
 fn extract_attr<'a>(tag: &'a str, attr: &str) -> Option<&'a str> {
-    let pat = format!(r#"{attr}=""#);
-    for (idx, _) in tag.match_indices(&pat) {
-        if idx == 0 || tag.as_bytes()[idx - 1].is_ascii_whitespace() {
-            let start = idx + pat.len();
-            let end_q = tag[start..].find('"')?;
-            return Some(&tag[start..start + end_q]);
-        }
-    }
-    None
+    extract_xml_attr(tag, attr)
 }
 
 fn extract_style_prop<'a>(style: &'a str, prop: &str) -> Option<&'a str> {
@@ -343,19 +338,5 @@ fn set_attrs(tag: &str, pairs: &[(&str, &str)]) -> String {
 }
 
 fn set_attr(tag: &str, attr: &str, val: &str) -> String {
-    let pat = format!(r#"{attr}=""#);
-    for (idx, _) in tag.match_indices(&pat) {
-        if idx == 0 || tag.as_bytes()[idx - 1].is_ascii_whitespace() {
-            let start = idx + pat.len();
-            if let Some(end_q) = tag[start..].find('"') {
-                return format!("{}{val}{}", &tag[..start], &tag[start + end_q..]);
-            }
-        }
-    }
-    let pos = if tag.ends_with("/>") {
-        tag.len() - 2
-    } else {
-        tag.len() - 1
-    };
-    format!(r#"{} {attr}="{val}"{}"#, &tag[..pos], &tag[pos..])
+    set_xml_attr(tag, attr, val)
 }

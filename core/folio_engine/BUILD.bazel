@@ -7,6 +7,7 @@ package(default_visibility = ["//visibility:public"])
 exports_files([
     "BUILD.bazel",
     "Cargo.toml",
+    "tst/support/behavior_spec.rs",
 ])
 
 ENGINE_SRCS = glob(["src/**/*.rs"])
@@ -64,7 +65,10 @@ ENGINE_TESTS = glob(["tst/*.rs"])
 [
     rust_test(
         name = src.removeprefix("tst/").removesuffix(".rs"),
-        srcs = [src],
+        srcs = [src] + (
+            ["tst/support/behavior_spec.rs"] if src == "tst/behavior_suite.rs" else []
+        ),
+        crate_root = src,
         data = [
             "tst/corpus/latex_commands.tex",
             "tst/golden/latex_scan.txt",
@@ -76,6 +80,7 @@ ENGINE_TESTS = glob(["tst/*.rs"])
             "LATEX_CORPUS": "$(rootpath tst/corpus/latex_commands.tex)",
             "LATEX_GOLDEN": "$(rootpath tst/golden/latex_scan.txt)",
         },
+        tags = ["exclusive"] if src == "tst/markdown_scan_tests.rs" else [],
         deps = [":folio_engine"],
     )
     for src in ENGINE_TESTS

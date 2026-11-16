@@ -63,42 +63,6 @@ fn map_primitive_to_cmd(prim: MathDrawPrimitive) -> OTMathDrawCmd {
             thickness: height,
             text: ptr::null_mut(),
         },
-        MathDrawPrimitive::Radical {
-            x,
-            top_y,
-            bottom_y,
-            hook_width,
-            radicand_width,
-            thickness,
-        } => OTMathDrawCmd {
-            kind: 2,
-            font_style: 0,
-            x,
-            y: top_y,
-            width: hook_width,
-            height: bottom_y,
-            font_size: radicand_width,
-            thickness,
-            text: ptr::null_mut(),
-        },
-        MathDrawPrimitive::Delimiter {
-            symbol,
-            x,
-            top_y,
-            bottom_y,
-            width,
-            thickness,
-        } => OTMathDrawCmd {
-            kind: 3,
-            font_style: 0,
-            x,
-            y: top_y,
-            width,
-            height: bottom_y,
-            font_size: 0.0,
-            thickness,
-            text: CString::new(symbol).unwrap_or_default().into_raw(),
-        },
     }
 }
 

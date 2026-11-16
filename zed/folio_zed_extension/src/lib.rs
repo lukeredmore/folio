@@ -6,7 +6,6 @@ pub mod extension_bridge;
 pub mod extension_types;
 pub mod inlay_folding;
 pub mod keystroke_controller;
-mod keystroke_helpers;
 pub mod markdown_formatting;
 pub mod math_canvas;
 pub mod outline;

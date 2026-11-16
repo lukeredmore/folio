@@ -19,11 +19,13 @@ pub use latex::{
 
 pub use markdown::{
     analyze_markdown_document, analyze_markdown_document_with_options, apply_newline_at_cursor,
-    compute_newline_continuation, parse_cmark_gfm_ast, render_gfm_to_html, render_markdown_to_html,
-    replace_code_fence_language, set_heading_level_at_cursor, toggle_symmetric_delimiter,
-    toggle_task_checkbox_at_cursor, CmarkAstAnalysis, CmarkBlockSpan, CmarkInlineSpan,
-    HtmlInlineTagKind, MarkdownAnalysis, MarkdownBlockDecoration, MarkdownBlockDecorationKind,
-    NewlineAction, OutlineHeadingItem, SyntaxFoldSpan, SyntaxTokenKind,
+    compute_newline_continuation, edit_newline, edit_set_heading_level, edit_symmetric_delimiter,
+    edit_toggle_heading_level, edit_toggle_task_checkbox, extract_xml_attr, parse_cmark_gfm_ast,
+    render_gfm_to_html, render_markdown_to_html, replace_code_fence_language,
+    set_heading_level_at_cursor, toggle_symmetric_delimiter, toggle_task_checkbox_at_cursor,
+    CmarkAstAnalysis, CmarkBlockSpan, CmarkInlineSpan, HtmlInlineTagKind, MarkdownAnalysis,
+    MarkdownBlockDecoration, MarkdownBlockDecorationKind, NewlineAction, OutlineHeadingItem,
+    SpanEdit, SyntaxFoldSpan, SyntaxTokenKind,
 };
 pub use math::{
     layout_latex, plain_text_summary, MathDrawPrimitive, MathFontStyle, MathLayoutPlan,

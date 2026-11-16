@@ -86,6 +86,30 @@ fn test_commonmark_tilde_and_backtick_fences() {
 }
 
 #[test]
+fn test_source_code_mode_ignores_hash_comments_inside_fenced_code_blocks() {
+    let md = "\
+# Real Intro
+```python
+# python comment
+## not a heading
+```
+~~~sh
+# shell comment
+~~~
+## Real Section
+";
+    let analysis = analyze_markdown_document(md, 0, true, false);
+    assert!(analysis.syntax_fold_spans.is_empty());
+    assert!(analysis.block_decorations.is_empty());
+    let titles: Vec<(usize, &str)> = analysis
+        .headings
+        .iter()
+        .map(|h| (h.level, h.title.as_str()))
+        .collect();
+    assert_eq!(titles, vec![(1, "Real Intro"), (2, "Real Section")]);
+}
+
+#[test]
 fn test_anchor_image_scanning_folds_outer_link_syntax() {
     let md = "[![Download Latest Folio.dmg](https://img.shields.io/badge/Download_Folio.dmg-blue)](https://github.com/lukeredmore/folio/releases/latest/download/Folio.dmg)";
     let analysis = analyze_markdown_document(md, 99, false, false);

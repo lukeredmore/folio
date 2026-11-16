@@ -70,6 +70,10 @@ fn test_word_navigation_and_html_helpers() {
         extract_html_attr("<img src=\"pic.png\" width='50%'/>", "width").as_deref(),
         Some("50%")
     );
+    assert_eq!(
+        extract_html_attr("<svg stroke-width=\"1.5\" width=\"400\">", "width").as_deref(),
+        Some("400")
+    );
     assert_eq!(percent_decode_str("%3Csvg%20id%3D1%3E"), "<svg id=1>");
 
     let fenced = "```rust\nfn main() {}\n```";
@@ -160,4 +164,99 @@ fn test_keystroke_controller_and_preview_bridge_roundtrip() {
     .unwrap();
     assert!(math.contains("G\t"));
     assert!(math.contains("R\t"));
+}
+
+#[test]
+fn test_keystroke_controller_utf8_highlight_heading_zero_and_checkbox_shortcuts() {
+    let cafe_italic = evaluate_markdown_keystroke(
+        "café world",
+        5..5,
+        5,
+        5,
+        &KeystrokeInput {
+            key: "i",
+            platform: true,
+            control: false,
+            alt: false,
+            shift: false,
+            function: false,
+        },
+    );
+    assert_eq!(
+        cafe_italic,
+        KeystrokeDecision::SourceEdit {
+            edit_range: 0..5,
+            replacement: "*café*".to_string(),
+            post_selection: Some(6..6),
+        }
+    );
+
+    let highlight = evaluate_markdown_keystroke(
+        "focus term",
+        6..10,
+        10,
+        6,
+        &KeystrokeInput {
+            key: "h",
+            platform: true,
+            control: false,
+            alt: false,
+            shift: true,
+            function: false,
+        },
+    );
+    assert_eq!(
+        highlight,
+        KeystrokeDecision::SourceEdit {
+            edit_range: 6..10,
+            replacement: "==term==".to_string(),
+            post_selection: Some(8..12),
+        }
+    );
+
+    let strip_h = evaluate_markdown_keystroke(
+        "### Heading",
+        5..5,
+        5,
+        5,
+        &KeystrokeInput {
+            key: "0",
+            platform: true,
+            control: false,
+            alt: false,
+            shift: false,
+            function: false,
+        },
+    );
+    assert_eq!(
+        strip_h,
+        KeystrokeDecision::SourceEdit {
+            edit_range: 0..4,
+            replacement: String::new(),
+            post_selection: Some(1..1),
+        }
+    );
+
+    let checkbox = evaluate_markdown_keystroke(
+        "- [ ] Ship Zed",
+        7..7,
+        7,
+        7,
+        &KeystrokeInput {
+            key: "enter",
+            platform: true,
+            control: false,
+            alt: false,
+            shift: false,
+            function: false,
+        },
+    );
+    assert_eq!(
+        checkbox,
+        KeystrokeDecision::SourceEdit {
+            edit_range: 2..5,
+            replacement: "[x]".to_string(),
+            post_selection: Some(7..7),
+        }
+    );
 }

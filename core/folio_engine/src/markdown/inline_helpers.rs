@@ -259,38 +259,114 @@ fn parse_optional_link_title(rest: &str) -> Option<String> {
     .then(|| rest[1..rest.len() - 1].to_string())
 }
 
-pub(crate) fn extract_html_attr(attrs: &str, name: &str) -> Option<String> {
-    let lower = attrs.to_ascii_lowercase();
-    let pat_eq = format!("{}=", name.to_ascii_lowercase());
-    let mut search_from = 0usize;
-    while let Some(rel) = lower[search_from..].find(&pat_eq) {
-        let pos = search_from + rel;
-        let valid_prefix = pos == 0
-            || lower.as_bytes()[pos - 1].is_ascii_whitespace()
-            || lower.as_bytes()[pos - 1] == b'/';
-        let val_start = pos + pat_eq.len();
-        if valid_prefix && val_start < attrs.len() {
-            let rest = attrs[val_start..].trim_start();
-            if let Some(stripped) = rest.strip_prefix('"') {
-                if let Some(end_q) = stripped.find('"') {
-                    return Some(stripped[..end_q].to_string());
-                }
-            } else if let Some(stripped) = rest.strip_prefix('\'') {
-                if let Some(end_q) = stripped.find('\'') {
-                    return Some(stripped[..end_q].to_string());
-                }
-            } else {
-                let end = rest
-                    .find(|c: char| c.is_whitespace() || c == '/' || c == '>')
-                    .unwrap_or(rest.len());
-                if end > 0 {
-                    return Some(rest[..end].to_string());
-                }
-            }
+fn is_xml_name_start(b: u8) -> bool {
+    b.is_ascii_alphabetic() || b == b'_' || b == b':'
+}
+
+fn is_xml_name_char(b: u8) -> bool {
+    b.is_ascii_alphanumeric() || matches!(b, b'-' | b'_' | b':' | b'.')
+}
+
+/// Finds the first boundary-matched XML/HTML attribute `attr_name` in `input`,
+/// skipping tag names (`<svg`) and quoted attribute values so hyphenated attributes
+/// like `stroke-width="1.5"` or quoted text like `alt="width=10"` never match `width`.
+/// Returns `(attr_start, val_start, val_end, attr_end)`.
+pub(crate) fn find_xml_attr_span(
+    input: &str,
+    attr_name: &str,
+) -> Option<(usize, usize, usize, usize)> {
+    let bytes = input.as_bytes();
+    let mut i = 0;
+    while i < bytes.len() {
+        let b = bytes[i];
+        if b == b'"' || b == b'\'' {
+            let after_open = i + 1;
+            i = input[after_open..]
+                .find(b as char)
+                .map_or(bytes.len(), |rel| after_open + rel + 1);
+            continue;
         }
-        search_from = val_start;
+        if !is_xml_name_start(b) {
+            i += 1;
+            continue;
+        }
+        let name_start = i;
+        while i < bytes.len() && is_xml_name_char(bytes[i]) {
+            i += 1;
+        }
+        let name_end = i;
+        if name_start > 0 && bytes[name_start - 1] == b'<' {
+            continue;
+        }
+        while i < bytes.len() && bytes[i].is_ascii_whitespace() {
+            i += 1;
+        }
+        if bytes.get(i) != Some(&b'=') {
+            continue;
+        }
+        i += 1;
+        while i < bytes.len() && bytes[i].is_ascii_whitespace() {
+            i += 1;
+        }
+        if i >= bytes.len() {
+            break;
+        }
+        let (val_start, val_end, attr_end) = if bytes[i] == b'"' || bytes[i] == b'\'' {
+            let quote = bytes[i] as char;
+            let vs = i + 1;
+            let end_q = input[vs..].find(quote)?;
+            (vs, vs + end_q, vs + end_q + 1)
+        } else {
+            let vs = i;
+            let rel_end = input[vs..]
+                .find(|c: char| c.is_whitespace() || matches!(c, '>' | '/' | '"' | '\''))
+                .unwrap_or(bytes.len() - vs);
+            if rel_end == 0 {
+                continue;
+            }
+            (vs, vs + rel_end, vs + rel_end)
+        };
+        if input[name_start..name_end].eq_ignore_ascii_case(attr_name) {
+            return Some((name_start, val_start, val_end, attr_end));
+        }
+        i = attr_end;
     }
     None
+}
+
+pub fn extract_xml_attr<'a>(input: &'a str, attr_name: &str) -> Option<&'a str> {
+    let (_, val_start, val_end, _) = find_xml_attr_span(input, attr_name)?;
+    Some(&input[val_start..val_end])
+}
+
+pub(crate) fn remove_xml_attr(tag: &str, attr_name: &str) -> String {
+    let mut out = tag.to_string();
+    while let Some((attr_start, _, _, attr_end)) = find_xml_attr_span(&out, attr_name) {
+        let mut remove_start = attr_start;
+        while remove_start > 0 && out.as_bytes()[remove_start - 1].is_ascii_whitespace() {
+            remove_start -= 1;
+        }
+        out.replace_range(remove_start..attr_end, "");
+    }
+    out
+}
+
+pub(crate) fn set_xml_attr(tag: &str, attr_name: &str, val: &str) -> String {
+    if let Some((attr_start, _, _, attr_end)) = find_xml_attr_span(tag, attr_name) {
+        return format!(
+            r#"{}{attr_name}="{val}"{}"#,
+            &tag[..attr_start],
+            &tag[attr_end..]
+        );
+    }
+    let pos = if tag.ends_with("/>") {
+        tag.len() - 2
+    } else if tag.ends_with('>') {
+        tag.len() - 1
+    } else {
+        tag.len()
+    };
+    format!(r#"{} {attr_name}="{val}"{}"#, &tag[..pos], &tag[pos..])
 }
 
 pub(crate) fn find_paren_close(bytes: &[u8], start_idx: usize) -> Option<usize> {

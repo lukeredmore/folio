@@ -53,7 +53,21 @@ fn test_ensure_builtin_extension_installed_is_idempotent() {
 
 #[test]
 fn test_extract_zed_outline_symbols() {
-    let doc = "# Top Title\n\n## Section A\n\n### Subsection A.1\n";
+    let doc = "\
+# Top Title
+
+```python
+# comment inside backtick fence
+```
+
+## Section A
+
+~~~bash
+# comment inside tilde fence
+~~~
+
+### Subsection A.1
+";
     let symbols = extract_zed_outline_symbols(doc);
     assert_eq!(symbols.len(), 3);
     assert_eq!(symbols[0].depth, 1);

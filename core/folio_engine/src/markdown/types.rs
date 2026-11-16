@@ -186,16 +186,3 @@ pub struct CmarkAstAnalysis {
     pub blocks: Vec<CmarkBlockSpan>,
     pub inlines: Vec<CmarkInlineSpan>,
 }
-
-/// Parses an upstream `spec.txt` or `extensions.txt` file (from `github/cmark-gfm` or `commonmark-spec`)
-/// directly into its constituent specification test examples (`markdown`, `html`, `example`, `section`, `extensions`).
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct UpstreamSpecExample {
-    pub example: usize,
-    pub section: String,
-    pub start_line: usize,
-    pub end_line: usize,
-    pub extensions: Vec<String>,
-    pub markdown: String,
-    pub html: String,
-}

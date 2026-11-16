@@ -1,143 +1,108 @@
-use folio_zed_extension::FolioZedModSession;
+#[path = "../../../core/folio_engine/tst/support/behavior_spec.rs"]
+mod behavior_spec;
+
 use std::collections::BTreeMap;
-use std::fs;
-use std::path::PathBuf;
 
-const CURSOR_MARKER: &str = "ˇ";
+use behavior_spec::{join_cursor, load_spec_json, parse_flat_objects_in_section, split_cursor};
+use folio_zed_extension::{
+    evaluate_markdown_keystroke, FolioZedModSession, KeystrokeDecision, KeystrokeInput,
+};
 
-fn load_spec_json() -> String {
-    let candidates = [
-        PathBuf::from("tst/specs/editor_behaviors.json"),
-        PathBuf::from("../../tst/specs/editor_behaviors.json"),
-    ];
-    for c in &candidates {
-        if c.exists() {
-            return fs::read_to_string(c).expect("Failed to read editor_behaviors.json");
-        }
-    }
-    panic!("Could not locate tst/specs/editor_behaviors.json");
-}
-
-fn split_cursor(annotated: &str) -> (String, usize) {
-    let pos = annotated
-        .find(CURSOR_MARKER)
-        .unwrap_or_else(|| panic!("Missing cursor marker {CURSOR_MARKER:?} in {annotated:?}"));
-    let mut clean = String::with_capacity(annotated.len() - CURSOR_MARKER.len());
-    clean.push_str(&annotated[..pos]);
-    clean.push_str(&annotated[pos + CURSOR_MARKER.len()..]);
-    (clean, pos)
-}
-
-fn join_cursor(text: &str, cursor_byte: usize) -> String {
-    let mut out = String::with_capacity(text.len() + CURSOR_MARKER.len());
-    out.push_str(&text[..cursor_byte]);
-    out.push_str(CURSOR_MARKER);
-    out.push_str(&text[cursor_byte..]);
-    out
-}
-
-fn unescape_json_str(raw: &str) -> String {
-    let mut out = String::new();
-    let mut chars = raw.chars();
-    while let Some(c) = chars.next() {
-        if c == '\\' {
-            match chars.next() {
-                Some('n') => out.push('\n'),
-                Some('r') => out.push('\r'),
-                Some('t') => out.push('\t'),
-                Some('"') => out.push('"'),
-                Some('\\') => out.push('\\'),
-                Some(other) => {
-                    out.push('\\');
-                    out.push(other);
-                }
-                None => out.push('\\'),
-            }
-        } else {
-            out.push(c);
-        }
-    }
-    out
-}
-
-fn parse_flat_objects_in_section(json: &str, section_key: &str) -> Vec<BTreeMap<String, String>> {
-    let needle = format!("\"{section_key}\"");
-    let start = json.find(&needle).expect("Missing section in spec JSON");
-    let bracket_open = json[start..].find('[').unwrap() + start;
-    let mut depth = 0i32;
-    let mut bracket_close = bracket_open;
-    let mut in_str = false;
-    let mut prev_backslash = false;
-    for (idx, ch) in json[bracket_open..].char_indices() {
-        if in_str {
-            if ch == '"' && !prev_backslash {
-                in_str = false;
-            }
-            prev_backslash = ch == '\\' && !prev_backslash;
-            continue;
-        }
-        match ch {
-            '"' => in_str = true,
-            '[' => depth += 1,
-            ']' => {
-                depth -= 1;
-                if depth == 0 {
-                    bracket_close = bracket_open + idx;
-                    break;
-                }
-            }
-            _ => {}
-        }
-    }
-
-    let array_slice = &json[bracket_open + 1..bracket_close];
-    let mut objects = Vec::new();
-    let mut cur_start = None;
-    for (idx, ch) in array_slice.char_indices() {
-        if in_str {
-            if ch == '"' && !prev_backslash {
-                in_str = false;
-            }
-            prev_backslash = ch == '\\' && !prev_backslash;
-            continue;
-        }
-        match ch {
-            '"' => in_str = true,
-            '{' => cur_start = Some(idx + 1),
-            '}' => {
-                if let Some(s) = cur_start.take() {
-                    objects.push(parse_kv_fields(&array_slice[s..idx]));
-                }
-            }
-            _ => {}
-        }
-    }
-    objects
-}
-
-fn parse_kv_fields(obj_body: &str) -> BTreeMap<String, String> {
-    let mut map = BTreeMap::new();
-    for raw_line in obj_body.lines() {
-        let line = raw_line.trim().trim_end_matches(',');
-        if line.is_empty() {
-            continue;
-        }
-        if let Some((k_part, v_part)) = line.split_once(':') {
-            let key = k_part.trim().trim_matches('"').to_string();
-            let val_trimmed = v_part.trim();
-            let val = if val_trimmed.starts_with('"') && val_trimmed.ends_with('"') {
-                unescape_json_str(&val_trimmed[1..val_trimmed.len() - 1])
-            } else {
-                val_trimmed.to_string()
+fn keystroke_for_spec_case(case: &BTreeMap<String, String>) -> KeystrokeInput<'static> {
+    let id = &case["id"];
+    match case["action"].as_str() {
+        "newline" => KeystrokeInput {
+            key: "enter",
+            platform: false,
+            control: false,
+            alt: false,
+            shift: false,
+            function: false,
+        },
+        "toggle_delimiter" => {
+            let (key, shift) = match case["delimiter"].as_str() {
+                "**" => ("b", false),
+                "*" => ("i", false),
+                "`" => ("e", false),
+                "~~" => ("x", true),
+                "==" => ("h", true),
+                "$" => ("m", false),
+                "$$" => ("m", true),
+                other => panic!("Unsupported delimiter {other:?} in case {id}"),
             };
-            map.insert(key, val);
+            KeystrokeInput {
+                key,
+                platform: true,
+                control: false,
+                alt: false,
+                shift,
+                function: false,
+            }
         }
+        "set_heading_level" => {
+            let key = match case["level"].parse::<u8>().unwrap() {
+                0 => "0",
+                1 => "1",
+                2 => "2",
+                3 => "3",
+                4 => "4",
+                5 => "5",
+                6 => "6",
+                other => panic!("Unsupported heading level {other} in case {id}"),
+            };
+            KeystrokeInput {
+                key,
+                platform: true,
+                control: false,
+                alt: false,
+                shift: false,
+                function: false,
+            }
+        }
+        "toggle_task_checkbox" => KeystrokeInput {
+            key: "enter",
+            platform: true,
+            control: false,
+            alt: false,
+            shift: false,
+            function: false,
+        },
+        other => panic!("Unknown action {other:?} in case {id}"),
     }
-    map
+}
+
+fn apply_keystroke_decision(
+    source: &str,
+    cursor_byte: usize,
+    decision: KeystrokeDecision,
+) -> (String, usize) {
+    match decision {
+        KeystrokeDecision::SourceEdit {
+            edit_range,
+            replacement,
+            post_selection,
+        } => {
+            let default_caret = edit_range.start + replacement.len();
+            let mut out =
+                String::with_capacity(source.len() - edit_range.len() + replacement.len());
+            out.push_str(&source[..edit_range.start]);
+            out.push_str(&replacement);
+            out.push_str(&source[edit_range.end..]);
+            let caret = post_selection.map_or(default_caret, |sel| {
+                assert_eq!(sel.start, sel.end, "expected collapsed caret after edit");
+                sel.start
+            });
+            (out, caret)
+        }
+        KeystrokeDecision::HandledNoOp | KeystrokeDecision::Unhandled => {
+            (source.to_string(), cursor_byte)
+        }
+        other => panic!("Unexpected KeystrokeDecision: {other:?}"),
+    }
 }
 
 #[test]
-fn test_zed_mod_session_matches_shared_cursor_edit_specs() {
+fn test_zed_keystroke_controller_and_session_match_shared_cursor_edit_specs() {
     let json = load_spec_json();
     let cases = parse_flat_objects_in_section(&json, "cursor_edit_cases");
     assert!(
@@ -153,11 +118,26 @@ fn test_zed_mod_session_matches_shared_cursor_edit_specs() {
         let (input_text, cursor_byte) = split_cursor(&case["input"]);
         let expected_annotated = &case["expected"];
 
-        let (actual_text, actual_cursor) = match action.as_str() {
+        let input = keystroke_for_spec_case(case);
+        let decision = evaluate_markdown_keystroke(
+            &input_text,
+            cursor_byte..cursor_byte,
+            cursor_byte,
+            cursor_byte,
+            &input,
+        );
+        let (keystroke_text, keystroke_cursor) =
+            apply_keystroke_decision(&input_text, cursor_byte, decision);
+        assert_eq!(
+            &join_cursor(&keystroke_text, keystroke_cursor),
+            expected_annotated,
+            "Zed evaluate_markdown_keystroke failed shared behavior spec {id:?}"
+        );
+
+        let (session_text, session_cursor) = match action.as_str() {
             "newline" => session.apply_newline(&input_text, cursor_byte),
             "toggle_delimiter" => {
-                let delim = &case["delimiter"];
-                session.toggle_symmetric_delimiter(&input_text, cursor_byte, delim)
+                session.toggle_symmetric_delimiter(&input_text, cursor_byte, &case["delimiter"])
             }
             "set_heading_level" => {
                 let level: u8 = case["level"].parse().unwrap();
@@ -168,11 +148,10 @@ fn test_zed_mod_session_matches_shared_cursor_edit_specs() {
             }
             other => panic!("Unknown action {other:?} in case {id}"),
         };
-
-        let actual_annotated = join_cursor(&actual_text, actual_cursor);
         assert_eq!(
-            &actual_annotated, expected_annotated,
-            "Zed Extension behavior spec failed for case {id:?}"
+            &join_cursor(&session_text, session_cursor),
+            expected_annotated,
+            "Zed FolioZedModSession failed shared behavior spec {id:?}"
         );
     }
 }
@@ -195,12 +174,11 @@ fn test_zed_mod_session_matches_shared_fold_reveal_specs() {
             "Zed Extension case {id}: expected >= {expected_folded_min} folds, got {}",
             frame.folds.len()
         );
-        // Active cursor byte must never be inside any Zed fold range
         assert!(
             frame
                 .folds
                 .iter()
-                .all(|f| !f.byte_range.contains(&cursor_byte)),
+                .all(|fold| !fold.byte_range.contains(&cursor_byte)),
             "Zed Extension case {id}: active cursor {cursor_byte} must not be folded"
         );
     }

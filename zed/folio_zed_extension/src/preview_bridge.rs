@@ -200,24 +200,6 @@ pub fn encode_math_canvas(desc: &GpuiMathCanvasDescriptor) -> String {
                     height.to_bits()
                 ));
             }
-            GpuiMathPrimitive::RadicalStroke {
-                x,
-                top_y,
-                bottom_y,
-                hook_width,
-                radicand_width,
-                line_width,
-            } => {
-                out.push_str(&format!(
-                    "S\t{}\t{}\t{}\t{}\t{}\t{}\n",
-                    x.to_bits(),
-                    top_y.to_bits(),
-                    bottom_y.to_bits(),
-                    hook_width.to_bits(),
-                    radicand_width.to_bits(),
-                    line_width.to_bits()
-                ));
-            }
         }
     }
     out.push_str(&desc.plain_text_accessibility);

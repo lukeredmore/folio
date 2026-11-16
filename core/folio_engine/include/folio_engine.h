@@ -277,6 +277,63 @@ OTCursorEditResult ot_engine_toggle_task_checkbox_at_cursor(
 );
 void ot_engine_free_cursor_edit(OTCursorEditResult result);
 
+typedef struct OTSpanEditResult {
+    char* replacement;
+    size_t replace_loc;
+    size_t replace_len;
+    size_t select_loc;
+    size_t select_len;
+} OTSpanEditResult;
+
+OTSpanEditResult ot_engine_edit_newline_utf8(
+    const char* markdown_utf8,
+    size_t sel_byte_loc,
+    size_t sel_byte_len
+);
+OTSpanEditResult ot_engine_edit_symmetric_delimiter_utf8(
+    const char* markdown_utf8,
+    size_t sel_byte_loc,
+    size_t sel_byte_len,
+    const char* delimiter_utf8
+);
+OTSpanEditResult ot_engine_edit_heading_level_utf8(
+    const char* markdown_utf8,
+    size_t sel_byte_loc,
+    size_t sel_byte_len,
+    uint8_t level,
+    bool toggle_same_level
+);
+OTSpanEditResult ot_engine_edit_task_checkbox_utf8(
+    const char* markdown_utf8,
+    size_t sel_byte_loc,
+    size_t sel_byte_len
+);
+
+OTSpanEditResult ot_engine_edit_newline_utf16(
+    const char* markdown_utf8,
+    size_t sel_utf16_loc,
+    size_t sel_utf16_len
+);
+OTSpanEditResult ot_engine_edit_symmetric_delimiter_utf16(
+    const char* markdown_utf8,
+    size_t sel_utf16_loc,
+    size_t sel_utf16_len,
+    const char* delimiter_utf8
+);
+OTSpanEditResult ot_engine_edit_heading_level_utf16(
+    const char* markdown_utf8,
+    size_t sel_utf16_loc,
+    size_t sel_utf16_len,
+    uint8_t level,
+    bool toggle_same_level
+);
+OTSpanEditResult ot_engine_edit_task_checkbox_utf16(
+    const char* markdown_utf8,
+    size_t sel_utf16_loc,
+    size_t sel_utf16_len
+);
+void ot_engine_free_span_edit(OTSpanEditResult result);
+
 // ============================================================================
 // 9. LaTeX CST / Single-Pass Line & Inline Scanner
 // ============================================================================

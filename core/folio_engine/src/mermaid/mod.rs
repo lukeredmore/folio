@@ -113,10 +113,9 @@ pub fn render_mermaid_to_svg(source: &str, is_dark: bool) -> MermaidRenderResult
             if let Ok(RenderOutput::Svg(Some(svg_output))) =
                 semantic.render(RenderTarget::Svg(folio_renderer.svg_request.clone()))
             {
-                if let Some((normalized, raw_w, raw_h)) = normalize_svg_markup(svg_output.svg()) {
-                    let colors = theme_colors(is_dark);
-                    let inlined = inline_core_svg_styles(&normalized, colors);
-                    let svg = materialize_svg_markers(&inlined, colors);
+                if let Some((svg, raw_w, raw_h)) =
+                    postprocess_mermaid_svg(svg_output.svg(), is_dark)
+                {
                     let width = raw_w.max(120.0);
                     let height = raw_h.max(60.0);
                     let (node_count, edge_count) = count_svg_elements(&svg);
@@ -135,6 +134,16 @@ pub fn render_mermaid_to_svg(source: &str, is_dark: bool) -> MermaidRenderResult
     }
 
     render_fallback_code_svg(source, detected_kind, fallback_text_color(is_dark))
+}
+
+/// Normalizes raw Mermaid SVG markup, inlines presentation styles, and materializes `<marker>`
+/// arrowheads into explicit SVG 1.1 geometry.
+pub fn postprocess_mermaid_svg(raw_svg: &str, is_dark: bool) -> Option<(String, f32, f32)> {
+    let (normalized, raw_w, raw_h) = normalize_svg_markup(raw_svg)?;
+    let colors = theme_colors(is_dark);
+    let inlined = inline_core_svg_styles(&normalized, colors);
+    let svg = materialize_svg_markers(&inlined, colors);
+    Some((svg, raw_w, raw_h))
 }
 
 fn extract_inline_title(source: &str) -> Option<String> {

@@ -261,9 +261,14 @@ pub fn clean_tex_inline_text(raw: &str) -> String {
         "\\underline{",
     ] {
         while let Some(pos) = s.find(w) {
-            s.replace_range(pos..(pos + w.len()), "");
-            if let Some(last) = s.rfind('}') {
-                s.remove(last);
+            let brace_open = pos + w.len() - 1;
+            if let Some((inner_start, close_brace, _)) =
+                read_balanced_braces(s.as_bytes(), brace_open)
+            {
+                s.remove(close_brace);
+                s.replace_range(pos..inner_start, "");
+            } else {
+                s.replace_range(pos..(pos + w.len()), "");
             }
         }
     }

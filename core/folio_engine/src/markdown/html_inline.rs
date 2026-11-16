@@ -1,5 +1,5 @@
 use super::inline_helpers::{
-    extract_html_attr, find_paren_close, parse_markdown_link_dest_and_title,
+    extract_xml_attr, find_paren_close, parse_markdown_link_dest_and_title,
 };
 use super::inline_scanner::{scan_inline_spans, InlineScanContext};
 use super::types::{
@@ -92,13 +92,15 @@ fn scan_html_img_tag(
         }
     }
     let raw_src =
-        extract_html_attr(attrs, "src").or_else(|| extract_html_attr(inner_slice, "src"))?;
+        extract_xml_attr(attrs, "src").or_else(|| extract_xml_attr(inner_slice, "src"))?;
     let src = raw_src.replace("&amp;", "&");
-    let alt = extract_html_attr(attrs, "alt").unwrap_or_default();
-    let title = extract_html_attr(attrs, "title");
-    let width = extract_html_attr(attrs, "width")
-        .and_then(|w| w.trim_end_matches("px").parse::<u32>().ok());
-    let height = extract_html_attr(attrs, "height")
+    let alt = extract_xml_attr(attrs, "alt")
+        .map(str::to_string)
+        .unwrap_or_default();
+    let title = extract_xml_attr(attrs, "title").map(str::to_string);
+    let width =
+        extract_xml_attr(attrs, "width").and_then(|w| w.trim_end_matches("px").parse::<u32>().ok());
+    let height = extract_xml_attr(attrs, "height")
         .and_then(|h| h.trim_end_matches("px").parse::<u32>().ok());
     ctx.syntax_fold_spans.push(SyntaxFoldSpan {
         byte_range: (ctx.base_offset + open_lt)..(ctx.base_offset + end_idx),

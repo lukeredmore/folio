@@ -192,20 +192,72 @@ pub fn percent_decode_str(input: &str) -> String {
 /// Extract an HTML attribute value (quoted or unquoted) from a raw HTML tag string.
 #[must_use]
 pub fn extract_html_attr(tag: &str, attr_name: &str) -> Option<String> {
-    let lower = tag.to_ascii_lowercase();
-    let needle = format!("{attr_name}=");
-    let start_idx = lower.find(&needle)?;
-    let after = tag[start_idx + needle.len()..].trim_start();
-    if let Some(quoted) = after.strip_prefix('"') {
-        let end = quoted.find('"')?;
-        Some(quoted[..end].to_string())
-    } else if let Some(quoted) = after.strip_prefix('\'') {
-        let end = quoted.find('\'')?;
-        Some(quoted[..end].to_string())
-    } else {
-        let end = after
-            .find(|c: char| c.is_whitespace() || c == '>' || c == '/')
-            .unwrap_or(after.len());
-        (end > 0).then(|| after[..end].to_string())
+    folio_engine::markdown::extract_xml_attr(tag, attr_name).map(str::to_string)
+}
+
+pub(crate) fn vertical_or_horizontal_cursor(
+    source: &str,
+    sel: &Range<usize>,
+    cursor: usize,
+    key: &str,
+    shift: bool,
+) -> usize {
+    let len = source.len();
+    match key {
+        "left" => {
+            if !shift && sel.start < sel.end {
+                sel.start
+            } else if cursor > 0 {
+                source[..cursor]
+                    .char_indices()
+                    .next_back()
+                    .map_or(0, |(idx, _)| idx)
+            } else {
+                0
+            }
+        }
+        "right" => {
+            if !shift && sel.start < sel.end {
+                sel.end
+            } else if cursor < len {
+                source[cursor..]
+                    .chars()
+                    .next()
+                    .map_or(len, |ch| cursor + ch.len_utf8())
+            } else {
+                len
+            }
+        }
+        "up" => move_cursor_vertical(source, cursor, true),
+        "down" => move_cursor_vertical(source, cursor, false),
+        "home" => source[..cursor].rfind('\n').map_or(0, |idx| idx + 1),
+        "end" => source[cursor..].find('\n').map_or(len, |rel| cursor + rel),
+        _ => cursor,
     }
+}
+
+fn move_cursor_vertical(source: &str, cursor: usize, up: bool) -> usize {
+    let len = source.len();
+    let line_start = source[..cursor].rfind('\n').map_or(0, |idx| idx + 1);
+    let col = cursor - line_start;
+    let (target_line_start, target_line_end) = if up {
+        if line_start == 0 {
+            return 0;
+        }
+        let prev_end = line_start - 1;
+        let prev_start = source[..prev_end].rfind('\n').map_or(0, |idx| idx + 1);
+        (prev_start, prev_end)
+    } else {
+        let line_end = source[cursor..].find('\n').map_or(len, |rel| cursor + rel);
+        if line_end >= len {
+            return len;
+        }
+        let next_start = line_end + 1;
+        let next_end = source[next_start..]
+            .find('\n')
+            .map_or(len, |rel| next_start + rel);
+        (next_start, next_end)
+    };
+    let target_len = target_line_end - target_line_start;
+    snap_char_boundary_left(source, target_line_start + col.min(target_len)).max(target_line_start)
 }

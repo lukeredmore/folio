@@ -22,17 +22,17 @@ pub fn parse_cmark_gfm_ast(_markdown: &str) -> CmarkAstAnalysis {
         inlines: Vec::new(),
     }
 }
-pub use cmark_sys::{
-    parse_upstream_spec_txt, render_gfm_to_html, render_markdown_to_html, DEFAULT_GFM_EXTENSIONS,
-};
+pub use cmark_sys::{render_gfm_to_html, render_markdown_to_html, DEFAULT_GFM_EXTENSIONS};
 pub use editing::{
-    apply_newline_at_cursor, set_heading_level_at_cursor, toggle_symmetric_delimiter,
-    toggle_task_checkbox_at_cursor,
+    apply_newline_at_cursor, edit_newline, edit_set_heading_level, edit_symmetric_delimiter,
+    edit_toggle_heading_level, edit_toggle_task_checkbox, set_heading_level_at_cursor,
+    toggle_symmetric_delimiter, toggle_task_checkbox_at_cursor, SpanEdit,
 };
+pub use inline_helpers::extract_xml_attr;
 pub use newline::{compute_newline_continuation, replace_code_fence_language};
 pub use tables::{is_gfm_table_candidate_line, is_gfm_table_delimiter_row, split_gfm_table_cells};
 pub use types::{
     CmarkAstAnalysis, CmarkBlockKind, CmarkBlockSpan, CmarkInlineKind, CmarkInlineSpan,
     HtmlInlineTagKind, MarkdownAnalysis, MarkdownBlockDecoration, MarkdownBlockDecorationKind,
-    NewlineAction, OutlineHeadingItem, SyntaxFoldSpan, SyntaxTokenKind, UpstreamSpecExample,
+    NewlineAction, OutlineHeadingItem, SyntaxFoldSpan, SyntaxTokenKind,
 };
