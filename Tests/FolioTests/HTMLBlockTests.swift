@@ -405,4 +405,100 @@ final class HTMLBlockTests: XCTestCase {
         XCTAssertEqual(textView.selectedRange(), NSRange(location: tableStart + dev, length: 0))
         XCTAssertTrue(harness.waitUntil(timeout: 2) { !textView.htmlBlockOverlays.contains { $0.blockRange.location == tableStart } })
     }
+
+    func testAssetSchemeHandlerRejectsSymlinkEscapesAndNonLocalHosts() throws {
+        let root = try makeTemporaryDirectory("HTMLBlockSymlinks")
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        let workspaceDir = root.appendingPathComponent("workspace", isDirectory: true)
+        let insideDir = workspaceDir.appendingPathComponent("assets", isDirectory: true)
+        try FileManager.default.createDirectory(at: insideDir, withIntermediateDirectories: true)
+
+        let outsideSecret = root.appendingPathComponent("secret.txt")
+        try Data("secret".utf8).write(to: outsideSecret)
+
+        let insideImage = insideDir.appendingPathComponent("real.png")
+        try Data("png".utf8).write(to: insideImage)
+
+        let escapingFileLink = insideDir.appendingPathComponent("escape.txt")
+        try FileManager.default.createSymbolicLink(at: escapingFileLink, withDestinationURL: outsideSecret)
+
+        let escapingDirLink = workspaceDir.appendingPathComponent("outside-link")
+        try FileManager.default.createSymbolicLink(at: escapingDirLink, withDestinationURL: root)
+
+        let danglingLink = insideDir.appendingPathComponent("dangling.png")
+        try FileManager.default.createSymbolicLink(
+            at: danglingLink,
+            withDestinationURL: insideDir.appendingPathComponent("nonexistent.png")
+        )
+
+        let validAlias = insideDir.appendingPathComponent("alias.png")
+        try FileManager.default.createSymbolicLink(at: validAlias, withDestinationURL: insideImage)
+
+        let resolve = { (raw: String) in
+            HTMLBlockAssetSchemeHandler.fileURL(for: URL(string: raw), baseDirectoryURL: workspaceDir)
+        }
+
+        XCTAssertNil(resolve("folio-doc://local/assets/escape.txt"), "Symlink pointing outside workspace must be rejected")
+        XCTAssertNil(resolve("folio-doc://local/outside-link/secret.txt"), "Intermediate symlink escaping workspace must be rejected")
+        XCTAssertNil(resolve("folio-doc://local/assets/dangling.png"), "Dangling symlink must be rejected")
+        XCTAssertNil(resolve("folio-doc://evil/assets/real.png"), "Non-local scheme host must be rejected")
+        XCTAssertEqual(
+            resolve("folio-doc://local/assets/alias.png")?.path,
+            insideImage.resolvingSymlinksInPath().standardizedFileURL.path
+        )
+    }
+
+    func testLayoutCacheIsolatesSnapshotsByStyleAndWidth() {
+        var darkTheme = EditorTheme.daylight
+        darkTheme.isDark = true
+        let lightStyle = HTMLBlockPageStyle(theme: .daylight, typography: EditorTheme.daylight.typography)
+        let darkStyle = HTMLBlockPageStyle(theme: darkTheme, typography: darkTheme.typography)
+        let lightWideKey = HTMLBlockLayoutCache.key(source: Self.barBlock, width: 640, style: lightStyle)
+        let darkWideKey = HTMLBlockLayoutCache.key(source: Self.barBlock, width: 640, style: darkStyle)
+        let lightNarrowKey = HTMLBlockLayoutCache.key(source: Self.barBlock, width: 420, style: lightStyle)
+
+        let lightImg = NSImage(size: NSSize(width: 64, height: 28))
+        let darkImg = NSImage(size: NSSize(width: 64, height: 28))
+        HTMLBlockLayoutCache.shared.setSnapshot(lightImg, for: lightWideKey)
+
+        XCTAssertTrue(HTMLBlockLayoutCache.shared.snapshot(for: lightWideKey) === lightImg)
+        XCTAssertNil(HTMLBlockLayoutCache.shared.snapshot(for: darkWideKey), "Dark theme must not reuse light theme snapshot")
+        XCTAssertNil(HTMLBlockLayoutCache.shared.snapshot(for: lightNarrowKey), "Narrow width must not reuse wide snapshot")
+
+        HTMLBlockLayoutCache.shared.setSnapshot(darkImg, for: darkWideKey)
+        XCTAssertTrue(HTMLBlockLayoutCache.shared.snapshot(for: lightWideKey) === lightImg)
+        XCTAssertTrue(HTMLBlockLayoutCache.shared.snapshot(for: darkWideKey) === darkImg)
+    }
+
+    func testUnquotedTrailingSlashURLsAndNonVoidTagsDoNotSelfClose() {
+        XCTAssertTrue(
+            HTMLBlockMarkup.rendersInWebView("<div><a href=https://example.com/>Example</a></div>"),
+            "Unquoted URL ending with / before > must not self-close <a>"
+        )
+        XCTAssertFalse(
+            HTMLBlockMarkup.rendersInWebView("<a href=https://example.com/>"),
+            "Unclosed <a> with unquoted trailing-slash href must not be treated as self-closed"
+        )
+        XCTAssertFalse(
+            HTMLBlockMarkup.rendersInWebView("<div class=\"card\"/>"),
+            "Non-void HTML5 tags do not self-close on />"
+        )
+        XCTAssertTrue(
+            HTMLBlockMarkup.rendersInWebView("<div><svg viewBox=\"0 0 10 10\"><path d=\"M0 0 L10 10\"/></svg></div>"),
+            "SVG foreign elements must still self-close on />"
+        )
+    }
+
+    func testRemovingTextViewFromWindowTearsDownHTMLBlockOverlays() throws {
+        let harness = try EditorHarness(workspace: PerfFixtures.makeWorkspace(copyingExample: "html_blocks_showcase.md"))
+        defer { harness.tearDown() }
+        let textView = harness.textView
+        XCTAssertTrue(
+            harness.waitUntil(timeout: 20) { !textView.htmlBlockOverlays.isEmpty },
+            "Expected active HTMLBlockWebView overlays before detaching from window"
+        )
+        textView.removeFromSuperview()
+        XCTAssertTrue(textView.htmlBlockOverlays.isEmpty, "Detaching textView from window must tear down HTMLBlockWebView overlays")
+    }
 }

@@ -400,4 +400,90 @@ final class SwiftMathAndMacroRenderingTests: XCTestCase {
                 return false
             })
     }
+
+    func testRecursiveMacroBlowupTerminatesWithinByteCap() {
+        let macros = LaTeXMacroExpander.extractDocumentMacros(
+            from: #"\newcommand{\x}{\x+\x+\x+\x}"#
+        )
+        let result = LaTeXMacroExpander.expandAndNormalize(#"\x"#, macros: macros)
+        XCTAssertGreaterThan(result.expandedLatex.utf8.count, 0)
+        XCTAssertLessThanOrEqual(
+            result.expandedLatex.utf8.count,
+            LaTeXMacroExpander.maxExpandedUTF8Bytes + 256,
+            "Exponential macro definitions must halt at the UTF-8 byte cap"
+        )
+    }
+
+    func testGatheredEnvironmentRendersNatively() {
+        let raw = #"\begin{gathered} a + b \\ c + d \end{gathered}"#
+        let expanded = LaTeXMacroExpander.expandAndNormalize(raw)
+        XCTAssertTrue(expanded.expandedLatex.contains(#"\begin{gather}"#))
+
+        let box = LaTeXMathRenderer.layoutLatex(raw, baseFontSize: 16, isDisplayStyle: true)
+        XCTAssertTrue(box.usesNativeOpenTypeMath, "SwiftMath must render gathered natively")
+        XCTAssertGreaterThan(box.width, 0)
+    }
+
+    func testTrailingCommentsOnDisplayMathAndEnvironmentClosingLines() {
+        let tex = #"""
+            \documentclass{article}
+            \newtheorem{theorem}{Theorem}
+            \begin{document}
+            \[
+            x^2 + y^2 = z^2
+            \] % Pythagorean identity
+
+            Following prose paragraph.
+
+            \begin{align}
+            a &= b
+            \end{align} % end align
+
+            Second prose paragraph.
+
+            \begin{theorem}
+            Every prime greater than two is odd.
+            \end{theorem} % end theorem
+
+            Third prose paragraph.
+            Active line
+            \end{document}
+            """#
+        let storage = NSTextStorage(string: tex)
+        let ns = tex as NSString
+        let activeLoc = ns.range(of: "Active line").location
+        let analysis = LaTeXLiveStyler.applyStyles(
+            to: storage,
+            theme: .daylight,
+            sourceCodeMode: false,
+            focusMode: false,
+            selectedRange: NSRange(location: activeLoc, length: 0),
+            containerWidth: 680
+        )
+
+        for phrase in ["Following prose paragraph.", "Second prose paragraph.", "Third prose paragraph."] {
+            let loc = ns.range(of: phrase).location
+            let fg = storage.attribute(.foregroundColor, at: loc, effectiveRange: nil) as? NSColor
+            XCTAssertNotEqual(fg, NSColor.clear, "\(phrase) must not be swallowed by a preceding block with a trailing % comment")
+        }
+
+        let mathBlocks = analysis.decorations.compactMap { dec -> String? in
+            if case .mathBlockRendered(let latex, _, _) = dec.kind { return latex }
+            return nil
+        }
+        XCTAssertEqual(mathBlocks.count, 2)
+        XCTAssertFalse(mathBlocks.joined(separator: "\n").contains("Pythagorean"))
+        XCTAssertFalse(mathBlocks.joined(separator: "\n").contains("Following prose"))
+    }
+
+    func testCleanTeXInlineTextUnwrapsBalancedCommandBracesOnly() {
+        XCTAssertEqual(
+            LaTeXDocumentIndexer.cleanTeXInlineText(#"\textbf{Alpha} and {Beta}"#),
+            "Alpha and {Beta}"
+        )
+        XCTAssertEqual(
+            LaTeXDocumentIndexer.cleanTeXInlineText(#"\textbf{Alpha} and \textit{Beta}"#),
+            "Alpha and Beta"
+        )
+    }
 }

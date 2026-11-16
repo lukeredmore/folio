@@ -129,7 +129,16 @@ extension HybridMarkdownTextView {
         return false
     }
 
+    var isEditingLaTeXDocument: Bool {
+        LaTeXLiveStyler.documentKind(for: self.string, fileURL: workspaceViewModel?.currentFileURL) == .latex
+    }
+
+    var isEditingLaTeXOrBibTeXDocument: Bool {
+        LaTeXLiveStyler.isLaTeXOrBibTeXDocument(self.string, fileURL: workspaceViewModel?.currentFileURL)
+    }
+
     func tryContinueLaTeXItemOnNewline() -> Bool {
+        guard isEditingLaTeXDocument else { return false }
         let sel = self.selectedRange()
         let nsStr = self.string as NSString
         guard sel.location <= nsStr.length else { return false }

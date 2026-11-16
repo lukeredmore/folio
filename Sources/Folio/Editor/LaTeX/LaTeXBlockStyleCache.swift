@@ -54,41 +54,38 @@ package enum LaTeXBlockStyleCache {
         }
     }
 
+    private static let lock = NSLock()
     /// The last session of each recently styled storage, so styling another storage, such as a
     /// print or reference copy, does not discard the editor's session.
     nonisolated(unsafe) private static var entries: [ObjectIdentifier: StorageEntry] = [:]
     nonisolated(unsafe) private static var pendingEdits: [ObjectIdentifier: MarkdownTextEdit] = [:]
     private static let maxEntries = 4
-    nonisolated(unsafe) static var activeBaseAttributes: [NSAttributedString.Key: Any] = [:]
-    nonisolated(unsafe) static var pendingGlyphInvalidationRanges: [NSRange] = []
-    /// Text read while styling the current block, beyond the block itself. See
-    /// `CachedBlock.context`.
-    nonisolated(unsafe) static var currentBlockContext: NSRange?
-
-    /// Records that styling the current block read `range`.
-    static func noteContext(_ range: NSRange) {
-        currentBlockContext = currentBlockContext.map { NSUnionRange($0, range) } ?? range
-    }
 
     package static func invalidate() {
+        lock.lock()
         entries.removeAll()
         pendingEdits.removeAll()
+        lock.unlock()
     }
 
     package static func invalidate(for storage: NSTextStorage) {
         let key = ObjectIdentifier(storage)
+        lock.lock()
         entries.removeValue(forKey: key)
         pendingEdits.removeValue(forKey: key)
+        lock.unlock()
     }
 
     package static func noteTextEdit(for storage: NSTextStorage, editedRange: NSRange, changeInLength delta: Int) {
         let key = ObjectIdentifier(storage)
+        lock.lock()
         if var edit = pendingEdits[key] {
             edit.merge(editedRange: editedRange, changeInLength: delta)
             pendingEdits[key] = edit
         } else {
             pendingEdits[key] = MarkdownTextEdit(range: editedRange, changeInLength: delta)
         }
+        lock.unlock()
     }
 
     package static func collapseInternalNewlines(in storage: NSTextStorage, nsString: NSString, range: NSRange) {
@@ -116,11 +113,6 @@ package enum LaTeXBlockStyleCache {
         }
     }
 
-    static func resetAttributes(in storage: NSTextStorage, range: NSRange) {
-        guard range.length > 0, NSMaxRange(range) <= storage.length else { return }
-        storage.setAttributes(activeBaseAttributes, range: range)
-    }
-
     static func prepareIncrementalSession(
         for storage: NSTextStorage,
         config: StyleConfig,
@@ -130,8 +122,12 @@ package enum LaTeXBlockStyleCache {
         docMacros: [String: LaTeXMacroDefinition]
     ) -> (entry: StorageEntry, diff: DiffWindow)? {
         let key = ObjectIdentifier(storage)
+        lock.lock()
         let pendingEdit = pendingEdits.removeValue(forKey: key)
-        guard let entry = entries[key],
+        let cachedEntry = entries[key]
+        lock.unlock()
+
+        guard let entry = cachedEntry,
             entry.storage === storage,
             entry.config == config,
             entry.docMacros == docMacros
@@ -201,12 +197,7 @@ package enum LaTeXBlockStyleCache {
             map[b.range.location] = b
         }
         let key = ObjectIdentifier(storage)
-        pendingEdits.removeValue(forKey: key)
-        entries = entries.filter { $0.value.storage != nil }
-        if entries.count >= maxEntries && entries[key] == nil {
-            entries.removeAll()
-        }
-        entries[key] = StorageEntry(
+        let newEntry = StorageEntry(
             storage: storage,
             config: config,
             string: string,
@@ -215,6 +206,14 @@ package enum LaTeXBlockStyleCache {
             facts: DocumentFacts(docIndex),
             blocksByStart: map
         )
+        lock.lock()
+        pendingEdits.removeValue(forKey: key)
+        entries = entries.filter { $0.value.storage != nil }
+        if entries.count >= maxEntries && entries[key] == nil {
+            entries.removeAll()
+        }
+        entries[key] = newEntry
+        lock.unlock()
     }
 
     static func isBlockActive(range: NSRange, activeLineRange: NSRange, selectedRange: NSRange) -> Bool {
@@ -247,7 +246,7 @@ package enum LaTeXBlockStyleCache {
         guard let (entry, diff) = session else { return nil }
 
         if diff.isSameString || charIndex < diff.commonPrefixLen {
-            // The text before the block is unchanged; its entry flow state must match too.
+            // The text before the block is unchanged: its entry flow state must match too.
             guard let prev = entry.blocksByStart[charIndex], prev.entryFlow == flow else { return nil }
             if !diff.isSameString && NSMaxRange(prev.contextRange) >= diff.commonPrefixLen {
                 return nil

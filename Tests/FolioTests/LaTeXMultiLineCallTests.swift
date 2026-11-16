@@ -157,4 +157,58 @@ final class LaTeXMultiLineCallTests: XCTestCase {
             XCTAssertEqual(incremental.analysis.decorations, full.analysis.decorations, name)
         }
     }
+
+    func testMultiLineMacroBlockKeepsOpenAndCloseLineProseVisible() throws {
+        let customPreamble = #"""
+            \definecolor{solblue}{RGB}{20,90,180}
+            \newcommand{\solution}[1]{\textbf{Solution.} #1}
+            \newcommand{\csolution}[1]{{\color{solblue}\textbf{Solution.} #1}}
+            """#
+        let body = #"""
+            \solution{First line
+            Second line}
+
+            \csolution{Alpha line
+            Middle line
+            Omega line}
+
+            Cursor here
+            """#
+        let doc = LaTeXStyledDocument.document(preamble: customPreamble, body: body)
+        let ns = doc as NSString
+        let cursorLoc = ns.range(of: "Cursor here").location
+        let storage = NSTextStorage(string: doc)
+        let analysis = LaTeXLiveStyler.applyStyles(
+            to: storage,
+            theme: .daylight,
+            sourceCodeMode: false,
+            prettyMode: true,
+            focusMode: false,
+            selectedRange: NSRange(location: cursorLoc, length: 0),
+            containerWidth: 680
+        )
+
+        for visiblePhrase in ["First line", "Second line", "Alpha line", "Middle line", "Omega line"] {
+            let loc = ns.range(of: visiblePhrase).location
+            XCTAssertNil(
+                storage.attribute(MarkdownLiveStyler.collapsedTokenAttributeKey, at: loc, effectiveRange: nil),
+                "\(visiblePhrase) must remain visible"
+            )
+            let fg = storage.attribute(.foregroundColor, at: loc, effectiveRange: nil) as? NSColor
+            XCTAssertNotEqual(fg, NSColor.clear, "\(visiblePhrase) must not have clear foreground")
+        }
+
+        let inlineLabels = analysis.decorations.compactMap { dec -> String? in
+            if case .latexInlineText(let text, _, _, _) = dec.kind { return text }
+            return nil
+        }
+        XCTAssertEqual(inlineLabels.filter { $0 == "Solution. " }.count, 2)
+
+        let closeBraceLoc = NSMaxRange(ns.range(of: "Second line"))
+        XCTAssertEqual(
+            storage.attribute(MarkdownLiveStyler.collapsedTokenAttributeKey, at: closeBraceLoc, effectiveRange: nil) as? Bool,
+            true,
+            "Closing brace of multi-line macro block must collapse when inactive"
+        )
+    }
 }

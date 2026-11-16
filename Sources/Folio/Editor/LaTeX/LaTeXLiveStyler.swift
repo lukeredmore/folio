@@ -4,8 +4,6 @@ import Foundation
 
 public enum LaTeXLiveStyler {
 
-    // MARK: - Document Type Detection
-
     public static func documentKind(for text: String, fileURL: URL? = nil) -> FolioDocumentKind {
         FolioDocumentKind.detect(for: text, fileURL: fileURL)
     }
@@ -13,8 +11,6 @@ public enum LaTeXLiveStyler {
     public static func isLaTeXOrBibTeXDocument(_ text: String, fileURL: URL? = nil) -> Bool {
         documentKind(for: text, fileURL: fileURL) != .markdown
     }
-
-    // MARK: - Main Entry Point
 
     @discardableResult
     public static func applyStyles(
@@ -99,7 +95,6 @@ public enum LaTeXLiveStyler {
                 fullLength: fullLength,
                 theme: theme,
                 effectiveBaseSize: effectiveBaseSize,
-                effectiveContainerWidth: effectiveContainerWidth,
                 fileURL: fileURL
             )
             storage.endEditing()
@@ -188,13 +183,7 @@ public enum LaTeXLiveStyler {
         let safeCursorLoc = min(selectedRange.location, fullLength)
         let activeLineRange = nsString.lineRange(for: NSRange(location: safeCursorLoc, length: 0))
 
-        var headings: [OutlineHeading] = []
-        var decorations: [LineDecoration] = []
-        var recordedBlocks: [LaTeXBlockStyleCache.CachedBlock] = []
-
         let styleConfig = LaTeXBlockStyleCache.StyleConfig(parameters: parameters, documentStyle: docIndex.documentStyle)
-        LaTeXBlockStyleCache.activeBaseAttributes = baseAttributes
-        LaTeXBlockStyleCache.pendingGlyphInvalidationRanges.removeAll(keepingCapacity: true)
         let session = LaTeXBlockStyleCache.prepareIncrementalSession(
             for: storage,
             config: styleConfig,
@@ -209,8 +198,8 @@ public enum LaTeXLiveStyler {
             storage.setAttributes(baseAttributes, range: fullRange)
         }
 
-        styleLaTeXDocumentBody(
-            in: storage,
+        var pass = LaTeXStylePass(
+            storage: storage,
             string: string,
             nsString: nsString,
             fullLength: fullLength,
@@ -226,17 +215,16 @@ public enum LaTeXLiveStyler {
             prettyMode: prettyMode,
             focusMode: focusMode,
             baseDirectoryURL: baseDirectoryURL,
-            session: session,
-            headings: &headings,
-            decorations: &decorations,
-            recordedBlocks: &recordedBlocks
+            baseAttributes: baseAttributes,
+            session: session
         )
+        pass.run()
 
         storage.endEditing()
         if session == nil || wasSourceMode {
             LaTeXBlockStyleCache.invalidateLayoutManagers(for: storage, fullRange: fullRange)
         } else {
-            for r in LaTeXBlockStyleCache.pendingGlyphInvalidationRanges {
+            for r in pass.pendingGlyphInvalidationRanges {
                 LaTeXBlockStyleCache.invalidateLayoutManagers(for: storage, fullRange: r)
             }
         }
@@ -247,9 +235,9 @@ public enum LaTeXLiveStyler {
             nsString: nsString,
             docIndex: docIndex,
             docMacros: docMacros,
-            blocks: recordedBlocks
+            blocks: pass.recordedBlocks
         )
-        return MarkdownDocumentAnalysis(headings: headings, decorations: decorations)
+        return MarkdownDocumentAnalysis(headings: pass.headings, decorations: pass.decorations)
     }
 
     enum MKey {
@@ -257,5 +245,121 @@ public enum LaTeXLiveStyler {
         static let noSpellCheck = MarkdownLiveStyler.noSpellCheckAttributeKey
         static let inlineMathSpan = MarkdownLiveStyler.inlineMathSpanAttributeKey
         static let customColor = MarkdownLiveStyler.customColorAttributeKey
+    }
+
+    /// Bounds on a macro call whose arguments continue on later lines.
+    enum MultiLineCallLimits {
+        static let maxLines = 40
+        static let maxCharacters = 4_000
+    }
+
+    /// The result of looking for a multi-line macro call that starts on a line.
+    struct MultiLineCallProbe: Equatable {
+        let blockEnd: Int?
+        let contextEnd: Int
+    }
+
+    static func probeMultiLineCall(
+        lineRange: NSRange,
+        nsString: NSString,
+        macros: [String: LaTeXMacroDefinition]
+    ) -> MultiLineCallProbe {
+        LaTeXStylePass.probeMultiLineCall(lineRange: lineRange, nsString: nsString, macros: macros)
+    }
+
+    static func maskedComments(_ text: String) -> String {
+        LaTeXLexer.maskedComments(text)
+    }
+
+    static func isIndexOnlyLine(_ trimmed: String) -> Bool {
+        LaTeXStylePass.isIndexOnlyLine(trimmed)
+    }
+
+    static func richTextLineStep(_ lines: [[LaTeXInlineRichRun]]) -> CGFloat {
+        LaTeXStylePass.richTextLineStep(lines)
+    }
+
+    private static func extractLaTeXOutlineHeadings(docIndex: LaTeXDocumentIndex) -> [OutlineHeading] {
+        let sortedLocs = docIndex.lineSectionNumbers.keys.sorted()
+        var result: [OutlineHeading] = []
+        for (i, loc) in sortedLocs.enumerated() {
+            guard let info = docIndex.lineSectionNumbers[loc] else { continue }
+            let display = info.number.isEmpty ? info.title : "\(info.number) \(info.title)"
+            result.append(
+                OutlineHeading(
+                    level: info.level,
+                    title: display,
+                    characterLocation: loc,
+                    lineNumber: i + 1
+                ))
+        }
+        return result
+    }
+
+    private static func applyBibTeXStyles(
+        to storage: NSTextStorage,
+        string: String,
+        nsString: NSString,
+        fullLength: Int,
+        theme: EditorTheme,
+        effectiveBaseSize: CGFloat,
+        fileURL: URL?
+    ) -> MarkdownDocumentAnalysis {
+        let codeFont = theme.codeFont(size: effectiveBaseSize * 0.92)
+        let boldFont = NSFontManager.shared.convert(codeFont, toHaveTrait: .boldFontMask)
+        let fullRange = NSRange(location: 0, length: fullLength)
+        storage.addAttributes([.font: codeFont, MKey.noSpellCheck: true], range: fullRange)
+
+        let entries = LaTeXDocumentIndexer.parseBibTeXEntries(from: string, fileURL: fileURL)
+        var headings: [OutlineHeading] = []
+        var lineNum = 1
+        var idx = 0
+        var charToLine: [Int: Int] = [:]
+        while idx < fullLength {
+            let lr = nsString.lineRange(for: NSRange(location: idx, length: 0))
+            charToLine[lr.location] = lineNum
+            let lineStr = nsString.substring(with: lr) as NSString
+            let lineLen = lineStr.length
+            var p = 0
+            while p < lineLen && (lineStr.character(at: p) == 0x20 || lineStr.character(at: p) == 0x09) { p += 1 }
+            if p < lineLen {
+                let firstCh = lineStr.character(at: p)
+                if firstCh == 0x40 {
+                    let braceRange = lineStr.range(of: "{", options: [], range: NSRange(location: p + 1, length: lineLen - (p + 1)))
+                    if braceRange.location != NSNotFound && braceRange.location > p + 1 {
+                        let typeEnd = braceRange.location
+                        let commaRange = lineStr.range(of: ",", options: [], range: NSRange(location: typeEnd + 1, length: lineLen - (typeEnd + 1)))
+                        if commaRange.location != NSNotFound && commaRange.location > typeEnd + 1 {
+                            storage.addAttributes(
+                                [.font: boldFont, .foregroundColor: theme.linkNSColor], range: NSRange(location: lr.location + p, length: typeEnd - p))
+                            storage.addAttributes(
+                                [.font: boldFont, .foregroundColor: theme.headingNSColor],
+                                range: NSRange(location: lr.location + typeEnd + 1, length: commaRange.location - (typeEnd + 1)))
+                        }
+                    }
+                } else if (firstCh >= 0x41 && firstCh <= 0x5A) || (firstCh >= 0x61 && firstCh <= 0x7A) {
+                    var nameEnd = p + 1
+                    while nameEnd < lineLen {
+                        let c = lineStr.character(at: nameEnd)
+                        if (c >= 0x41 && c <= 0x5A) || (c >= 0x61 && c <= 0x7A) || c == 0x5F { nameEnd += 1 } else { break }
+                    }
+                    var eqPos = nameEnd
+                    while eqPos < lineLen && (lineStr.character(at: eqPos) == 0x20 || lineStr.character(at: eqPos) == 0x09) { eqPos += 1 }
+                    if eqPos < lineLen && lineStr.character(at: eqPos) == 0x3D {
+                        storage.addAttribute(.foregroundColor, value: theme.inlineCodeNSColor, range: NSRange(location: lr.location + p, length: nameEnd - p))
+                    }
+                }
+            }
+            idx = NSMaxRange(lr)
+            lineNum += 1
+        }
+
+        for entry in entries {
+            let title = "@\(entry.entryType){\(entry.key)} — \(entry.shortCitation)"
+            let line = charToLine[entry.characterLocation] ?? 1
+            headings.append(OutlineHeading(level: 1, title: title, characterLocation: entry.characterLocation, lineNumber: line))
+        }
+
+        return MarkdownDocumentAnalysis(headings: headings, decorations: [])
     }
 }

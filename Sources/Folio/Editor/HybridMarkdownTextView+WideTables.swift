@@ -73,7 +73,13 @@ extension HybridMarkdownTextView {
     }
 
     func overflowingTable(at point: NSPoint) -> OverflowingTable? {
-        overflowingTables.first { table in
+        guard !overflowingTables.isEmpty else { return nil }
+        let probeRect = NSRect(x: point.x - 16.0, y: point.y - 16.0, width: 32.0, height: 32.0)
+        let visibleChars = visibleDecorationCharacterRange(for: probeRect, margin: 64.0)
+        return overflowingTables.first { table in
+            if let visibleChars, !Self.decorationSpan(table.range, touches: visibleChars) {
+                return false
+            }
             guard let rect = tableRect(for: table.range) else { return false }
             return point.y >= rect.minY && point.y <= rect.maxY + 6
         }
@@ -141,8 +147,13 @@ extension HybridMarkdownTextView {
 
     /// Thin scroll indicator under each table that is wider than the canvas.
     private func drawTableScrollIndicators(in dirtyRect: NSRect) {
+        guard !overflowingTables.isEmpty else { return }
         let margin = Self.wideTableCanvasMargin
+        let visibleChars = visibleDecorationCharacterRange(for: dirtyRect, margin: 64.0)
         for table in overflowingTables {
+            if let visibleChars, !Self.decorationSpan(table.range, touches: visibleChars) {
+                continue
+            }
             guard let rect = tableRect(for: table.range) else { continue }
             let track = NSRect(x: margin, y: rect.maxY + 3, width: table.visibleWidth, height: 4)
             guard track.intersects(dirtyRect) else { continue }

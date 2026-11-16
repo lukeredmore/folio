@@ -18,8 +18,8 @@ final class HTMLBlockLayoutCache: @unchecked Sendable {
     private let lock = NSLock()
     private var heights: [Key: CGFloat] = [:]
     private var heightOrder: [Key] = []
-    private var snapshots: [String: NSImage] = [:]
-    private var snapshotOrder: [String] = []
+    private var snapshots: [Key: NSImage] = [:]
+    private var snapshotOrder: [Key] = []
 
     static func key(source: String, width: CGFloat, style: HTMLBlockPageStyle) -> Key {
         Key(source: source, width: Int(width.rounded()), style: style)
@@ -48,22 +48,22 @@ final class HTMLBlockLayoutCache: @unchecked Sendable {
         return true
     }
 
-    func snapshot(for source: String) -> NSImage? {
+    func snapshot(for key: Key) -> NSImage? {
         lock.lock()
         defer { lock.unlock() }
-        return snapshots[source]
+        return snapshots[key]
     }
 
-    func setSnapshot(_ image: NSImage, for source: String) {
+    func setSnapshot(_ image: NSImage, for key: Key) {
         lock.lock()
         defer { lock.unlock() }
-        if snapshots[source] == nil {
-            snapshotOrder.append(source)
+        if snapshots[key] == nil {
+            snapshotOrder.append(key)
             if snapshotOrder.count > capacity {
                 snapshots.removeValue(forKey: snapshotOrder.removeFirst())
             }
         }
-        snapshots[source] = image
+        snapshots[key] = image
     }
 
     func removeAll() {

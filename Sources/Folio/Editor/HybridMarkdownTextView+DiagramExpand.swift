@@ -78,9 +78,12 @@ extension HybridMarkdownTextView {
     /// The rendered Mermaid diagram whose expand button is under `point`, if any.
     func expandableDiagram(at point: NSPoint) -> ExpandedDiagram? {
         guard !isSourceCodeMode else { return nil }
+        let probeRect = NSRect(x: point.x - 16, y: point.y - 16, width: 32, height: 32)
+        let visibleChars = visibleDecorationCharacterRange(for: probeRect, margin: 64)
         for decoration in lineDecorations {
-            guard case let .mermaidBlockRendered(source, fullBlockRange, _) = decoration.kind,
-                let card = diagramCardRect(for: fullBlockRange),
+            guard case let .mermaidBlockRendered(source, fullBlockRange, _) = decoration.kind else { continue }
+            if let visibleChars, !Self.decorationSpan(fullBlockRange, touches: visibleChars) { continue }
+            guard let card = diagramCardRect(for: fullBlockRange),
                 Self.diagramExpandButtonRect(in: card).insetBy(dx: -4, dy: -4).contains(point),
                 let image = DiagramImageRenderer.shared.image(
                     for: DiagramImageRenderer.Key(kind: .mermaid(isDark: currentTheme.isDark), source: source)

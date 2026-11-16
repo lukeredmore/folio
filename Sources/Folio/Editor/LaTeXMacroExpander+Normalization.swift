@@ -3,10 +3,14 @@ import Foundation
 extension LaTeXMacroExpander {
     static func expandMacrosOnce(
         in text: String,
-        macros: [String: LaTeXMacroDefinition]
-    ) -> String {
-        guard !macros.isEmpty else { return text }
+        macros: [String: LaTeXMacroDefinition],
+        maxUTF8Bytes: Int = LaTeXMacroExpander.maxExpandedUTF8Bytes
+    ) -> (text: String, didHitLimit: Bool) {
+        guard !macros.isEmpty else { return (text, false) }
         let chars = Array(text)
+        let totalInputUTF8 = text.utf8.count
+        var consumedInputUTF8 = 0
+        var outUTF8 = 0
         var out = ""
         var i = 0
         while i < chars.count {
@@ -15,15 +19,28 @@ extension LaTeXMacroExpander {
                 if let def = macros[cmd], def.operatorText == nil,
                     let (args, end) = readArguments(for: def, in: chars, from: afterCmd)
                 {
-                    out.append(substituteArguments(args, into: def.replacement))
+                    let callUTF8 = chars[i..<end].reduce(0) { $0 + $1.utf8.count }
+                    let substituted = substituteArguments(args, into: def.replacement)
+                    let subUTF8 = substituted.utf8.count
+                    let remainingInputUTF8 = max(0, totalInputUTF8 - consumedInputUTF8 - callUTF8)
+                    if outUTF8 + subUTF8 + remainingInputUTF8 > maxUTF8Bytes {
+                        out.append(contentsOf: chars[i...])
+                        return (out, true)
+                    }
+                    out.append(substituted)
+                    outUTF8 += subUTF8
+                    consumedInputUTF8 += callUTF8
                     i = end
                     continue
                 }
             }
+            let chUTF8 = chars[i].utf8.count
             out.append(chars[i])
+            outUTF8 += chUTF8
+            consumedInputUTF8 += chUTF8
             i += 1
         }
-        return out
+        return (out, false)
     }
 
     /// Replaces `#1`...`#9` in `replacement` with `args` in one pass, so argument text is never

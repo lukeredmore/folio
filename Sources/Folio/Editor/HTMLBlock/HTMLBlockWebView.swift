@@ -194,10 +194,25 @@ final class HTMLBlockWebView: WKWebView, WKNavigationDelegate {
         snapshotTask = Task { @MainActor [weak self] in
             try? await Task.sleep(for: .milliseconds(400))
             guard !Task.isCancelled, let self, self.isReady, self.window != nil, !self.bounds.isEmpty else { return }
-            if let image = await self.captureSnapshot() {
-                HTMLBlockLayoutCache.shared.setSnapshot(image, for: self.source)
-            }
+            let expectedKey = HTMLBlockLayoutCache.key(source: self.source, width: self.layoutWidth, style: self.style)
+            guard let image = await self.captureSnapshot(), !Task.isCancelled, self.isReady else { return }
+            let currentKey = HTMLBlockLayoutCache.key(source: self.source, width: self.layoutWidth, style: self.style)
+            guard currentKey == expectedKey else { return }
+            HTMLBlockLayoutCache.shared.setSnapshot(image, for: currentKey)
         }
+    }
+
+    /// Cancels pending tasks and detaches WebKit script handlers before removing the overlay.
+    func tearDown() {
+        snapshotTask?.cancel()
+        snapshotTask = nil
+        messageProxy.owner = nil
+        configuration.userContentController.removeAllScriptMessageHandlers()
+        configuration.userContentController.removeAllUserScripts()
+        navigationDelegate = nil
+        blockDelegate = nil
+        stopLoading()
+        removeFromSuperview()
     }
 
     // MARK: - Bridge messages
@@ -356,13 +371,40 @@ final class HTMLBlockAssetSchemeHandler: NSObject, WKURLSchemeHandler {
     }
 
     static func fileURL(for url: URL?, baseDirectoryURL: URL?) -> URL? {
-        guard let url, url.scheme == HTMLBlockPage.assetScheme, let base = baseDirectoryURL?.standardizedFileURL else { return nil }
+        guard let url,
+            url.scheme == HTMLBlockPage.assetScheme,
+            url.host == "local",
+            let base = baseDirectoryURL?.standardizedFileURL
+        else {
+            return nil
+        }
         let relative = url.path(percentEncoded: false)
         let candidate = base.appending(path: relative).standardizedFileURL
         let basePath = base.path(percentEncoded: false)
         let prefix = basePath.hasSuffix("/") ? basePath : basePath + "/"
         guard candidate.path(percentEncoded: false).hasPrefix(prefix) else { return nil }
-        return candidate
+
+        let resolvedBasePath = base.resolvingSymlinksInPath().path(percentEncoded: false)
+        let resolvedPrefix = resolvedBasePath.hasSuffix("/") ? resolvedBasePath : resolvedBasePath + "/"
+        let resolvedCandidate = candidate.resolvingSymlinksInPath()
+        let resolvedCandidatePath = resolvedCandidate.path(percentEncoded: false)
+        guard resolvedCandidatePath.hasPrefix(resolvedPrefix) else { return nil }
+
+        var cursor = candidate
+        while cursor.path(percentEncoded: false).count > basePath.count {
+            if (try? cursor.resourceValues(forKeys: [.isSymbolicLinkKey]).isSymbolicLink) == true {
+                let targetPath = cursor.resolvingSymlinksInPath().path(percentEncoded: false)
+                let staysInside = targetPath == resolvedBasePath || targetPath.hasPrefix(resolvedPrefix)
+                guard staysInside, FileManager.default.fileExists(atPath: targetPath) else { return nil }
+            }
+            let parent = cursor.deletingLastPathComponent()
+            if parent.path(percentEncoded: false) == cursor.path(percentEncoded: false) {
+                break
+            }
+            cursor = parent
+        }
+
+        return FileManager.default.fileExists(atPath: resolvedCandidatePath) ? resolvedCandidate : candidate
     }
 
     func webView(_ webView: WKWebView, start urlSchemeTask: any WKURLSchemeTask) {
