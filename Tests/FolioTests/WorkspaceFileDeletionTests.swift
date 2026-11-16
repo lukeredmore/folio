@@ -92,7 +92,7 @@ final class WorkspaceFileDeletionTests: XCTestCase {
         let spec = try RemoteMountSpec.parse(connectionString: "luke@devbox:/home/luke/notes", targetKind: .folder)
         transport.setRemoteFiles(for: spec.id, files: ["keep.md": "# Keep", "drop.md": "# Drop"])
         let manager = RemoteWorkspaceManager(transport: transport, mirrorBaseDirectory: tempRoot, userDefaults: defaults)
-        let vm = EditorWorkspaceViewModel(remoteWorkspaceManager: manager)
+        let vm = makeIsolatedViewModel(defaults: defaults, remoteWorkspaceManager: manager)
         await vm.connectRemoteMount(spec)
 
         let mirrored = manager.mirrorRootURL(for: spec).appendingPathComponent("drop.md")

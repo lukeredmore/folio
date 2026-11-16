@@ -165,10 +165,14 @@ final class HostedMainWindow {
         }
     }
 
-    /// Writes a PNG of the whole window (titlebar, tab bar, and content) when an output directory is set.
+    /// Writes a PNG of the whole window (titlebar, tab bar, and content) when snapshot capture is requested.
     func writeSnapshot(named name: String) {
         let env = ProcessInfo.processInfo.environment
-        guard let dir = env["FOLIO_LAYOUT_SNAPSHOT_DIR"] ?? env["TEST_UNDECLARED_OUTPUTS_DIR"],
+        let snapshotDir =
+            env["FOLIO_LAYOUT_SNAPSHOT_DIR"]
+            ?? (env["FOLIO_CAPTURE_TEST_SNAPSHOTS"] == "1" ? env["TEST_UNDECLARED_OUTPUTS_DIR"] : nil)
+        guard let dir = snapshotDir,
+            !dir.isEmpty,
             let frameView = window.contentView?.superview,
             let rep = frameView.bitmapImageRepForCachingDisplay(in: frameView.bounds)
         else { return }

@@ -290,11 +290,18 @@ jobs:
           }
           trap cleanup_mount EXIT
 
-          if hdiutil attach -nobrowse -readonly -noverify -mountpoint "$MOUNT_DIR" Folio.dmg >/dev/null 2>&1; then
+          if hdiutil attach -nobrowse -readonly -noverify -mountpoint "$MOUNT_DIR" Folio.dmg; then
             MOUNTED=1
+          else
+            echo "Error: Failed to mount Folio.dmg for metadata verification" >&2
+            exit 1
           fi
 
           PLIST="$MOUNT_DIR/Folio.app/Contents/Info.plist"
+          if [[ ! -f "$PLIST" ]]; then
+            echo "Error: Mounted Folio.dmg is missing Folio.app/Contents/Info.plist" >&2
+            exit 1
+          fi
 
           VERSION=$(/usr/libexec/PlistBuddy -c "Print :CFBundleShortVersionString" "$PLIST" 2>/dev/null || echo "1.0.0")
           BUILD_NUM=$(/usr/libexec/PlistBuddy -c "Print :CFBundleVersion" "$PLIST" 2>/dev/null || true)
@@ -357,6 +364,7 @@ jobs:
         id: meta
         run: |
           bazel test --config=release //zed/folio_zed_extension:archive_test
+          bazel build --config=release //zed/folio_zed_extension:archive
           cp "$(bazel cquery --config=release --output=files //zed/folio_zed_extension:archive)" folio-markdown-outline.tar.gz
           chmod u+w folio-markdown-outline.tar.gz
           EXT_VERSION=$(tar -xOzf folio-markdown-outline.tar.gz extension.toml | awk -F'"' '/^version[[:space:]]*=/ { print $2; exit }')
@@ -435,20 +443,18 @@ jobs:
 
           TAG="latest"
           TITLE="Folio v${VERSION} (Build #${BUILD_NUM} — ${SHA})"
-          NOTES=$(cat <<EOF
-          Automated rolling macOS build from \`main\` (${{ github.sha }}).
-
-          - **App Version:** \`v${VERSION}\` (Build \`#${BUILD_NUM}\`)
-          - **Zed Extension (\`folio-markdown-outline\`):** \`v${EXT_VERSION}\`
-          - **Core Engine (\`folio_engine\`):** \`v${ENGINE_VER}\`
-          - **Folio.dmg SHA-256:** \`${DMG_SHA256}\`
-          - **folio-markdown-outline.tar.gz SHA-256:** \`${EXT_SHA256}\`
-
-          Existing installations of **Folio.app** and the **Folio Markdown Outline** Zed extension will automatically detect and install this build.
-
-          <!-- folio-release: ${METADATA_JSON} -->
-          EOF
-          )
+          NOTES="$(printf '%s\n' \
+            "Automated rolling macOS build from \`main\` (${{ github.sha }})." \
+            "" \
+            "- **App Version:** \`v${VERSION}\` (Build \`#${BUILD_NUM}\`)" \
+            "- **Zed Extension (\`folio-markdown-outline\`):** \`v${EXT_VERSION}\`" \
+            "- **Core Engine (\`folio_engine\`):** \`v${ENGINE_VER}\`" \
+            "- **Folio.dmg SHA-256:** \`${DMG_SHA256}\`" \
+            "- **folio-markdown-outline.tar.gz SHA-256:** \`${EXT_SHA256}\`" \
+            "" \
+            "Existing installations of **Folio.app** and the **Folio Markdown Outline** Zed extension will automatically detect and install this build." \
+            "" \
+            "<!-- folio-release: ${METADATA_JSON} -->")"
 
           # Delete previous 'latest' tag/release so the tag points to the newest commit and stays marked as Latest
           gh release delete "$TAG" --cleanup-tag --yes 2>/dev/null || true

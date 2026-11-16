@@ -2,6 +2,8 @@ import AppKit
 import SwiftUI
 
 public struct HybridMarkdownEditorRepresentable: NSViewRepresentable {
+    public typealias Coordinator = MarkdownEditorCoordinator
+
     @ObservedObject var viewModel: EditorWorkspaceViewModel
 
     public init(viewModel: EditorWorkspaceViewModel) {
@@ -20,7 +22,7 @@ public struct HybridMarkdownEditorRepresentable: NSViewRepresentable {
             scrollView.setValue(0, forKey: "allowedPocketEdges")
         }
         scrollView.hasVerticalScroller = true
-        // The column is always centered and never scrolls sideways; wide tables scroll on their own.
+        // The column is always centered and never scrolls sideways, while wide tables scroll on their own.
         scrollView.hasHorizontalScroller = false
         scrollView.autohidesScrollers = true
         scrollView.drawsBackground = true
@@ -30,8 +32,7 @@ public struct HybridMarkdownEditorRepresentable: NSViewRepresentable {
         let layoutManager = WideBlockLayoutManager()
         layoutManager.delegate = context.coordinator.softLineBreakLayoutDelegate
         textStorage.addLayoutManager(layoutManager)
-        context.coordinator.observePerfEdits(of: textStorage)
-        context.coordinator.observeTextEdits(of: textStorage)
+        context.coordinator.observeTextStorage(textStorage)
 
         let textContainer = WideBlockTextContainer(containerSize: NSSize(width: 800, height: CGFloat.greatestFiniteMagnitude))
         textContainer.widthTracksTextView = false
@@ -67,7 +68,6 @@ public struct HybridMarkdownEditorRepresentable: NSViewRepresentable {
 
         scrollView.documentView = textView
 
-        // Set initial text and apply styling
         context.coordinator.isProgrammaticUpdate = true
         textView.string = viewModel.markdownText
         let initialLen = (viewModel.markdownText as NSString).length
@@ -125,14 +125,17 @@ public struct HybridMarkdownEditorRepresentable: NSViewRepresentable {
         textView.editorCoordinator = context.coordinator
         viewModel.activeTextView = textView
 
-        if context.coordinator.lastTheme != viewModel.theme {
-            scrollView.backgroundColor = viewModel.theme.editorBackgroundNSColor
-            textView.backgroundColor = viewModel.theme.editorBackgroundNSColor
-            textView.insertionPointColor = viewModel.theme.linkNSColor
-            textView.currentTheme = viewModel.theme
+        let currentConfiguration = Coordinator.SyncedStyleConfiguration(viewModel: viewModel)
+        let previousConfiguration = context.coordinator.lastSyncedConfiguration
+
+        if previousConfiguration?.theme != currentConfiguration.theme {
+            scrollView.backgroundColor = currentConfiguration.theme.editorBackgroundNSColor
+            textView.backgroundColor = currentConfiguration.theme.editorBackgroundNSColor
+            textView.insertionPointColor = currentConfiguration.theme.linkNSColor
+            textView.currentTheme = currentConfiguration.theme
         }
-        if context.coordinator.lastTypography != viewModel.typography {
-            textView.typographySettings = viewModel.typography
+        if previousConfiguration?.typography != currentConfiguration.typography {
+            textView.typographySettings = currentConfiguration.typography
         }
         textView.isTypewriterMode = viewModel.typewriterMode
         textView.isSourceCodeMode = viewModel.sourceCodeMode
@@ -145,21 +148,18 @@ public struct HybridMarkdownEditorRepresentable: NSViewRepresentable {
 
         context.coordinator.updateInsets(for: scrollView, textView: textView, theme: viewModel.theme)
 
-        if !context.coordinator.isUpdatingFromTextView && context.coordinator.lastKnownTextHash != viewModel.markdownText.hashValue
+        if !context.coordinator.isUpdatingFromTextView
+            && context.coordinator.lastKnownTextHash != viewModel.markdownText.hashValue
             && textView.string != viewModel.markdownText
         {
-            let fileChanged = context.coordinator.lastFileURL != viewModel.currentFileURL
+            let fileChanged = previousConfiguration?.fileURL != currentConfiguration.fileURL
             let savedSelection = fileChanged ? viewModel.currentSelectedRange : textView.selectedRange()
             textView.applyProgrammaticDocumentText(viewModel.markdownText, selectedRange: savedSelection)
             if fileChanged {
                 scrollView.contentView.scroll(to: .zero)
                 scrollView.reflectScrolledClipView(scrollView.contentView)
             }
-        } else if context.coordinator.lastTheme != viewModel.theme || context.coordinator.lastTypography != viewModel.typography
-            || context.coordinator.lastSourceMode != viewModel.sourceCodeMode || context.coordinator.lastPrettyMode != viewModel.prettyModeEnabled
-            || context.coordinator.lastTextAlignment != viewModel.textAlignment || context.coordinator.lastFileURL != viewModel.currentFileURL
-            || context.coordinator.lastFocusMode != viewModel.focusMode
-        {
+        } else if previousConfiguration != currentConfiguration {
             context.coordinator.restyle(textView: textView)
         }
 
