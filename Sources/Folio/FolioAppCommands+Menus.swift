@@ -73,6 +73,12 @@ extension FolioAppCommands {
             }
             .keyboardShortcut("x", modifiers: [.command, .option])
 
+            Button("Toggle Task Checkbox") {
+                viewModel.toggleTaskCheckboxAtSelection()
+            }
+            .keyboardShortcut(.return, modifiers: [.command])
+            .disabled(viewModel.isCurrentDocumentLaTeX || viewModel.isCurrentDocumentBibTeX)
+
             Divider()
 
             Button("Horizontal Line") {
