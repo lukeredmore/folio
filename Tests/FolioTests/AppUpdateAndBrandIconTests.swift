@@ -175,6 +175,111 @@ final class AppUpdateAndBrandIconTests: XCTestCase {
                 lastInstalledToken: installedToken
             )
         )
+
+        // 8. Semantic version downgrade MUST be rejected even when remote has a higher rolling build number
+        //    or differing commit SHA (e.g. running 1.2.0 build #5 vs older 1.1.0 build #99).
+        let newerInstalled = AppVersionInfo(
+            shortVersion: "1.2.0",
+            buildNumber: 5,
+            commitSHA: "aaa1111",
+            engineVersion: "0.2.0",
+            repository: "lukeredmore/folio"
+        )
+        let olderSemverHigherBuild = ReleaseManifest(
+            version: "1.1.0",
+            buildNumber: 99,
+            commitSHA: "bbb2222",
+            engineVersion: "0.1.9",
+            publishedAt: "2026-10-25T10:00:00Z",
+            dmgURL: "https://github.com/lukeredmore/folio/releases/latest/download/Folio.dmg",
+            dmgSHA256: "1111111111111111111111111111111111111111111111111111111111111111"
+        )
+        XCTAssertFalse(
+            AppUpdateManager.isUpdateAvailable(current: newerInstalled, remote: olderSemverHigherBuild),
+            "isUpdateAvailable must return false when remote semantic version is older than current, regardless of buildNumber"
+        )
+        let olderSemverSameBuildDiffSHA = ReleaseManifest(
+            version: "1.1.9",
+            buildNumber: 5,
+            commitSHA: "ccc3333",
+            engineVersion: "0.1.9",
+            publishedAt: "2026-10-25T10:05:00Z",
+            dmgURL: "https://github.com/lukeredmore/folio/releases/latest/download/Folio.dmg",
+            dmgSHA256: "2222222222222222222222222222222222222222222222222222222222222222"
+        )
+        XCTAssertFalse(
+            AppUpdateManager.isUpdateAvailable(current: newerInstalled, remote: olderSemverSameBuildDiffSHA),
+            "isUpdateAvailable must return false when remote semantic version is older even if buildNumber matches and SHA differs"
+        )
+    }
+
+    func testBundleSwapScriptUsesPositionalArgsAndRollsBackExistingAppOnFailure() throws {
+        let rootDir = try makeTemporaryDirectory("folio swap 'quoted' $test")
+        let installDir = rootDir.appendingPathComponent("Apps $HOME 'dir'", isDirectory: true)
+        try FileManager.default.createDirectory(at: installDir, withIntermediateDirectories: true)
+
+        let targetApp = installDir.appendingPathComponent("Folio.app", isDirectory: true)
+        let markerFile = targetApp.appendingPathComponent("Contents/version.txt")
+        try FileManager.default.createDirectory(
+            at: markerFile.deletingLastPathComponent(),
+            withIntermediateDirectories: true
+        )
+        try "existing-1.0.0".write(to: markerFile, atomically: true, encoding: .utf8)
+
+        // 1. Failed swap (missing staged bundle) must roll back the existing Folio.app intact and clean up workDir.
+        let failedWorkDir = rootDir.appendingPathComponent("work-fail", isDirectory: true)
+        try FileManager.default.createDirectory(at: failedWorkDir, withIntermediateDirectories: true)
+        let missingStagedApp = failedWorkDir.appendingPathComponent("MissingFolio.app", isDirectory: true)
+
+        let failProc = Process()
+        failProc.executableURL = URL(fileURLWithPath: "/bin/bash")
+        failProc.arguments = [
+            "-c",
+            AppUpdateManager.bundleSwapScript,
+            "folio-apply-update",
+            missingStagedApp.path,
+            targetApp.path,
+            failedWorkDir.path,
+            "",
+            "0"
+        ]
+        try failProc.run()
+        failProc.waitUntilExit()
+        XCTAssertNotEqual(failProc.terminationStatus, 0)
+        XCTAssertEqual(
+            try String(contentsOf: markerFile, encoding: .utf8),
+            "existing-1.0.0",
+            "Existing Folio.app must be restored from backup when moving the staged bundle fails"
+        )
+        XCTAssertFalse(FileManager.default.fileExists(atPath: failedWorkDir.path))
+
+        // 2. Successful swap with spaces, quotes, and $ in paths replaces targetApp and cleans up workDir.
+        let successWorkDir = rootDir.appendingPathComponent("work-ok", isDirectory: true)
+        let stagedApp = successWorkDir.appendingPathComponent("Folio.app", isDirectory: true)
+        let stagedMarker = stagedApp.appendingPathComponent("Contents/version.txt")
+        try FileManager.default.createDirectory(
+            at: stagedMarker.deletingLastPathComponent(),
+            withIntermediateDirectories: true
+        )
+        try "updated-1.1.0".write(to: stagedMarker, atomically: true, encoding: .utf8)
+
+        let okProc = Process()
+        okProc.executableURL = URL(fileURLWithPath: "/bin/bash")
+        okProc.arguments = [
+            "-c",
+            AppUpdateManager.bundleSwapScript,
+            "folio-apply-update",
+            stagedApp.path,
+            targetApp.path,
+            successWorkDir.path,
+            "",
+            "0"
+        ]
+        try okProc.run()
+        okProc.waitUntilExit()
+        XCTAssertEqual(okProc.terminationStatus, 0)
+        XCTAssertEqual(try String(contentsOf: markerFile, encoding: .utf8), "updated-1.1.0")
+        XCTAssertFalse(FileManager.default.fileExists(atPath: successWorkDir.path))
     }
 
     func testDevBuildIconDetectionAndBannerRendering() throws {

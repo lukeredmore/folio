@@ -364,4 +364,56 @@ final class SelectionCommentsInspectorTests: XCTestCase {
         XCTAssertEqual(vm.workspaceFolderURL?.standardizedFileURL, folder.standardizedFileURL, "A normal folder becomes the workspace")
         XCTAssertNotEqual(vm.parentDirWatchDescriptor, -1, "A normal folder gets a parent directory watcher")
     }
+
+    func testEditingTypoInsideSelectionCommentResizesCommentAndExternalSyncReconcilesRanges() throws {
+        let tempDir = try makeTemporaryDirectory("FolioCommentReconcileTest")
+        let fileURL = tempDir.appendingPathComponent("Architecture.md")
+        let initial = "# Design\n\nWe should optimize the **recieve buffer** before shipping.\n"
+        try initial.write(to: fileURL, atomically: true, encoding: .utf8)
+
+        let vm = makeIsolatedViewModel()
+        vm.autoSaveEnabled = true
+        vm.autoSaveDelay = 0
+        vm.openFile(at: fileURL)
+
+        let initialAnchorRange = (initial as NSString).range(of: "**recieve buffer**")
+        vm.addOrUpdateSelectionComment("Fix spelling and verify ring capacity.", for: initialAnchorRange)
+        XCTAssertEqual(vm.selectionComments.count, 1)
+
+        // 1. Fix a typo strictly inside the commented span ("recieve" -> "receive") and shorten ("buffer" -> "queue").
+        let typoFixed = "# Design\n\nWe should optimize the **receive queue** before shipping.\n"
+        vm.handleEditorTextEdited(typoFixed, selectedRange: NSRange(location: initialAnchorRange.location + 5, length: 0))
+
+        XCTAssertEqual(
+            vm.selectionComments.count,
+            1,
+            "Editing a typo inside a selection comment must preserve and resize the comment instead of dropping it"
+        )
+        let resizedComment = try XCTUnwrap(vm.selectionComments.first)
+        let expectedFixedRange = (typoFixed as NSString).range(of: "**receive queue**")
+        XCTAssertEqual(resizedComment.range, expectedFixedRange)
+        XCTAssertEqual(resizedComment.selectedRawText, "**receive queue**")
+        XCTAssertEqual(resizedComment.selectedFormattedText, "receive queue")
+
+        // 2. External update prepends a multi-line callout above the comment: programmatic sync must reconcile
+        //    both in-memory comment NSRanges and the persisted .comments.folio.md sidecar!
+        let externallyUpdated = "# Design\n\n> Summary added externally by collaborator.\n\nWe should optimize the **receive queue** before shipping.\n"
+        try externallyUpdated.write(to: fileURL, atomically: true, encoding: .utf8)
+        vm.checkForExternalFileChanges(for: fileURL)
+
+        let expectedShiftedRange = (externallyUpdated as NSString).range(of: "**receive queue**")
+        let shiftedComment = try XCTUnwrap(vm.selectionComments.first)
+        XCTAssertEqual(
+            shiftedComment.range,
+            expectedShiftedRange,
+            "External file sync must reconcile SelectionComment NSRanges when text shifts above the comment"
+        )
+
+        let sidecarURL = SelectionComment.companionCommentsURL(for: fileURL)
+        let persistedSidecar = try String(contentsOf: sidecarURL, encoding: .utf8)
+        let reloadedComments = SelectionComment.parseCompanionMarkdown(persistedSidecar, inDocumentText: externallyUpdated)
+        XCTAssertEqual(reloadedComments.count, 1)
+        XCTAssertEqual(reloadedComments.first?.range, expectedShiftedRange)
+        XCTAssertEqual(reloadedComments.first?.commentText, "Fix spelling and verify ring capacity.")
+    }
 }

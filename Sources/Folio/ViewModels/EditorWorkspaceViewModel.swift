@@ -27,7 +27,7 @@ public final class EditorWorkspaceViewModel: ObservableObject, HybridMarkdownWor
                 pendingEditOrigin = .userTyping
                 pendingEditSummary = nil
                 reconcileSelectionComments(from: oldValue, to: markdownText)
-                stats = DocumentStats.compute(for: markdownText, selectedRange: currentSelectedRange)
+                updateStatsWithoutRedundantPublish(for: markdownText, selectedRange: currentSelectedRange)
                 if activeTextView == nil {
                     let analysis = MarkdownLiveStyler.applyStyles(
                         to: NSTextStorage(string: markdownText),
@@ -368,8 +368,22 @@ public final class EditorWorkspaceViewModel: ObservableObject, HybridMarkdownWor
     // MARK: - Outline & Statistics
     @Published public var headings: [OutlineHeading] = []
     @Published public var activeHeadingID: String?
-    @Published public var stats: DocumentStats = DocumentStats()
+    private var storedStats: DocumentStats = DocumentStats()
+    public var stats: DocumentStats {
+        get { storedStats }
+        set {
+            guard storedStats != newValue else { return }
+            if !isRestoringState {
+                objectWillChange.send()
+            }
+            storedStats = newValue
+        }
+    }
     @Published public var pendingScrollToCharacterLocation: Int?
+
+    func updateStatsWithoutRedundantPublish(for text: String, selectedRange: NSRange? = nil) {
+        storedStats = DocumentStats.compute(for: text, selectedRange: selectedRange)
+    }
 
     // MARK: - Selection Tooltip & Companion Comments
     @Published public var selectionComments: [SelectionComment] = []
@@ -428,13 +442,10 @@ public final class EditorWorkspaceViewModel: ObservableObject, HybridMarkdownWor
     @Published public internal(set) var isActiveDocumentWindow: Bool = false
     var isApplyingSharedPreference: Bool = false
 
-    nonisolated(unsafe) var fileWatchSource: DispatchSourceFileSystemObject?
-    nonisolated(unsafe) var parentDirWatchSource: DispatchSourceFileSystemObject?
-    nonisolated(unsafe) var fileWatchDescriptor: Int32 = -1
-    nonisolated(unsafe) var parentDirWatchDescriptor: Int32 = -1
-    nonisolated(unsafe) var watchedFileInode: UInt64 = 0
-    nonisolated(unsafe) var folderWatchEntries: [String: WatchedDirectoryEntry] = [:]
-    nonisolated(unsafe) var pendingFolderWatchReloadWorkItem: DispatchWorkItem?
+    let workspaceFileWatcher = POSIXWorkspaceFileWatcher()
+    var parentDirWatchDescriptor: Int32 { workspaceFileWatcher.parentDirectoryDescriptor }
+    var watchedFileInode: UInt64 { workspaceFileWatcher.watchedFileInode }
+    var folderWatchEntries: Set<String> { workspaceFileWatcher.watchedDirectoryKeys }
     nonisolated(unsafe) var externalHighlightClearTask: Task<Void, Never>?
 
     public init(
@@ -458,7 +469,6 @@ public final class EditorWorkspaceViewModel: ObservableObject, HybridMarkdownWor
     deinit {
         if let terminationObserver { NotificationCenter.default.removeObserver(terminationObserver) }
         externalHighlightClearTask?.cancel()
-        stopWatchingCurrentFile()
-        stopWatchingWorkspaceFolders()
+        workspaceFileWatcher.stopAll()
     }
 }

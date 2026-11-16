@@ -117,12 +117,10 @@ extension EditorWorkspaceViewModel {
         guard !content.isEmpty else { return }
 
         do {
-            let utf8Data = Data(content.utf8)
-            if fm.fileExists(atPath: primaryURL.path) {
-                try utf8Data.write(to: primaryURL)
-            } else {
-                try utf8Data.write(to: primaryURL, options: .atomic)
+            if fm.fileExists(atPath: primaryURL.path), !fm.isWritableFile(atPath: primaryURL.path) {
+                throw CocoaError(.fileWriteNoPermission, userInfo: [NSFilePathErrorKey: primaryURL.path])
             }
+            try Data(content.utf8).write(to: primaryURL, options: .atomic)
             if remoteWorkspaceManager.isRemoteURL(primaryURL) {
                 enqueueRemoteUpload(content, to: primaryURL)
             }
@@ -192,6 +190,7 @@ extension EditorWorkspaceViewModel {
             typography: typography
         )
 
+        let wasCommentsSidebarVisible = isCommentsSidebarVisible
         let savedComment: SelectionComment
         if let idx = selectionComments.firstIndex(where: { $0.range == range || NSIntersectionRange($0.range, range).length > 0 }) {
             var updated = selectionComments[idx]
@@ -229,8 +228,24 @@ extension EditorWorkspaceViewModel {
         activeTextView?.needsDisplay = true
         if let tv = activeTextView, let window = tv.window {
             window.makeFirstResponder(tv)
+            flushOccludedInspectorLayoutIfNeeded(in: window, wasVisible: wasCommentsSidebarVisible)
         }
         return savedComment
+    }
+
+    private func flushOccludedInspectorLayoutIfNeeded(in window: NSWindow?, wasVisible: Bool) {
+        guard let window, wasVisible != isCommentsSidebarVisible else { return }
+        // AppKit skips `displayIfNeeded()` on occluded windows, leaving SwiftUI's `.inspector`
+        // safe-area inset change uncommitted to the detail `GeometryReader` until an explicit display.
+        DispatchQueue.main.async { [weak window] in
+            guard let window else { return }
+            window.layoutIfNeeded()
+            if !window.occlusionState.contains(.visible) {
+                window.display()
+                window.layoutIfNeeded()
+                window.display()
+            }
+        }
     }
 
     @discardableResult

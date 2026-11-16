@@ -9,6 +9,21 @@ public struct PendingRemoteWrite: Codable, Equatable, Sendable {
     public let relativePath: String
     public let localFileURL: URL
     public let queuedAt: Date
+    public let revision: UInt64
+
+    public init(
+        mountID: UUID,
+        relativePath: String,
+        localFileURL: URL,
+        queuedAt: Date,
+        revision: UInt64 = 0
+    ) {
+        self.mountID = mountID
+        self.relativePath = relativePath
+        self.localFileURL = localFileURL
+        self.queuedAt = queuedAt
+        self.revision = revision
+    }
 }
 
 @MainActor
@@ -43,6 +58,8 @@ public final class RemoteWorkspaceManager: ObservableObject {
     /// remote changes from local dirty edits.
     var lastSyncedContentHashes: [URL: String] = [:]
     var retryCounts: [UUID: Int] = [:]
+    var nextPendingWriteRevision: UInt64 = 0
+    var latestWriteRevisions: [URL: UInt64] = [:]
 
     /// Mount-relative directories that each sync lists, per mount. Persisted. The root is implied.
     var loadedRemoteDirectories: [UUID: Set<String>] = [:]
@@ -56,6 +73,7 @@ public final class RemoteWorkspaceManager: ObservableObject {
     public var directoryProbeLifetimeSeconds: TimeInterval = 60
     /// File types and folders that each folder mount hides. Persisted.
     @Published public internal(set) var sidebarFilters: [UUID: SidebarRootFilter] = [:]
+    nonisolated(unsafe) var inFlightMountSyncs: [UUID: (token: UUID, task: Task<Bool, Never>)] = [:]
     nonisolated(unsafe) var retryTasks: [UUID: Task<Void, Never>] = [:]
     nonisolated(unsafe) var pollingTask: Task<Void, Never>?
 
@@ -114,6 +132,9 @@ public final class RemoteWorkspaceManager: ObservableObject {
 
     deinit {
         pollingTask?.cancel()
+        for (_, entry) in inFlightMountSyncs {
+            entry.task.cancel()
+        }
         for (_, task) in retryTasks {
             task.cancel()
         }
@@ -206,6 +227,8 @@ public final class RemoteWorkspaceManager: ObservableObject {
     }
 
     public func removeMount(id: UUID) {
+        inFlightMountSyncs[id]?.task.cancel()
+        inFlightMountSyncs.removeValue(forKey: id)
         retryTasks[id]?.cancel()
         retryTasks.removeValue(forKey: id)
         retryCounts.removeValue(forKey: id)

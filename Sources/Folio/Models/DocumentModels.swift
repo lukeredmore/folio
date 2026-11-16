@@ -126,8 +126,13 @@ public struct WorkspaceFileNode: Identifiable, Hashable, Sendable {
     public var isSidebarRoot: Bool { isRemoteRoot || isLocalRoot }
 
     public static let markdownExtensions: Set<String> = ["md", "markdown", "mdown", "mkd", "txt", "textbundle"]
-    public static let latexExtensions: Set<String> = ["tex", "sty", "cls", "ltx"]
+    public static let latexExtensions: Set<String> = ["tex", "latex", "ltx", "sty", "cls"]
     public static let bibtexExtensions: Set<String> = ["bib"]
+    public static let supportedDocumentExtensions: Set<String> =
+        markdownExtensions.union(latexExtensions).union(bibtexExtensions)
+    /// File extensions that a remote listing reports. `textbundle` is a directory, so it is excluded.
+    public static let remoteDocumentExtensions: Set<String> =
+        supportedDocumentExtensions.subtracting(["textbundle"])
 
     /// Directory names that the sidebar never shows.
     public static let ignoredDirectoryNames: Set<String> = [
@@ -140,9 +145,12 @@ public struct WorkspaceFileNode: Identifiable, Hashable, Sendable {
         name.hasPrefix(".") || ignoredDirectoryNames.contains(name) || name.hasPrefix("bazel-") || name.hasSuffix(".app")
     }
 
-    /// File extensions that a remote listing reports. `textbundle` is a directory, so it is excluded.
-    public static var remoteDocumentExtensions: Set<String> {
-        markdownExtensions.subtracting(["textbundle"]).union(latexExtensions).union(bibtexExtensions)
+    public static func isSupportedDocumentFilename(_ filename: String) -> Bool {
+        let lowerName = (filename as NSString).lastPathComponent.lowercased()
+        if lowerName.hasSuffix(".comments.folio.md") {
+            return false
+        }
+        return supportedDocumentExtensions.contains((lowerName as NSString).pathExtension)
     }
 
     public var isMarkdownFile: Bool {

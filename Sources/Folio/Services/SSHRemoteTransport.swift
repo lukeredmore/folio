@@ -1,13 +1,77 @@
 import CryptoKit
+import Darwin
 import Foundation
 
 // MARK: - Multiplexed OpenSSH Transport
 
+private final class SSHSubprocessController: @unchecked Sendable {
+    private let lock = NSLock()
+    private let process: Process
+    private var cancelled = false
+    private var stdoutData = Data()
+    private var stderrData = Data()
+
+    init(process: Process) {
+        self.process = process
+    }
+
+    func startAndCheckCancellation() throws {
+        try process.run()
+        lock.lock()
+        let shouldTerminate = cancelled
+        lock.unlock()
+        if shouldTerminate, process.isRunning {
+            process.terminate()
+        }
+    }
+
+    func cancel() {
+        lock.lock()
+        cancelled = true
+        let running = process.isRunning
+        lock.unlock()
+        if running {
+            process.terminate()
+        }
+    }
+
+    var isCancelled: Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        return cancelled
+    }
+
+    func setStdout(_ data: Data) {
+        lock.lock()
+        stdoutData = data
+        lock.unlock()
+    }
+
+    func setStderr(_ data: Data) {
+        lock.lock()
+        stderrData = data
+        lock.unlock()
+    }
+
+    func snapshotOutputs() -> (stdout: Data, stderr: Data) {
+        lock.lock()
+        defer { lock.unlock() }
+        return (stdoutData, stderrData)
+    }
+}
+
 public struct SSHRemoteTransport: RemoteFileTransport {
     public let connectTimeoutSeconds: Int
+    package let sshExecutableURL: URL
 
     public init(connectTimeoutSeconds: Int = 6) {
         self.connectTimeoutSeconds = connectTimeoutSeconds
+        self.sshExecutableURL = URL(fileURLWithPath: "/usr/bin/ssh")
+    }
+
+    package init(connectTimeoutSeconds: Int = 6, sshExecutableURL: URL) {
+        self.connectTimeoutSeconds = connectTimeoutSeconds
+        self.sshExecutableURL = sshExecutableURL
     }
 
     package func controlSocketPath(for mount: RemoteMountSpec) -> String {
@@ -46,7 +110,7 @@ public struct SSHRemoteTransport: RemoteFileTransport {
             let expanded = (identity as NSString).expandingTildeInPath
             args.append(contentsOf: ["-i", expanded])
         }
-        args.append(mount.sshDestination)
+        args.append(contentsOf: ["--", mount.sshDestination])
         return args
     }
 
@@ -157,6 +221,29 @@ public struct SSHRemoteTransport: RemoteFileTransport {
         return entries
     }
 
+    package static func makePushRemoteScript(targetFileExpr: String) -> String {
+        """
+        TARGET=\(targetFileExpr)
+        DIR=$(dirname "$TARGET")
+        mkdir -p "$DIR" || exit 45
+        TMP="$TARGET.folio_tmp.$$"
+        if (base64 -d 2>/dev/null || base64 -D) > "$TMP"; then
+            :
+        else
+            rm -f "$TMP"
+            exit 45
+        fi
+        if mv -f "$TMP" "$TARGET"; then
+            :
+        else
+            rm -f "$TMP"
+            exit 45
+        fi
+        MTIME=$(date -r "$TARGET" +%s 2>/dev/null || stat -c %Y "$TARGET" 2>/dev/null || stat -f %m "$TARGET" 2>/dev/null || date +%s)
+        printf "%s\\n" "$MTIME"
+        """
+    }
+
     public func pushFile(content: String, relativePath: String, for mount: RemoteMountSpec) async throws -> TimeInterval {
         let targetFileExpr: String
         switch mount.targetKind {
@@ -169,25 +256,13 @@ public struct SSHRemoteTransport: RemoteFileTransport {
         }
 
         let b64Payload = Data(content.utf8).base64EncodedString()
-        let remoteScript = """
-            TARGET=\(targetFileExpr)
-            DIR=$(dirname "$TARGET")
-            mkdir -p "$DIR" || exit 45
-            TMP="$TARGET.folio_tmp.$$"
-            base64 -d > "$TMP" << '__FOLIO_B64_EOF__'
-            \(b64Payload)
-            __FOLIO_B64_EOF__
-            if [ $? -ne 0 ]; then
-                base64 -D > "$TMP" << '__FOLIO_B64_EOF__'
-            \(b64Payload)
-            __FOLIO_B64_EOF__
-            fi
-            mv -f "$TMP" "$TARGET" || exit 45
-            MTIME=$(date -r "$TARGET" +%s 2>/dev/null || stat -c %Y "$TARGET" 2>/dev/null || stat -f %m "$TARGET" 2>/dev/null || date +%s)
-            printf "%s\\n" "$MTIME"
-            """
+        let remoteScript = Self.makePushRemoteScript(targetFileExpr: targetFileExpr)
 
-        let (stdout, stderr, status) = try await runSSHScript(for: mount, script: remoteScript)
+        let (stdout, stderr, status) = try await runSSHScript(
+            for: mount,
+            script: remoteScript,
+            stdinData: Data(b64Payload.utf8)
+        )
         guard status == 0 else {
             throw mapSSHError(mount: mount, status: status, stderr: stderr)
         }
@@ -231,39 +306,100 @@ public struct SSHRemoteTransport: RemoteFileTransport {
         return .connectionFailed(host: mount.host, details: fallback)
     }
 
-    func runSSHScript(
+    package func runSSHScript(
         for mount: RemoteMountSpec,
-        script: String
+        script: String,
+        stdinData: Data? = nil
     ) async throws -> (stdout: String, stderr: String, status: Int32) {
-        let sshArgs = baseSSHArguments(for: mount) + ["sh", "-s"]
-        return try await Task.detached(priority: .userInitiated) {
-            let process = Process()
-            process.executableURL = URL(fileURLWithPath: "/usr/bin/ssh")
-            process.arguments = sshArgs
+        try Task.checkCancellation()
+        let sshArgs: [String]
+        let inputData: Data
+        if let stdinData {
+            sshArgs = baseSSHArguments(for: mount) + ["sh -c \(Self.shellQuote(script))"]
+            inputData = stdinData
+        } else {
+            sshArgs = baseSSHArguments(for: mount) + ["sh", "-s"]
+            inputData = Data(script.utf8)
+        }
 
-            let stdinPipe = Pipe()
-            let stdoutPipe = Pipe()
-            let stderrPipe = Pipe()
-            process.standardInput = stdinPipe
-            process.standardOutput = stdoutPipe
-            process.standardError = stderrPipe
+        let process = Process()
+        process.executableURL = sshExecutableURL
+        process.arguments = sshArgs
 
-            try process.run()
+        let stdinPipe = Pipe()
+        let stdoutPipe = Pipe()
+        let stderrPipe = Pipe()
+        process.standardInput = stdinPipe
+        process.standardOutput = stdoutPipe
+        process.standardError = stderrPipe
 
-            if let scriptData = script.data(using: .utf8) {
-                stdinPipe.fileHandleForWriting.write(scriptData)
+        let stdinWrite = stdinPipe.fileHandleForWriting
+        let stdoutRead = stdoutPipe.fileHandleForReading
+        let stderrRead = stderrPipe.fileHandleForReading
+        _ = fcntl(stdinWrite.fileDescriptor, F_SETNOSIGPIPE, 1)
+
+        let controller = SSHSubprocessController(process: process)
+
+        return try await withTaskCancellationHandler {
+            try await withCheckedThrowingContinuation { continuation in
+                let ioGroup = DispatchGroup()
+                ioGroup.enter()
+                ioGroup.enter()
+                ioGroup.enter()
+
+                process.terminationHandler = { terminatedProcess in
+                    let status = terminatedProcess.terminationStatus
+                    ioGroup.notify(queue: .global(qos: .userInitiated)) {
+                        if controller.isCancelled {
+                            continuation.resume(throwing: CancellationError())
+                            return
+                        }
+                        let outputs = controller.snapshotOutputs()
+                        continuation.resume(
+                            returning: (
+                                stdout: String(data: outputs.stdout, encoding: .utf8) ?? "",
+                                stderr: String(data: outputs.stderr, encoding: .utf8) ?? "",
+                                status: status
+                            ))
+                    }
+                }
+
+                do {
+                    try controller.startAndCheckCancellation()
+                } catch {
+                    process.terminationHandler = nil
+                    ioGroup.leave()
+                    ioGroup.leave()
+                    ioGroup.leave()
+                    try? stdinWrite.close()
+                    try? stdoutRead.close()
+                    try? stderrRead.close()
+                    continuation.resume(throwing: error)
+                    return
+                }
+
+                DispatchQueue.global(qos: .userInitiated).async {
+                    defer { ioGroup.leave() }
+                    if !inputData.isEmpty {
+                        try? stdinWrite.write(contentsOf: inputData)
+                    }
+                    try? stdinWrite.close()
+                }
+
+                DispatchQueue.global(qos: .userInitiated).async {
+                    defer { ioGroup.leave() }
+                    let data = (try? stdoutRead.readToEnd()) ?? Data()
+                    controller.setStdout(data)
+                }
+
+                DispatchQueue.global(qos: .userInitiated).async {
+                    defer { ioGroup.leave() }
+                    let data = (try? stderrRead.readToEnd()) ?? Data()
+                    controller.setStderr(data)
+                }
             }
-            stdinPipe.fileHandleForWriting.closeFile()
-
-            let outData = stdoutPipe.fileHandleForReading.readDataToEndOfFile()
-            let errData = stderrPipe.fileHandleForReading.readDataToEndOfFile()
-            process.waitUntilExit()
-
-            return (
-                stdout: String(data: outData, encoding: .utf8) ?? "",
-                stderr: String(data: errData, encoding: .utf8) ?? "",
-                status: process.terminationStatus
-            )
-        }.value
+        } onCancel: {
+            controller.cancel()
+        }
     }
 }

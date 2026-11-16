@@ -58,8 +58,7 @@ extension EditorWorkspaceViewModel {
     /// Rescans the sidebar folders from disk (or syncs a remote mount if `folderURL` is inside one),
     /// refreshes any active workspace search results, and checks the open document for external changes.
     public func refreshFolderFromDisk(_ folderURL: URL? = nil) {
-        pendingFolderWatchReloadWorkItem?.cancel()
-        pendingFolderWatchReloadWorkItem = nil
+        workspaceFileWatcher.cancelPendingReload()
 
         if let folderURL, let resolved = remoteWorkspaceManager.resolveMount(for: folderURL) {
             syncRemoteMountNow(id: resolved.mount.id)

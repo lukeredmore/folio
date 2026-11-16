@@ -41,13 +41,7 @@ extension EditorWorkspaceViewModel {
                                 summary: wasAutoMerged ? "Auto-merged external changes" : "External file update",
                                 allowCoalescing: false
                             )
-                            isApplyingInternalStateChange = true
-                            markdownText = mergedText
-                            currentSelectedRange = adjustedSel
-                            if let tv = activeTextView {
-                                tv.applyProgrammaticDocumentText(mergedText, selectedRange: adjustedSel)
-                            }
-                            isApplyingInternalStateChange = false
+                            applyProgrammaticBufferState(mergedText, selectedRange: adjustedSel)
                             publishExternalUpdateVisualNotice(
                                 fileURL: url,
                                 previousText: localBeforeMerge,
@@ -57,8 +51,7 @@ extension EditorWorkspaceViewModel {
                                 sourceDescription: remoteWorkspaceManager.isRemoteURL(url) ? "SSH Remote" : "Disk"
                             )
                         }
-                        performDiskWrite(mergedText, to: url)
-                        isDirty = false
+                        isDirty = !performDiskWrite(mergedText, to: url)
                     case .conflict(let conflict):
                         activeConflict = conflict
                         isDirty = true
@@ -67,8 +60,7 @@ extension EditorWorkspaceViewModel {
                     return
                 }
 
-                performDiskWrite(markdownText, to: url)
-                isDirty = false
+                isDirty = !performDiskWrite(markdownText, to: url)
             } else {
                 isDirty = (markdownText != lastSavedDiskContent)
             }
@@ -78,16 +70,24 @@ extension EditorWorkspaceViewModel {
         persistDocumentSessionState()
     }
 
-    func flushPendingAutoSaveBeforeSwitchingFile() {
+    @discardableResult
+    func flushPendingAutoSaveBeforeSwitchingFile() -> Bool {
+        let hadPendingTimer = hasPendingAutoSave
         flushPendingAutoSave()
         guard let url = currentFileURL,
             activeConflict == nil,
             autoSaveEnabled,
             markdownText != lastSavedDiskContent
-        else { return }
-        performDiskWrite(markdownText, to: url)
-        isDirty = false
+        else { return true }
+        if hadPendingTimer {
+            isDirty = true
+            persistDocumentSessionState()
+            return false
+        }
+        let wrote = performDiskWrite(markdownText, to: url)
+        isDirty = !wrote
         persistDocumentSessionState()
+        return wrote
     }
 
     /// Checks whether the currently open file on disk has been modified by an external process,
@@ -173,24 +173,7 @@ extension EditorWorkspaceViewModel {
                     allowCoalescing: false
                 )
 
-                isApplyingInternalStateChange = true
-                markdownText = mergedText
-                currentSelectedRange = adjustedSel
-                stats = DocumentStats.compute(for: mergedText, selectedRange: adjustedSel)
-                if let tv = activeTextView {
-                    tv.applyProgrammaticDocumentText(mergedText, selectedRange: adjustedSel)
-                } else {
-                    let analysis = MarkdownLiveStyler.applyStyles(
-                        to: NSTextStorage(string: mergedText),
-                        theme: theme,
-                        typography: typography,
-                        sourceCodeMode: sourceCodeMode,
-                        focusMode: focusMode,
-                        selectedRange: adjustedSel
-                    )
-                    headings = analysis.headings
-                }
-                isApplyingInternalStateChange = false
+                applyProgrammaticBufferState(mergedText, selectedRange: adjustedSel)
 
                 publishExternalUpdateVisualNotice(
                     fileURL: url,
@@ -203,7 +186,10 @@ extension EditorWorkspaceViewModel {
             }
 
             if wasAutoMerged && mergedText != diskContent {
-                performDiskWrite(mergedText, to: url)
+                if !performDiskWrite(mergedText, to: url) {
+                    lastSavedDiskContent = diskContent
+                    isDirty = true
+                }
             } else {
                 lastSavedDiskContent = diskContent
                 isDirty = (mergedText != diskContent)
@@ -316,27 +302,8 @@ extension EditorWorkspaceViewModel {
         activeConflict = nil
         showConflictResolverModal = false
 
-        isApplyingInternalStateChange = true
-        markdownText = resolved
-        currentSelectedRange = adjustedSel
-        isDirty = false
-        stats = DocumentStats.compute(for: resolved, selectedRange: adjustedSel)
-        if let tv = activeTextView {
-            tv.applyProgrammaticDocumentText(resolved, selectedRange: adjustedSel)
-        } else {
-            let analysis = MarkdownLiveStyler.applyStyles(
-                to: NSTextStorage(string: resolved),
-                theme: theme,
-                typography: typography,
-                sourceCodeMode: sourceCodeMode,
-                focusMode: focusMode,
-                selectedRange: adjustedSel
-            )
-            headings = analysis.headings
-        }
-        isApplyingInternalStateChange = false
-
-        performDiskWrite(resolved, to: conflict.fileURL)
+        applyProgrammaticBufferState(resolved, selectedRange: adjustedSel)
+        isDirty = !performDiskWrite(resolved, to: conflict.fileURL)
         let diff = DocumentLineDiff.computeDiff(from: baselineForUndo, to: resolved)
         scheduleExternalUpdateHighlights(diff.changedCharacterRanges)
         persistDocumentSessionState()

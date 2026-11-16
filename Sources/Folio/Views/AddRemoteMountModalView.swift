@@ -314,10 +314,20 @@ public struct AddRemoteMountModalView: View {
             validationError = nil
             isConnecting = true
             Task {
-                await viewModel.connectRemoteMount(spec)
+                let connected = await viewModel.connectRemoteMount(spec)
                 isConnecting = false
-                pathInput = ""
-                viewModel.showAddRemoteModal = false
+                if connected {
+                    pathInput = ""
+                    viewModel.showAddRemoteModal = false
+                } else {
+                    let matchedMount = remoteManager.mounts.first(where: {
+                        $0.host == spec.host && $0.user == spec.user && $0.port == spec.port && $0.remotePath == spec.remotePath
+                    })
+                    let errorMessage =
+                        matchedMount.flatMap { remoteManager.connectionStates[$0.id]?.errorMessage }
+                        ?? remoteManager.connectionStates[spec.id]?.errorMessage
+                    validationError = errorMessage ?? "Could not connect to \(spec.host)."
+                }
             }
         } catch {
             validationError = error.localizedDescription

@@ -383,4 +383,113 @@ final class WorkspaceAndPersistenceTests: XCTestCase {
         bodySubmenu.performActionForItem(at: 0)
         XCTAssertEqual(vm.theme.bodyFontFamily, firstExtraFont)
     }
+
+    @MainActor
+    func testDoubleShiftMonitorScopesQuickOpenAndEscapeToKeyWindow() throws {
+        let vmKey = makeIsolatedViewModel()
+        let vmBackground = makeIsolatedViewModel()
+
+        let windowA = ScopedMonitorTestWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 800, height: 600),
+            styleMask: [.titled, .closable],
+            backing: .buffered,
+            defer: false
+        )
+        let windowB = ScopedMonitorTestWindow(
+            contentRect: NSRect(x: 820, y: 0, width: 800, height: 600),
+            styleMask: [.titled, .closable],
+            backing: .buffered,
+            defer: false
+        )
+        windowA.isReleasedWhenClosed = false
+        windowB.isReleasedWhenClosed = false
+        defer {
+            windowA.close()
+            windowB.close()
+        }
+        windowA.simulatedIsKeyWindow = true
+        windowB.simulatedIsKeyWindow = false
+
+        let monitorA = DoubleShiftEventMonitorAccessor.Coordinator(viewModel: vmKey, attachedWindow: windowA)
+        let monitorB = DoubleShiftEventMonitorAccessor.Coordinator(viewModel: vmBackground, attachedWindow: windowB)
+
+        let leftShift: UInt16 = 56
+        func makeKeyEvent(
+            _ type: NSEvent.EventType,
+            flags: NSEvent.ModifierFlags,
+            keyCode: UInt16,
+            time: TimeInterval,
+            windowNumber: Int
+        ) throws -> NSEvent {
+            let chars = type == .flagsChanged ? "" : (keyCode == 53 ? "\u{1b}" : "")
+            return try XCTUnwrap(
+                NSEvent.keyEvent(
+                    with: type,
+                    location: .zero,
+                    modifierFlags: flags,
+                    timestamp: time,
+                    windowNumber: windowNumber,
+                    context: nil,
+                    characters: chars,
+                    charactersIgnoringModifiers: chars,
+                    isARepeat: false,
+                    keyCode: keyCode
+                ))
+        }
+
+        // Dispatch through both monitors (mimicking AppKit's process-wide local NSEvent monitor chain).
+        func dispatchToAllMonitors(_ event: NSEvent) -> NSEvent? {
+            guard let afterB = monitorB.processMonitoredEvent(event) else { return nil }
+            return monitorA.processMonitoredEvent(afterB)
+        }
+
+        // Even if the background window already has Quick Open or Find open, Escape & Shift+Shift in key window A
+        // must never be swallowed by or broadcast to background window B.
+        vmBackground.showQuickOpen = true
+        vmBackground.showFindReplaceBar = true
+
+        _ = dispatchToAllMonitors(
+            try makeKeyEvent(.flagsChanged, flags: [.shift], keyCode: leftShift, time: 1.00, windowNumber: windowA.windowNumber)
+        )
+        _ = dispatchToAllMonitors(
+            try makeKeyEvent(.flagsChanged, flags: [], keyCode: leftShift, time: 1.06, windowNumber: windowA.windowNumber)
+        )
+        _ = dispatchToAllMonitors(
+            try makeKeyEvent(.flagsChanged, flags: [.shift], keyCode: leftShift, time: 1.18, windowNumber: windowA.windowNumber)
+        )
+        _ = dispatchToAllMonitors(
+            try makeKeyEvent(.flagsChanged, flags: [], keyCode: leftShift, time: 1.24, windowNumber: windowA.windowNumber)
+        )
+
+        XCTAssertTrue(vmKey.showQuickOpen, "Shift+Shift must open Quick Open in the key window")
+        XCTAssertTrue(vmBackground.showQuickOpen, "Background window Quick Open state must not be toggled by key window Shift+Shift")
+
+        // Pressing Escape while Quick Open is open in key window A closes ONLY window A's Quick Open.
+        let escapeInA = try makeKeyEvent(.keyDown, flags: [], keyCode: 53, time: 2.00, windowNumber: windowA.windowNumber)
+        XCTAssertNil(dispatchToAllMonitors(escapeInA), "Key window monitor must consume Escape to close its own Quick Open")
+        XCTAssertFalse(vmKey.showQuickOpen)
+        XCTAssertTrue(vmBackground.showQuickOpen, "Background window Quick Open must remain untouched")
+
+        // Pressing Escape again when key window A has neither Quick Open nor Find open must pass through unconsumed
+        // even though background window B still has Quick Open open!
+        let passThroughEscape = try makeKeyEvent(.keyDown, flags: [], keyCode: 53, time: 2.50, windowNumber: windowA.windowNumber)
+        XCTAssertNotNil(
+            dispatchToAllMonitors(passThroughEscape),
+            "Background window monitor must not swallow Escape meant for the key window"
+        )
+        XCTAssertTrue(vmBackground.showQuickOpen)
+
+        // Switching key focus to window B now routes Escape to window B instead of window A.
+        windowA.simulatedIsKeyWindow = false
+        windowB.simulatedIsKeyWindow = true
+        let escapeInB = try makeKeyEvent(.keyDown, flags: [], keyCode: 53, time: 3.00, windowNumber: windowB.windowNumber)
+        XCTAssertNil(dispatchToAllMonitors(escapeInB))
+        XCTAssertFalse(vmBackground.showQuickOpen)
+    }
+}
+
+private final class ScopedMonitorTestWindow: NSWindow {
+    var simulatedIsKeyWindow: Bool = false
+    override var canBecomeKey: Bool { true }
+    override var isKeyWindow: Bool { simulatedIsKeyWindow }
 }

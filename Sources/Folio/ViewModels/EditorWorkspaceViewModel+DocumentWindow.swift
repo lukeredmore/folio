@@ -158,28 +158,9 @@ extension EditorWorkspaceViewModel {
             inOldText: markdownText,
             toNewText: content
         )
-        isApplyingInternalStateChange = true
-        markdownText = content
         lastSavedDiskContent = content
         isDirty = false
-        currentSelectedRange = selection
-        isApplyingInternalStateChange = false
-        stats = DocumentStats.compute(for: content, selectedRange: selection)
-        if let textView = activeTextView {
-            textView.applyProgrammaticDocumentText(content, selectedRange: selection)
-        } else {
-            headings =
-                MarkdownLiveStyler.applyStyles(
-                    to: NSTextStorage(string: content),
-                    theme: theme,
-                    typography: typography,
-                    sourceCodeMode: sourceCodeMode,
-                    focusMode: focusMode,
-                    selectedRange: selection,
-                    baseDirectoryURL: url.deletingLastPathComponent(),
-                    fileURL: url
-                ).headings
-        }
+        applyProgrammaticBufferState(content, selectedRange: selection)
         refreshUndoRedoAvailability()
         persistDocumentSessionState()
     }

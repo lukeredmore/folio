@@ -234,42 +234,16 @@ extension EditorWorkspaceViewModel {
 
     func applyHistoricalTextState(_ targetText: String, selectedRange: NSRange) {
         clearExternalUpdateHighlights()
-        let clampedLoc = max(0, min((targetText as NSString).length, selectedRange.location))
-        let clampedLen = max(0, min((targetText as NSString).length - clampedLoc, selectedRange.length))
-        let clampedRange = NSRange(location: clampedLoc, length: clampedLen)
-
-        let previousText = markdownText
-        isApplyingInternalStateChange = true
-        markdownText = targetText
-        currentSelectedRange = clampedRange
-        reconcileSelectionComments(from: previousText, to: targetText)
-        updateSelectionTooltipAnchor(for: clampedRange)
-        setSessionValue(clampedRange.location, forKey: Self.selectedCursorLocationDefaultsKey)
-        stats = DocumentStats.compute(for: targetText, selectedRange: clampedRange)
-
-        if let tv = activeTextView {
-            tv.applyProgrammaticDocumentText(targetText, selectedRange: clampedRange)
-        } else {
-            let analysis = MarkdownLiveStyler.applyStyles(
-                to: NSTextStorage(string: targetText),
-                theme: theme,
-                typography: typography,
-                sourceCodeMode: sourceCodeMode,
-                focusMode: focusMode,
-                selectedRange: clampedRange
-            )
-            headings = analysis.headings
-        }
+        applyProgrammaticBufferState(targetText, selectedRange: selectedRange)
+        setSessionValue(currentSelectedRange.location, forKey: Self.selectedCursorLocationDefaultsKey)
 
         if let url = currentFileURL, autoSaveEnabled, activeConflict == nil {
-            performDiskWrite(targetText, to: url)
-            isDirty = false
+            isDirty = !performDiskWrite(targetText, to: url)
         } else if currentFileURL == nil {
             isDirty = !autoSaveEnabled
         } else {
             isDirty = (targetText != lastSavedDiskContent)
         }
-        isApplyingInternalStateChange = false
         persistDocumentSessionState()
     }
 }

@@ -168,14 +168,6 @@ public struct SelectionComment: Identifiable, Equatable, Sendable {
         let newNS = newText as NSString
         guard newNS.length > 0 else { return nil }
 
-        // 1. If the exact substring still exists at the same range, keep it.
-        if NSMaxRange(range) <= newNS.length,
-            newNS.substring(with: range) == selectedRawText
-        {
-            return self
-        }
-
-        // 2. Compute common prefix and suffix between oldText and newText to shift ranges cleanly.
         let oldLen = oldNS.length
         let newLen = newNS.length
         let minLen = min(oldLen, newLen)
@@ -197,14 +189,32 @@ public struct SelectionComment: Identifiable, Equatable, Sendable {
         if NSMaxRange(range) <= commonPrefix {
             return updated
         } else if range.location >= oldSuffix {
-            let shifted = NSRange(location: max(0, range.location + delta), length: range.length)
-            if NSMaxRange(shifted) <= newLen {
-                updated.range = shifted
+            let shiftedLoc = range.location + delta
+            if shiftedLoc >= 0, shiftedLoc + range.length <= newLen {
+                updated.range = NSRange(location: shiftedLoc, length: range.length)
                 return updated
             }
+        } else if range.location <= commonPrefix && NSMaxRange(range) >= oldSuffix {
+            let newLength = range.length + delta
+            guard newLength > 0, range.location >= 0, range.location + newLength <= newLen else {
+                return nil
+            }
+            let resizedRange = NSRange(location: range.location, length: newLength)
+            let updatedRaw = newNS.substring(with: resizedRange)
+            guard !updatedRaw.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+                return nil
+            }
+            let previousRaw = updated.selectedRawText
+            updated.range = resizedRange
+            updated.selectedRawText = updatedRaw
+            if updated.selectedFormattedText == previousRaw {
+                updated.selectedFormattedText = updatedRaw
+            }
+            return updated
         }
 
-        // 3. Fallback: search for the nearest occurrence of `selectedRawText` in `newText`.
+        // Fallback for multi-hunk edits (such as 3-way merges) or partial boundary overlaps:
+        // locate the nearest occurrence of `selectedRawText` in `newText`.
         guard !selectedRawText.isEmpty else { return nil }
         var bestRange: NSRange?
         var searchRange = NSRange(location: 0, length: newLen)

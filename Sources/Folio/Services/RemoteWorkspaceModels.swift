@@ -119,11 +119,7 @@ public struct RemoteMountSpec: Identifiable, Codable, Equatable, Hashable, Senda
     /// The target kind for `remotePath`: a file when it has a supported document extension, else a folder.
     public static func inferredTargetKind(forRemotePath remotePath: String) -> RemoteMountTargetKind {
         let ext = (remotePath as NSString).pathExtension.lowercased()
-        let documentExtensions =
-            WorkspaceFileNode.markdownExtensions
-            .union(WorkspaceFileNode.latexExtensions)
-            .union(WorkspaceFileNode.bibtexExtensions)
-        return documentExtensions.contains(ext) ? .file : .folder
+        return WorkspaceFileNode.supportedDocumentExtensions.contains(ext) ? .file : .folder
     }
 
     /// Parses connection strings of the forms:

@@ -58,7 +58,7 @@ public struct ExternalUpdateDiffModalView: View {
                     VStack(alignment: .leading, spacing: 2) {
                         Text(notice.wasThreeWayMerged ? "External Changes Auto-Merged" : "External File Update Applied")
                             .font(.system(size: 15, weight: .semibold))
-                        Text("\(notice.fileURL.lastPathComponent) • +\(notice.addedLines) added, -\(notice.removedLines) removed")
+                        Text("\(notice.fileURL.lastPathComponent) • +\(notice.addedLinesCount) added, -\(notice.removedLinesCount) removed")
                             .font(.system(size: 12))
                             .foregroundColor(.secondary)
                     }
@@ -69,7 +69,7 @@ public struct ExternalUpdateDiffModalView: View {
 
                 ScrollView {
                     VStack(alignment: .leading, spacing: 10) {
-                        ForEach(notice.hunks) { hunk in
+                        ForEach(notice.diffHunks) { hunk in
                             VStack(alignment: .leading, spacing: 4) {
                                 Text("Lines \(hunk.newStartLine)–\(max(hunk.newStartLine, hunk.newStartLine + max(0, hunk.addedLines.count - 1)))")
                                     .font(.system(size: 11, weight: .semibold, design: .monospaced))

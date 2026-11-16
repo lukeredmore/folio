@@ -16,7 +16,7 @@ extension SSHRemoteTransport {
 
     public func listDirectories(
         _ relativePaths: [String],
-        fileExtensions: Set<String>,
+        fileExtensions: Set<String> = WorkspaceFileNode.remoteDocumentExtensions,
         for mount: RemoteMountSpec
     ) async throws -> [RemoteDirectoryListing] {
         guard mount.targetKind == .folder, !relativePaths.isEmpty else { return [] }
@@ -71,8 +71,8 @@ extension SSHRemoteTransport {
 
     public func probeDirectories(
         _ relativePaths: [String],
-        fileExtensions: Set<String>,
-        excludedPaths: Set<String>,
+        fileExtensions: Set<String> = WorkspaceFileNode.remoteDocumentExtensions,
+        excludedPaths: Set<String> = [],
         for mount: RemoteMountSpec
     ) async throws -> [String: Bool] {
         guard mount.targetKind == .folder, !relativePaths.isEmpty else { return [:] }
