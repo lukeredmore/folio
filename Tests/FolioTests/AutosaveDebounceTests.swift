@@ -159,7 +159,7 @@ final class AutosaveDebounceTests: XCTestCase {
         try FileManager.default.createDirectory(at: mirror, withIntermediateDirectories: true)
         let manager = RemoteWorkspaceManager(transport: transport, mirrorBaseDirectory: mirror, userDefaults: defaults)
         manager.baseRetryDelaySeconds = 0.01
-        let vm = EditorWorkspaceViewModel(remoteWorkspaceManager: manager)
+        let vm = makeIsolatedViewModel(defaults: defaults, remoteWorkspaceManager: manager)
         vm.autoSaveDelay = 0
         _ = await vm.connectRemoteMount(spec)
         let node = try XCTUnwrap(vm.flatMarkdownFiles.first(where: { $0.name == "plan.md" }))

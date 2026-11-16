@@ -194,17 +194,27 @@ final class MockRemoteTransport: RemoteFileTransport, @unchecked Sendable {
 extension XCTestCase {
     /// A view model with isolated defaults and a temporary remote mirror.
     @MainActor
-    func makeIsolatedViewModel(defaults: UserDefaults? = nil) -> EditorWorkspaceViewModel {
+    func makeIsolatedViewModel(
+        defaults: UserDefaults? = nil,
+        remoteWorkspaceManager: RemoteWorkspaceManager? = nil
+    ) -> EditorWorkspaceViewModel {
         let resolvedDefaults = defaults ?? isolatedDefaults()
-        let mirror: URL
-        do {
-            mirror = try makeTemporaryDirectory("FolioMirror")
-        } catch {
-            preconditionFailure("Could not create a remote mirror directory: \(error)")
+        let manager: RemoteWorkspaceManager
+        if let remoteWorkspaceManager {
+            manager = remoteWorkspaceManager
+        } else {
+            let mirror: URL
+            do {
+                mirror = try makeTemporaryDirectory("FolioMirror")
+            } catch {
+                preconditionFailure("Could not create a remote mirror directory: \(error)")
+            }
+            manager = RemoteWorkspaceManager(mirrorBaseDirectory: mirror, userDefaults: resolvedDefaults)
         }
-        let manager = RemoteWorkspaceManager(mirrorBaseDirectory: mirror, userDefaults: resolvedDefaults)
         let vm = EditorWorkspaceViewModel(remoteWorkspaceManager: manager, userDefaults: resolvedDefaults)
-        addTeardownBlock {
+        addTeardownBlock { @MainActor in
+            vm.pendingAutoSaveWorkItem?.cancel()
+            vm.pendingAutoSaveWorkItem = nil
             vm.stopWatchingCurrentFile()
             vm.stopWatchingWorkspaceFolders()
         }

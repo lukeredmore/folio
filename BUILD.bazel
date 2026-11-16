@@ -47,11 +47,8 @@ _FOLIO_MODELS_SRCS = glob(
 ]
 
 _FOLIO_COORDINATOR_SRCS = [
-    "Sources/Folio/Diagnostics/Coordinator+PerfCounters.swift",
-    "Sources/Folio/Editor/HybridMarkdownTextView+Coordinator.swift",
-    "Sources/Folio/Editor/HybridMarkdownTextView+CoordinatorReflow.swift",
-    "Sources/Folio/Editor/HybridMarkdownTextView+CoordinatorRestyle.swift",
     "Sources/Folio/Editor/HybridMarkdownTextView+Representable.swift",
+    "Sources/Folio/Editor/MarkdownEditorCoordinator.swift",
 ]
 
 _FOLIO_EDITOR_SRCS = glob(
@@ -156,7 +153,7 @@ _RESTYLE_EQUIVALENCE_TESTS = "Tests/FolioTests/IncrementalRestyleEquivalenceTest
 _PERF_TESTS = [
     "Tests/FolioTests/EditorPerfInvariantTests.swift",
     "Tests/FolioTests/EditorPerfScalingTests.swift",
-    "Tests/FolioTests/FolioUILagProfileTests.swift",
+    "Tests/FolioTests/ExtremeScaleSyncAndMergeTests.swift",
     "Tests/FolioTests/LaTeXPerformanceTests.swift",
     "Tests/FolioTests/LongLineLinkStylingTests.swift",
 ]
@@ -191,7 +188,6 @@ _WORKSPACE_TESTS = [
     "Tests/FolioTests/AutosaveAndUndoHistoryTests.swift",
     "Tests/FolioTests/AutosaveDebounceTests.swift",
     "Tests/FolioTests/ExternalSyncAndConflictTests.swift",
-    "Tests/FolioTests/ExtremeScaleSyncAndMergeTests.swift",
     "Tests/FolioTests/LaTeXDocumentStylerTests.swift",
     "Tests/FolioTests/LaTeXDocumentStylingAndMathCrashTests.swift",
     "Tests/FolioTests/PageLayoutAndPrintTests.swift",
