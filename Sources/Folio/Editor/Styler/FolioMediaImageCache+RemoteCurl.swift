@@ -53,13 +53,13 @@ extension FolioMediaImageCache {
         }
     }
 
-    /// Waits for all in-flight remote image fetches to finish (useful for deterministic tests).
+    /// Waits for all in-flight remote image and local video thumbnail fetches to finish (useful for deterministic tests).
     @discardableResult
     public func waitUntilRemoteFetchesIdle(timeout: TimeInterval = 15.0) -> Bool {
         let deadline = Date().addingTimeInterval(timeout)
         while Date() < deadline {
             lock.lock()
-            let empty = inFlightRemoteURLs.isEmpty
+            let empty = inFlightRemoteURLs.isEmpty && inFlightLocalVideoKeys.isEmpty
             lock.unlock()
             if empty {
                 return true
@@ -67,7 +67,7 @@ extension FolioMediaImageCache {
             RunLoop.current.run(mode: .default, before: Date().addingTimeInterval(0.01))
         }
         lock.lock()
-        let empty = inFlightRemoteURLs.isEmpty
+        let empty = inFlightRemoteURLs.isEmpty && inFlightLocalVideoKeys.isEmpty
         lock.unlock()
         return empty
     }
@@ -138,12 +138,20 @@ extension FolioMediaImageCache {
         return "\(normalizedPrefix)\(sshFlags) -sS -L --fail --max-time 30 \(escapedURL)"
     }
 
+    private static let chromeCopyAsCurlLeadingURLRegex = try! NSRegularExpression(
+        pattern: #"^(curl(?:\.exe)?)\s+(?:'https?://[^']+'|"https?://[^"]+"|https?://\S+)\s*(.*)$"#,
+        options: [.caseInsensitive]
+    )
+
     /// If a user pasted a full browser "Copy as cURL" snippet (`curl 'https://example.com/...' -H ...`),
     /// strips the positional URL right after `curl` so only the requested image URL is fetched.
     private static func stripChromeCopyAsCurlLeadingURL(from prefix: String) -> String {
-        let pattern = #"^(curl(?:\.exe)?)\s+(?:'https?://[^']+'|"https?://[^"]+"|https?://\S+)\s*(.*)$"#
-        guard let regex = try? NSRegularExpression(pattern: pattern, options: [.caseInsensitive]),
-            let match = regex.firstMatch(in: prefix, options: [], range: NSRange(prefix.startIndex..., in: prefix)),
+        guard
+            let match = chromeCopyAsCurlLeadingURLRegex.firstMatch(
+                in: prefix,
+                options: [],
+                range: NSRange(prefix.startIndex..., in: prefix)
+            ),
             let cmdRange = Range(match.range(at: 1), in: prefix),
             let restRange = Range(match.range(at: 2), in: prefix)
         else {
@@ -221,6 +229,44 @@ extension FolioMediaImageCache {
         return NSImage(data: data)
     }
 
+    static func runProcessDrainingPipes(
+        _ process: Process
+    ) -> (terminationStatus: Int32, stdout: Data, stderr: Data)? {
+        let stdoutPipe = Pipe()
+        let stderrPipe = Pipe()
+        process.standardOutput = stdoutPipe
+        process.standardError = stderrPipe
+
+        do {
+            try process.run()
+        } catch {
+            return nil
+        }
+
+        final class PipeCapture: @unchecked Sendable {
+            var stdout = Data()
+            var stderr = Data()
+        }
+        let capture = PipeCapture()
+        let group = DispatchGroup()
+
+        group.enter()
+        DispatchQueue.global(qos: .userInitiated).async {
+            capture.stdout = stdoutPipe.fileHandleForReading.readDataToEndOfFile()
+            group.leave()
+        }
+
+        group.enter()
+        DispatchQueue.global(qos: .userInitiated).async {
+            capture.stderr = stderrPipe.fileHandleForReading.readDataToEndOfFile()
+            group.leave()
+        }
+
+        group.wait()
+        process.waitUntilExit()
+        return (process.terminationStatus, capture.stdout, capture.stderr)
+    }
+
     static func executeCurlFetch(
         url: URL,
         commandPrefix: String,
@@ -235,19 +281,11 @@ extension FolioMediaImageCache {
         process.executableURL = URL(fileURLWithPath: "/bin/sh")
         process.arguments = ["-c", shellCommand]
 
-        let stdoutPipe = Pipe()
-        let stderrPipe = Pipe()
-        process.standardOutput = stdoutPipe
-        process.standardError = stderrPipe
-
-        if (try? process.run()) != nil {
-            let outputData = stdoutPipe.fileHandleForReading.readDataToEndOfFile()
-            _ = stderrPipe.fileHandleForReading.readDataToEndOfFile()
-            process.waitUntilExit()
-
-            if process.terminationStatus == 0, !outputData.isEmpty {
-                return outputData
-            }
+        if let result = runProcessDrainingPipes(process),
+            result.terminationStatus == 0,
+            !result.stdout.isEmpty
+        {
+            return result.stdout
         }
 
         if isSSHFamilyURL(url) {

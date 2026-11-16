@@ -47,6 +47,8 @@ public final class FolioMediaImageCache: @unchecked Sendable {
     var svgStringCache: [String: String] = [:]
     var inFlightRemoteURLs: Set<String> = []
     var failedRemoteURLs: Set<String> = []
+    var inFlightLocalVideoKeys: Set<String> = []
+    var failedLocalVideoKeys: Set<String> = []
     var _curlCommandPrefix: String = FolioMediaImageCache.defaultCurlCommandPrefix
     var _sshAuthConfig: FolioMediaSSHAuthConfig = .disabled
     let remoteFetchQueue = DispatchQueue(
@@ -165,7 +167,7 @@ public final class FolioMediaImageCache: @unchecked Sendable {
             return nil
         }
 
-        let cacheKey = "\(baseDirectoryURL?.path ?? "")|\(isDark ? "1" : "0")|\(trimmed)"
+        let cacheKey = canonicalCacheKey(for: trimmed, baseDirectoryURL: baseDirectoryURL)
         lock.lock()
         if let cached = imageCache[cacheKey] {
             lock.unlock()
@@ -228,10 +230,8 @@ public final class FolioMediaImageCache: @unchecked Sendable {
                 }
             }
             if ["mp4", "mov", "m4v", "webm"].contains(ext) {
-                if let img = Self.extractVideoThumbnail(from: fileURL) {
-                    storeImage(img, forKey: cacheKey)
-                    return img
-                }
+                triggerLocalVideoThumbnailFetchIfNeeded(fileURL: fileURL, cacheKey: cacheKey)
+                return nil
             }
             if let data = try? Data(contentsOf: fileURL),
                 let img = storeAndDecodeImageData(data, forKey: cacheKey)
@@ -275,11 +275,19 @@ public final class FolioMediaImageCache: @unchecked Sendable {
             return .loading
         }
 
-        let cacheKey = "\(baseDirectoryURL?.path ?? "")|\(isDark ? "1" : "0")|\(trimmed)"
+        let cacheKey = canonicalCacheKey(for: trimmed, baseDirectoryURL: baseDirectoryURL)
         lock.lock()
         if imageCache[cacheKey] != nil {
             lock.unlock()
             return .loaded
+        }
+        if failedLocalVideoKeys.contains(cacheKey) {
+            lock.unlock()
+            return .invalidMedia
+        }
+        if inFlightLocalVideoKeys.contains(cacheKey) {
+            lock.unlock()
+            return .loading
         }
         lock.unlock()
 
@@ -295,9 +303,13 @@ public final class FolioMediaImageCache: @unchecked Sendable {
         guard FileManager.default.fileExists(atPath: fileURL.path) else {
             return .missingLocalFile(resolvedPath: fileURL.path)
         }
-        return image(for: rawSource, baseDirectoryURL: baseDirectoryURL, isDark: isDark) != nil
-            ? .loaded
-            : .invalidMedia
+        if image(for: rawSource, baseDirectoryURL: baseDirectoryURL, isDark: isDark) != nil {
+            return .loaded
+        }
+        lock.lock()
+        let isLoading = inFlightLocalVideoKeys.contains(cacheKey)
+        lock.unlock()
+        return isLoading ? .loading : .invalidMedia
     }
 
     public func placeholderInfo(

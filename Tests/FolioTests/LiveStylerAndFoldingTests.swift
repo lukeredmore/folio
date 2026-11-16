@@ -254,4 +254,134 @@ final class LiveStylerAndFoldingTests: XCTestCase {
         let backslashFg = storage.attribute(.foregroundColor, at: backslashLoc, effectiveRange: nil) as? NSColor
         XCTAssertEqual(backslashFg?.alphaComponent ?? 1.0, 0.0, accuracy: 0.001, "Escape backslash should collapse when unselected")
     }
+
+    func testProseFunctionBracketsAndQuotedTitleParensInInlineLinks() {
+        let sample = """
+            Active cursor line.
+            Let f[x](a, b) denote a mapping and g[i](u + v) another.
+            Visit [Docs](https://example.com/docs "Smile :) here") and [API](https://example.com/fn(1) 'Note ) ok').
+            """
+        let storage = NSTextStorage(string: sample)
+        let theme = EditorTheme.daylight
+        _ = MarkdownLiveStyler.applyStyles(
+            to: storage,
+            theme: theme,
+            sourceCodeMode: false,
+            focusMode: false,
+            selectedRange: NSRange(location: 0, length: 0)
+        )
+
+        let ns = sample as NSString
+        for token in ["[x]", "(a, b)", "[i]", "(u + v)"] {
+            let range = ns.range(of: token)
+            XCTAssertNotEqual(range.location, NSNotFound)
+            for offset in 0..<range.length {
+                let loc = range.location + offset
+                XCTAssertNil(
+                    storage.attribute(MarkdownLiveStyler.collapsedTokenAttributeKey, at: loc, effectiveRange: nil),
+                    "\(token) in prose/math notation must not collapse as an inline link"
+                )
+                let underline = storage.attribute(.underlineStyle, at: loc, effectiveRange: nil) as? Int ?? 0
+                XCTAssertEqual(underline, 0, "\(token) must not be underlined as a link")
+            }
+        }
+
+        for label in ["Docs", "API"] {
+            let labelRange = ns.range(of: label)
+            let fg = storage.attribute(.foregroundColor, at: labelRange.location, effectiveRange: nil) as? NSColor
+            let underline = storage.attribute(.underlineStyle, at: labelRange.location, effectiveRange: nil) as? Int
+            XCTAssertEqual(fg, theme.linkNSColor)
+            XCTAssertEqual(underline, NSUnderlineStyle.single.rawValue)
+        }
+
+        for trailing in [#"](https://example.com/docs "Smile :) here")"#, #"](https://example.com/fn(1) 'Note ) ok')"#] {
+            let trailingRange = ns.range(of: trailing)
+            XCTAssertNotEqual(trailingRange.location, NSNotFound)
+            let lastParenLoc = NSMaxRange(trailingRange) - 1
+            XCTAssertNotNil(
+                storage.attribute(MarkdownLiveStyler.collapsedTokenAttributeKey, at: lastParenLoc, effectiveRange: nil),
+                "Closing ')' after quoted title containing ')' must collapse with the link syntax"
+            )
+        }
+    }
+
+    func testBackslashEscapedBacktickDoesNotOpenCodeSpan() {
+        let sample = "Active line.\nEscaped \\`not code\\` then `real code` and `slash\\` end."
+        let storage = NSTextStorage(string: sample)
+        let theme = EditorTheme.daylight
+        _ = MarkdownLiveStyler.applyStyles(
+            to: storage,
+            theme: theme,
+            sourceCodeMode: false,
+            focusMode: false,
+            selectedRange: NSRange(location: 0, length: 0)
+        )
+
+        let ns = sample as NSString
+        let notCodeLoc = ns.range(of: "not code").location
+        XCTAssertNil(
+            storage.attribute(MarkdownLiveStyler.inlineCodeFontAttributeKey, at: notCodeLoc, effectiveRange: nil),
+            "Backslash-escaped backtick \\` must not open an inline code span"
+        )
+
+        let realCodeLoc = ns.range(of: "real code").location
+        XCTAssertNotNil(
+            storage.attribute(MarkdownLiveStyler.inlineCodeFontAttributeKey, at: realCodeLoc, effectiveRange: nil),
+            "Unescaped `real code` must still be styled as inline code"
+        )
+
+        let slashCodeLoc = ns.range(of: "slash\\").location
+        XCTAssertNotNil(
+            storage.attribute(MarkdownLiveStyler.inlineCodeFontAttributeKey, at: slashCodeLoc, effectiveRange: nil),
+            "A backslash before closing ` inside an open code span is literal per CommonMark"
+        )
+    }
+
+    func testSourceCodeModeExcludesCodeFenceHashCommentsFromOutline() {
+        let sample = """
+            # First Heading
+
+            ```python
+            # python comment
+            ## second comment
+            ```
+
+            ~~~sh
+            # shell comment
+            ~~~
+
+            ## Second Heading
+            """
+        let storage = NSTextStorage(string: sample)
+        let analysis = MarkdownLiveStyler.applyStyles(
+            to: storage,
+            theme: .daylight,
+            sourceCodeMode: true,
+            focusMode: false,
+            selectedRange: NSRange(location: 0, length: 0)
+        )
+
+        XCTAssertEqual(analysis.headings.map(\.title), ["First Heading", "Second Heading"])
+    }
+
+    func testMarkdownCopyFormatterHTMLFragmentUsesEngineRenderer() {
+        let inlineHTML = MarkdownCopyFormatter.htmlFragment(
+            from: "**bold** and ~~strike~~ with [Folio](https://example.com)"
+        )
+        XCTAssertFalse(inlineHTML.hasPrefix("<p>"), "Single-line inline copy should unwrap outer <p> wrapper")
+        XCTAssertTrue(inlineHTML.contains("<strong>bold</strong>"))
+        XCTAssertTrue(inlineHTML.contains("<del>strike</del>"))
+        XCTAssertTrue(inlineHTML.contains(#"<a href="https://example.com">Folio</a>"#))
+
+        let blockHTML = MarkdownCopyFormatter.htmlFragment(
+            from: """
+                | Name | Value |
+                | --- | --- |
+                | Alpha | 1 |
+                """
+        )
+        XCTAssertTrue(blockHTML.contains("<table>"))
+        XCTAssertTrue(blockHTML.contains("<th>Name</th>"))
+        XCTAssertTrue(blockHTML.contains("<td>Alpha</td>"))
+    }
 }

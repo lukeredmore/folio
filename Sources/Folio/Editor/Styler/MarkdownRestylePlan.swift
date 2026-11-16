@@ -84,7 +84,8 @@ struct MarkdownRestylePlan {
     ) -> Result<MarkdownRestylePlan, PlanFailure> {
         guard previous.parameters == parameters else { return .failure(PlanFailure(.settingsChanged)) }
         guard !parameters.sourceCodeMode else { return .failure(PlanFailure(.sourceCodeMode)) }
-        if LaTeXLiveStyler.isLaTeXOrBibTeXDocument(text as String, fileURL: parameters.fileURL) {
+        let headerSample = text.substring(to: min(text.length, 4096))
+        if LaTeXLiveStyler.isLaTeXOrBibTeXDocument(headerSample, fileURL: parameters.fileURL) {
             return .failure(PlanFailure(.latexDocument))
         }
         let lineEdit: LineEdit?
@@ -125,10 +126,22 @@ struct MarkdownRestylePlan {
                 lineDelta: lineEdit.lineDelta
             )
         }
-        let kept = mapped.filter { checkpoint in
-            !regions.contains { NSIntersectionRange($0.newRange, checkpoint.new.lineRange).length > 0 }
+        var kept: [MarkdownStyleCheckpoint] = []
+        kept.reserveCapacity(mapped.count)
+        var regionCursor = 0
+        for checkpoint in mapped {
+            let cpRange = checkpoint.new.lineRange
+            while regionCursor < regions.count && NSMaxRange(regions[regionCursor].newRange) <= cpRange.location {
+                regionCursor += 1
+            }
+            if regionCursor < regions.count,
+                NSIntersectionRange(regions[regionCursor].newRange, cpRange).length > 0
+            {
+                continue
+            }
+            kept.append(checkpoint.new)
         }
-        return .success(MarkdownRestylePlan(regions: regions, shift: shift, keptCheckpoints: kept.map(\.new)))
+        return .success(MarkdownRestylePlan(regions: regions, shift: shift, keptCheckpoints: kept))
     }
 
     struct PlanFailure: Error {
@@ -244,8 +257,31 @@ struct MarkdownRestylePlan {
         old: NSString,
         new: NSString
     ) -> MarkdownRestyleRegion {
-        let before = checkpoints.last { NSMaxRange($0.new.lineRange) <= lines.location }
-        let after = checkpoints.first { $0.new.lineRange.location >= NSMaxRange(lines) }
+        var beforeLow = 0
+        var beforeHigh = checkpoints.count
+        while beforeLow < beforeHigh {
+            let mid = (beforeLow + beforeHigh) >> 1
+            if NSMaxRange(checkpoints[mid].new.lineRange) <= lines.location {
+                beforeLow = mid + 1
+            } else {
+                beforeHigh = mid
+            }
+        }
+        let before = beforeLow > 0 ? checkpoints[beforeLow - 1] : nil
+
+        let linesEnd = NSMaxRange(lines)
+        var afterLow = beforeLow
+        var afterHigh = checkpoints.count
+        while afterLow < afterHigh {
+            let mid = (afterLow + afterHigh) >> 1
+            if checkpoints[mid].new.lineRange.location < linesEnd {
+                afterLow = mid + 1
+            } else {
+                afterHigh = mid
+            }
+        }
+        let after = afterLow < checkpoints.count ? checkpoints[afterLow] : nil
+
         let oldStart = before.map { NSMaxRange($0.old.lineRange) } ?? 0
         let newStart = before.map { NSMaxRange($0.new.lineRange) } ?? 0
         let oldEnd = after?.old.lineRange.location ?? old.length

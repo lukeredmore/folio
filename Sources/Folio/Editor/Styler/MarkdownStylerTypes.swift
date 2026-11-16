@@ -2,7 +2,7 @@ import AppKit
 import FolioEngineFFI
 import Foundation
 
-public struct CmarkAstBlock: Equatable {
+public struct CmarkAstBlock: Equatable, Sendable {
     public let kind: UInt32
     public let startLine: Int
     public let startColumn: Int
@@ -13,7 +13,7 @@ public struct CmarkAstBlock: Equatable {
     public let info: String
 }
 
-public struct CmarkAstInline: Equatable {
+public struct CmarkAstInline: Equatable, Sendable {
     public let kind: UInt32
     public let startLine: Int
     public let startColumn: Int
@@ -199,7 +199,7 @@ extension MarkdownLiveStyler {
         let url: String
     }
 
-    struct LanguageSyntaxProfile {
+    struct LanguageSyntaxProfile: @unchecked Sendable {
         let keywords: NSRegularExpression?
         let typesAndBuiltins: NSRegularExpression?
         let attributesOrMacros: NSRegularExpression?

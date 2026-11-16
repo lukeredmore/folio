@@ -10,6 +10,8 @@ package struct MarkdownStyleRecord {
     package let selectedRange: NSRange
     let ast: MarkdownStyleAST
     let documentMacros: [String: LaTeXMacroDefinition]
+    let hasMacroKeywords: Bool
+    let macrosBalancedAtCheckpoints: Bool
     /// Sorted by location.
     let checkpoints: [MarkdownStyleCheckpoint]
     let decorations: MarkdownDecorationPhases

@@ -172,88 +172,19 @@ public enum MarkdownCopyFormatter {
     }
 
     public static func htmlFragment(from markdownFragment: String) -> String {
-        let lines = markdownFragment.components(separatedBy: .newlines)
-        var htmlParts: [String] = []
-        var inCodeFence = false
-        var codeFenceLang = ""
-        var codeLines: [String] = []
-
-        for line in lines {
-            let trimmed = line.trimmingCharacters(in: .whitespaces)
-            if trimmed.hasPrefix("```") || trimmed.hasPrefix("~~~") {
-                if !inCodeFence {
-                    inCodeFence = true
-                    codeFenceLang = String(trimmed.dropFirst(3)).trimmingCharacters(in: .whitespaces)
-                    codeLines.removeAll()
-                } else {
-                    inCodeFence = false
-                    let escapedCode = escapeHTML(codeLines.joined(separator: "\n"))
-                    let classAttr = codeFenceLang.isEmpty ? "" : " class=\"language-\(escapeHTML(codeFenceLang))\""
-                    htmlParts.append("<pre><code\(classAttr)>\(escapedCode)</code></pre>")
-                    codeFenceLang = ""
-                }
-                continue
-            }
-            if inCodeFence {
-                codeLines.append(line)
-                continue
-            }
-
-            if trimmed.isEmpty {
-                continue
-            }
-            if let headingMatch = MarkdownLiveStyler.headingRegex.firstMatch(
-                in: line,
-                options: [],
-                range: NSRange(location: 0, length: (line as NSString).length)
-            ), headingMatch.range(at: 3).location != NSNotFound {
-                let nsLine = line as NSString
-                let level = min(6, max(1, headingMatch.range(at: 2).length))
-                let title =
-                    headingMatch.range(at: 4).location != NSNotFound
-                    ? nsLine.substring(with: headingMatch.range(at: 4))
-                    : ""
-                htmlParts.append("<h\(level)>\(renderInlineHTML(title))</h\(level)>")
-            } else if trimmed.hasPrefix("> ") || trimmed == ">" {
-                let body = String(trimmed.dropFirst(trimmed.hasPrefix("> ") ? 2 : 1))
-                htmlParts.append("<blockquote>\(renderInlineHTML(body))</blockquote>")
-            } else if trimmed.hasPrefix("- ") || trimmed.hasPrefix("* ") || trimmed.hasPrefix("+ ") {
-                let body = String(trimmed.dropFirst(2))
-                htmlParts.append("<li>\(renderInlineHTML(body))</li>")
-            } else {
-                htmlParts.append("<p>\(renderInlineHTML(line))</p>")
-            }
+        guard !markdownFragment.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            return ""
         }
-
-        if inCodeFence && !codeLines.isEmpty {
-            let escapedCode = escapeHTML(codeLines.joined(separator: "\n"))
-            htmlParts.append("<pre><code>\(escapedCode)</code></pre>")
+        let rendered = MarkdownLiveStyler.renderHTML(markdownFragment)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        if !markdownFragment.contains("\n"),
+            rendered.hasPrefix("<p>"),
+            rendered.hasSuffix("</p>"),
+            !rendered.dropFirst(3).dropLast(4).contains("</p>")
+        {
+            return String(rendered.dropFirst(3).dropLast(4))
         }
-        if htmlParts.count == 1, htmlParts[0].hasPrefix("<p>"), htmlParts[0].hasSuffix("</p>"), !markdownFragment.contains("\n") {
-            return String(htmlParts[0].dropFirst(3).dropLast(4))
-        }
-        return htmlParts.joined(separator: "\n")
-    }
-
-    private static func renderInlineHTML(_ text: String) -> String {
-        var out = escapeHTML(text)
-        out = out.replacingOccurrences(of: #"!\[([^\]]*)\]\(([^)]+)\)"#, with: #"<img alt="$1" src="$2"/>"#, options: .regularExpression)
-        out = out.replacingOccurrences(of: #"\[([^\]]+)\]\(([^)]+)\)"#, with: #"<a href="$2">$1</a>"#, options: .regularExpression)
-        out = out.replacingOccurrences(of: #"`([^`]+)`"#, with: #"<code>$1</code>"#, options: .regularExpression)
-        out = out.replacingOccurrences(of: #"\*\*([^*]+)\*\*"#, with: #"<strong>$1</strong>"#, options: .regularExpression)
-        out = out.replacingOccurrences(of: #"__([^_]+)__"#, with: #"<strong>$1</strong>"#, options: .regularExpression)
-        out = out.replacingOccurrences(of: #"(?<!\*)\*([^*]+)\*(?!\*)"#, with: #"<em>$1</em>"#, options: .regularExpression)
-        out = out.replacingOccurrences(of: #"~~([^~]+)~~"#, with: #"<del>$1</del>"#, options: .regularExpression)
-        out = out.replacingOccurrences(of: #"==([^=]+)=="#, with: #"<mark>$1</mark>"#, options: .regularExpression)
-        return out
-    }
-
-    private static func escapeHTML(_ text: String) -> String {
-        text
-            .replacingOccurrences(of: "&", with: "&amp;")
-            .replacingOccurrences(of: "<", with: "&lt;")
-            .replacingOccurrences(of: ">", with: "&gt;")
-            .replacingOccurrences(of: "\"", with: "&quot;")
+        return rendered
     }
 
     @discardableResult

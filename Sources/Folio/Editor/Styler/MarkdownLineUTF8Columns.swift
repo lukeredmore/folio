@@ -3,9 +3,9 @@ import Foundation
 extension MarkdownLiveStyler {
 
     /// Converts cmark's UTF-8 byte columns in one line to UTF-16 offsets. Line text is bridged
-    /// from `NSString`, where each UTF-8 index operation rescans the line, so the bytes are
-    /// copied once. A lookup continues from the previous one, so the links on a line cost one
-    /// pass over it instead of one pass per link.
+    /// from `NSString`, where each UTF-8 index operation rescans the line, so the bytes are copied
+    /// once. A lookup continues from the previous one, so the links on a line cost one pass over
+    /// it instead of one pass per link.
     struct LineUTF8Columns {
         let bytes: [UInt8]
         private var byteCursor = 0
@@ -15,10 +15,10 @@ extension MarkdownLiveStyler {
             bytes = Array(text.utf8)
         }
 
-        /// UTF-16 offset of a 0-based byte column, clamped to the line. A column inside a
-        /// multi-byte character maps to the start of that character.
+        /// UTF-16 offset of a 0-based UTF-8 byte column, clamped to the line. A column in the
+        /// middle of a multi-byte scalar maps to the start of that scalar.
         mutating func utf16Offset(ofByteColumn byteColumn: Int) -> Int {
-            let target = max(0, min(byteColumn, bytes.count))
+            let target = min(max(0, byteColumn), bytes.count)
             if target < byteCursor {
                 byteCursor = 0
                 utf16Cursor = 0
@@ -43,21 +43,16 @@ extension MarkdownLiveStyler {
             self.lineRecords = lineRecords
         }
 
-        /// UTF-8 byte at a 0-based column of a line, or nil when the line or column does not exist.
+        /// UTF-8 byte at a 0-based byte column of a line, or nil when the line or column does not exist.
         mutating func byte(line: Int, column: Int) -> UInt8? {
-            guard let rec = lineRecords[line] else { return nil }
-            if let existing = columns[line] {
-                return existing.bytes.indices.contains(column) ? existing.bytes[column] : nil
-            }
-            let entry = LineUTF8Columns(rec.lineText)
-            columns[line] = entry
-            return entry.bytes.indices.contains(column) ? entry.bytes[column] : nil
+            guard column >= 0, let rec = lineRecords[line] else { return nil }
+            let bytes = columns[line, default: LineUTF8Columns(rec.lineText)].bytes
+            return column < bytes.count ? bytes[column] : nil
         }
 
         /// UTF-16 document offset of a 0-based UTF-8 byte column in a line's content.
         mutating func documentOffset(line: Int, byteColumn: Int) -> Int? {
             guard let rec = lineRecords[line] else { return nil }
-            // The defaulted subscript stores the new entry, so the cursor persists between calls.
             return rec.contentRange.location
                 + columns[line, default: LineUTF8Columns(rec.lineText)].utf16Offset(ofByteColumn: byteColumn)
         }
