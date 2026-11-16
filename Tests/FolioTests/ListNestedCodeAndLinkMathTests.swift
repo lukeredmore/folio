@@ -71,4 +71,84 @@ final class ListNestedCodeAndLinkMathTests: XCTestCase {
         XCTAssertEqual(para?.firstLineHeadIndent ?? 0, 14.0, accuracy: 0.01)
         XCTAssertEqual(para?.headIndent ?? 0, 14.0, accuracy: 0.01)
     }
+
+    func testAstLinksAndAutolinksInsideInlineMathAreSkipped() {
+        let sample = """
+            Active math $f[x][guide]$ and $https://example.com/math$ on cursor line.
+            Inactive math $g[y][guide]$ and $www.example.com$ alongside [Real Guide][guide].
+
+            [guide]: https://example.com/guide
+            """
+        let storage = NSTextStorage(string: sample)
+        let theme = EditorTheme.daylight
+        _ = MarkdownLiveStyler.applyStyles(
+            to: storage,
+            theme: theme,
+            sourceCodeMode: false,
+            focusMode: false,
+            selectedRange: NSRange(location: 0, length: 0)
+        )
+
+        let ns = sample as NSString
+        for mathToken in ["[x][guide]", "https://example.com/math", "[y][guide]", "www.example.com"] {
+            let range = ns.range(of: mathToken)
+            XCTAssertNotEqual(range.location, NSNotFound)
+            let underline = storage.attribute(.underlineStyle, at: range.location, effectiveRange: nil) as? Int ?? 0
+            XCTAssertEqual(underline, 0, "\(mathToken) inside $...$ must not be underlined as a cmark link/autolink")
+        }
+
+        let inactiveMathRange = ns.range(of: "$g[y][guide]$")
+        XCTAssertNotNil(
+            storage.attribute(MarkdownLiveStyler.inlineMathSpanAttributeKey, at: inactiveMathRange.location, effectiveRange: nil)
+        )
+        let mathKern = storage.attribute(.kern, at: inactiveMathRange.location, effectiveRange: nil) as? CGFloat ?? 0
+        XCTAssertGreaterThan(mathKern, 4.0, "Inactive inline math box kern must remain intact")
+
+        let realGuideRange = ns.range(of: "Real Guide")
+        let realGuideColor = storage.attribute(.foregroundColor, at: realGuideRange.location, effectiveRange: nil) as? NSColor
+        XCTAssertEqual(realGuideColor, theme.linkNSColor)
+    }
+
+    func testLinkReferenceDefinitionCaptureGroupsAndPrecedenceBeforeHorizontalRule() {
+        let sample = """
+            Cursor on line one.
+
+            [ref]: https://example.com/path "Link Title"
+            ---
+            """
+        let storage = NSTextStorage(string: sample)
+        let theme = EditorTheme.daylight
+        let analysis = MarkdownLiveStyler.applyStyles(
+            to: storage,
+            theme: theme,
+            sourceCodeMode: false,
+            focusMode: false,
+            selectedRange: NSRange(location: 0, length: 0)
+        )
+
+        XCTAssertTrue(analysis.headings.isEmpty, "[ref]: url followed by --- must not be styled as a Setext H2")
+        XCTAssertTrue(analysis.decorations.contains(where: { $0.kind == .horizontalRule }))
+
+        let ns = sample as NSString
+        let prefixRange = ns.range(of: "[ref]:")
+        let urlRange = ns.range(of: "https://example.com/path")
+        let titleRange = ns.range(of: #""Link Title""#)
+
+        let prefixUnderline = storage.attribute(.underlineStyle, at: prefixRange.location, effectiveRange: nil) as? Int ?? 0
+        XCTAssertEqual(prefixUnderline, 0)
+
+        let spaceAfterColonUnderline = storage.attribute(.underlineStyle, at: NSMaxRange(prefixRange), effectiveRange: nil) as? Int ?? 0
+        XCTAssertEqual(spaceAfterColonUnderline, 0, "Whitespace between [ref]: and URL must not be underlined")
+
+        for offset in [0, 1, urlRange.length - 1] {
+            let loc = urlRange.location + offset
+            let underline = storage.attribute(.underlineStyle, at: loc, effectiveRange: nil) as? Int
+            let fg = storage.attribute(.foregroundColor, at: loc, effectiveRange: nil) as? NSColor
+            XCTAssertEqual(underline, NSUnderlineStyle.single.rawValue, "Entire URL including leading characters must be underlined")
+            XCTAssertEqual(fg, theme.linkNSColor.withAlphaComponent(0.75))
+        }
+
+        let titleUnderline = storage.attribute(.underlineStyle, at: titleRange.location, effectiveRange: nil) as? Int ?? 0
+        XCTAssertEqual(titleUnderline, 0)
+    }
 }

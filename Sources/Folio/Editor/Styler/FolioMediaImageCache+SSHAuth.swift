@@ -191,24 +191,12 @@ extension FolioMediaImageCache {
         process.executableURL = URL(fileURLWithPath: "/usr/bin/ssh")
         process.arguments = sshArgs
 
-        let stdoutPipe = Pipe()
-        let stderrPipe = Pipe()
-        process.standardOutput = stdoutPipe
-        process.standardError = stderrPipe
-
-        do {
-            try process.run()
-        } catch {
+        guard let result = runProcessDrainingPipes(process),
+            result.terminationStatus == 0,
+            !result.stdout.isEmpty
+        else {
             return nil
         }
-
-        let outData = stdoutPipe.fileHandleForReading.readDataToEndOfFile()
-        _ = stderrPipe.fileHandleForReading.readDataToEndOfFile()
-        process.waitUntilExit()
-
-        guard process.terminationStatus == 0, !outData.isEmpty else {
-            return nil
-        }
-        return outData
+        return result.stdout
     }
 }

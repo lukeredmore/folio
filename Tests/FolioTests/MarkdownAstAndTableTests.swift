@@ -199,4 +199,134 @@ final class MarkdownAstAndTableTests: XCTestCase {
         }
         XCTAssertTrue(hasListBullet, "Inactive unordered list item should emit a .listBullet decoration for vertically centered bullet dot rendering")
     }
+
+    func testTabIndentedLinksCollapseExactSyntaxRanges() {
+        let sample =
+            "Active cursor line.\n"
+            + "-\tSee [Guide][guide] and www.example.com\n"
+            + "\tMore [Docs][guide] here\n\n"
+            + "Paragraph first line\n"
+            + "\t[TabPara][guide] and\t[MidTab][guide]\n\n"
+            + "[guide]: https://example.com\n"
+        let storage = NSTextStorage(string: sample)
+        let theme = EditorTheme.daylight
+        _ = MarkdownLiveStyler.applyStyles(
+            to: storage,
+            theme: theme,
+            sourceCodeMode: false,
+            focusMode: false,
+            selectedRange: NSRange(location: 0, length: 0)
+        )
+
+        let ns = sample as NSString
+        for label in ["Guide", "Docs", "TabPara", "MidTab", "www.example.com"] {
+            let range = ns.range(of: label)
+            XCTAssertNotEqual(range.location, NSNotFound)
+            for offset in 0..<range.length {
+                let loc = range.location + offset
+                XCTAssertNil(
+                    storage.attribute(MarkdownLiveStyler.collapsedTokenAttributeKey, at: loc, effectiveRange: nil),
+                    "Visible character in '\(label)' on tab-indented line must not be collapsed"
+                )
+                let color = storage.attribute(.foregroundColor, at: loc, effectiveRange: nil) as? NSColor
+                XCTAssertEqual(color, theme.linkNSColor)
+            }
+        }
+
+        for refToken in ["[Guide][guide]", "[Docs][guide]", "[TabPara][guide]", "[MidTab][guide]"] {
+            let tokenRange = ns.range(of: refToken)
+            XCTAssertNotEqual(tokenRange.location, NSNotFound)
+            XCTAssertNotNil(
+                storage.attribute(MarkdownLiveStyler.collapsedTokenAttributeKey, at: tokenRange.location, effectiveRange: nil),
+                "Opening '[' of \(refToken) on tab-indented line must collapse"
+            )
+            let suffixLoc = NSMaxRange(tokenRange) - "][guide]".count
+            XCTAssertNotNil(
+                storage.attribute(MarkdownLiveStyler.collapsedTokenAttributeKey, at: suffixLoc, effectiveRange: nil),
+                "Closing '][guide]' of \(refToken) on tab-indented line must collapse"
+            )
+        }
+    }
+
+    func testTableBodyRowsResolveReferenceLinksAutolinksAndPreserveColumnKern() {
+        let sample = """
+            Cursor on top line.
+
+            | Section | Reference | Math |
+            | :--- | :--- | :--- |
+            | Intro | [Header Guide][guide] | $a + b$ |
+            | Details | [Body Spec][spec] and www.example.com | $f[x][guide]$ |
+
+            [guide]: https://example.com/guide
+            [spec]: https://example.com/spec
+            """
+        let storage = NSTextStorage(string: sample)
+        let theme = EditorTheme.daylight
+        _ = MarkdownLiveStyler.applyStyles(
+            to: storage,
+            theme: theme,
+            sourceCodeMode: false,
+            focusMode: false,
+            selectedRange: NSRange(location: 0, length: 0)
+        )
+
+        let ns = sample as NSString
+        for linkedText in ["Header Guide", "Body Spec", "www.example.com"] {
+            let range = ns.range(of: linkedText)
+            XCTAssertNotEqual(range.location, NSNotFound)
+            let fg = storage.attribute(.foregroundColor, at: range.location, effectiveRange: nil) as? NSColor
+            let underline = storage.attribute(.underlineStyle, at: range.location, effectiveRange: nil) as? Int
+            XCTAssertEqual(fg, theme.linkNSColor, "'\(linkedText)' in table body row must be styled as a link")
+            XCTAssertEqual(underline, NSUnderlineStyle.single.rawValue)
+        }
+
+        let bodySuffixRange = ns.range(of: "][spec]")
+        XCTAssertNotNil(
+            storage.attribute(MarkdownLiveStyler.collapsedTokenAttributeKey, at: bodySuffixRange.location, effectiveRange: nil),
+            "Reference link trailing syntax in table body row must collapse when unselected"
+        )
+
+        let mathRefRange = ns.range(of: "[x][guide]")
+        let mathUnderline = storage.attribute(.underlineStyle, at: mathRefRange.location, effectiveRange: nil) as? Int ?? 0
+        XCTAssertEqual(mathUnderline, 0, "Reference-like brackets inside table inline math must not become links")
+
+        let detailsRowRange = ns.lineRange(for: ns.range(of: "| Details |"))
+        let leadingPipeKern = storage.attribute(.kern, at: detailsRowRange.location, effectiveRange: nil) as? CGFloat ?? 0
+        let secondPipeLoc = ns.range(of: "| [Body Spec]", options: [], range: detailsRowRange).location
+        let secondPipeKern = storage.attribute(.kern, at: secondPipeLoc, effectiveRange: nil) as? CGFloat ?? 0
+        XCTAssertGreaterThan(leadingPipeKern, 8.0, "Leading pipe alignment kern on table body row must be preserved")
+        XCTAssertGreaterThan(secondPipeKern, 8.0, "Second column pipe alignment kern before reference link must be preserved")
+    }
+
+    func testMultiLineReferenceImageAttachesHeightAndDecorationToOpeningLine() throws {
+        let sample = """
+            Cursor on line one.
+
+            ![Multi-line alt
+            caption text][hero]
+
+            [hero]: https://example.com/hero.png
+            """
+        let storage = NSTextStorage(string: sample)
+        let analysis = MarkdownLiveStyler.applyStyles(
+            to: storage,
+            theme: .daylight,
+            sourceCodeMode: false,
+            focusMode: false,
+            selectedRange: NSRange(location: 0, length: 0),
+            prettyMode: true
+        )
+
+        let ns = sample as NSString
+        let openingLineRange = ns.lineRange(for: ns.range(of: "![Multi-line alt"))
+        let imageDec = try XCTUnwrap(
+            analysis.decorations.first {
+                if case .imageRendered = $0.kind { return true }
+                return false
+            }
+        )
+        XCTAssertEqual(imageDec.lineRange, openingLineRange, "Multi-line reference image decoration must attach to the opening '![' line")
+        let openingPara = storage.attribute(.paragraphStyle, at: openingLineRange.location, effectiveRange: nil) as? NSParagraphStyle
+        XCTAssertGreaterThanOrEqual(openingPara?.minimumLineHeight ?? 0, 52.0)
+    }
 }

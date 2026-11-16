@@ -204,4 +204,57 @@ final class RemoteGIFAndVideoMediaTests: XCTestCase {
         XCTAssertFalse(textView.isInlineVideoPlaying)
         XCTAssertNil(textView.activeInlineVideoURL)
     }
+
+    func testLargeStderrOutputInCurlDoesNotDeadlockPipeDrain() throws {
+        let gifData = try makeTwoFrameGIFData()
+        let tempDir = try makeTemporaryDirectory("folio-curl-pipe-drain")
+        let gifFile = tempDir.appendingPathComponent("large-stderr.gif")
+        try gifData.write(to: gifFile)
+
+        // Emit >128 KB to stderr (exceeding the 64 KB macOS pipe buffer) while streaming image bytes to stdout.
+        FolioMediaImageCache.shared.curlCommandPrefix =
+            "dd if=/dev/zero bs=1024 count=160 2>/dev/null | tr '\\0' 'e' >&2 && cat '\(gifFile.path)' #"
+
+        let remoteURL = "https://cdn.example.test/assets/large-stderr.gif"
+        _ = FolioMediaImageCache.shared.image(for: remoteURL)
+        XCTAssertTrue(
+            FolioMediaImageCache.shared.waitUntilRemoteFetchesIdle(timeout: 5.0),
+            "Concurrent stdout/stderr pipe draining must not deadlock when stderr exceeds 64 KB"
+        )
+        XCTAssertNotNil(FolioMediaImageCache.shared.image(for: remoteURL))
+    }
+
+    @MainActor
+    func testLocalImageSharesLightDarkCacheAndLocalVideoLoadsAsynchronously() throws {
+        let tempDir = try makeTemporaryDirectory("folio-local-media-cache")
+        let gifFile = tempDir.appendingPathComponent("badge.gif")
+        try makeTwoFrameGIFData().write(to: gifFile)
+
+        let lightImage = try XCTUnwrap(
+            FolioMediaImageCache.shared.image(for: "badge.gif", baseDirectoryURL: tempDir, isDark: false)
+        )
+        let darkImage = try XCTUnwrap(
+            FolioMediaImageCache.shared.image(for: "badge.gif", baseDirectoryURL: tempDir, isDark: true)
+        )
+        XCTAssertTrue(
+            lightImage === darkImage,
+            "Non-Mermaid raster images must share a single cached NSImage across light and dark themes"
+        )
+
+        let mp4File = tempDir.appendingPathComponent("async-local.mp4")
+        try writeSolidColorVideo(to: mp4File, width: 64, height: 36, red: 40, green: 180, blue: 90)
+
+        let initialState = FolioMediaImageCache.shared.loadState(
+            for: "async-local.mp4",
+            baseDirectoryURL: tempDir,
+            isDark: false
+        )
+        XCTAssertEqual(initialState, .loading, "Local video thumbnail generation must return .loading immediately instead of blocking the main thread")
+
+        XCTAssertTrue(FolioMediaImageCache.shared.waitUntilRemoteFetchesIdle(timeout: 5.0))
+        let loadedImage = try XCTUnwrap(
+            FolioMediaImageCache.shared.image(for: "async-local.mp4", baseDirectoryURL: tempDir, isDark: false)
+        )
+        XCTAssertEqual(loadedImage.size, NSSize(width: 64, height: 36))
+    }
 }

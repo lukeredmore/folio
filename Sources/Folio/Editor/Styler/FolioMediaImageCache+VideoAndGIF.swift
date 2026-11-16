@@ -91,12 +91,17 @@ extension FolioMediaImageCache {
         return 0.1
     }
 
-    func canonicalCacheKey(for rawSource: String, baseDirectoryURL: URL?, isDark: Bool) -> String {
+    func canonicalCacheKey(
+        for rawSource: String,
+        baseDirectoryURL: URL?,
+        isDark: Bool = false
+    ) -> String {
+        _ = isDark
         let trimmed = rawSource.trimmingCharacters(in: .whitespacesAndNewlines)
         if let remoteURL = Self.resolveRemoteURL(from: trimmed) {
             return Self.remoteCacheKey(for: remoteURL)
         }
-        return "\(baseDirectoryURL?.path ?? "")|\(isDark ? "1" : "0")|\(trimmed)"
+        return "\(baseDirectoryURL?.path ?? "")|\(trimmed)"
     }
 
     /// Returns the appropriate animation frame at `time` (if the image is a multi-frame GIF/APNG/WebP),
@@ -162,18 +167,66 @@ extension FolioMediaImageCache {
         return false
     }
 
-    /// Waits for `generator` to decode the frame at `time`. Returns nil when it cannot.
-    private static func decodedFrame(from generator: AVAssetImageGenerator, at time: CMTime) -> CGImage? {
+    func triggerLocalVideoThumbnailFetchIfNeeded(fileURL: URL, cacheKey: String) {
+        lock.lock()
+        if inFlightLocalVideoKeys.contains(cacheKey)
+            || failedLocalVideoKeys.contains(cacheKey)
+            || imageCache[cacheKey] != nil
+        {
+            lock.unlock()
+            return
+        }
+        inFlightLocalVideoKeys.insert(cacheKey)
+        lock.unlock()
+
+        remoteFetchQueue.async { [weak self] in
+            guard let self = self else { return }
+            let span = EditorPerfPhase.mediaDecode.begin()
+            let thumbnail = Self.extractVideoThumbnail(from: fileURL)
+            span.end()
+
+            self.lock.lock()
+            self.inFlightLocalVideoKeys.remove(cacheKey)
+            if let thumbnail {
+                self.failedLocalVideoKeys.remove(cacheKey)
+                self.imageCache[cacheKey] = thumbnail
+            } else {
+                self.failedLocalVideoKeys.insert(cacheKey)
+            }
+            self.lock.unlock()
+
+            if thumbnail != nil {
+                DispatchQueue.main.async {
+                    NotificationCenter.default.post(name: Self.imageDidLoadNotification, object: fileURL)
+                }
+            }
+        }
+    }
+
+    /// Waits up to `timeout` for `generator` to decode the frame at `time`. Returns nil when it cannot.
+    private static func decodedFrame(
+        from generator: AVAssetImageGenerator,
+        at time: CMTime,
+        timeout: TimeInterval = 5.0
+    ) -> CGImage? {
         final class DecodedFrame: @unchecked Sendable {
+            let lock = NSLock()
             var image: CGImage?
         }
         let frame = DecodedFrame()
         let decoded = DispatchSemaphore(value: 0)
         generator.generateCGImageAsynchronously(for: time) { image, _, _ in
+            frame.lock.lock()
             frame.image = image
+            frame.lock.unlock()
             decoded.signal()
         }
-        decoded.wait()
+        if decoded.wait(timeout: .now() + timeout) == .timedOut {
+            generator.cancelAllCGImageGeneration()
+            return nil
+        }
+        frame.lock.lock()
+        defer { frame.lock.unlock() }
         return frame.image
     }
 
@@ -197,17 +250,54 @@ extension FolioMediaImageCache {
             }
         }
 
-        // Fallback poster frame so valid video URLs/containers still render a playable card
-        let fallbackSize = NSSize(width: 480, height: 270)
-        let poster = NSImage(size: fallbackSize)
-        poster.lockFocus()
-        let rect = NSRect(origin: .zero, size: fallbackSize)
-        NSGradient(
-            starting: NSColor(calibratedRed: 0.13, green: 0.16, blue: 0.24, alpha: 1.0),
-            ending: NSColor(calibratedRed: 0.07, green: 0.09, blue: 0.14, alpha: 1.0)
-        )?.draw(in: rect, angle: -35)
-        poster.unlockFocus()
-        return poster
+        return synthesizedVideoPoster()
+    }
+
+    private static func synthesizedVideoPoster(width: Int = 480, height: Int = 270) -> NSImage {
+        let colorSpace = CGColorSpaceCreateDeviceRGB()
+        let bitmapInfo = CGImageAlphaInfo.premultipliedLast.rawValue
+        guard
+            let context = CGContext(
+                data: nil,
+                width: width,
+                height: height,
+                bitsPerComponent: 8,
+                bytesPerRow: 0,
+                space: colorSpace,
+                bitmapInfo: bitmapInfo
+            ),
+            let startColor = CGColor(
+                colorSpace: colorSpace,
+                components: [0.13, 0.16, 0.24, 1.0]
+            ),
+            let endColor = CGColor(
+                colorSpace: colorSpace,
+                components: [0.07, 0.09, 0.14, 1.0]
+            ),
+            let gradient = CGGradient(
+                colorsSpace: colorSpace,
+                colors: [startColor, endColor] as CFArray,
+                locations: [0.0, 1.0]
+            )
+        else {
+            return NSImage(size: NSSize(width: width, height: height))
+        }
+        let radians = -35.0 * Double.pi / 180.0
+        let dx = cos(radians) * Double(width)
+        let dy = sin(radians) * Double(height)
+        let center = CGPoint(x: Double(width) * 0.5, y: Double(height) * 0.5)
+        let start = CGPoint(x: center.x - dx * 0.5, y: center.y - dy * 0.5)
+        let end = CGPoint(x: center.x + dx * 0.5, y: center.y + dy * 0.5)
+        context.drawLinearGradient(
+            gradient,
+            start: start,
+            end: end,
+            options: [.drawsBeforeStartLocation, .drawsAfterEndLocation]
+        )
+        guard let cgImage = context.makeImage() else {
+            return NSImage(size: NSSize(width: width, height: height))
+        }
+        return NSImage(cgImage: cgImage, size: NSSize(width: width, height: height))
     }
 
     func cacheAndDecodeRemoteVideo(_ data: Data, url: URL, cacheKey: String) -> NSImage? {

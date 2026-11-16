@@ -9,6 +9,8 @@ public final class MarkdownLiveStyler {
     public static let softLineBreakAttributeKey = NSAttributedString.Key("FolioSoftLineBreak")
     /// Marks an inactive inline math span (`$...$`) with its atomic layout metrics (`InlineMathLayoutInfo`).
     public static let inlineMathSpanAttributeKey = NSAttributedString.Key("FolioInlineMathSpan")
+    /// Marks any inline math span (`$...$`, active or inactive) so AST link resolution skips math content.
+    public static let inlineMathLatexAttributeKey = NSAttributedString.Key("FolioInlineMathLatex")
     /// Marks ranges (math, code, syntax tokens) where spellcheck squiggles must be suppressed.
     public static let noSpellCheckAttributeKey = NSAttributedString.Key("FolioNoSpellCheck")
     /// Stores a custom LaTeX foreground color (e.g. from `\color{...}` or colored macro blocks) so custom-drawn math and inline text inherit it.
@@ -87,7 +89,8 @@ public final class MarkdownLiveStyler {
     static let boldUnderscoreRegex = try! NSRegularExpression(pattern: #"(?<![\p{L}\p{N}_])__(?!_)(?=\S)((?:(?!__)[\s\S])+?)(?<=\S)__(?![\p{L}\p{N}_])"#)
     static let italicAsteriskRegex = try! NSRegularExpression(pattern: #"(?<!\*)\*(?!\*)(?=\S)((?:[^\*]|\*\*(?=\S)[^\*]+?(?<=\S)\*\*)+?)(?<=\S)\*(?!\*)"#)
     static let italicUnderscoreRegex = try! NSRegularExpression(
-        pattern: #"(?<![\p{L}\p{N}_])_(?!_)(?=\S)((?:[^_]|__(?=\S)[^_]+?(?<=\S)__|(?<=[\p{L}\p{N}])_(?=[\p{L}\p{N}]))+?)(?<=\S)_(?![\p{L}\p{N}_])"#)
+        pattern: #"(?<![\p{L}\p{N}_])_(?!_)(?=\S)((?:[^_]|__(?=\S)[^_]+?(?<=\S)__|(?<=[\p{L}\p{N}])_(?=[\p{L}\p{N}]))+?)(?<=\S)_(?![\p{L}\p{N}_])"#
+    )
     static let strikeRegex = try! NSRegularExpression(pattern: #"(?<!~)(~~)(?!~)(?=\S)((?:(?!~~)[\s\S])+?)(?<=\S)(~~)(?!~)"#)
     static let highlightRegex = try! NSRegularExpression(pattern: #"(?<!=)(==)(?!=)(?=\S)((?:(?!==)[\s\S])+?)(?<=\S)(==)(?!=)"#)
     static let inlineMathRegex = try! NSRegularExpression(pattern: #"(?<!\$)(\$)(?!\$)(?=\S)([^\$\n]+?)(?<=\S)(?<!\$)(\$)(?![\$\d])"#)
@@ -97,6 +100,15 @@ public final class MarkdownLiveStyler {
     static let trailingSpaceRegex = try! NSRegularExpression(pattern: #"[ \t]+$"#, options: [.anchorsMatchLines])
     static let latexCommandRegex = try! NSRegularExpression(pattern: #"\\[a-zA-Z]+|\\[^a-zA-Z\s]"#)
     static let latexBracesRegex = try! NSRegularExpression(pattern: #"[\{\}\^_]"#)
+
+    private static let macroDefinitionKeywords: [String] = [
+        "\\newcommand",
+        "\\renewcommand",
+        "\\providecommand",
+        "\\DeclareMathOperator",
+        "\\def",
+        "environment{"
+    ]
 
     @discardableResult
     public static func applyStyles(
@@ -134,14 +146,15 @@ public final class MarkdownLiveStyler {
         selectedRange: NSRange
     ) -> MarkdownStyleResult {
         let string = storage.string
-        let fullRange = NSRange(location: 0, length: (string as NSString).length)
+        let nsString = string as NSString
+        let fullRange = NSRange(location: 0, length: nsString.length)
         if LaTeXLiveStyler.isLaTeXOrBibTeXDocument(string, fileURL: parameters.fileURL) {
             let analysis = LaTeXLiveStyler.applyStyles(to: storage, parameters: parameters, selectedRange: selectedRange)
             return MarkdownStyleResult(analysis: analysis, record: nil, restyledRanges: [fullRange])
         }
         let span = EditorPerfPhase.applyStyles.begin()
         defer { span.end() }
-        LaTeXBlockStyleCache.invalidate()
+        LaTeXBlockStyleCache.invalidate(for: storage)
         guard fullRange.length > 0 else {
             return MarkdownStyleResult(analysis: MarkdownDocumentAnalysis(headings: [], decorations: []), record: nil, restyledRanges: [])
         }
@@ -149,12 +162,20 @@ public final class MarkdownLiveStyler {
         let sourceCodeMode = parameters.sourceCodeMode
         let wasSourceMode = storage.attribute(LaTeXBlockStyleCache.sourceModePassAttributeKey, at: 0, effectiveRange: nil) != nil
         let wasLaTeX = storage.attribute(LaTeXBlockStyleCache.styledPassAttributeKey, at: 0, effectiveRange: nil) != nil
-        let documentMacros = documentMacros(in: string, sourceCodeMode: sourceCodeMode)
+        let hasMacroKeywords = !sourceCodeMode && containsMacroKeywords(in: nsString, range: fullRange)
+        let documentMacros = hasMacroKeywords ? LaTeXMacroExpander.extractDocumentMacros(from: string) : [:]
         LaTeXMathRenderer.setDocumentMacros(documentMacros)
         let ast = sourceCodeMode ? MarkdownStyleAST.empty : parseStyleAST(string)
 
         storage.beginEditing()
-        let pass = MarkdownStylePass(storage: storage, parameters: parameters, selectedRange: selectedRange, ast: ast)
+        let pass = MarkdownStylePass(
+            storage: storage,
+            string: string,
+            nsString: nsString,
+            parameters: parameters,
+            selectedRange: selectedRange,
+            ast: ast
+        )
         storage.setAttributes(pass.baseAttributes, range: fullRange)
         pass.styleLines(from: 0, lineNumber: 1, to: fullRange.length)
         pass.finish()
@@ -171,6 +192,12 @@ public final class MarkdownLiveStyler {
                 selectedRange: selectedRange,
                 ast: ast,
                 documentMacros: documentMacros,
+                hasMacroKeywords: hasMacroKeywords,
+                macrosBalancedAtCheckpoints: areBracesBalancedAtCheckpoints(
+                    in: pass.nsString,
+                    checkpoints: pass.checkpoints,
+                    hasMacroKeywords: hasMacroKeywords
+                ),
                 checkpoints: pass.checkpoints,
                 decorations: pass.decorations,
                 headings: pass.headings
@@ -180,7 +207,71 @@ public final class MarkdownLiveStyler {
 
     /// Macros that `\newcommand` and similar definitions anywhere in the document declare for math.
     static func documentMacros(in string: String, sourceCodeMode: Bool) -> [String: LaTeXMacroDefinition] {
-        (!sourceCodeMode && string.contains("\\")) ? LaTeXMacroExpander.extractDocumentMacros(from: string) : [:]
+        guard !sourceCodeMode else { return [:] }
+        let nsString = string as NSString
+        guard containsMacroKeywords(in: nsString, range: NSRange(location: 0, length: nsString.length)) else {
+            return [:]
+        }
+        return LaTeXMacroExpander.extractDocumentMacros(from: string)
+    }
+
+    static func containsMacroKeywords(in text: NSString, range: NSRange) -> Bool {
+        guard range.length > 0, text.range(of: "\\", options: .literal, range: range).location != NSNotFound else {
+            return false
+        }
+        for keyword in macroDefinitionKeywords {
+            if text.range(of: keyword, options: .literal, range: range).location != NSNotFound {
+                return true
+            }
+        }
+        return false
+    }
+
+    /// True when every checkpoint boundary has zero unclosed `{` braces (outside `%` comments),
+    /// ensuring no macro definition in `text` spans across a checkpoint into a later paragraph.
+    static func areBracesBalancedAtCheckpoints(
+        in text: NSString,
+        checkpoints: [MarkdownStyleCheckpoint],
+        hasMacroKeywords: Bool
+    ) -> Bool {
+        guard hasMacroKeywords, !checkpoints.isEmpty else { return true }
+        var depth = 0
+        var inComment = false
+        var cursor = 0
+        for checkpoint in checkpoints {
+            let boundary = NSMaxRange(checkpoint.lineRange)
+            while cursor < boundary && cursor < text.length {
+                let ch = text.character(at: cursor)
+                if ch == 0x0A {
+                    inComment = false
+                    cursor += 1
+                    continue
+                }
+                if inComment {
+                    cursor += 1
+                    continue
+                }
+                if ch == 0x5C {
+                    cursor += 2
+                    continue
+                }
+                if ch == 0x25 {
+                    inComment = true
+                    cursor += 1
+                    continue
+                }
+                if ch == 0x7B {
+                    depth += 1
+                } else if ch == 0x7D {
+                    depth = max(0, depth - 1)
+                }
+                cursor += 1
+            }
+            if depth != 0 {
+                return false
+            }
+        }
+        return true
     }
 
     static func parseStyleAST(_ string: String) -> MarkdownStyleAST {
