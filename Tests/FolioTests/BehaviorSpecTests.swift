@@ -115,6 +115,109 @@ final class BehaviorSpecTests: XCTestCase {
         }
     }
 
+    func testSpanEditUTF16MatchesSharedCursorEditSpecs() throws {
+        let spec = try loadSpecDocument()
+        XCTAssertGreaterThanOrEqual(spec.cursor_edit_cases.count, 15)
+
+        for testCase in spec.cursor_edit_cases {
+            let (inputText, cursorByte) = splitCursor(testCase.input)
+            let utf16Cursor = utf16Offset(forUTF8ByteOffset: cursorByte, in: inputText)
+
+            let edit: OTSpanEditResult = inputText.withCString { mdPtr in
+                switch testCase.action {
+                case "newline":
+                    return ot_engine_edit_newline_utf16(mdPtr, utf16Cursor, 0)
+                case "toggle_delimiter":
+                    let delim = testCase.delimiter ?? "**"
+                    return delim.withCString { delimPtr in
+                        ot_engine_edit_symmetric_delimiter_utf16(mdPtr, utf16Cursor, 0, delimPtr)
+                    }
+                case "set_heading_level":
+                    return ot_engine_edit_heading_level_utf16(mdPtr, utf16Cursor, 0, testCase.level ?? 0, false)
+                case "toggle_task_checkbox":
+                    return ot_engine_edit_task_checkbox_utf16(mdPtr, utf16Cursor, 0)
+                default:
+                    XCTFail("Unknown action \(testCase.action) in \(testCase.id)")
+                    return OTSpanEditResult(replacement: nil, replace_loc: 0, replace_len: 0, select_loc: 0, select_len: 0)
+                }
+            }
+            defer { ot_engine_free_span_edit(edit) }
+
+            let replacement = edit.replacement.map { String(cString: $0) } ?? ""
+            let replaceRange = NSRange(location: edit.replace_loc, length: edit.replace_len)
+            let actualText = (inputText as NSString).replacingCharacters(in: replaceRange, with: replacement)
+            XCTAssertEqual(edit.select_len, 0, "Expected collapsed cursor for case '\(testCase.id)'")
+            let actualCursorByte = utf8ByteOffset(forUTF16Offset: edit.select_loc, in: actualText)
+            let actualAnnotated = joinCursor(text: actualText, cursorByte: actualCursorByte)
+            XCTAssertEqual(
+                actualAnnotated,
+                testCase.expected,
+                "UTF-16 SpanEdit behavior spec mismatch for case '\(testCase.id)'"
+            )
+        }
+
+        // Verify multi-byte UTF-8 ("café") and astral surrogate-pair emoji ("🦀", "🚀") UTF-16 span edits.
+        let unicodeDoc = "🦀 café\n- [ ] 🚀 launch"
+        let wrapCafe = applyUTF16SpanEdit(to: unicodeDoc) { mdPtr in
+            "**".withCString { delimPtr in
+                ot_engine_edit_symmetric_delimiter_utf16(mdPtr, 3, 4, delimPtr)
+            }
+        }
+        XCTAssertEqual(wrapCafe.text, "🦀 **café**\n- [ ] 🚀 launch")
+        XCTAssertEqual(wrapCafe.selection, NSRange(location: 5, length: 4))
+
+        let unwrapCafe = applyUTF16SpanEdit(to: wrapCafe.text) { mdPtr in
+            "**".withCString { delimPtr in
+                ot_engine_edit_symmetric_delimiter_utf16(mdPtr, wrapCafe.selection.location, wrapCafe.selection.length, delimPtr)
+            }
+        }
+        XCTAssertEqual(unwrapCafe.text, unicodeDoc)
+        XCTAssertEqual(unwrapCafe.selection, NSRange(location: 3, length: 4))
+
+        let promoteHeading = applyUTF16SpanEdit(to: unicodeDoc) { mdPtr in
+            ot_engine_edit_heading_level_utf16(mdPtr, 3, 4, 2, false)
+        }
+        XCTAssertEqual(promoteHeading.text, "## 🦀 café\n- [ ] 🚀 launch")
+        XCTAssertEqual(promoteHeading.selection, NSRange(location: 6, length: 4))
+
+        // Second line starts at UTF-16 offset 8 ("🦀 café\n" = 2 + 1 + 4 + 1); cursor after "🚀 " is 8 + 6 + 2 + 1 = 17.
+        let checkEmojiTask = applyUTF16SpanEdit(to: unicodeDoc) { mdPtr in
+            ot_engine_edit_task_checkbox_utf16(mdPtr, 17, 6)
+        }
+        XCTAssertEqual(checkEmojiTask.text, "🦀 café\n- [x] 🚀 launch")
+        XCTAssertEqual(checkEmojiTask.selection, NSRange(location: 17, length: 6))
+
+        let continueEmojiTask = applyUTF16SpanEdit(to: checkEmojiTask.text) { mdPtr in
+            ot_engine_edit_newline_utf16(mdPtr, (checkEmojiTask.text as NSString).length, 0)
+        }
+        XCTAssertEqual(continueEmojiTask.text, "🦀 café\n- [x] 🚀 launch\n- [ ] ")
+        XCTAssertEqual(continueEmojiTask.selection, NSRange(location: (continueEmojiTask.text as NSString).length, length: 0))
+    }
+
+    private func utf16Offset(forUTF8ByteOffset byteOffset: Int, in text: String) -> Int {
+        let clamped = max(0, min(byteOffset, text.utf8.count))
+        let prefix = String(decoding: Array(text.utf8.prefix(clamped)), as: UTF8.self)
+        return (prefix as NSString).length
+    }
+
+    private func utf8ByteOffset(forUTF16Offset utf16Offset: Int, in text: String) -> Int {
+        let nsText = text as NSString
+        let clamped = max(0, min(utf16Offset, nsText.length))
+        return nsText.substring(to: clamped).utf8.count
+    }
+
+    private func applyUTF16SpanEdit(
+        to text: String,
+        build: (UnsafePointer<CChar>) -> OTSpanEditResult
+    ) -> (text: String, selection: NSRange) {
+        let edit = text.withCString { build($0) }
+        defer { ot_engine_free_span_edit(edit) }
+        let replacement = edit.replacement.map { String(cString: $0) } ?? ""
+        let replaceRange = NSRange(location: edit.replace_loc, length: edit.replace_len)
+        let updated = (text as NSString).replacingCharacters(in: replaceRange, with: replacement)
+        return (updated, NSRange(location: edit.select_loc, length: edit.select_len))
+    }
+
     func testStandaloneLiveStylerMatchesSharedFoldRevealSpecs() throws {
         let spec = try loadSpecDocument()
         XCTAssertFalse(spec.fold_reveal_cases.isEmpty, "The spec must define fold_reveal_cases")

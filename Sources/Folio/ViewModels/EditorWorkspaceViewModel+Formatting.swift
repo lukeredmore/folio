@@ -1,5 +1,6 @@
 import AppKit
 import Combine
+import FolioEngineFFI
 import Foundation
 import SwiftUI
 
@@ -92,27 +93,23 @@ extension EditorWorkspaceViewModel {
 
     // MARK: - Task Checkbox Toggling
     public func toggleTaskCheckbox(at boxCharacterLocation: Int) {
-        let nsStr = markdownText as NSString
-        let boxRange = NSRange(location: boxCharacterLocation, length: 3)
-        guard boxCharacterLocation >= 0, NSMaxRange(boxRange) <= nsStr.length else { return }
+        guard !isCurrentDocumentLaTeX && !isCurrentDocumentBibTeX else { return }
+        let sourceLength = ((activeTextView?.string ?? markdownText) as NSString).length
+        guard boxCharacterLocation >= 0, boxCharacterLocation < sourceLength else { return }
 
-        let currentBox = nsStr.substring(with: boxRange)
-        let replacement: String
-        if currentBox.lowercased() == "[x]" {
-            replacement = "[ ]"
-        } else if currentBox == "[ ]" {
-            replacement = "[x]"
-        } else {
-            return
+        applyEngineSpanEdit(
+            origin: .formattingAction,
+            summary: "Toggle Task Checkbox",
+            preserveExistingSelection: true
+        ) { cStr, _, _ in
+            ot_engine_edit_task_checkbox_utf16(cStr, boxCharacterLocation, 0)
         }
+    }
 
-        withUndoMetadata(origin: .formattingAction, summary: "Toggle Task Checkbox") {
-            if let tv = activeTextView, tv.shouldChangeText(in: boxRange, replacementString: replacement) {
-                tv.replaceCharacters(in: boxRange, with: replacement)
-                tv.didChangeText()
-            } else {
-                markdownText = nsStr.replacingCharacters(in: boxRange, with: replacement)
-            }
+    public func toggleTaskCheckboxAtSelection() {
+        guard !isCurrentDocumentLaTeX && !isCurrentDocumentBibTeX else { return }
+        applyEngineSpanEdit(origin: .formattingAction, summary: "Toggle Task Checkbox") { cStr, loc, len in
+            ot_engine_edit_task_checkbox_utf16(cStr, loc, len)
         }
     }
 
@@ -134,6 +131,16 @@ extension EditorWorkspaceViewModel {
     // MARK: - Formatting & Markdown Insertion Commands
     public func applyInlineFormatting(prefix: String, suffix: String, placeholder: String) {
         let resolved = resolvedInlineDelimiters(prefix: prefix, suffix: suffix, placeholder: placeholder)
+        if !isCurrentDocumentLaTeX && !isCurrentDocumentBibTeX && !resolved.prefix.isEmpty && resolved.prefix == resolved.suffix {
+            let delimiter = resolved.prefix
+            applyEngineSpanEdit(origin: .formattingAction, summary: "Inline Formatting") { cStr, loc, len in
+                delimiter.withCString { delimPtr in
+                    ot_engine_edit_symmetric_delimiter_utf16(cStr, loc, len, delimPtr)
+                }
+            }
+            return
+        }
+
         withUndoMetadata(origin: .formattingAction, summary: "Inline Formatting") {
             guard let tv = activeTextView else {
                 markdownText += "\(resolved.prefix)\(resolved.placeholder)\(resolved.suffix)"
@@ -152,6 +159,7 @@ extension EditorWorkspaceViewModel {
                     length: (selectedText as NSString).length
                 )
                 tv.setSelectedRange(innerRange)
+                updateTopUndoNewSelection(innerRange)
             }
         }
     }
@@ -220,31 +228,81 @@ extension EditorWorkspaceViewModel {
             setLaTeXHeadingLevel(level)
             return
         }
-        withUndoMetadata(origin: .formattingAction, summary: level == 0 ? "Convert to Paragraph" : "Heading \(level)") {
-            guard let tv = activeTextView else { return }
-            let sel = tv.selectedRange()
-            let nsStr = tv.string as NSString
-            let lineRange = nsStr.lineRange(for: NSRange(location: min(sel.location, nsStr.length), length: 0))
-            var contentRange = lineRange
-            while contentRange.length > 0 {
-                let ch = nsStr.character(at: contentRange.location + contentRange.length - 1)
-                if ch == 10 || ch == 13 { contentRange.length -= 1 } else { break }
-            }
-            let lineText = nsStr.substring(with: contentRange)
-            let stripped = lineText.replacingOccurrences(of: #"^#{1,6}\s*"#, with: "", options: .regularExpression)
+        guard !isCurrentDocumentBibTeX else { return }
+        let clampedLevel = UInt8(clamping: max(0, min(6, level)))
+        let summary = clampedLevel == 0 ? "Convert to Paragraph" : "Heading \(clampedLevel)"
+        applyEngineSpanEdit(origin: .formattingAction, summary: summary) { cStr, loc, len in
+            ot_engine_edit_heading_level_utf16(cStr, loc, len, clampedLevel, false)
+        }
+    }
 
-            let replacement: String
-            if level == 0 {
-                replacement = stripped
+    private func applyEngineSpanEdit(
+        origin: UndoEntryOrigin,
+        summary: String,
+        preserveExistingSelection: Bool = false,
+        build: (UnsafePointer<CChar>, Int, Int) -> OTSpanEditResult
+    ) {
+        let sourceText = activeTextView?.string ?? markdownText
+        let nsStr = sourceText as NSString
+        let rawSelection = activeTextView?.selectedRange() ?? currentSelectedRange
+        let safeLoc = max(0, min(rawSelection.location, nsStr.length))
+        let safeLen = max(0, min(rawSelection.length, nsStr.length - safeLoc))
+        let sel = NSRange(location: safeLoc, length: safeLen)
+
+        let edit = sourceText.withCString { cStr in
+            build(cStr, sel.location, sel.length)
+        }
+        defer {
+            ot_engine_free_span_edit(edit)
+        }
+
+        guard let replacementPtr = edit.replacement else { return }
+        let replacement = String(cString: replacementPtr)
+        let replaceRange = NSRange(location: edit.replace_loc, length: edit.replace_len)
+        guard replaceRange.location >= 0, NSMaxRange(replaceRange) <= nsStr.length else { return }
+
+        let newSelection: NSRange
+        if preserveExistingSelection {
+            let delta = (replacement as NSString).length - replaceRange.length
+            let adjustedLoc = sel.location >= NSMaxRange(replaceRange) ? max(0, sel.location + delta) : sel.location
+            newSelection = NSRange(location: adjustedLoc, length: sel.length)
+        } else {
+            newSelection = NSRange(location: edit.select_loc, length: edit.select_len)
+        }
+
+        if replaceRange.length == 0 && replacement.isEmpty {
+            if newSelection != sel {
+                if let tv = activeTextView {
+                    tv.setSelectedRange(newSelection)
+                } else {
+                    currentSelectedRange = newSelection
+                }
+            }
+            return
+        }
+
+        withUndoMetadata(origin: origin, summary: summary) {
+            if let tv = activeTextView {
+                let tvNS = tv.string as NSString
+                if tvNS.substring(with: replaceRange) == replacement {
+                    if tv.selectedRange() != newSelection {
+                        tv.setSelectedRange(newSelection)
+                    }
+                } else if tv.shouldChangeText(in: replaceRange, replacementString: replacement) {
+                    tv.replaceCharacters(in: replaceRange, with: replacement)
+                    tv.didChangeText()
+                    if tv.selectedRange() != newSelection {
+                        tv.setSelectedRange(newSelection)
+                    }
+                    updateTopUndoNewSelection(newSelection)
+                }
             } else {
-                let hashes = String(repeating: "#", count: min(6, max(1, level)))
-                replacement = "\(hashes) \(stripped.isEmpty ? "Heading \(level)" : stripped)"
-            }
-
-            if tv.shouldChangeText(in: contentRange, replacementString: replacement) {
-                tv.replaceCharacters(in: contentRange, with: replacement)
-                tv.didChangeText()
-                tv.setSelectedRange(NSRange(location: contentRange.location + (replacement as NSString).length, length: 0))
+                let updated = nsStr.replacingCharacters(in: replaceRange, with: replacement)
+                if markdownText != updated {
+                    markdownText = updated
+                }
+                currentSelectedRange = newSelection
+                updateTopUndoNewSelection(newSelection)
             }
         }
     }
