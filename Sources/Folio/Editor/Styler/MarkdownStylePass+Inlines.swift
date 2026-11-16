@@ -101,6 +101,7 @@ extension MarkdownStylePass {
 
     private func continuationByteDeltas(forLine line: Int) -> [Int] {
         guard let paraStart = paragraphStartLineByLine[line],
+            line > paraStart,
             let startPrefix = proseContentPrefixBytes[paraStart]
         else {
             return [0]
@@ -120,34 +121,62 @@ extension MarkdownStylePass {
 
     private func resolveAstLinkSpan(
         _ reported: CmarkAstInline,
+        currentLine: Int,
+        currentLineDeltas: [Int],
         columns: inout Styler.LineUTF8ColumnCache
-    ) -> (startLine: Int, startByteColumn: Int, endLine: Int, endByteColumn: Int)? {
+    ) -> (startLine: Int, endLine: Int, docRange: NSRange)? {
+        func deltas(for line: Int) -> [Int] {
+            line == currentLine ? currentLineDeltas : continuationByteDeltas(forLine: line)
+        }
+
+        func makeSpan(startLine: Int, startByteColumn: Int, endLine: Int, endByteColumn: Int) -> (startLine: Int, endLine: Int, docRange: NSRange)? {
+            guard let docStart = columns.documentOffset(line: startLine, byteColumn: startByteColumn),
+                let docEnd = columns.documentOffset(line: endLine, byteColumn: endByteColumn),
+                docEnd > docStart,
+                docEnd <= fullLength
+            else {
+                return nil
+            }
+            return (startLine, endLine, NSRange(location: docStart, length: docEnd - docStart))
+        }
+
         func startsWithLinkBracket(line: Int, column: Int) -> Bool {
             guard let byte = columns.byte(line: line, column: column) else { return false }
             if byte == UInt8(ascii: "[") { return true }
             return byte == UInt8(ascii: "!") && columns.byte(line: line, column: column + 1) == UInt8(ascii: "[")
         }
 
-        let endDeltas = continuationByteDeltas(forLine: reported.endLine)
+        let endDeltas = deltas(for: reported.endLine)
+        let startDeltas = deltas(for: reported.startLine)
         for endDelta in endDeltas {
             let candidateEndCol = reported.endColumn + endDelta
             let endByte = columns.byte(line: reported.endLine, column: candidateEndCol - 1)
             guard endByte == UInt8(ascii: "]") || endByte == UInt8(ascii: ")") else { continue }
 
-            for startDelta in continuationByteDeltas(forLine: reported.startLine) {
+            for startDelta in startDeltas {
                 let candidateStartCol = reported.startColumn - 1 + startDelta
                 if startsWithLinkBracket(line: reported.startLine, column: candidateStartCol) {
-                    return (reported.startLine, candidateStartCol, reported.endLine, candidateEndCol)
+                    return makeSpan(
+                        startLine: reported.startLine,
+                        startByteColumn: candidateStartCol,
+                        endLine: reported.endLine,
+                        endByteColumn: candidateEndCol
+                    )
                 }
             }
 
             if reported.startLine > 1 {
                 var prevLine = reported.startLine - 1
                 while prevLine >= 1, columns.lineRecords[prevLine] != nil {
-                    for startDelta in continuationByteDeltas(forLine: prevLine) {
+                    for startDelta in deltas(for: prevLine) {
                         let candidateStartCol = reported.startColumn - 1 + startDelta
                         if startsWithLinkBracket(line: prevLine, column: candidateStartCol) {
-                            return (prevLine, candidateStartCol, reported.endLine, candidateEndCol)
+                            return makeSpan(
+                                startLine: prevLine,
+                                startByteColumn: candidateStartCol,
+                                endLine: reported.endLine,
+                                endByteColumn: candidateEndCol
+                            )
                         }
                     }
                     prevLine -= 1
@@ -156,37 +185,81 @@ extension MarkdownStylePass {
         }
 
         guard reported.startLine == reported.endLine else {
-            let dStart = continuationByteDeltas(forLine: reported.startLine)[0]
-            let dEnd = endDeltas[0]
-            return (reported.startLine, reported.startColumn - 1 + dStart, reported.endLine, reported.endColumn + dEnd)
+            return makeSpan(
+                startLine: reported.startLine,
+                startByteColumn: reported.startColumn - 1 + startDeltas[0],
+                endLine: reported.endLine,
+                endByteColumn: reported.endColumn + endDeltas[0]
+            )
         }
 
-        for delta in continuationByteDeltas(forLine: reported.startLine) {
+        if startDeltas.count == 1 {
+            let delta = startDeltas[0]
+            return makeSpan(
+                startLine: reported.startLine,
+                startByteColumn: reported.startColumn - 1 + delta,
+                endLine: reported.endLine,
+                endByteColumn: reported.endColumn + delta
+            )
+        }
+
+        let literalUTF8 = reported.literal.utf8
+        for delta in startDeltas {
             let startCol = reported.startColumn - 1 + delta
             let endCol = reported.endColumn + delta
-            guard let docStart = columns.documentOffset(line: reported.startLine, byteColumn: startCol),
-                let docEnd = columns.documentOffset(line: reported.endLine, byteColumn: endCol),
-                docEnd > docStart,
-                docEnd <= fullLength
+            guard startCol >= 0, endCol > startCol,
+                columns.byte(line: reported.startLine, column: endCol - 1) != nil
             else {
                 continue
             }
-            let slice = nsString.substring(with: NSRange(location: docStart, length: docEnd - docStart))
-            if !reported.literal.isEmpty {
-                if slice == reported.literal {
-                    return (reported.startLine, startCol, reported.endLine, endCol)
+            if !literalUTF8.isEmpty {
+                guard endCol - startCol == literalUTF8.count else { continue }
+                var matches = true
+                var col = startCol
+                for expected in literalUTF8 {
+                    if columns.byte(line: reported.startLine, column: col) != expected {
+                        matches = false
+                        break
+                    }
+                    col += 1
                 }
-            } else if !slice.contains(where: { $0.isWhitespace }) {
-                return (reported.startLine, startCol, reported.endLine, endCol)
+                if matches {
+                    return makeSpan(
+                        startLine: reported.startLine,
+                        startByteColumn: startCol,
+                        endLine: reported.endLine,
+                        endByteColumn: endCol
+                    )
+                }
+            } else {
+                var hasWhitespace = false
+                for col in startCol..<endCol {
+                    guard let byte = columns.byte(line: reported.startLine, column: col) else {
+                        hasWhitespace = true
+                        break
+                    }
+                    if byte == 0x20 || byte == 0x09 || byte == 0x0A || byte == 0x0D {
+                        hasWhitespace = true
+                        break
+                    }
+                }
+                if !hasWhitespace {
+                    return makeSpan(
+                        startLine: reported.startLine,
+                        startByteColumn: startCol,
+                        endLine: reported.endLine,
+                        endByteColumn: endCol
+                    )
+                }
             }
         }
 
-        let primaryDelta = continuationByteDeltas(forLine: reported.startLine)[0]
-        return (
-            reported.startLine,
-            reported.startColumn - 1 + primaryDelta,
-            reported.endLine,
-            reported.endColumn + primaryDelta
+        let primaryDelta = startDeltas[0]
+        return makeSpan(
+            startLine: reported.startLine,
+            startByteColumn: reported.startColumn - 1 + primaryDelta,
+            endLine: reported.endLine,
+            endByteColumn: reported.endColumn + primaryDelta
         )
     }
 
@@ -195,10 +268,23 @@ extension MarkdownStylePass {
         columns: inout Styler.LineUTF8ColumnCache,
         decorations: inout [LineDecoration]
     ) {
-        guard let links = astLinksByLine[ln], var rec = lineRecords[ln] else { return }
+        guard let links = astLinksByLine[ln], let rec = lineRecords[ln] else { return }
+        let lineDeltas = continuationByteDeltas(forLine: ln)
+        let linkAttributes: [NSAttributedString.Key: Any] = [
+            .foregroundColor: theme.linkNSColor.withAlphaComponent(rec.dimFactor),
+            .underlineStyle: NSUnderlineStyle.single.rawValue
+        ]
         for reported in links {
-            guard let resolved = resolveAstLinkSpan(reported, columns: &columns) else { continue }
-            let spanLines = resolved.startLine...resolved.endLine
+            guard
+                let resolved = resolveAstLinkSpan(
+                    reported,
+                    currentLine: ln,
+                    currentLineDeltas: lineDeltas,
+                    columns: &columns
+                )
+            else {
+                continue
+            }
             if resolved.endLine > resolved.startLine {
                 let joined = (resolved.startLine..<resolved.endLine).allSatisfy { line in
                     guard let record = lineRecords[line], NSMaxRange(record.contentRange) < fullLength else { return false }
@@ -206,20 +292,14 @@ extension MarkdownStylePass {
                 }
                 guard joined else { continue }
             }
-            guard let docStart = columns.documentOffset(line: resolved.startLine, byteColumn: resolved.startByteColumn),
-                let docEnd = columns.documentOffset(line: resolved.endLine, byteColumn: resolved.endByteColumn),
-                docEnd > docStart
-            else {
+            let docRange = resolved.docRange
+            guard !Styler.rangeContainsCodeOrMath(in: storage, range: docRange) else {
                 continue
             }
-            let docRange = NSRange(location: docStart, length: docEnd - docStart)
-            guard NSMaxRange(docRange) <= fullLength,
-                docRange.length > 0,
-                !Styler.rangeContainsCodeOrMath(in: storage, range: docRange)
-            else {
-                continue
-            }
-            rec.isActive = spanLines.contains { lineRecords[$0]?.isActive ?? false }
+            let isActive =
+                resolved.startLine == ln && resolved.endLine == ln
+                ? rec.isActive
+                : (resolved.startLine...resolved.endLine).contains { lineRecords[$0]?.isActive ?? false }
 
             let firstChar = nsString.character(at: docRange.location)
             let isBracketLink =
@@ -259,7 +339,7 @@ extension MarkdownStylePass {
                     location: docRange.location + closeBracket,
                     length: docRange.length - closeBracket
                 )
-                if isImg && prettyMode && !rec.isActive && !reported.url.isEmpty {
+                if isImg && prettyMode && !isActive && !reported.url.isEmpty {
                     let startRec = lineRecords[resolved.startLine] ?? rec
                     let currentParaTail =
                         (storage.attribute(.paragraphStyle, at: startRec.lineRange.location, effectiveRange: nil) as? NSParagraphStyle)?
@@ -283,15 +363,12 @@ extension MarkdownStylePass {
                     Styler.applyAttributesToVisibleCharacters(
                         in: storage,
                         range: labelRange,
-                        attributes: [
-                            .foregroundColor: theme.linkNSColor.withAlphaComponent(rec.dimFactor),
-                            .underlineStyle: NSUnderlineStyle.single.rawValue
-                        ]
+                        attributes: linkAttributes
                     )
                     Styler.styleSyntaxToken(
                         in: storage,
                         range: openSyntaxRange,
-                        isActiveLine: rec.isActive || !prettyMode,
+                        isActiveLine: isActive || !prettyMode,
                         theme: theme,
                         dimFactor: rec.dimFactor,
                         preserveAlignmentKern: true
@@ -299,7 +376,7 @@ extension MarkdownStylePass {
                     Styler.styleSyntaxToken(
                         in: storage,
                         range: trailingSyntaxRange,
-                        isActiveLine: rec.isActive || !prettyMode,
+                        isActiveLine: isActive || !prettyMode,
                         theme: theme,
                         dimFactor: rec.dimFactor,
                         preserveAlignmentKern: true
@@ -309,10 +386,7 @@ extension MarkdownStylePass {
                 Styler.applyAttributesToVisibleCharacters(
                     in: storage,
                     range: docRange,
-                    attributes: [
-                        .foregroundColor: theme.linkNSColor.withAlphaComponent(rec.dimFactor),
-                        .underlineStyle: NSUnderlineStyle.single.rawValue
-                    ]
+                    attributes: linkAttributes
                 )
             }
         }
