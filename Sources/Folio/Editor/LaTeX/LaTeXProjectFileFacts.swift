@@ -91,15 +91,7 @@ struct LaTeXFileFacts: Sendable {
 
     /// The line up to its first unescaped `%`.
     static func stripComment(_ line: Substring) -> Substring {
-        var idx = line.startIndex
-        var backslashes = 0
-        while idx < line.endIndex {
-            let ch = line[idx]
-            if ch == "%" && backslashes % 2 == 0 { return line[..<idx] }
-            backslashes = ch == "\\" ? backslashes + 1 : 0
-            idx = line.index(after: idx)
-        }
-        return line
+        LaTeXLexer.stripLineComment(line)
     }
 
     /// Arguments of `\input{...}` and `\include{...}` in `code`, in source order.

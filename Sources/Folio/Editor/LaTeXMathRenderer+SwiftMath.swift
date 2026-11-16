@@ -10,28 +10,165 @@ private struct SwiftMathCacheKey: Hashable {
 }
 
 extension LaTeXMathRenderer {
-    private static let swiftMathLock = NSLock()
+    private static let swiftMathLock = NSRecursiveLock()
     nonisolated(unsafe) private static var didRegisterSymbols = false
     nonisolated(unsafe) private static var fontCache: [Int: MTFont] = [:]
     nonisolated(unsafe) private static var layoutCache: [SwiftMathCacheKey: MathLayoutBox] = [:]
+    nonisolated(unsafe) private static var resolvedLayoutCache: [SwiftMathCacheKey: DisplayMathLayout] = [:]
     nonisolated(unsafe) private static var activeDocumentMacros: [String: LaTeXMacroDefinition] = [:]
     nonisolated(unsafe) private static var activeMacrosVersion: UInt64 = 1
+    nonisolated(unsafe) private static var registeredOperators: [String: (text: String, hasLimits: Bool)] = [:]
 
     public static func setDocumentMacros(_ macros: [String: LaTeXMacroDefinition]) {
         swiftMathLock.lock()
+        defer { swiftMathLock.unlock() }
         if activeDocumentMacros != macros {
             activeDocumentMacros = macros
             activeMacrosVersion &+= 1
+            if activeMacrosVersion == 0 { activeMacrosVersion = 1 }
             registerExtraSymbolsUnlocked()
-            LaTeXMacroExpander.registerCustomOperators(from: macros)
+            registerCustomOperatorsUnlocked(from: macros)
         }
-        swiftMathLock.unlock()
     }
 
     public static func currentDocumentMacros() -> [String: LaTeXMacroDefinition] {
         swiftMathLock.lock()
         defer { swiftMathLock.unlock() }
         return activeDocumentMacros
+    }
+
+    public static func currentMacrosVersion() -> UInt64 {
+        swiftMathLock.lock()
+        defer { swiftMathLock.unlock() }
+        return activeMacrosVersion
+    }
+
+    static func registerCustomOperators(from macros: [String: LaTeXMacroDefinition]) {
+        swiftMathLock.lock()
+        defer { swiftMathLock.unlock() }
+        registerExtraSymbolsUnlocked()
+        registerCustomOperatorsUnlocked(from: macros)
+    }
+
+    private static func registerCustomOperatorsUnlocked(from macros: [String: LaTeXMacroDefinition]) {
+        for definition in macros.values {
+            guard let opText = definition.operatorText else { continue }
+            let symbolName =
+                definition.name.hasPrefix("\\")
+                ? String(definition.name.dropFirst())
+                : definition.name
+            guard !symbolName.isEmpty else { continue }
+            if let existing = registeredOperators[symbolName],
+                existing.text == opText,
+                existing.hasLimits == definition.operatorHasLimits
+            {
+                continue
+            }
+            MTMathAtomFactory.add(
+                latexSymbol: symbolName,
+                value: MTMathAtomFactory.operatorWithName(opText, limits: definition.operatorHasLimits)
+            )
+            registeredOperators[symbolName] = (opText, definition.operatorHasLimits)
+        }
+    }
+
+    private static func macrosVersionKeyUnlocked(for explicitMacros: [String: LaTeXMacroDefinition]?) -> UInt64 {
+        guard let explicitMacros else {
+            return activeMacrosVersion & 0x7FFF_FFFF_FFFF_FFFF
+        }
+        var hash: UInt64 = 0xcbf2_9ce4_8422_2325
+        func mix(_ byte: UInt8) {
+            hash ^= UInt64(byte)
+            hash &*= 0x0000_0100_0000_01b3
+        }
+        func mixString(_ value: String) {
+            for b in value.utf8 { mix(b) }
+            mix(0xff)
+        }
+        withUnsafeBytes(of: activeMacrosVersion.littleEndian) { ptr in
+            for b in ptr { mix(b) }
+        }
+        for key in explicitMacros.keys.sorted() {
+            guard let def = explicitMacros[key] else { continue }
+            mixString(def.name)
+            mix(UInt8(truncatingIfNeeded: def.argCount))
+            mixString(def.defaultFirstArg ?? "")
+            mixString(def.replacement)
+            mixString(def.operatorText ?? "")
+            mix(def.operatorHasLimits ? 1 : 0)
+            mix(def.isEnvironment ? 1 : 0)
+            mixString(def.environmentEnd ?? "")
+            if let paramText = def.parameterText {
+                mixString(String(describing: paramText))
+            }
+        }
+        return 0x8000_0000_0000_0000 | hash
+    }
+
+    static func cachedMathLayout(
+        _ latex: String,
+        baseFontSize: CGFloat,
+        isDisplayStyle: Bool,
+        macros: [String: LaTeXMacroDefinition]?
+    ) -> DisplayMathLayout {
+        let baseTenths = Int((baseFontSize * 10.0).rounded())
+        swiftMathLock.lock()
+        let versionKey = macrosVersionKeyUnlocked(for: macros)
+        let resolvedKey = SwiftMathCacheKey(
+            latex: latex,
+            macrosVersion: versionKey,
+            fontSizeTenths: baseTenths,
+            isDisplayStyle: isDisplayStyle
+        )
+        if let cached = resolvedLayoutCache[resolvedKey] {
+            swiftMathLock.unlock()
+            return cached
+        }
+        if let nativeBox = layoutWithSwiftMathUnlocked(
+            latex,
+            baseFontSize: baseFontSize,
+            isDisplayStyle: isDisplayStyle,
+            macros: macros,
+            versionKey: versionKey
+        ) {
+            let isStandalone =
+                isDisplayStyle && nativeBox.width == 0 && LaTeXMacroExpander.isStandaloneMacroDefinitionBlock(latex)
+            let layout = DisplayMathLayout(box: nativeBox, isStandaloneMacroDefinitionBlock: isStandalone)
+            storeResolvedLayoutUnlocked(layout, for: resolvedKey)
+            swiftMathLock.unlock()
+            return layout
+        }
+        var effectiveMacros = activeDocumentMacros
+        if let macros {
+            for (k, v) in macros { effectiveMacros[k] = v }
+        }
+        let (expanded, tag) = LaTeXMacroExpander.expandAndNormalize(latex, macros: effectiveMacros)
+        let isStandalone =
+            isDisplayStyle && expanded.isEmpty && LaTeXMacroExpander.isStandaloneMacroDefinitionBlock(latex)
+        swiftMathLock.unlock()
+
+        let fallbackBox = layoutWithFallbackEngine(
+            expanded.isEmpty ? latex : expanded,
+            baseFontSize: baseFontSize,
+            isDisplayStyle: isDisplayStyle,
+            tag: tag
+        )
+        let layout = DisplayMathLayout(
+            box: fallbackBox,
+            isStandaloneMacroDefinitionBlock: isStandalone
+                || (isDisplayStyle && fallbackBox.width == 0 && LaTeXMacroExpander.isStandaloneMacroDefinitionBlock(latex))
+        )
+        swiftMathLock.lock()
+        storeResolvedLayoutUnlocked(layout, for: resolvedKey)
+        swiftMathLock.unlock()
+        return layout
+    }
+
+    private static func storeResolvedLayoutUnlocked(_ layout: DisplayMathLayout, for key: SwiftMathCacheKey) {
+        if resolvedLayoutCache.count >= 1024 {
+            resolvedLayoutCache.removeAll(keepingCapacity: true)
+        }
+        resolvedLayoutCache[key] = layout
     }
 
     public static func layoutWithSwiftMath(
@@ -42,48 +179,56 @@ extension LaTeXMathRenderer {
     ) -> MathLayoutBox? {
         swiftMathLock.lock()
         defer { swiftMathLock.unlock() }
+        let versionKey = macrosVersionKeyUnlocked(for: macros)
+        return layoutWithSwiftMathUnlocked(
+            latex,
+            baseFontSize: baseFontSize,
+            isDisplayStyle: isDisplayStyle,
+            macros: macros,
+            versionKey: versionKey
+        )
+    }
 
+    private static func layoutWithSwiftMathUnlocked(
+        _ latex: String,
+        baseFontSize: CGFloat,
+        isDisplayStyle: Bool,
+        macros: [String: LaTeXMacroDefinition]?,
+        versionKey: UInt64
+    ) -> MathLayoutBox? {
         registerExtraSymbolsUnlocked()
         let effectiveSize = isDisplayStyle ? baseFontSize * 1.18 : baseFontSize * 1.04
         let sizeTenths = Int((effectiveSize * 10.0).rounded())
-
-        if macros == nil {
-            let rawKey = SwiftMathCacheKey(
-                latex: latex,
-                macrosVersion: activeMacrosVersion,
-                fontSizeTenths: sizeTenths,
-                isDisplayStyle: isDisplayStyle
-            )
-            if let cached = layoutCache[rawKey] {
-                return cached
-            }
+        let cacheKey = SwiftMathCacheKey(
+            latex: latex,
+            macrosVersion: versionKey,
+            fontSizeTenths: sizeTenths,
+            isDisplayStyle: isDisplayStyle
+        )
+        if let cached = layoutCache[cacheKey] {
+            return cached
         }
 
         var effectiveMacros = activeDocumentMacros
         if let macros {
             for (k, v) in macros { effectiveMacros[k] = v }
-            LaTeXMacroExpander.registerCustomOperators(from: effectiveMacros)
         }
+        registerCustomOperatorsUnlocked(from: effectiveMacros)
 
         let (expanded, tag) = LaTeXMacroExpander.expandAndNormalize(latex, macros: effectiveMacros)
         if expanded.isEmpty {
-            return MathLayoutBox(
+            let emptyBox = MathLayoutBox(
                 width: 0,
                 ascent: baseFontSize * 0.72,
                 descent: baseFontSize * 0.22,
                 tag: tag,
                 usesNativeOpenTypeMath: true
             ) { _, _, _ in }
-        }
-
-        let cacheKey = SwiftMathCacheKey(
-            latex: macros == nil ? latex : expanded,
-            macrosVersion: macros == nil ? activeMacrosVersion : 0,
-            fontSizeTenths: sizeTenths,
-            isDisplayStyle: isDisplayStyle
-        )
-        if macros != nil, let cached = layoutCache[cacheKey] {
-            return cached
+            if layoutCache.count >= 512 {
+                layoutCache.removeAll(keepingCapacity: true)
+            }
+            layoutCache[cacheKey] = emptyBox
+            return emptyBox
         }
 
         let box: MathLayoutBox

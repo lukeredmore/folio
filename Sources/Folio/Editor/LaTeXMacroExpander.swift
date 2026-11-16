@@ -1,5 +1,4 @@
 import Foundation
-import SwiftMath
 
 public struct LaTeXMacroDefinition: Equatable, Hashable, Sendable {
     public let name: String
@@ -44,6 +43,8 @@ public struct LaTeXMacroDefinition: Equatable, Hashable, Sendable {
 }
 
 public enum LaTeXMacroExpander {
+    public static let maxExpandedUTF8Bytes = 32_768
+
     public static func extractDocumentMacros(from documentText: String) -> [String: LaTeXMacroDefinition] {
         var macros: [String: LaTeXMacroDefinition] = [:]
         _ = consumeDefinitions(in: documentText, into: &macros)
@@ -51,7 +52,7 @@ public enum LaTeXMacroExpander {
     }
 
     public static func isStandaloneMacroDefinitionBlock(_ text: String) -> Bool {
-        var stripped = stripComments(from: text).trimmingCharacters(in: .whitespacesAndNewlines)
+        var stripped = LaTeXLexer.stripComments(from: text).trimmingCharacters(in: .whitespacesAndNewlines)
         if stripped.hasPrefix("$$") && stripped.hasSuffix("$$") && stripped.count >= 4 {
             stripped = String(stripped.dropFirst(2).dropLast(2)).trimmingCharacters(in: .whitespacesAndNewlines)
         }
@@ -68,17 +69,22 @@ public enum LaTeXMacroExpander {
     ) -> (expandedLatex: String, tag: String?) {
         var localMacros = macros
         let prevCount = localMacros.count
-        var working = stripComments(from: latex)
+        var working = LaTeXLexer.stripComments(from: latex)
         working = consumeDefinitions(in: working, into: &localMacros)
         if localMacros.count != prevCount {
             registerCustomOperators(from: localMacros)
         }
 
-        if !localMacros.isEmpty && working.contains("\\") {
+        if !localMacros.isEmpty && working.contains("\\") && working.utf8.count <= maxExpandedUTF8Bytes {
             for _ in 0..<16 {
-                let next = expandMacrosOnce(in: working, macros: localMacros)
-                if next == working { break }
+                let (next, didHitLimit) = expandMacrosOnce(
+                    in: working,
+                    macros: localMacros,
+                    maxUTF8Bytes: maxExpandedUTF8Bytes
+                )
+                let unchanged = (next == working)
                 working = next
+                if didHitLimit || unchanged { break }
             }
         }
 
@@ -88,42 +94,7 @@ public enum LaTeXMacroExpander {
     }
 
     static func registerCustomOperators(from macros: [String: LaTeXMacroDefinition]) {
-        for definition in macros.values {
-            guard let opText = definition.operatorText else { continue }
-            let symbolName =
-                definition.name.hasPrefix("\\")
-                ? String(definition.name.dropFirst())
-                : definition.name
-            guard !symbolName.isEmpty else { continue }
-            MTMathAtomFactory.add(
-                latexSymbol: symbolName,
-                value: MTMathAtomFactory.operatorWithName(opText, limits: definition.operatorHasLimits)
-            )
-        }
-    }
-
-    private static func stripComments(from text: String) -> String {
-        guard text.contains("%") else { return text }
-        let lines = text.split(separator: "\n", omittingEmptySubsequences: false)
-        return lines.map { line -> String in
-            let chars = Array(line)
-            var idx = 0
-            while idx < chars.count {
-                if chars[idx] == "%" {
-                    var backslashes = 0
-                    var prev = idx - 1
-                    while prev >= 0 && chars[prev] == "\\" {
-                        backslashes += 1
-                        prev -= 1
-                    }
-                    if backslashes % 2 == 0 {
-                        return String(chars[0..<idx])
-                    }
-                }
-                idx += 1
-            }
-            return String(line)
-        }.joined(separator: "\n")
+        LaTeXMathRenderer.registerCustomOperators(from: macros)
     }
 
     private static func consumeDefinitions(

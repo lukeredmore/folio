@@ -224,6 +224,7 @@ extension HybridMarkdownTextView {
                     return comment
                 }
             }
+            return nil
         }
 
         let charIndex = characterIndexForInsertion(at: point)

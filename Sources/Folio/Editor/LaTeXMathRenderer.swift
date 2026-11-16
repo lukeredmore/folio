@@ -56,8 +56,32 @@ private struct MathFontCacheKey: Hashable {
 }
 
 public final class LaTeXMathRenderer {
+    public struct DisplayMathLayout {
+        public let box: MathLayoutBox
+        public let isStandaloneMacroDefinitionBlock: Bool
+
+        public init(box: MathLayoutBox, isStandaloneMacroDefinitionBlock: Bool) {
+            self.box = box
+            self.isStandaloneMacroDefinitionBlock = isStandaloneMacroDefinitionBlock
+        }
+    }
+
     private static let fontCacheLock = NSLock()
     nonisolated(unsafe) private static var fallbackFontCache: [MathFontCacheKey: NSFont] = [:]
+
+    /// Returns cached 2D display-math layout and standalone macro-block classification for draw passes.
+    public static func layoutDisplayMath(
+        _ latex: String,
+        baseFontSize: CGFloat,
+        macros: [String: LaTeXMacroDefinition]? = nil
+    ) -> DisplayMathLayout {
+        cachedMathLayout(
+            latex,
+            baseFontSize: baseFontSize,
+            isDisplayStyle: true,
+            macros: macros
+        )
+    }
 
     /// Executes 2D math parsing and OpenType MATH layout via SwiftMath, falling back to the Rust core engine if incomplete.
     public static func layoutLatex(
@@ -66,25 +90,12 @@ public final class LaTeXMathRenderer {
         isDisplayStyle: Bool,
         macros: [String: LaTeXMacroDefinition]? = nil
     ) -> MathLayoutBox {
-        if let nativeBox = layoutWithSwiftMath(
+        cachedMathLayout(
             latex,
             baseFontSize: baseFontSize,
             isDisplayStyle: isDisplayStyle,
             macros: macros
-        ) {
-            return nativeBox
-        }
-        var effectiveMacros = currentDocumentMacros()
-        if let macros {
-            for (k, v) in macros { effectiveMacros[k] = v }
-        }
-        let (expanded, tag) = LaTeXMacroExpander.expandAndNormalize(latex, macros: effectiveMacros)
-        return layoutWithFallbackEngine(
-            expanded.isEmpty ? latex : expanded,
-            baseFontSize: baseFontSize,
-            isDisplayStyle: isDisplayStyle,
-            tag: tag
-        )
+        ).box
     }
 
     public static func layoutWithFallbackEngine(

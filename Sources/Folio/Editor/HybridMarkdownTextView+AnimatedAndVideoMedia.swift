@@ -1,8 +1,11 @@
 import AppKit
-import AVFoundation
-import AVKit
 
 extension HybridMarkdownTextView {
+
+    struct ResolvedMediaCardLayout {
+        let rect: NSRect
+        let image: NSImage?
+    }
 
     func animatedMediaFrame(for rawSource: String, baseDirectoryURL: URL?, isDark: Bool) -> NSImage? {
         let result = FolioMediaImageCache.shared.animatedFrame(
@@ -11,45 +14,23 @@ extension HybridMarkdownTextView {
             isDark: isDark
         )
         if result.isAnimated {
-            ensureGIFAnimationTimerRunning()
+            inlineMediaController.ensureGIFAnimationTimerRunning(in: self)
         }
         return result.image
     }
 
     func ensureGIFAnimationTimerRunning() {
-        guard gifAnimationTimer == nil, !isSourceCodeMode else { return }
-        let timer = Timer(timeInterval: 1.0 / 24.0, repeats: true) { [weak self] _ in
-            MainActor.assumeIsolated { self?.tickGIFAnimationTimer() }
-        }
-        RunLoop.main.add(timer, forMode: .common)
-        gifAnimationTimer = timer
+        inlineMediaController.ensureGIFAnimationTimerRunning(in: self)
     }
 
     func stopGIFAnimationTimer() {
-        gifAnimationTimer?.invalidate()
-        gifAnimationTimer = nil
-    }
-
-    private func tickGIFAnimationTimer() {
-        guard !isSourceCodeMode else {
-            stopGIFAnimationTimer()
-            return
-        }
-        let hasAnimatedDecoration = lineDecorations.contains { dec in
-            guard case let .imageRendered(url, _, _, _, _, baseDir, _) = dec.kind else { return false }
-            return FolioMediaImageCache.shared.isAnimatedMedia(for: url, baseDirectoryURL: baseDir, isDark: currentTheme.isDark)
-        }
-        if hasAnimatedDecoration {
-            needsDisplay = true
-        } else {
-            stopGIFAnimationTimer()
-        }
+        inlineMediaController.stopGIFAnimationTimer()
     }
 
     // MARK: - Inline Video Playback
 
     public var isInlineVideoPlaying: Bool {
-        activeInlineVideoContainer != nil && activeInlineVideoPlayer != nil
+        inlineMediaController.isVideoPlaying
     }
 
     func handleVideoClickIfNeeded(at point: NSPoint) -> Bool {
@@ -57,12 +38,18 @@ extension HybridMarkdownTextView {
         let origin = self.textContainerOrigin
         let fullContentWidth = self.bounds.width - origin.x * 2
         let contentWidth = proseColumnWidth > 0 ? proseColumnWidth : fullContentWidth
+        let probeRect = NSRect(x: point.x - 16.0, y: point.y - 16.0, width: 32.0, height: 32.0)
+        let visibleChars = visibleDecorationCharacterRange(for: probeRect, margin: 64.0)
         var imageXOffsetByLineLocation: [Int: CGFloat] = [:]
 
         for dec in lineDecorations {
+            if let visibleChars, !Self.decorationSpan(dec.lineRange, touches: visibleChars) {
+                continue
+            }
             guard case let .imageRendered(url, _, fullRange, _, _, baseDirectoryURL, _) = dec.kind,
-                let hitRect = mediaDecorationHitRect(
+                let layout = resolveMediaCardLayout(
                     for: dec,
+                    advanceAnimation: false,
                     layoutManager: layoutManager,
                     origin: origin,
                     contentWidth: contentWidth,
@@ -71,21 +58,18 @@ extension HybridMarkdownTextView {
             else {
                 continue
             }
-            guard hitRect.contains(point),
+            guard layout.rect.contains(point),
                 FolioMediaImageCache.shared.isKnownVideo(for: url, baseDirectoryURL: baseDirectoryURL)
             else {
                 continue
             }
-            if activeInlineVideoURL == url && activeInlineVideoRange == fullRange {
-                stopInlineVideoPlayback()
-            } else {
-                startInlineVideoPlayback(
-                    url: url,
-                    fullRange: fullRange,
-                    baseDirectoryURL: baseDirectoryURL,
-                    frame: hitRect
-                )
-            }
+            inlineMediaController.toggleOrStartVideo(
+                url: url,
+                fullRange: fullRange,
+                baseDirectoryURL: baseDirectoryURL,
+                frame: layout.rect,
+                in: self
+            )
             return true
         }
         return false
@@ -97,117 +81,44 @@ extension HybridMarkdownTextView {
         baseDirectoryURL: URL?,
         frame: NSRect
     ) {
-        stopInlineVideoPlayback()
-        guard
-            let playableURL = FolioMediaImageCache.shared.playableVideoURL(
-                for: url,
-                baseDirectoryURL: baseDirectoryURL
-            )
-        else {
-            return
-        }
-
-        let container = NSView(frame: frame)
-        container.wantsLayer = true
-        container.layer?.cornerRadius = 6.0
-        container.layer?.masksToBounds = true
-        container.layer?.backgroundColor = NSColor.black.cgColor
-
-        let player = AVPlayer(url: playableURL)
-        let playerView = AVPlayerView(frame: container.bounds)
-        playerView.autoresizingMask = [.width, .height]
-        playerView.controlsStyle = .inline
-        playerView.player = player
-        container.addSubview(playerView)
-
-        let closeButton = NSButton(
-            frame: NSRect(
-                x: max(4, container.bounds.width - 28),
-                y: max(4, container.bounds.height - 28),
-                width: 22,
-                height: 22
-            )
+        inlineMediaController.startVideoPlayback(
+            url: url,
+            fullRange: fullRange,
+            baseDirectoryURL: baseDirectoryURL,
+            frame: frame,
+            in: self
         )
-        closeButton.autoresizingMask = [.minXMargin, .minYMargin]
-        closeButton.bezelStyle = .circular
-        closeButton.isBordered = false
-        closeButton.wantsLayer = true
-        closeButton.layer?.cornerRadius = 11.0
-        closeButton.layer?.backgroundColor = NSColor.black.withAlphaComponent(0.65).cgColor
-        closeButton.title = "✕"
-        closeButton.font = NSFont.systemFont(ofSize: 11, weight: .bold)
-        closeButton.contentTintColor = .white
-        closeButton.target = self
-        closeButton.action = #selector(closeActiveInlineVideo(_:))
-        container.addSubview(closeButton)
-
-        addSubview(container)
-        activeInlineVideoContainer = container
-        activeInlineVideoPlayer = player
-        activeInlineVideoURL = url
-        activeInlineVideoRange = fullRange
-        player.play()
-        needsDisplay = true
     }
 
     @objc public func closeActiveInlineVideo(_ sender: Any?) {
-        stopInlineVideoPlayback()
+        inlineMediaController.stopVideoPlayback()
     }
 
     public func stopInlineVideoPlayback() {
-        activeInlineVideoPlayer?.pause()
-        activeInlineVideoPlayer = nil
-        activeInlineVideoContainer?.removeFromSuperview()
-        activeInlineVideoContainer = nil
-        activeInlineVideoURL = nil
-        activeInlineVideoRange = nil
-        needsDisplay = true
+        inlineMediaController.stopVideoPlayback()
     }
 
     func updateInlineVideoFrameIfActive(for url: String, fullRange: NSRange, drawRect: NSRect) {
-        guard activeInlineVideoURL == url,
-            activeInlineVideoRange == fullRange,
-            let container = activeInlineVideoContainer
-        else {
-            return
-        }
-        if container.frame != drawRect {
-            container.frame = drawRect
-        }
+        inlineMediaController.updateVideoFrameIfActive(for: url, fullRange: fullRange, drawRect: drawRect)
     }
 
     func syncInlineVideoOverlayWithDecorations() {
-        guard let activeURL = activeInlineVideoURL,
-            let activeRange = activeInlineVideoRange
-        else {
-            return
-        }
-        guard !isSourceCodeMode else {
-            stopInlineVideoPlayback()
-            return
-        }
-        let stillVisible = lineDecorations.contains { dec in
-            guard case let .imageRendered(url, _, fullRange, _, _, _, _) = dec.kind else {
-                return false
-            }
-            return url == activeURL && fullRange == activeRange
-        }
-        if !stillVisible {
-            stopInlineVideoPlayback()
-        }
+        inlineMediaController.syncVideoOverlayWithDecorations(in: self)
     }
 
-    func mediaDecorationHitRect(
+    func resolveMediaCardLayout(
         for dec: LineDecoration,
+        glyphRange explicitGlyphRange: NSRange? = nil,
+        advanceAnimation: Bool,
         layoutManager: NSLayoutManager,
         origin: NSPoint,
         contentWidth: CGFloat,
         imageXOffsetByLineLocation: inout [Int: CGFloat]
-    ) -> NSRect? {
+    ) -> ResolvedMediaCardLayout? {
         guard case let .imageRendered(url, _, fullRange, explicitWidth, explicitHeight, baseDirectoryURL, _) = dec.kind else {
             return nil
         }
-        let glyphRange = layoutManager.glyphRange(forCharacterRange: dec.lineRange, actualCharacterRange: nil)
+        let glyphRange = explicitGlyphRange ?? layoutManager.glyphRange(forCharacterRange: dec.lineRange, actualCharacterRange: nil)
         guard glyphRange.location != NSNotFound else { return nil }
         let lineFrag = layoutManager.lineFragmentRect(forGlyphAt: glyphRange.location, effectiveRange: nil)
         let imgGlyphIdx = layoutManager.glyphIndexForCharacter(at: fullRange.location)
@@ -220,36 +131,69 @@ extension HybridMarkdownTextView {
         let startX = origin.x + max(glyphX, currentOffset)
         let remainingWidth = max(80.0, (origin.x + contentWidth) - startX)
 
-        let loadedImg = FolioMediaImageCache.shared.image(
-            for: url,
-            baseDirectoryURL: baseDirectoryURL,
-            isDark: currentTheme.isDark
-        )
+        let loadedImg =
+            advanceAnimation
+            ? animatedMediaFrame(for: url, baseDirectoryURL: baseDirectoryURL, isDark: currentTheme.isDark)
+            : FolioMediaImageCache.shared.image(for: url, baseDirectoryURL: baseDirectoryURL, isDark: currentTheme.isDark)
+
         if let img = loadedImg, img.size.width > 0, img.size.height > 0 {
             let intrinsicSize = img.size
             let aspect = intrinsicSize.height / max(1.0, intrinsicSize.width)
-            let targetW = explicitWidth ?? (explicitHeight.map { round($0 / max(0.01, aspect)) } ?? intrinsicSize.width)
-            let targetH = explicitHeight ?? (explicitWidth.map { round($0 * aspect) } ?? intrinsicSize.height)
+            let targetW: CGFloat
+            let targetH: CGFloat
+            if let ew = explicitWidth, let eh = explicitHeight {
+                targetW = ew
+                targetH = eh
+            } else if let ew = explicitWidth {
+                targetW = ew
+                targetH = round(ew * aspect)
+            } else if let eh = explicitHeight {
+                targetH = eh
+                targetW = round(eh / max(0.01, aspect))
+            } else {
+                targetW = intrinsicSize.width
+                targetH = intrinsicSize.height
+            }
             let maxDrawH = max(18.0, lineFrag.height - 6.0)
             let scale = min(1.0, min(remainingWidth / max(1.0, targetW), maxDrawH / max(1.0, targetH)))
             let drawW = targetW * scale
             let drawH = targetH * scale
             imageXOffsetByLineLocation[lineKey] = (startX - origin.x) + drawW + 8.0
-            return NSRect(
+            let rect = NSRect(
                 x: startX,
                 y: origin.y + lineFrag.minY + (lineFrag.height - drawH) * 0.5,
                 width: drawW,
                 height: drawH
             )
+            return ResolvedMediaCardLayout(rect: rect, image: img)
         }
+
         let cardWidth = min(remainingWidth, max(220.0, min(440.0, explicitWidth ?? 400.0)))
         let cardHeight = min(50.0, max(38.0, lineFrag.height - 6.0))
         imageXOffsetByLineLocation[lineKey] = (startX - origin.x) + cardWidth + 8.0
-        return NSRect(
+        let rect = NSRect(
             x: startX,
             y: origin.y + lineFrag.minY + (lineFrag.height - cardHeight) * 0.5,
             width: cardWidth,
             height: cardHeight
         )
+        return ResolvedMediaCardLayout(rect: rect, image: nil)
+    }
+
+    func mediaDecorationHitRect(
+        for dec: LineDecoration,
+        layoutManager: NSLayoutManager,
+        origin: NSPoint,
+        contentWidth: CGFloat,
+        imageXOffsetByLineLocation: inout [Int: CGFloat]
+    ) -> NSRect? {
+        resolveMediaCardLayout(
+            for: dec,
+            advanceAnimation: false,
+            layoutManager: layoutManager,
+            origin: origin,
+            contentWidth: contentWidth,
+            imageXOffsetByLineLocation: &imageXOffsetByLineLocation
+        )?.rect
     }
 }

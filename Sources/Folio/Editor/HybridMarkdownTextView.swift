@@ -1,5 +1,4 @@
 import AppKit
-import AVFoundation
 import FolioEngineFFI
 import SwiftUI
 
@@ -150,24 +149,27 @@ public final class HybridMarkdownTextView: NSTextView {
     public var isSourceCodeMode: Bool = false
     var activeHoveredPillRange: NSRange?
 
+    public static let taskCheckboxStateAttributeKey = NSAttributedString.Key("FolioTaskCheckboxState")
+
     public var onToggleCheckboxAtCharacterIndex: ((Int) -> Void)?
     public var mouseSelectionAnchorCharIndex: Int?
     public var detectedSelectionDirection: SelectionDirection = .forward
     var mediaHoverTrackingArea: NSTrackingArea?
-    var gifAnimationTimer: Timer?
-    var activeInlineVideoContainer: NSView?
-    public internal(set) var activeInlineVideoURL: String?
-    var activeInlineVideoRange: NSRange?
-    var activeInlineVideoPlayer: AVPlayer?
-    /// Web views over the rendered HTML blocks near the visible area, in document order.
-    var htmlBlockOverlays: [HTMLBlockWebView] = []
-    /// The web view that holds the current HTML block selection, if any.
-    weak var htmlBlockSelectionOwner: HTMLBlockWebView?
-    var isHTMLBlockOverlaySyncScheduled = false
-    var isHTMLBlockHighlightPushScheduled = false
-    var isApplyingHTMLBlockSelection = false
-    var pendingHTMLBlockRestyle: Task<Void, Never>?
-    var pendingHTMLBlockSourceToggle: Task<Void, Never>?
+    let inlineMediaController = InlineMediaController()
+    let htmlBlockController = HTMLBlockOverlayController()
+
+    public var activeInlineVideoURL: String? {
+        inlineMediaController.activeVideoURL
+    }
+
+    var htmlBlockOverlays: [HTMLBlockWebView] {
+        htmlBlockController.overlays
+    }
+
+    var pendingHTMLBlockSourceToggle: Task<Void, Never>? {
+        get { htmlBlockController.pendingSourceToggle }
+        set { htmlBlockController.pendingSourceToggle = newValue }
+    }
 
     public func applyProgrammaticDocumentText(_ newText: String, selectedRange: NSRange) {
         let coord = editorCoordinator
@@ -407,12 +409,37 @@ public final class HybridMarkdownTextView: NSTextView {
         )
     }
 
-    @objc func handleSelectCodeFenceLanguage(_ sender: NSMenuItem) {
-        guard let payload = sender.representedObject as? CodeFenceLanguageActionPayload else { return }
-        let nsStr = self.string as NSString
-        guard payload.lineRange.location < nsStr.length else { return }
+    static func updatedCodeFenceLine(_ lineContent: String, languageId: String) -> String {
+        var index = lineContent.startIndex
+        while index < lineContent.endIndex {
+            let ch = lineContent[index]
+            if ch == " " || ch == "\t" || ch == ">" {
+                index = lineContent.index(after: index)
+            } else {
+                break
+            }
+        }
+        let prefix = lineContent[..<index]
+        var fence = "```"
+        if index < lineContent.endIndex, lineContent[index] == "`" || lineContent[index] == "~" {
+            let marker = lineContent[index]
+            var fenceEnd = index
+            while fenceEnd < lineContent.endIndex && lineContent[fenceEnd] == marker {
+                fenceEnd = lineContent.index(after: fenceEnd)
+            }
+            let run = String(lineContent[index..<fenceEnd])
+            if run.count >= 3 {
+                fence = run
+            }
+        }
+        return "\(prefix)\(fence)\(languageId)"
+    }
 
-        let safeLineRange = nsStr.lineRange(for: NSRange(location: payload.lineRange.location, length: 0))
+    func applyCodeFenceLanguage(_ languageId: String, toLineAt location: Int) {
+        let nsStr = self.string as NSString
+        guard location >= 0, location < nsStr.length else { return }
+
+        let safeLineRange = nsStr.lineRange(for: NSRange(location: location, length: 0))
         var contentEnd = NSMaxRange(safeLineRange)
         while contentEnd > safeLineRange.location {
             let ch = nsStr.character(at: contentEnd - 1)
@@ -424,12 +451,16 @@ public final class HybridMarkdownTextView: NSTextView {
         }
         let contentRange = NSRange(location: safeLineRange.location, length: contentEnd - safeLineRange.location)
         let currentLineContent = nsStr.substring(with: contentRange)
-        let leadingWhitespace = currentLineContent.prefix(while: { $0 == " " || $0 == "\t" })
-        let newLineContent = "\(leadingWhitespace)```\(payload.languageId)"
+        let newLineContent = Self.updatedCodeFenceLine(currentLineContent, languageId: languageId)
 
         if shouldChangeText(in: contentRange, replacementString: newLineContent) {
             replaceCharacters(in: contentRange, with: newLineContent)
             didChangeText()
         }
+    }
+
+    @objc func handleSelectCodeFenceLanguage(_ sender: NSMenuItem) {
+        guard let payload = sender.representedObject as? CodeFenceLanguageActionPayload else { return }
+        applyCodeFenceLanguage(payload.languageId, toLineAt: payload.lineRange.location)
     }
 }

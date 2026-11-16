@@ -104,6 +104,21 @@ public struct LaTeXDocumentIndex {
 }
 
 enum LaTeXDocumentIndexer {
+    struct PreambleScanCheckpoint {
+        let prefix: String
+        let prefixUTF16Length: Int
+        let index: LaTeXDocumentIndex
+        let masterDirectives: [LaTeXMasterDirective]
+        let signature: LaTeXProjectSignature
+        let secCounters: [Int]
+        let eqCounter: Int
+        let thmCounters: [String: Int]
+        let figCounter: Int
+        let tabCounter: Int
+        let currentContext: (kind: String, number: String, title: String, loc: Int)
+        let preambleMacros: [String: LaTeXMacroDefinition]
+    }
+
     static let theoremEnvironments: [String: String] = [
         "theorem": "Theorem",
         "lemma": "Lemma",
@@ -127,26 +142,76 @@ enum LaTeXDocumentIndexer {
         nsString: NSString,
         project: LaTeXProjectSnapshot = .empty
     ) -> LaTeXDocumentIndex {
-        var idx = LaTeXDocumentIndex()
-        idx.inputURLs = project.inputURLs
-        var masterDirectives: [LaTeXMasterDirective] = []
+        buildIndexWithCheckpoint(
+            string: string,
+            nsString: nsString,
+            project: project,
+            sourceCodeMode: false,
+            reusableCheckpoint: nil
+        ).index
+    }
+
+    static func buildIndexWithCheckpoint(
+        string: String,
+        nsString: NSString,
+        project: LaTeXProjectSnapshot,
+        sourceCodeMode: Bool,
+        reusableCheckpoint: PreambleScanCheckpoint?
+    ) -> (index: LaTeXDocumentIndex, checkpoint: PreambleScanCheckpoint?) {
+        _ = string
         let fullLength = nsString.length
-        var charIndex = 0
-        var inPreamble = true
-        var secCounters = [0, 0, 0, 0] // section, subsection, subsubsection, paragraph
-        var eqCounter = 0
-        var thmCounters: [String: Int] = [:]
-        var figCounter = 0
-        var tabCounter = 0
-        var currentContext: (kind: String, number: String, title: String, loc: Int) = ("Section", "1", "Document", 0)
-        var signature = LaTeXProjectSignature()
+        var idx: LaTeXDocumentIndex
+        var masterDirectives: [LaTeXMasterDirective]
+        var charIndex: Int
+        var inPreamble: Bool
+        var secCounters: [Int]
+        var eqCounter: Int
+        var thmCounters: [String: Int]
+        var figCounter: Int
+        var tabCounter: Int
+        var currentContext: (kind: String, number: String, title: String, loc: Int)
+        var signature: LaTeXProjectSignature
+        var capturedCheckpoint: PreambleScanCheckpoint?
+
+        if let cp = reusableCheckpoint,
+            fullLength >= cp.prefixUTF16Length,
+            nsString.substring(to: cp.prefixUTF16Length) == cp.prefix
+        {
+            idx = cp.index
+            idx.inputURLs = project.inputURLs
+            masterDirectives = cp.masterDirectives
+            charIndex = cp.prefixUTF16Length
+            inPreamble = false
+            secCounters = cp.secCounters
+            eqCounter = cp.eqCounter
+            thmCounters = cp.thmCounters
+            figCounter = cp.figCounter
+            tabCounter = cp.tabCounter
+            currentContext = cp.currentContext
+            signature = cp.signature
+            capturedCheckpoint = cp
+        } else {
+            idx = LaTeXDocumentIndex()
+            idx.inputURLs = project.inputURLs
+            masterDirectives = []
+            charIndex = 0
+            inPreamble = true
+            secCounters = [0, 0, 0, 0]
+            eqCounter = 0
+            thmCounters = [:]
+            figCounter = 0
+            tabCounter = 0
+            currentContext = ("Section", "1", "Document", 0)
+            signature = LaTeXProjectSignature()
+        }
 
         while charIndex < fullLength {
             let lineRange = nsString.lineRange(for: NSRange(location: charIndex, length: 0))
             let line = nsString.substring(with: lineRange)
             let trimmed = line.trimmingCharacters(in: .whitespacesAndNewlines)
+            let wasInPreamble = inPreamble
 
-            if trimmed.hasPrefix("\\begin{document}") {
+            if inPreamble && trimmed.hasPrefix("\\begin{document}") {
                 idx.beginDocumentLineRange = lineRange
                 if lineRange.location > 0 {
                     idx.preambleRange = NSRange(location: 0, length: lineRange.location)
@@ -216,12 +281,36 @@ enum LaTeXDocumentIndexer {
                 )
             }
 
-            charIndex = NSMaxRange(lineRange)
+            let nextIndex = NSMaxRange(lineRange)
+            if wasInPreamble && !inPreamble && capturedCheckpoint == nil {
+                let prefix = nsString.substring(to: nextIndex)
+                if LaTeXLexer.hasBalancedBraces(prefix) {
+                    let preambleMacros =
+                        (!sourceCodeMode && prefix.contains("\\"))
+                        ? LaTeXMacroExpander.extractDocumentMacros(from: prefix)
+                        : [:]
+                    capturedCheckpoint = PreambleScanCheckpoint(
+                        prefix: prefix,
+                        prefixUTF16Length: nextIndex,
+                        index: idx,
+                        masterDirectives: masterDirectives,
+                        signature: signature,
+                        secCounters: secCounters,
+                        eqCounter: eqCounter,
+                        thmCounters: thmCounters,
+                        figCounter: figCounter,
+                        tabCounter: tabCounter,
+                        currentContext: currentContext,
+                        preambleMacros: preambleMacros
+                    )
+                }
+            }
+            charIndex = nextIndex
         }
 
         signature.masterDirective = LaTeXMasterDirective.preferred(masterDirectives)
         idx.projectSignature = signature
         idx.bibEntries = project.bibEntries
-        return idx
+        return (idx, capturedCheckpoint)
     }
 }

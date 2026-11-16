@@ -3,6 +3,61 @@ import SwiftUI
 
 extension HybridMarkdownTextView {
 
+    func drawDiagramPlaceholder(in rect: NSRect, key: DiagramImageRenderer.Key, dimFactor: CGFloat) {
+        let message = DiagramImageRenderer.shared.isPending(key) ? "Rendering diagram…" : "Diagram could not be rendered"
+        let attrs: [NSAttributedString.Key: Any] = [
+            .font: NSFont.systemFont(ofSize: 12, weight: .medium),
+            .foregroundColor: currentTheme.secondaryTextNSColor.withAlphaComponent(0.8 * dimFactor)
+        ]
+        let text = message as NSString
+        let size = text.size(withAttributes: attrs)
+        text.draw(at: NSPoint(x: rect.midX - size.width / 2, y: rect.midY - size.height / 2), withAttributes: attrs)
+    }
+
+    private func drawDiagramBlockCard(
+        key: DiagramImageRenderer.Key,
+        badgeTitle: String,
+        showsExpandButton: Bool,
+        fullBlockRange: NSRange,
+        dimFactor: CGFloat
+    ) {
+        guard let cardRect = diagramCardRect(for: fullBlockRange) else { return }
+        currentTheme.codeBackgroundNSColor.withAlphaComponent(dimFactor).setFill()
+        NSBezierPath(roundedRect: cardRect, xRadius: 8.0, yRadius: 8.0).fill()
+
+        let img = DiagramImageRenderer.shared.image(for: key, prioritize: true)
+        let innerRect = cardRect.insetBy(dx: 16.0, dy: 12.0)
+        if let img, img.size.width > 0, img.size.height > 0, innerRect.width > 10, innerRect.height > 10 {
+            let intrinsicSize = img.size
+            let scale = min(1.0, min(innerRect.width / intrinsicSize.width, innerRect.height / intrinsicSize.height))
+            let drawW = intrinsicSize.width * scale
+            let drawH = intrinsicSize.height * scale
+            let drawRect = NSRect(
+                x: innerRect.midX - drawW * 0.5,
+                y: innerRect.midY - drawH * 0.5,
+                width: drawW,
+                height: drawH
+            )
+            DiagramImageRenderer.drawCached(img, in: drawRect, fraction: dimFactor)
+        } else {
+            drawDiagramPlaceholder(in: innerRect, key: key, dimFactor: dimFactor)
+        }
+
+        if showsExpandButton {
+            drawDiagramExpandButton(in: cardRect, dimFactor: dimFactor)
+        }
+        let badgeAttrs: [NSAttributedString.Key: Any] = [
+            .font: NSFont.monospacedSystemFont(ofSize: 9.5, weight: .semibold),
+            .foregroundColor: currentTheme.secondaryTextNSColor.withAlphaComponent(dimFactor * 0.85)
+        ]
+        let badgeStr = badgeTitle as NSString
+        let badgeSize = badgeStr.size(withAttributes: badgeAttrs)
+        badgeStr.draw(
+            at: NSPoint(x: cardRect.maxX - badgeSize.width - 10.0, y: cardRect.minY + 6.0),
+            withAttributes: badgeAttrs
+        )
+    }
+
     func drawMediaAndBlockDecoration(
         _ dec: LineDecoration,
         glyphRange: NSRange,
@@ -14,145 +69,53 @@ extension HybridMarkdownTextView {
     ) {
         switch dec.kind {
         case let .mermaidBlockRendered(mermaidSource, fullBlockRange, dimFactor):
-            let blockGlyphs = layoutManager.glyphRange(forCharacterRange: fullBlockRange, actualCharacterRange: nil)
-            guard blockGlyphs.location != NSNotFound else { return }
-            var blockRect = layoutManager.boundingRect(forGlyphRange: blockGlyphs, in: textContainer)
-            blockRect.origin.x = origin.x
-            blockRect.origin.y += origin.y
-            blockRect.size.width = contentWidth
-
-            let cardRect = blockRect.insetBy(dx: 0, dy: 3)
-            currentTheme.codeBackgroundNSColor.withAlphaComponent(dimFactor).setFill()
-            NSBezierPath(roundedRect: cardRect, xRadius: 8.0, yRadius: 8.0).fill()
-
-            let diagramKey = DiagramImageRenderer.Key(kind: .mermaid(isDark: currentTheme.isDark), source: mermaidSource)
-            let img = DiagramImageRenderer.shared.image(for: diagramKey, prioritize: true)
-            let innerRect = cardRect.insetBy(dx: 16.0, dy: 12.0)
-            if let img = img, img.size.width > 0, img.size.height > 0, innerRect.width > 10, innerRect.height > 10 {
-                let intrinsicSize = img.size
-                let scale = min(1.0, min(innerRect.width / intrinsicSize.width, innerRect.height / intrinsicSize.height))
-                let drawW = intrinsicSize.width * scale
-                let drawH = intrinsicSize.height * scale
-                let drawRect = NSRect(
-                    x: innerRect.midX - drawW * 0.5,
-                    y: innerRect.midY - drawH * 0.5,
-                    width: drawW,
-                    height: drawH
-                )
-                DiagramImageRenderer.drawCached(img, in: drawRect, fraction: dimFactor)
-            } else {
-                drawDiagramPlaceholder(in: innerRect, key: diagramKey, dimFactor: dimFactor)
-            }
-
-            // Draw subtle "MERMAID" badge in top-right corner
-            let badgeAttrs: [NSAttributedString.Key: Any] = [
-                .font: NSFont.monospacedSystemFont(ofSize: 9.5, weight: .semibold),
-                .foregroundColor: currentTheme.secondaryTextNSColor.withAlphaComponent(dimFactor * 0.85)
-            ]
-            drawDiagramExpandButton(in: cardRect, dimFactor: dimFactor)
-            let badgeStr = "MERMAID" as NSString
-            let badgeSize = badgeStr.size(withAttributes: badgeAttrs)
-            badgeStr.draw(
-                at: NSPoint(x: cardRect.maxX - badgeSize.width - 10.0, y: cardRect.minY + 6.0),
-                withAttributes: badgeAttrs
+            drawDiagramBlockCard(
+                key: DiagramImageRenderer.Key(kind: .mermaid(isDark: currentTheme.isDark), source: mermaidSource),
+                badgeTitle: "MERMAID",
+                showsExpandButton: true,
+                fullBlockRange: fullBlockRange,
+                dimFactor: dimFactor
             )
 
         case let .svgBlockRendered(svgSource, fullBlockRange, dimFactor):
-            let blockGlyphs = layoutManager.glyphRange(forCharacterRange: fullBlockRange, actualCharacterRange: nil)
-            guard blockGlyphs.location != NSNotFound else { return }
-            var blockRect = layoutManager.boundingRect(forGlyphRange: blockGlyphs, in: textContainer)
-            blockRect.origin.x = origin.x
-            blockRect.origin.y += origin.y
-            blockRect.size.width = contentWidth
+            drawDiagramBlockCard(
+                key: DiagramImageRenderer.Key(kind: .svg, source: svgSource),
+                badgeTitle: "SVG",
+                showsExpandButton: false,
+                fullBlockRange: fullBlockRange,
+                dimFactor: dimFactor
+            )
 
-            let cardRect = blockRect.insetBy(dx: 0, dy: 3)
-            currentTheme.codeBackgroundNSColor.withAlphaComponent(dimFactor).setFill()
-            NSBezierPath(roundedRect: cardRect, xRadius: 8.0, yRadius: 8.0).fill()
+        case let .htmlBlockRendered(htmlSource, fullBlockRange, layoutWidth, dimFactor):
+            drawHTMLBlockFallback(
+                source: htmlSource,
+                fullBlockRange: fullBlockRange,
+                layoutWidth: layoutWidth,
+                dirtyRect: bounds,
+                dimFactor: dimFactor
+            )
 
-            let diagramKey = DiagramImageRenderer.Key(kind: .svg, source: svgSource)
-            let img = DiagramImageRenderer.shared.image(for: diagramKey, prioritize: true)
-            let innerRect = cardRect.insetBy(dx: 16.0, dy: 12.0)
-            if let img = img, img.size.width > 0, img.size.height > 0, innerRect.width > 10, innerRect.height > 10 {
-                let intrinsicSize = img.size
-                let scale = min(1.0, min(innerRect.width / intrinsicSize.width, innerRect.height / intrinsicSize.height))
-                let drawW = intrinsicSize.width * scale
-                let drawH = intrinsicSize.height * scale
-                let drawRect = NSRect(
-                    x: innerRect.midX - drawW * 0.5,
-                    y: innerRect.midY - drawH * 0.5,
-                    width: drawW,
-                    height: drawH
+        case let .imageRendered(url, alt, fullRange, _, _, baseDirectoryURL, dimFactor):
+            guard
+                let layout = resolveMediaCardLayout(
+                    for: dec,
+                    glyphRange: glyphRange,
+                    advanceAnimation: true,
+                    layoutManager: layoutManager,
+                    origin: origin,
+                    contentWidth: contentWidth,
+                    imageXOffsetByLineLocation: &imageXOffsetByLineLocation
                 )
-                DiagramImageRenderer.drawCached(img, in: drawRect, fraction: dimFactor)
-            } else {
-                drawDiagramPlaceholder(in: innerRect, key: diagramKey, dimFactor: dimFactor)
+            else {
+                return
             }
 
-            let badgeAttrs: [NSAttributedString.Key: Any] = [
-                .font: NSFont.monospacedSystemFont(ofSize: 9.5, weight: .semibold),
-                .foregroundColor: currentTheme.secondaryTextNSColor.withAlphaComponent(dimFactor * 0.85)
-            ]
-            let badgeStr = "SVG" as NSString
-            let badgeSize = badgeStr.size(withAttributes: badgeAttrs)
-            badgeStr.draw(
-                at: NSPoint(x: cardRect.maxX - badgeSize.width - 10.0, y: cardRect.minY + 6.0),
-                withAttributes: badgeAttrs
-            )
-
-        case let .htmlBlockRendered(htmlSource, fullBlockRange, _, dimFactor):
-            drawHTMLBlockFallback(source: htmlSource, fullBlockRange: fullBlockRange, dirtyRect: bounds, dimFactor: dimFactor)
-
-        case let .imageRendered(url, alt, fullRange, explicitWidth, explicitHeight, baseDirectoryURL, dimFactor):
-            let lineFrag = layoutManager.lineFragmentRect(forGlyphAt: glyphRange.location, effectiveRange: nil)
-            let imgGlyphIdx = layoutManager.glyphIndexForCharacter(at: fullRange.location)
-            let glyphX =
-                (imgGlyphIdx != NSNotFound && imgGlyphIdx < layoutManager.numberOfGlyphs)
-                ? layoutManager.location(forGlyphAt: imgGlyphIdx).x
-                : 0.0
-            let lineKey = dec.lineRange.location
-            let currentOffset = imageXOffsetByLineLocation[lineKey] ?? 0.0
-            let startX = origin.x + max(glyphX, currentOffset)
-            let remainingWidth = max(80.0, (origin.x + contentWidth) - startX)
-
-            let isVideo = FolioMediaImageCache.shared.isKnownVideo(for: url, baseDirectoryURL: baseDirectoryURL)
-            let loadedImg = animatedMediaFrame(
-                for: url,
-                baseDirectoryURL: baseDirectoryURL,
-                isDark: currentTheme.isDark
-            )
-
-            if let img = loadedImg, img.size.width > 0, img.size.height > 0 {
-                let intrinsicSize = img.size
-                let aspect = intrinsicSize.height / max(1.0, intrinsicSize.width)
-                let targetW: CGFloat
-                let targetH: CGFloat
-                if let ew = explicitWidth, let eh = explicitHeight {
-                    targetW = ew
-                    targetH = eh
-                } else if let ew = explicitWidth {
-                    targetW = ew
-                    targetH = round(ew * aspect)
-                } else if let eh = explicitHeight {
-                    targetH = eh
-                    targetW = round(eh / max(0.01, aspect))
-                } else {
-                    targetW = intrinsicSize.width
-                    targetH = intrinsicSize.height
-                }
-                let maxDrawH = max(18.0, lineFrag.height - 6.0)
-                let scale = min(1.0, min(remainingWidth / max(1.0, targetW), maxDrawH / max(1.0, targetH)))
-                let drawW = targetW * scale
-                let drawH = targetH * scale
-                let drawRect = NSRect(
-                    x: startX,
-                    y: origin.y + lineFrag.minY + (lineFrag.height - drawH) * 0.5,
-                    width: drawW,
-                    height: drawH
-                )
+            if let img = layout.image {
+                let drawRect = layout.rect
                 updateInlineVideoFrameIfActive(for: url, fullRange: fullRange, drawRect: drawRect)
                 DiagramImageRenderer.drawCached(img, in: drawRect, fraction: dimFactor)
 
-                if isVideo {
+                if FolioMediaImageCache.shared.isKnownVideo(for: url, baseDirectoryURL: baseDirectoryURL) {
                     let circleRadius: CGFloat = 20.0
                     let circleRect = NSRect(
                         x: drawRect.midX - circleRadius,
@@ -171,25 +134,14 @@ extension HybridMarkdownTextView {
                     NSColor.white.withAlphaComponent(0.95 * dimFactor).setFill()
                     playTriangle.fill()
                 }
-                imageXOffsetByLineLocation[lineKey] = (startX - origin.x) + drawW + 8.0
             } else {
-                // Compact placeholder card for pending/missing image or video
+                let cardRect = layout.rect
                 let placeholder = FolioMediaImageCache.shared.placeholderInfo(
                     for: url,
                     alt: alt,
                     baseDirectoryURL: baseDirectoryURL,
                     isDark: currentTheme.isDark
                 )
-                let cardWidth = min(remainingWidth, max(220.0, min(440.0, explicitWidth ?? 400.0)))
-                let cardHeight = min(50.0, max(38.0, lineFrag.height - 6.0))
-                let cardRect = NSRect(
-                    x: startX,
-                    y: origin.y + lineFrag.minY + (lineFrag.height - cardHeight) * 0.5,
-                    width: cardWidth,
-                    height: cardHeight
-                )
-                imageXOffsetByLineLocation[lineKey] = (startX - origin.x) + cardWidth + 8.0
-
                 currentTheme.codeBackgroundNSColor.withAlphaComponent(dimFactor).setFill()
                 NSBezierPath(roundedRect: cardRect, xRadius: 7.0, yRadius: 7.0).fill()
 
@@ -271,9 +223,7 @@ extension HybridMarkdownTextView {
             NSBezierPath(roundedRect: hrRect, xRadius: 0.75, yRadius: 0.75).fill()
 
         case let .tableRow(isHeader, isSeparator, isFirstRow, isLastRow, bodyRowIndex, tableOffsetX, tableWidth, columnDividers):
-            // Allow wide tables to exceed `contentWidth` without clamping!
             let effectiveWidth = max(tableWidth, 240.0)
-            // Wide tables get their own line fragment (WideBlockTextContainer); draw from its edge.
             let rowFragment = layoutManager.lineFragmentRect(forGlyphAt: glyphRange.location, effectiveRange: nil)
             let startX =
                 origin.x + rowFragment.minX
@@ -292,7 +242,6 @@ extension HybridMarkdownTextView {
                 : NSColor.black.withAlphaComponent(0.065)
 
             if isSeparator {
-                // Draw crisp horizontal separator line between header and body
                 let headerDividerColor =
                     currentTheme.isDark
                     ? NSColor.white.withAlphaComponent(0.18)
@@ -300,14 +249,12 @@ extension HybridMarkdownTextView {
                 headerDividerColor.setFill()
                 NSRect(x: rowRect.minX, y: rowRect.midY - 0.5, width: effectiveWidth, height: 1.0).fill()
 
-                // Left and right outer borders across separator
                 outerBorderColor.setFill()
                 NSRect(x: rowRect.minX, y: rowRect.minY, width: 1.0, height: rowRect.height).fill()
                 NSRect(x: rowRect.maxX - 1.0, y: rowRect.minY, width: 1.0, height: rowRect.height).fill()
                 return
             }
 
-            // Background tint for header or alternating body rows
             if isHeader {
                 let headerBg =
                     currentTheme.isDark
@@ -324,20 +271,17 @@ extension HybridMarkdownTextView {
                 rowRect.fill()
             }
 
-            // Subtle vertical column dividers
             innerGridColor.setFill()
             for divX in columnDividers where divX < effectiveWidth - 4.0 {
                 let colLineRect = NSRect(x: startX + divX, y: rowRect.minY, width: 1.0, height: rowRect.height)
                 colLineRect.fill()
             }
 
-            // Subtle horizontal divider at the bottom of each non-last body row
             if !isHeader && !isLastRow {
                 innerGridColor.setFill()
                 NSRect(x: rowRect.minX, y: rowRect.maxY - 0.5, width: effectiveWidth, height: 0.75).fill()
             }
 
-            // Outer table frame edges (top on first row, bottom on last row, left & right on all rows)
             outerBorderColor.setFill()
             NSRect(x: rowRect.minX, y: rowRect.minY, width: 1.0, height: rowRect.height).fill()
             NSRect(x: rowRect.maxX - 1.0, y: rowRect.minY, width: 1.0, height: rowRect.height).fill()

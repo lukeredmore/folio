@@ -14,12 +14,29 @@ struct LaTeXProjectSnapshot: Sendable {
     /// Macros of each of the document's own `\input` paths.
     var inputMacros: [String: [String: LaTeXMacroDefinition]] = [:]
     var bibEntries: [String: BibTeXEntry] = [:]
+    var dependencyPaths: Set<String> = []
+    var watchedDirectories: Set<String> = []
 
     static let empty = LaTeXProjectSnapshot()
 
     func hasSameContent(as other: LaTeXProjectSnapshot) -> Bool {
         signature == other.signature && master == other.master && inheritedMacros == other.inheritedMacros
             && inputURLs == other.inputURLs && inputMacros == other.inputMacros && bibEntries == other.bibEntries
+    }
+
+    func dependsOnFile(at standardizedFileURL: URL, ownerURL: URL?) -> Bool {
+        let path = standardizedFileURL.path
+        if ownerURL?.path == path || dependencyPaths.contains(path) {
+            return true
+        }
+        let ext = standardizedFileURL.pathExtension.lowercased()
+        if ext == "tex" || ext == "bib" {
+            let parentPath = standardizedFileURL.deletingLastPathComponent().path
+            if watchedDirectories.contains(parentPath) {
+                return true
+            }
+        }
+        return false
     }
 }
 
@@ -90,12 +107,14 @@ package enum LaTeXProjectContext {
         queue.async { drainRefreshes(for: key) }
     }
 
-    /// Queues a refresh of every stored snapshot for `fileURL`, for example after a file in its
-    /// directory changed on disk.
+    /// Queues a refresh of every stored snapshot affected by `fileURL` (the document itself,
+    /// its master chain, any direct or transitive `\input` file, or `.bib` files).
     package static func scheduleRefresh(forFile fileURL: URL) {
-        let path = fileURL.standardizedFileURL.path
+        let standardized = fileURL.standardizedFileURL
         lock.lock()
-        let matches = snapshots.filter { $0.key.fileURL?.path == path }
+        let matches = snapshots.filter { entry in
+            entry.value.dependsOnFile(at: standardized, ownerURL: entry.key.fileURL)
+        }
         lock.unlock()
         for (key, snapshot) in matches {
             scheduleRefresh(key, signature: snapshot.signature)
@@ -109,6 +128,7 @@ package enum LaTeXProjectContext {
         queuedSignatures.removeAll()
         lock.unlock()
         factsCache.removeAll()
+        LaTeXDocumentIndexer.invalidateCache()
     }
 
     private static func drainRefreshes(for key: Key) {
@@ -142,15 +162,24 @@ package enum LaTeXProjectContext {
             snapshot.master = master
             snapshot.inheritedMacros = resolver.inheritedMacros(from: master.url, excluding: fileURL)
         }
-        guard let baseDirectory else { return snapshot }
+        guard let baseDirectory else {
+            snapshot.dependencyPaths = resolver.dependencyPaths
+            snapshot.watchedDirectories = resolver.watchedDirectories
+            return snapshot
+        }
         let masterDirectory = snapshot.master?.url.deletingLastPathComponent()
         for path in signature.inputPaths where snapshot.inputURLs[path] == nil {
-            guard let url = resolver.resolveTeXPath(path, in: baseDirectory) ?? masterDirectory.flatMap({ resolver.resolveTeXPath(path, in: $0) })
-            else { continue }
+            var resolvedURL = resolver.resolveTeXPath(path, in: baseDirectory)
+            if resolvedURL == nil, let masterDirectory {
+                resolvedURL = resolver.resolveTeXPath(path, in: masterDirectory)
+            }
+            guard let url = resolvedURL else { continue }
             snapshot.inputURLs[path] = url
             snapshot.inputMacros[path] = resolver.macros(ofInput: url, root: url.deletingLastPathComponent())
         }
         snapshot.bibEntries = resolver.bibEntries(files: signature.bibFiles, in: baseDirectory)
+        snapshot.dependencyPaths = resolver.dependencyPaths
+        snapshot.watchedDirectories = resolver.watchedDirectories
         return snapshot
     }
 }

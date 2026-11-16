@@ -201,4 +201,117 @@ final class LaTeXMasterDetectionTests: XCTestCase {
         _ = style("\\input{newfile}\nText.\n")
         XCTAssertEqual(recorder.counters.latexFileOperationCount, afterOpen, "later styling passes do no file I/O")
     }
+
+    func testScheduleRefreshUpdatesSnapshotsWhenInputBibOrMasterChanges() throws {
+        let dir = try project([
+            "main.tex": """
+            \\documentclass{article}
+            \\input{macros}
+            \\bibliography{refs}
+            \\begin{document}
+            \\input{child}
+            \\end{document}
+            """,
+            "macros.tex": "\\newcommand{\\Ver}{v1}\n",
+            "refs.bib": "@article{k1, author={Ada Lovelace}, title={First}, year={2020}}\n",
+            "child.tex": "Uses \\Ver{} and \\cite{k1}.\n"
+        ])
+        let mainURL = dir.appendingPathComponent("main.tex")
+        let childURL = dir.appendingPathComponent("child.tex")
+        let macrosURL = dir.appendingPathComponent("macros.tex")
+        let bibURL = dir.appendingPathComponent("refs.bib")
+
+        let mainKey = LaTeXProjectContext.Key(fileURL: mainURL, baseDirectoryURL: dir)
+        let childKey = LaTeXProjectContext.Key(fileURL: childURL, baseDirectoryURL: dir)
+        _ = LaTeXProjectContext.refresh(mainKey, signature: try signature(of: mainURL))
+        let initialChild = LaTeXProjectContext.refresh(childKey, signature: try signature(of: childURL))
+        XCTAssertEqual(initialChild.inheritedMacros["\\Ver"]?.replacement, "v1")
+
+        let macrosUpdated = expectation(description: "didUpdateNotification after macros.tex change")
+        nonisolated(unsafe) var fulfilledMacros = false
+        let token1 = NotificationCenter.default.addObserver(
+            forName: LaTeXProjectContext.didUpdateNotification,
+            object: nil,
+            queue: .main
+        ) { _ in
+            if !fulfilledMacros,
+                LaTeXProjectContext.snapshot(for: childKey)?.inheritedMacros["\\Ver"]?.replacement == "v2",
+                LaTeXProjectContext.snapshot(for: mainKey)?.inputMacros["macros"]?["\\Ver"]?.replacement == "v2"
+            {
+                fulfilledMacros = true
+                macrosUpdated.fulfill()
+            }
+        }
+        defer { NotificationCenter.default.removeObserver(token1) }
+
+        try "\\newcommand{\\Ver}{v2}\n".write(to: macrosURL, atomically: true, encoding: .utf8)
+        try FileManager.default.setAttributes([.modificationDate: Date().addingTimeInterval(120)], ofItemAtPath: macrosURL.path)
+        LaTeXProjectContext.scheduleRefresh(forFile: macrosURL)
+        wait(for: [macrosUpdated], timeout: 5.0)
+        XCTAssertEqual(LaTeXProjectContext.snapshot(for: childKey)?.inheritedMacros["\\Ver"]?.replacement, "v2")
+        XCTAssertEqual(LaTeXProjectContext.snapshot(for: mainKey)?.inputMacros["macros"]?["\\Ver"]?.replacement, "v2")
+
+        let bibUpdated = expectation(description: "didUpdateNotification after refs.bib change")
+        nonisolated(unsafe) var fulfilledBib = false
+        let token2 = NotificationCenter.default.addObserver(
+            forName: LaTeXProjectContext.didUpdateNotification,
+            object: nil,
+            queue: .main
+        ) { _ in
+            if !fulfilledBib, LaTeXProjectContext.snapshot(for: mainKey)?.bibEntries["k2"] != nil {
+                fulfilledBib = true
+                bibUpdated.fulfill()
+            }
+        }
+        defer { NotificationCenter.default.removeObserver(token2) }
+
+        try "@article{k2, author={Grace Hopper}, title={Second}, year={2024}}\n".write(to: bibURL, atomically: true, encoding: .utf8)
+        try FileManager.default.setAttributes([.modificationDate: Date().addingTimeInterval(240)], ofItemAtPath: bibURL.path)
+        LaTeXProjectContext.scheduleRefresh(forFile: bibURL)
+        wait(for: [bibUpdated], timeout: 5.0)
+        XCTAssertNotNil(LaTeXProjectContext.snapshot(for: mainKey)?.bibEntries["k2"])
+    }
+
+    func testPreambleCheckpointMatchesFullIndexAcrossBodyEdits() throws {
+        LaTeXDocumentIndexer.invalidateCache()
+        let dir = try project(["doc.tex": ""])
+        let docURL = dir.appendingPathComponent("doc.tex")
+        let preamble = """
+            \\documentclass[11pt]{article}
+            \\usepackage{amsmath,amssymb}
+            \\newcommand{\\Alpha}[1]{\\mathbf{#1}}
+            \\begin{document}
+            """
+        let v1 = "\(preamble)\n\\section{Intro}\\label{sec:intro}\nHello \\Alpha{x}.\n\\end{document}\n"
+        let first = LaTeXDocumentIndexer.cachedIndexAndMacros(
+            string: v1,
+            nsString: v1 as NSString,
+            baseDirectoryURL: dir,
+            fileURL: docURL,
+            sourceCodeMode: false
+        )
+        XCTAssertNotNil(first.macros["\\Alpha"])
+        XCTAssertEqual(first.index.labels["sec:intro"]?.number, "1")
+
+        let v2 = "\(preamble)\n\\section{Intro}\\label{sec:intro}\n\\section{Next}\\label{sec:next}\n\\newcommand{\\Beta}{B}\n\\end{document}\n"
+        let incremental = LaTeXDocumentIndexer.cachedIndexAndMacros(
+            string: v2,
+            nsString: v2 as NSString,
+            baseDirectoryURL: dir,
+            fileURL: docURL,
+            sourceCodeMode: false
+        )
+        LaTeXDocumentIndexer.invalidateCache()
+        let cold = LaTeXDocumentIndexer.cachedIndexAndMacros(
+            string: v2,
+            nsString: v2 as NSString,
+            baseDirectoryURL: dir,
+            fileURL: docURL,
+            sourceCodeMode: false
+        )
+        XCTAssertEqual(incremental.macros, cold.macros)
+        XCTAssertEqual(incremental.index.labels, cold.index.labels)
+        XCTAssertEqual(incremental.index.macroCount, cold.index.macroCount)
+        XCTAssertEqual(incremental.index.packageNames, cold.index.packageNames)
+    }
 }

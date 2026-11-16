@@ -67,17 +67,33 @@ enum HTMLBlockMarkup {
         return isSelfContained(tokens)
     }
 
+    static let foreignRootElements: Set<String> = ["svg", "math"]
+
+    private static func closesImmediately(name: String, selfClosing: Bool, foreignDepth: Int) -> Bool {
+        if voidElements.contains(name) {
+            return true
+        }
+        return selfClosing && (foreignDepth > 0 || foreignRootElements.contains(name))
+    }
+
     /// True when no end tag closes an element opened before the block, and every element left
     /// open at the end has an optional end tag.
     static func isSelfContained(_ tokens: [Token]) -> Bool {
         var stack: [String] = []
+        var foreignDepth = 0
         for token in tokens {
             switch token.kind {
             case let .startTag(name, selfClosing):
-                guard !selfClosing, !voidElements.contains(name) else { continue }
+                guard !closesImmediately(name: name, selfClosing: selfClosing, foreignDepth: foreignDepth) else { continue }
                 stack.append(name)
+                if foreignRootElements.contains(name) {
+                    foreignDepth += 1
+                }
             case let .endTag(name):
                 if let index = stack.lastIndex(of: name) {
+                    for removed in stack[index...] where foreignRootElements.contains(removed) {
+                        foreignDepth = max(0, foreignDepth - 1)
+                    }
                     stack.removeSubrange(index...)
                 } else if name != "p" && name != "br" {
                     return false
@@ -97,6 +113,7 @@ enum HTMLBlockMarkup {
         var out = ""
         out.reserveCapacity(source.utf16.count + source.utf16.count / 2)
         var noWrapStack: [String] = []
+        var foreignDepth = 0
         var previousStartTag: String?
 
         for token in tokenize(units) {
@@ -116,11 +133,19 @@ enum HTMLBlockMarkup {
                 }
             case let .startTag(name, selfClosing):
                 out += nsSource.substring(with: NSRange(location: range.lowerBound, length: range.count))
-                if !selfClosing && noWrapElements.contains(name) {
-                    noWrapStack.append(name)
+                if !closesImmediately(name: name, selfClosing: selfClosing, foreignDepth: foreignDepth) {
+                    if foreignRootElements.contains(name) {
+                        foreignDepth += 1
+                    }
+                    if noWrapElements.contains(name) {
+                        noWrapStack.append(name)
+                    }
                 }
             case let .endTag(name):
                 out += nsSource.substring(with: NSRange(location: range.lowerBound, length: range.count))
+                if foreignRootElements.contains(name), foreignDepth > 0 {
+                    foreignDepth -= 1
+                }
                 if let index = noWrapStack.lastIndex(of: name) {
                     noWrapStack.removeSubrange(index...)
                 }
@@ -179,8 +204,23 @@ enum HTMLBlockMarkup {
     private static let dash: UInt16 = 0x2D
     private static let doubleQuote: UInt16 = 0x22
     private static let singleQuote: UInt16 = 0x27
+    private static let equalsSign: UInt16 = 0x3D
     private static let newline: UInt16 = 0x0A
     private static let carriageReturn: UInt16 = 0x0D
+
+    private enum AttributeScanState {
+        case beforeName
+        case name
+        case afterName
+        case beforeValue
+        case unquotedValue
+        case quotedValue(UInt16)
+        case selfClosing
+    }
+
+    private static func isWhitespaceUnit(_ unit: UInt16) -> Bool {
+        unit == 0x20 || unit == 0x09 || unit == newline || unit == carriageReturn || unit == 0x0C
+    }
 
     private static func isASCIILetter(_ unit: UInt16) -> Bool {
         (unit >= 0x41 && unit <= 0x5A) || (unit >= 0x61 && unit <= 0x7A)
@@ -191,7 +231,7 @@ enum HTMLBlockMarkup {
     }
 
     static func isWhitespace(_ units: ArraySlice<UInt16>) -> Bool {
-        units.allSatisfy { $0 == 0x20 || $0 == 0x09 || $0 == newline || $0 == carriageReturn || $0 == 0x0C }
+        units.allSatisfy(isWhitespaceUnit)
     }
 
     private static func leadingNewlineEnd(_ units: [UInt16], _ range: Range<Int>) -> Int? {
@@ -246,18 +286,70 @@ enum HTMLBlockMarkup {
         guard isASCIILetter(next) else { return nil }
         var nameEnd = start + 1
         while nameEnd < count && isTagNameUnit(units[nameEnd]) { nameEnd += 1 }
+        let name = lowercasedName(units, (start + 1)..<nameEnd)
         var index = nameEnd
-        var quote: UInt16?
+        var state = AttributeScanState.beforeName
         while index < count {
             let unit = units[index]
-            if let open = quote {
-                if unit == open { quote = nil }
-            } else if unit == doubleQuote || unit == singleQuote {
-                quote = unit
-            } else if unit == greaterThan {
-                let selfClosing = index > nameEnd && units[index - 1] == slash
-                let name = lowercasedName(units, (start + 1)..<nameEnd)
-                return Token(kind: .startTag(name: name, selfClosing: selfClosing), range: start..<(index + 1))
+            switch state {
+            case .beforeName:
+                if isWhitespaceUnit(unit) {
+                    break
+                } else if unit == slash {
+                    state = .selfClosing
+                } else if unit == greaterThan {
+                    return Token(kind: .startTag(name: name, selfClosing: false), range: start..<(index + 1))
+                } else {
+                    state = .name
+                }
+            case .name:
+                if isWhitespaceUnit(unit) {
+                    state = .afterName
+                } else if unit == slash {
+                    state = .selfClosing
+                } else if unit == equalsSign {
+                    state = .beforeValue
+                } else if unit == greaterThan {
+                    return Token(kind: .startTag(name: name, selfClosing: false), range: start..<(index + 1))
+                }
+            case .afterName:
+                if isWhitespaceUnit(unit) {
+                    break
+                } else if unit == slash {
+                    state = .selfClosing
+                } else if unit == equalsSign {
+                    state = .beforeValue
+                } else if unit == greaterThan {
+                    return Token(kind: .startTag(name: name, selfClosing: false), range: start..<(index + 1))
+                } else {
+                    state = .name
+                }
+            case .beforeValue:
+                if isWhitespaceUnit(unit) {
+                    break
+                } else if unit == doubleQuote || unit == singleQuote {
+                    state = .quotedValue(unit)
+                } else if unit == greaterThan {
+                    return Token(kind: .startTag(name: name, selfClosing: false), range: start..<(index + 1))
+                } else {
+                    state = .unquotedValue
+                }
+            case .unquotedValue:
+                if isWhitespaceUnit(unit) {
+                    state = .beforeName
+                } else if unit == greaterThan {
+                    return Token(kind: .startTag(name: name, selfClosing: false), range: start..<(index + 1))
+                }
+            case .quotedValue(let quote):
+                if unit == quote {
+                    state = .beforeName
+                }
+            case .selfClosing:
+                if unit == greaterThan {
+                    return Token(kind: .startTag(name: name, selfClosing: true), range: start..<(index + 1))
+                }
+                state = .beforeName
+                continue
             }
             index += 1
         }

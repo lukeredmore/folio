@@ -77,6 +77,8 @@ struct LaTeXProjectResolver {
     let limits: LaTeXProjectLimits
     let cache: LaTeXFileFactsCache
     private(set) var filesRead = 0
+    private(set) var dependencyPaths: Set<String> = []
+    private(set) var watchedDirectories: Set<String> = []
 
     init(fileSystem: LaTeXProjectFileSystem, limits: LaTeXProjectLimits, cache: LaTeXFileFactsCache) {
         self.fileSystem = fileSystem
@@ -85,23 +87,26 @@ struct LaTeXProjectResolver {
     }
 
     mutating func facts(for url: URL) -> LaTeXFileFacts? {
-        guard let stamp = fileSystem.stamp(url), stamp.size <= limits.maxTeXFileBytes else { return nil }
-        if let cached = cache.facts(for: url, stamp: stamp) { return cached }
+        let standardized = url.standardizedFileURL
+        dependencyPaths.insert(standardized.path)
+        guard let stamp = fileSystem.stamp(standardized), stamp.size <= limits.maxTeXFileBytes else { return nil }
+        if let cached = cache.facts(for: standardized, stamp: stamp) { return cached }
         guard filesRead < limits.maxFilesRead else { return nil }
         filesRead += 1
-        guard let text = fileSystem.readText(url) else { return nil }
+        guard let text = fileSystem.readText(standardized) else { return nil }
         let parsed = LaTeXFileFacts.parse(text)
-        cache.store(parsed, for: url, stamp: stamp)
+        cache.store(parsed, for: standardized, stamp: stamp)
         return parsed
     }
 
     /// Resolves `path` in `directory` as TeX does: `path.tex` first, unless `path` ends in `.tex`.
-    func resolveTeXPath(_ path: String, in directory: URL) -> URL? {
+    mutating func resolveTeXPath(_ path: String, in directory: URL) -> URL? {
         let trimmed = path.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return nil }
         let candidates = trimmed.lowercased().hasSuffix(".tex") ? [trimmed] : [trimmed + ".tex", trimmed]
         for candidate in candidates {
             let url = directory.appendingPathComponent(candidate).standardizedFileURL
+            dependencyPaths.insert(url.path)
             if fileSystem.stamp(url) != nil { return url }
         }
         return nil
@@ -143,6 +148,7 @@ struct LaTeXProjectResolver {
         let directory = child.deletingLastPathComponent()
         let searches: [(URL, LaTeXMasterRule)] = [(directory, .siblingDocument), (directory.deletingLastPathComponent(), .parentDocument)]
         for (searchDirectory, rule) in searches {
+            watchedDirectories.insert(searchDirectory.standardizedFileURL.path)
             let candidates = fileSystem.listDirectory(searchDirectory)
                 .filter { $0.pathExtension.lowercased() == "tex" && $0.path != child.path }
                 .prefix(limits.maxDirectoryEntries)
@@ -210,19 +216,23 @@ struct LaTeXProjectResolver {
         for file in files {
             let name = file.hasSuffix(".bib") ? file : file + ".bib"
             let url = directory.appendingPathComponent(name).standardizedFileURL
+            dependencyPaths.insert(url.path)
             if !urls.contains(url), fileSystem.stamp(url) != nil { urls.append(url) }
         }
         if urls.isEmpty {
+            watchedDirectories.insert(directory.standardizedFileURL.path)
             urls = fileSystem.listDirectory(directory).filter { $0.pathExtension.lowercased() == "bib" }
         }
         var map: [String: BibTeXEntry] = [:]
         for url in urls {
-            guard let stamp = fileSystem.stamp(url), stamp.size <= limits.maxBibFileBytes else { continue }
-            var entries = cache.bibEntries(for: url, stamp: stamp)
-            if entries == nil, filesRead < limits.maxFilesRead, let text = fileSystem.readText(url) {
+            let standardized = url.standardizedFileURL
+            dependencyPaths.insert(standardized.path)
+            guard let stamp = fileSystem.stamp(standardized), stamp.size <= limits.maxBibFileBytes else { continue }
+            var entries = cache.bibEntries(for: standardized, stamp: stamp)
+            if entries == nil, filesRead < limits.maxFilesRead, let text = fileSystem.readText(standardized) {
                 filesRead += 1
-                let parsed = LaTeXDocumentIndexer.parseBibTeXEntries(from: text, fileURL: url)
-                cache.store(parsed, for: url, stamp: stamp)
+                let parsed = LaTeXDocumentIndexer.parseBibTeXEntries(from: text, fileURL: standardized)
+                cache.store(parsed, for: standardized, stamp: stamp)
                 entries = parsed
             }
             for entry in entries ?? [] { map[entry.key] = entry }

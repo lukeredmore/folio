@@ -297,4 +297,112 @@ final class RichMediaAndHtmlTests: XCTestCase {
             "Marissa Mayer's résumé, re-created with AltaCV — File not found: \(expectedMissingPath)"
         )
     }
+
+    @MainActor
+    func testTaskCheckboxHitTestingGatesOnRealCheckboxRectAndRejectsCodeMathAndMargins() throws {
+        let storage = NSTextStorage()
+        let layoutManager = WideBlockLayoutManager()
+        storage.addLayoutManager(layoutManager)
+        let container = WideBlockTextContainer(containerSize: NSSize(width: 680, height: 1200))
+        container.lineFragmentPadding = 0
+        layoutManager.addTextContainer(container)
+        let textView = HybridMarkdownTextView(frame: NSRect(x: 0, y: 0, width: 760, height: 600), textContainer: container)
+        textView.textContainerInset = NSSize(width: 40, height: 20)
+        textView.proseColumnWidth = 680
+
+        let doc = #"""
+            - [ ] Buy milk
+
+            Plain note [x] inline
+
+            ```swift
+            let flag = arr[x]
+            ```
+
+            Math $\mathbb{E}[x]$ inline
+
+            Cursor line
+            """#
+        textView.string = doc
+        let nsDoc = doc as NSString
+        let cursorLoc = nsDoc.range(of: "Cursor line").location
+        let analysis = MarkdownLiveStyler.applyStyles(
+            to: storage,
+            theme: .daylight,
+            sourceCodeMode: false,
+            focusMode: false,
+            selectedRange: NSRange(location: cursorLoc, length: 0),
+            containerWidth: 680,
+            prettyMode: true
+        )
+        textView.lineDecorations = analysis.decorations
+        layoutManager.ensureLayout(for: container)
+
+        var toggledLocations: [Int] = []
+        textView.onToggleCheckboxAtCharacterIndex = { loc in
+            toggledLocations.append(loc)
+        }
+
+        let origin = textView.textContainerOrigin
+        func centerPoint(for substring: String) -> (point: NSPoint, location: Int) {
+            let range = nsDoc.range(of: substring)
+            let boxSubrange = (substring as NSString).range(of: "[")
+            let bracketRange = NSRange(location: range.location + boxSubrange.location, length: 3)
+            let glyphRange = layoutManager.glyphRange(forCharacterRange: bracketRange, actualCharacterRange: nil)
+            let rect = layoutManager.boundingRect(forGlyphRange: glyphRange, in: container)
+            return (NSPoint(x: origin.x + rect.midX, y: origin.y + rect.midY), bracketRange.location)
+        }
+
+        let taskHit = centerPoint(for: "- [ ] Buy milk")
+        XCTAssertTrue(textView.toggleTaskCheckboxIfHit(at: taskHit.point))
+        XCTAssertEqual(toggledLocations, [taskHit.location])
+
+        // Left margin outside the checkbox glyph rect on the same line
+        XCTAssertFalse(textView.toggleTaskCheckboxIfHit(at: NSPoint(x: 6.0, y: taskHit.point.y)))
+        // Plain prose [x] without a list marker
+        XCTAssertFalse(textView.toggleTaskCheckboxIfHit(at: centerPoint(for: "note [x]").point))
+        // Fenced code block arr[x]
+        XCTAssertFalse(textView.toggleTaskCheckboxIfHit(at: centerPoint(for: "arr[x]").point))
+        // Inline math \mathbb{E}[x]
+        XCTAssertFalse(textView.toggleTaskCheckboxIfHit(at: centerPoint(for: #"E}[x]"#).point))
+        XCTAssertEqual(toggledLocations, [taskHit.location])
+    }
+
+    @MainActor
+    func testCodeFenceLanguagePickerPreservesBlockquotesTildesAndFenceLengths() {
+        XCTAssertEqual(
+            HybridMarkdownTextView.updatedCodeFenceLine("> ~~~python", languageId: "rust"),
+            "> ~~~rust"
+        )
+        XCTAssertEqual(
+            HybridMarkdownTextView.updatedCodeFenceLine("  > > ````markdown", languageId: "html"),
+            "  > > ````html"
+        )
+        XCTAssertEqual(
+            HybridMarkdownTextView.updatedCodeFenceLine("~~~~javascript", languageId: ""),
+            "~~~~"
+        )
+
+        let textView = HybridMarkdownTextView(frame: NSRect(x: 0, y: 0, width: 600, height: 200))
+        textView.string = "> ~~~python\nprint(1)\n> ~~~\n"
+        textView.applyCodeFenceLanguage("swift", toLineAt: 0)
+        XCTAssertEqual(textView.string, "> ~~~swift\nprint(1)\n> ~~~\n")
+    }
+
+    @MainActor
+    func testInsertNewlineContinuesLaTeXItemOnlyInLaTeXDocuments() {
+        let mdView = HybridMarkdownTextView(frame: NSRect(x: 0, y: 0, width: 600, height: 200))
+        mdView.string = "\\item Markdown prose"
+        mdView.setSelectedRange(NSRange(location: (mdView.string as NSString).length, length: 0))
+        mdView.insertNewline(nil)
+        XCTAssertEqual(mdView.string, "\\item Markdown prose\n", "Markdown documents must not auto-insert \\item on Return")
+
+        let texView = HybridMarkdownTextView(frame: NSRect(x: 0, y: 0, width: 600, height: 200))
+        let tex = "\\documentclass{article}\n\\begin{document}\n\\begin{itemize}\n  \\item First\n\\end{itemize}\n\\end{document}"
+        texView.string = tex
+        let endOfFirst = NSMaxRange((tex as NSString).range(of: "\\item First"))
+        texView.setSelectedRange(NSRange(location: endOfFirst, length: 0))
+        texView.insertNewline(nil)
+        XCTAssertTrue(texView.string.contains("  \\item First\n  \\item \n"), "LaTeX documents must continue \\item on Return")
+    }
 }

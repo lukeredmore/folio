@@ -35,16 +35,8 @@ extension LaTeXDocumentIndexer {
     }
 
     static func cleanTeXInlineText(_ raw: String) -> String {
-        var s = raw
         let wrappers = ["\\textbf{", "\\textit{", "\\emph{", "\\texttt{", "\\textsc{", "\\underline{"]
-        for w in wrappers {
-            while let r = s.range(of: w) {
-                s.removeSubrange(r)
-                if let lastBrace = s.lastIndex(of: "}") {
-                    s.remove(at: lastBrace)
-                }
-            }
-        }
+        var s = LaTeXLexer.unwrapCommandBraces(raw, commands: wrappers)
         s = s.replacingOccurrences(of: "\\LaTeX{}", with: "LaTeX")
             .replacingOccurrences(of: "\\LaTeX", with: "LaTeX")
             .replacingOccurrences(of: "\\TeX{}", with: "TeX")

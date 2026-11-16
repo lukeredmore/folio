@@ -196,17 +196,17 @@ extension HybridMarkdownTextView {
                 cardPath.fill()
 
                 let effectiveFontSize = currentTheme.baseFontSize * typographySettings.fontSizeScale
-                let mathBox = LaTeXMathRenderer.layoutLatex(
+                let displayLayout = LaTeXMathRenderer.layoutDisplayMath(
                     latex,
-                    baseFontSize: effectiveFontSize,
-                    isDisplayStyle: true
+                    baseFontSize: effectiveFontSize
                 )
+                let mathBox = displayLayout.box
                 let customMathColor: NSColor? =
                     (fullBlockRange.location != NSNotFound && fullBlockRange.location < (self.string as NSString).length)
                     ? (self.textStorage?.attribute(MarkdownLiveStyler.customColorAttributeKey, at: fullBlockRange.location, effectiveRange: nil) as? NSColor)
                     : nil
                 let mathColor = (customMathColor ?? currentTheme.headingNSColor).withAlphaComponent(dimFactor)
-                if mathBox.width == 0 && LaTeXMacroExpander.isStandaloneMacroDefinitionBlock(latex) {
+                if displayLayout.isStandaloneMacroDefinitionBlock {
                     let badgeText = "𝑓(x) LaTeX Macros" as NSString
                     let badgeAttrs: [NSAttributedString.Key: Any] = [
                         .font: currentTheme.codeFont(size: effectiveFontSize * 0.78),
