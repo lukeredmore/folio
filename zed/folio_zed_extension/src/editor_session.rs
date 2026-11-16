@@ -66,8 +66,7 @@ impl FolioZedModSession {
         let theme = ZedThemeOverrides::for_appearance(self.is_dark);
         let start = snap_char_boundary_left(buffer_text, cursor_byte_range.start);
         let end = snap_char_boundary_left(buffer_text, cursor_byte_range.end).max(start);
-        let selected_utf16_range = utf16_selection_range(buffer_text, start..end);
-        let stats = DocumentStats::compute(buffer_text, selected_utf16_range);
+        let stats = DocumentStats::compute_utf8(buffer_text, (start < end).then_some(start..end));
 
         if !self.enabled {
             let raw_analysis =
@@ -214,13 +213,4 @@ impl FolioZedModSession {
     ) -> Option<String> {
         replace_code_fence_language(buffer_text, fence_start_byte_offset, new_language)
     }
-}
-
-fn utf16_selection_range(text: &str, selection_bytes: Range<usize>) -> Option<(usize, usize)> {
-    if selection_bytes.start >= selection_bytes.end {
-        return None;
-    }
-    let utf16_start = text[..selection_bytes.start].encode_utf16().count();
-    let utf16_len = text[selection_bytes].encode_utf16().count();
-    Some((utf16_start, utf16_len))
 }

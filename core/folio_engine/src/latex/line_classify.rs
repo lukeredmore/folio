@@ -142,25 +142,45 @@ fn classify_caption(
     start: usize,
     after_cmd: usize,
 ) -> Option<LatexLineClassification> {
-    let p = after_cmd + usize::from(bytes.get(after_cmd) == Some(&b'*'));
-    let trimmed_end = line.trim_end_matches([' ', '\t']).len();
-    (bytes.get(p) == Some(&b'{') && trimmed_end > p + 1 && bytes[trimmed_end - 1] == b'}').then(
-        || {
-            let (inner_s, close_b) = (p + 1, trimmed_end - 1);
-            LatexLineClassification {
-                kind: LatexLineKind::Caption,
-                open_loc: u16[start],
-                open_len: u16[inner_s].saturating_sub(u16[start]),
-                body_loc: u16[inner_s],
-                body_len: u16[close_b].saturating_sub(u16[inner_s]),
-                close_loc: u16[close_b],
-                close_len: u16[trimmed_end].saturating_sub(u16[close_b]),
-                cmd: "caption".to_string(),
-                arg1: line[inner_s..close_b].to_string(),
-                ..empty_classification()
-            }
-        },
-    )
+    let p0 = after_cmd + usize::from(bytes.get(after_cmd) == Some(&b'*'));
+    let (has_opt_arg, opt_r, opt_arg, p1) = read_opt(line, bytes, p0);
+    let p = skip_hspace(bytes, p1);
+    let (inner_s, close_b, after_body) = read_balanced_braces(bytes, p)?;
+
+    let mut rest = skip_hspace(bytes, after_body);
+    while let Some((trailing_cmd, after_tcmd)) = read_control_word(line, rest) {
+        if trailing_cmd != "label" {
+            return None;
+        }
+        let brace_pos = skip_hspace(bytes, after_tcmd);
+        let (_, _, after_label) = read_balanced_braces(bytes, brace_pos)?;
+        rest = skip_hspace(bytes, after_label);
+    }
+    if rest < bytes.len() && bytes[rest] != b'%' {
+        return None;
+    }
+    let close_end = if rest < bytes.len() {
+        bytes.len()
+    } else {
+        line.trim_end_matches([' ', '\t']).len()
+    };
+
+    Some(LatexLineClassification {
+        kind: LatexLineKind::Caption,
+        has_opt_arg,
+        open_loc: u16[start],
+        open_len: u16[inner_s].saturating_sub(u16[start]),
+        opt_loc: u16[opt_r.0],
+        opt_len: u16[opt_r.1].saturating_sub(u16[opt_r.0]),
+        body_loc: u16[inner_s],
+        body_len: u16[close_b].saturating_sub(u16[inner_s]),
+        close_loc: u16[close_b],
+        close_len: u16[close_end].saturating_sub(u16[close_b]),
+        cmd: "caption".to_string(),
+        opt_arg,
+        arg1: line[inner_s..close_b].to_string(),
+        ..empty_classification()
+    })
 }
 
 fn classify_macro_open(

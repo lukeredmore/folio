@@ -18,14 +18,6 @@ pub enum GpuiMathPrimitive {
         width: f32,
         height: f32,
     },
-    RadicalStroke {
-        x: f32,
-        top_y: f32,
-        bottom_y: f32,
-        hook_width: f32,
-        radicand_width: f32,
-        line_width: f32,
-    },
 }
 
 /// Complete GPUI canvas descriptor for an inline `$...$` or display `$$...$$` math block.
@@ -69,8 +61,8 @@ pub fn build_gpui_math_canvas(
                 baseline_y: y as f32,
                 font_size: font_size as f32,
                 italic: matches!(font_style, MathFontStyle::ItalicVariable),
-                bold: matches!(font_style, MathFontStyle::BoldUpright),
-                serif: !matches!(font_style, MathFontStyle::Monospace),
+                bold: false,
+                serif: true,
             },
             MathDrawPrimitive::Rule {
                 x,
@@ -82,36 +74,6 @@ pub fn build_gpui_math_canvas(
                 y: y as f32,
                 width: width as f32,
                 height: height as f32,
-            },
-            MathDrawPrimitive::Radical {
-                x,
-                top_y,
-                bottom_y,
-                hook_width,
-                radicand_width,
-                thickness,
-            } => GpuiMathPrimitive::RadicalStroke {
-                x: x as f32,
-                top_y: top_y as f32,
-                bottom_y: bottom_y as f32,
-                hook_width: hook_width as f32,
-                radicand_width: radicand_width as f32,
-                line_width: thickness as f32,
-            },
-            MathDrawPrimitive::Delimiter {
-                symbol,
-                x,
-                top_y,
-                bottom_y,
-                ..
-            } => GpuiMathPrimitive::ShapedGlyphRun {
-                text: symbol,
-                origin_x: x as f32,
-                baseline_y: top_y as f32,
-                font_size: (bottom_y - top_y).abs().max(base_font_size as f64) as f32,
-                italic: false,
-                bold: false,
-                serif: true,
             },
         })
         .collect();

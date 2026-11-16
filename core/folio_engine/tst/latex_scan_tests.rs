@@ -92,10 +92,41 @@ fn test_classify_latex_line_and_macro_template() {
         r"a &= b \label{eq:1} \tag{A.1} \\ c &= d \nonumber",
         "align*",
     );
-    assert_eq!(math.explicit_tag, "A.1");
+    assert_eq!(math.explicit_tag, "(A.1)");
     assert!(math.cleaned_latex.starts_with(r"\begin{aligned}"));
     assert!(!math.cleaned_latex.contains(r"\label"));
     assert!(!math.cleaned_latex.contains(r"\tag"));
+
+    let starred_tag = normalize_display_math(r"E = mc^2 \tag*{*}", "equation*");
+    assert_eq!(starred_tag.explicit_tag, "*");
+    assert!(!starred_tag.cleaned_latex.contains(r"\tag"));
+}
+
+#[test]
+fn test_clean_tex_inline_text_and_caption_with_opt_arg_and_label() {
+    assert_eq!(
+        folio_engine::latex::clean_tex_inline_text(r"\textbf{A} and \emph{B}"),
+        "A and B"
+    );
+    assert_eq!(
+        folio_engine::latex::clean_tex_inline_text(r"\textbf{A \emph{nested}} and {B}"),
+        "A nested and {B}"
+    );
+
+    let cap_line = r"  \caption[Short title]{Full \emph{caption} text}\label{fig:1}";
+    let cap = classify_latex_line(cap_line);
+    assert_eq!(cap.kind, LatexLineKind::Caption);
+    assert!(cap.has_opt_arg);
+    assert_eq!(cap.opt_arg, "Short title");
+    assert_eq!(cap.arg1, r"Full \emph{caption} text");
+    assert_eq!(
+        slice(cap_line, cap.open_loc, cap.open_len),
+        r"\caption[Short title]{"
+    );
+    assert_eq!(
+        slice(cap_line, cap.close_loc, cap.close_len),
+        r"}\label{fig:1}"
+    );
 }
 
 #[test]

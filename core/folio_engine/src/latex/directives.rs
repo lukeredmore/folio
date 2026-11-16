@@ -428,17 +428,27 @@ pub fn normalize_display_math(raw: &str, env_name: &str) -> NormalizedDisplayMat
         (String::new(), String::with_capacity(raw.len()), 0usize);
     while i < bytes.len() {
         if let Some((cmd, after)) = read_control_word(raw, i) {
-            let p = after + usize::from(bytes.get(after) == Some(&b'*'));
             if cmd == "tag" {
-                if let Some((s, e, next)) = read_balanced_braces(bytes, p) {
+                let star_pos = skip_hspace(bytes, after);
+                let is_starred = bytes.get(star_pos) == Some(&b'*');
+                let brace_pos = skip_hspace(bytes, star_pos + usize::from(is_starred));
+                if let Some((s, e, next)) = read_balanced_braces(bytes, brace_pos) {
                     if explicit_tag.is_empty() {
-                        explicit_tag = raw[s..e].to_string();
+                        let clean = raw[s..e].trim();
+                        if !clean.is_empty() {
+                            explicit_tag = if is_starred {
+                                clean.to_string()
+                            } else {
+                                format!("({clean})")
+                            };
+                        }
                     }
                     i = next;
                     continue;
                 }
             } else if cmd == "label" {
-                if let Some((_, _, next)) = read_balanced_braces(bytes, after) {
+                let brace_pos = skip_hspace(bytes, after);
+                if let Some((_, _, next)) = read_balanced_braces(bytes, brace_pos) {
                     i = next;
                     continue;
                 }

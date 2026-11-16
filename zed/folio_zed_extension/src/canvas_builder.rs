@@ -65,24 +65,6 @@ pub fn math_descriptor_to_canvas(
                     ..Default::default()
                 });
             }
-            GpuiMathPrimitive::RadicalStroke {
-                x,
-                top_y,
-                bottom_y,
-                hook_width,
-                radicand_width,
-                line_width,
-            } => {
-                quads.push(CanvasQuad {
-                    x: x + pad,
-                    y: top_y + pad,
-                    width: hook_width + radicand_width,
-                    height: (*line_width).max(1.2),
-                    background_color: fg,
-                    ..Default::default()
-                });
-                let _ = bottom_y;
-            }
         }
     }
     CanvasElement {

@@ -10,11 +10,6 @@ use latex_rust::{
 pub enum MathFontStyle {
     ItalicVariable = 0,
     RomanUpright = 1,
-    BoldUpright = 2,
-    Calligraphic = 3,
-    BlackboardBold = 4,
-    Monospace = 5,
-    OperatorSymbol = 6,
     BigOperator = 7,
 }
 
@@ -32,22 +27,6 @@ pub enum MathDrawPrimitive {
         y: f64,
         width: f64,
         height: f64,
-    },
-    Radical {
-        x: f64,
-        top_y: f64,
-        bottom_y: f64,
-        hook_width: f64,
-        radicand_width: f64,
-        thickness: f64,
-    },
-    Delimiter {
-        symbol: String,
-        x: f64,
-        top_y: f64,
-        bottom_y: f64,
-        width: f64,
-        thickness: f64,
     },
 }
 

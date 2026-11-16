@@ -1,10 +1,13 @@
 use std::ops::Range;
 
-use crate::keystroke_helpers::{handle_enter_key, handle_tab_key, vertical_or_horizontal_cursor};
-use crate::markdown_formatting::{toggle_heading_level, toggle_inline_delimiter};
+use folio_engine::markdown::{
+    edit_newline, edit_set_heading_level, edit_symmetric_delimiter, edit_toggle_heading_level,
+    edit_toggle_task_checkbox, SpanEdit,
+};
+
 use crate::text_navigation::{
     next_word_boundary, prev_word_boundary, snap_char_boundary_left, snap_char_boundary_right,
-    word_range_at,
+    vertical_or_horizontal_cursor, word_range_at,
 };
 
 /// Normalized keystroke event parameters from GPUI or another host window.
@@ -71,44 +74,14 @@ fn handle_platform_shortcut(
     tail: usize,
     input: &KeystrokeInput<'_>,
 ) -> KeystrokeDecision {
+    if !input.alt {
+        if let Some(decision) = handle_platform_format_shortcut(source, &sel, input) {
+            return decision;
+        }
+    }
     let len = source.len();
     match input.key {
         "\\" if !input.alt && input.shift => KeystrokeDecision::TogglePrettyMode,
-        "b" if !input.alt && !input.shift => delim_decision(source, sel, "**"),
-        "i" if !input.alt && !input.shift => delim_decision(source, sel, "*"),
-        "e" | "`" if !input.alt && !input.shift => delim_decision(source, sel, "`"),
-        "x" if !input.alt && input.shift => delim_decision(source, sel, "~~"),
-        "d" if !input.alt && !input.shift => delim_decision(source, sel, "~~"),
-        "m" if !input.alt => {
-            let delim = if input.shift { "$$" } else { "$" };
-            delim_decision(source, sel, delim)
-        }
-        "k" if !input.alt && !input.shift => {
-            let (target_start, target_end) = if sel.start < sel.end {
-                (sel.start, sel.end)
-            } else if let Some((ws, we)) = word_range_at(source, sel.start) {
-                (ws, we)
-            } else {
-                (sel.start, sel.end)
-            };
-            let selected = &source[target_start..target_end];
-            let replacement = format!("[{selected}]()");
-            let url_cursor = target_start + 1 + selected.len() + 2;
-            KeystrokeDecision::SourceEdit {
-                edit_range: target_start..target_end,
-                replacement,
-                post_selection: Some(url_cursor..url_cursor),
-            }
-        }
-        "1" | "2" | "3" | "4" | "5" | "6" if !input.alt && !input.shift => {
-            let level = (input.key.as_bytes()[0] - b'0') as usize;
-            let (edit_range, replacement, post_sel) = toggle_heading_level(source, cursor, level);
-            KeystrokeDecision::SourceEdit {
-                edit_range,
-                replacement,
-                post_selection: Some(post_sel),
-            }
-        }
         "a" if !input.alt && !input.shift => KeystrokeDecision::SelectRange(0..len),
         "x" if !input.alt && !input.shift => {
             if sel.start < sel.end {
@@ -139,6 +112,94 @@ fn handle_platform_shortcut(
             }
         }
         _ => KeystrokeDecision::Unhandled,
+    }
+}
+
+fn handle_platform_format_shortcut(
+    source: &str,
+    sel: &Range<usize>,
+    input: &KeystrokeInput<'_>,
+) -> Option<KeystrokeDecision> {
+    match input.key {
+        "b" if !input.shift => Some(span_decision(edit_symmetric_delimiter(
+            source,
+            sel.clone(),
+            "**",
+        ))),
+        "i" if !input.shift => Some(span_decision(edit_symmetric_delimiter(
+            source,
+            sel.clone(),
+            "*",
+        ))),
+        "e" | "`" if !input.shift => Some(span_decision(edit_symmetric_delimiter(
+            source,
+            sel.clone(),
+            "`",
+        ))),
+        "x" if input.shift => Some(span_decision(edit_symmetric_delimiter(
+            source,
+            sel.clone(),
+            "~~",
+        ))),
+        "d" if !input.shift => Some(span_decision(edit_symmetric_delimiter(
+            source,
+            sel.clone(),
+            "~~",
+        ))),
+        "h" if input.shift => Some(span_decision(edit_symmetric_delimiter(
+            source,
+            sel.clone(),
+            "==",
+        ))),
+        "m" => {
+            let delim = if input.shift { "$$" } else { "$" };
+            Some(span_decision(edit_symmetric_delimiter(
+                source,
+                sel.clone(),
+                delim,
+            )))
+        }
+        "k" if !input.shift => Some(insert_markdown_link(source, sel)),
+        "0" if !input.shift => Some(span_decision(edit_set_heading_level(
+            source,
+            sel.clone(),
+            0,
+        ))),
+        "1" | "2" | "3" | "4" | "5" | "6" if !input.shift => {
+            let level = input.key.as_bytes()[0] - b'0';
+            Some(span_decision(edit_toggle_heading_level(
+                source,
+                sel.clone(),
+                level,
+            )))
+        }
+        "enter" if !input.shift => {
+            let edit = edit_toggle_task_checkbox(source, sel.clone());
+            Some(if edit.is_noop() {
+                KeystrokeDecision::Unhandled
+            } else {
+                span_decision(edit)
+            })
+        }
+        _ => None,
+    }
+}
+
+fn insert_markdown_link(source: &str, sel: &Range<usize>) -> KeystrokeDecision {
+    let (target_start, target_end) = if sel.start < sel.end {
+        (sel.start, sel.end)
+    } else if let Some((ws, we)) = word_range_at(source, sel.start) {
+        (ws, we)
+    } else {
+        (sel.start, sel.end)
+    };
+    let selected = &source[target_start..target_end];
+    let replacement = format!("[{selected}]()");
+    let url_cursor = target_start + 1 + selected.len() + 2;
+    KeystrokeDecision::SourceEdit {
+        edit_range: target_start..target_end,
+        replacement,
+        post_selection: Some(url_cursor..url_cursor),
     }
 }
 
@@ -206,7 +267,17 @@ fn handle_plain_key(
                 KeystrokeDecision::HandledNoOp
             }
         }
-        "enter" => handle_enter_key(source, sel),
+        "enter" => {
+            let edit = edit_newline(source, sel);
+            let default_caret = edit.replace_range.start + edit.replacement.len();
+            let post_selection = (edit.new_selection != (default_caret..default_caret))
+                .then_some(edit.new_selection);
+            KeystrokeDecision::SourceEdit {
+                edit_range: edit.replace_range,
+                replacement: edit.replacement,
+                post_selection,
+            }
+        }
         "tab" => handle_tab_key(source, sel, input.shift),
         "left" | "right" | "up" | "down" | "home" | "end" => {
             let next_pos =
@@ -214,6 +285,52 @@ fn handle_plain_key(
             KeystrokeDecision::SelectRange(select_target(tail, next_pos, input.shift))
         }
         _ => KeystrokeDecision::Unhandled,
+    }
+}
+
+fn handle_tab_key(source: &str, sel: Range<usize>, shift: bool) -> KeystrokeDecision {
+    let len = source.len();
+    let line_start = source[..sel.start].rfind('\n').map_or(0, |idx| idx + 1);
+    let line_end = source[sel.end..]
+        .find('\n')
+        .map_or(len, |rel| sel.end + rel);
+    let line_slice = &source[line_start..line_end];
+    if shift {
+        if line_slice.starts_with("  ") {
+            KeystrokeDecision::SourceEdit {
+                edit_range: line_start..(line_start + 2),
+                replacement: String::new(),
+                post_selection: None,
+            }
+        } else if line_slice.starts_with('\t') {
+            KeystrokeDecision::SourceEdit {
+                edit_range: line_start..(line_start + 1),
+                replacement: String::new(),
+                post_selection: None,
+            }
+        } else {
+            KeystrokeDecision::HandledNoOp
+        }
+    } else {
+        let trimmed = line_slice.trim_start();
+        let is_list_line = trimmed.starts_with("- ")
+            || trimmed.starts_with("* ")
+            || trimmed.starts_with("+ ")
+            || trimmed.starts_with("> ")
+            || (trimmed.chars().take_while(char::is_ascii_digit).count() > 0
+                && trimmed
+                    .trim_start_matches(|c: char| c.is_ascii_digit())
+                    .starts_with(". "));
+        let target = if is_list_line {
+            line_start..line_start
+        } else {
+            sel
+        };
+        KeystrokeDecision::SourceEdit {
+            edit_range: target,
+            replacement: "  ".to_string(),
+            post_selection: None,
+        }
     }
 }
 
@@ -225,13 +342,11 @@ fn delete_range(edit_range: Range<usize>) -> KeystrokeDecision {
     }
 }
 
-fn delim_decision(source: &str, sel: Range<usize>, delim: &str) -> KeystrokeDecision {
-    let (edit_range, replacement, post_sel) =
-        toggle_inline_delimiter(source, sel.start, sel.end, delim);
+fn span_decision(edit: SpanEdit) -> KeystrokeDecision {
     KeystrokeDecision::SourceEdit {
-        edit_range,
-        replacement,
-        post_selection: Some(post_sel),
+        edit_range: edit.replace_range,
+        replacement: edit.replacement,
+        post_selection: Some(edit.new_selection),
     }
 }
 

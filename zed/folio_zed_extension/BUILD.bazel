@@ -28,6 +28,9 @@ EXTENSION_TESTS = glob(["tst/*.rs"])
     rust_test(
         name = src.removeprefix("tst/").removesuffix(".rs"),
         srcs = [src],
+        compile_data = (
+            ["//core/folio_engine:tst/support/behavior_spec.rs"] if src == "tst/behavior_suite.rs" else []
+        ),
         data = ["//tst/specs:all_behavior_specs"],
         edition = "2021",
         deps = [

@@ -5,8 +5,6 @@ use std::os::raw::{c_char, c_int, c_void};
 #[cfg(not(target_arch = "wasm32"))]
 use std::sync::{Mutex, Once};
 
-use super::types::UpstreamSpecExample;
-
 #[cfg(not(target_arch = "wasm32"))]
 #[repr(C)]
 pub(crate) struct CmarkMem {
@@ -171,61 +169,4 @@ pub fn render_markdown_to_html(_markdown: &str, _extensions: &[&str]) -> String 
 /// Renders GitHub Flavored Markdown (with all 5 standard GFM extensions enabled) to HTML.
 pub fn render_gfm_to_html(markdown: &str) -> String {
     render_markdown_to_html(markdown, DEFAULT_GFM_EXTENSIONS)
-}
-
-pub fn parse_upstream_spec_txt(spec_text: &str) -> Vec<UpstreamSpecExample> {
-    let mut line_number = 0usize;
-    let mut start_line = 0usize;
-    let mut example_number = 0usize;
-    let mut markdown_lines: Vec<String> = Vec::new();
-    let mut html_lines: Vec<String> = Vec::new();
-    let mut state = 0u8;
-    let mut extensions: Vec<String> = Vec::new();
-    let mut headertext = String::new();
-    let mut tests = Vec::new();
-
-    let fence_prefix = "````````````````````````````````";
-
-    for raw_line in spec_text.split_inclusive('\n') {
-        line_number += 1;
-        let stripped = raw_line.trim();
-        if let Some(after) = stripped.strip_prefix(&format!("{fence_prefix} example")) {
-            state = 1;
-            extensions = after.split_whitespace().map(str::to_string).collect();
-        } else if stripped == fence_prefix {
-            state = 0;
-            example_number += 1;
-            let end_line = line_number;
-            if !extensions.iter().any(|e| e == "disabled") {
-                tests.push(UpstreamSpecExample {
-                    example: example_number,
-                    section: headertext.clone(),
-                    start_line,
-                    end_line,
-                    extensions: extensions.clone(),
-                    markdown: markdown_lines.concat().replace('→', "\t"),
-                    html: html_lines.concat().replace('→', "\t"),
-                });
-            }
-            start_line = 0;
-            markdown_lines.clear();
-            html_lines.clear();
-        } else if stripped == "." && (state == 1 || state == 2) {
-            state = 2;
-        } else if state == 1 {
-            if start_line == 0 {
-                start_line = line_number - 1;
-            }
-            markdown_lines.push(raw_line.to_string());
-        } else if state == 2 {
-            html_lines.push(raw_line.to_string());
-        } else if state == 0 && raw_line.starts_with('#') {
-            let hashes = raw_line.bytes().take_while(|&b| b == b'#').count();
-            if raw_line[hashes..].starts_with(' ') {
-                headertext = raw_line[hashes + 1..].trim().to_string();
-            }
-        }
-    }
-
-    tests
 }

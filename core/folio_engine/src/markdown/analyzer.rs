@@ -1,7 +1,9 @@
 use super::block_handlers::{
     handle_code_fence_line, handle_math_or_hr_or_heading, try_handle_setext_heading,
 };
-use super::block_scanner::parse_atx_heading_line;
+use super::block_scanner::{
+    is_closing_code_fence, parse_atx_heading_line, parse_opening_code_fence,
+};
 use super::inline_scanner::scan_inline_spans;
 use super::tables::{
     handle_blockquote_or_table, is_gfm_table_candidate_line, is_gfm_table_delimiter_row,
@@ -232,20 +234,19 @@ pub fn analyze_markdown_document_with_options(
             .map(|l| l.trim_end_matches(&['\r', '\n'][..]))
             .unwrap_or("");
 
-        let is_table_line = update_table_state(&mut state, content_line, next_content_line);
-
         if source_code_mode {
-            if let Some((level, _, _, title)) = parse_atx_heading_line(content_line) {
-                out.headings.push(OutlineHeadingItem {
-                    level,
-                    title: title.to_string(),
-                    byte_offset: line_start,
-                    line_number,
-                });
-            }
+            handle_source_code_mode_line(
+                &mut state,
+                content_line,
+                line_start,
+                line_number,
+                &mut out,
+            );
             idx += 1;
             continue;
         }
+
+        let is_table_line = update_table_state(&mut state, content_line, next_content_line);
 
         let line_ctx = LineContext {
             content_line,
@@ -277,6 +278,39 @@ pub fn analyze_markdown_document_with_options(
     }
 
     out
+}
+
+fn handle_source_code_mode_line(
+    state: &mut BlockScanState,
+    content_line: &str,
+    line_start: usize,
+    line_number: usize,
+    out: &mut MarkdownAnalysis,
+) {
+    if state.in_code_fence {
+        if is_closing_code_fence(
+            content_line,
+            state.fence_marker_char,
+            state.fence_marker_len,
+        ) {
+            state.in_code_fence = false;
+        }
+        return;
+    }
+    if let Some((ch, len, _)) = parse_opening_code_fence(content_line) {
+        state.in_code_fence = true;
+        state.fence_marker_char = ch;
+        state.fence_marker_len = len;
+        return;
+    }
+    if let Some((level, _, _, title)) = parse_atx_heading_line(content_line) {
+        out.headings.push(OutlineHeadingItem {
+            level,
+            title: title.to_string(),
+            byte_offset: line_start,
+            line_number,
+        });
+    }
 }
 
 fn process_single_line(

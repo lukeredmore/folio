@@ -1,8 +1,10 @@
+use folio_engine::mermaid::postprocess_mermaid_svg;
 use folio_engine::{
     analyze_markdown_document, analyze_markdown_document_with_options,
-    compute_newline_continuation, layout_latex, normalize_svg_markup, plain_text_summary,
-    render_mermaid_to_svg, replace_code_fence_language, DocumentStats, HtmlInlineTagKind,
-    MarkdownBlockDecorationKind, NewlineAction, SyntaxTokenKind, ThemeId, ThemeMetrics,
+    compute_newline_continuation, extract_xml_attr, layout_latex, normalize_svg_markup,
+    plain_text_summary, render_mermaid_to_svg, replace_code_fence_language, DocumentStats,
+    HtmlInlineTagKind, MarkdownBlockDecorationKind, NewlineAction, SyntaxTokenKind, ThemeId,
+    ThemeMetrics,
 };
 
 #[test]
@@ -227,4 +229,79 @@ fn test_rich_media_images_mermaid_svg_and_inline_html() {
 
     let raw_analysis = analyze_markdown_document_with_options(doc, 999, false, false, false, false);
     assert!(raw_analysis.syntax_fold_spans.iter().all(|s| s.is_revealed));
+}
+
+#[test]
+fn test_svg_normalizer_closing_before_opening_and_stroke_width_collision() {
+    let (_, width, height) =
+        normalize_svg_markup("</svg><svg viewBox=\"0 0 100 50\"><rect/></svg>").unwrap();
+    assert!((width - 100.0).abs() < f32::EPSILON);
+    assert!((height - 50.0).abs() < f32::EPSILON);
+    assert!(normalize_svg_markup("</svg><svg>").is_none());
+
+    let (wide_svg, wide_w, wide_h) = normalize_svg_markup(
+        "<svg stroke-width=\"1.5\" width=\"400\" height=\"220\"><rect width=\"400\" height=\"220\"/></svg>",
+    )
+    .unwrap();
+    assert!((wide_w - 400.0).abs() < f32::EPSILON);
+    assert!((wide_h - 220.0).abs() < f32::EPSILON);
+    assert!(wide_svg.contains("stroke-width=\"1.5\""));
+
+    let (styled_svg, _, _) = postprocess_mermaid_svg(
+        "<svg viewBox=\"0 0 120 60\"><!-- </style> --><style>svg{fill:red;}</style><rect/></svg>",
+        false,
+    )
+    .unwrap();
+    assert!(styled_svg.contains("<style>svg {"));
+
+    let tag = "<img alt=\"width=10\" data-stroke-width=\"2\" width=\"320\" height=\"160\" src=\"diagram.svg\" />";
+    assert_eq!(extract_xml_attr(tag, "width"), Some("320"));
+    assert_eq!(extract_xml_attr(tag, "height"), Some("160"));
+}
+
+#[test]
+fn test_svg_markers_scientific_notation_and_stateful_path_commands() {
+    let sci_raw = "<svg viewBox=\"0 0 100 100\"><path d=\"M 10 10 l 6.123e-17 40\" marker-end=\"url(#my-svg_flowchart-v2-pointEnd)\"/></svg>";
+    let (sci_svg, _, _) = postprocess_mermaid_svg(sci_raw, false).unwrap();
+    assert!(
+        sci_svg.contains("translate(10.00,50.00) rotate(90.00)"),
+        "Expected vertical 90 deg marker tangent for scientific notation delta, got: {sci_svg}"
+    );
+
+    let hv_raw = "<svg viewBox=\"0 0 100 100\"><path d=\"M 10 10 H 60 V 50\" marker-start=\"url(#my-svg_flowchart-v2-pointStart)\" marker-end=\"url(#my-svg_flowchart-v2-pointEnd)\"/></svg>";
+    let (hv_svg, _, _) = postprocess_mermaid_svg(hv_raw, false).unwrap();
+    assert!(
+        hv_svg.contains("translate(10.00,10.00) rotate(180.00)"),
+        "Expected 180 deg outward start marker for rightward H command, got: {hv_svg}"
+    );
+    assert!(
+        hv_svg.contains("translate(60.00,50.00) rotate(90.00)"),
+        "Expected 90 deg end tangent for downward V command, got: {hv_svg}"
+    );
+
+    let arc_raw = "<svg viewBox=\"0 0 100 100\"><path d=\"M 10 50 A 20 20 0 0 1 50 50\" marker-start=\"url(#my-svg_flowchart-v2-pointStart)\" marker-end=\"url(#my-svg_flowchart-v2-pointEnd)\"/></svg>";
+    let (arc_svg, _, _) = postprocess_mermaid_svg(arc_raw, false).unwrap();
+    assert!(
+        arc_svg.contains("translate(10.00,50.00) rotate(90.00)"),
+        "Expected 90 deg outward start marker for upward (-90 deg) semicircular arc, got: {arc_svg}"
+    );
+    assert!(
+        arc_svg.contains("translate(50.00,50.00) rotate(90.00)"),
+        "Expected 90 deg end tangent on semicircular SVG arc, got: {arc_svg}"
+    );
+}
+
+#[test]
+fn test_document_stats_utf8_and_utf16_streaming_parity() {
+    let text = "café 🦀 naïve\nsecond line";
+    let crab_byte = text.find('🦀').unwrap();
+    let naive_end_byte = text.find('\n').unwrap();
+    // "café " = 5 UTF-16 units; "🦀 naïve" = 2 + 1 + 5 = 8 UTF-16 units.
+    let s_u16 = DocumentStats::compute(text, Some((5, 8)));
+    let s_u8 = DocumentStats::compute_utf8(text, Some(crab_byte..naive_end_byte));
+    assert_eq!(s_u16, s_u8);
+    assert_eq!(s_u8.words, 4);
+    assert_eq!(s_u8.lines, 2);
+    assert_eq!(s_u8.selected_characters, 8);
+    assert_eq!(s_u8.selected_words, 1);
 }

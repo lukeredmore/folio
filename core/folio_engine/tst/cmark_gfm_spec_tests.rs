@@ -1,9 +1,96 @@
 use folio_engine::markdown::{
-    parse_cmark_gfm_ast, parse_upstream_spec_txt, render_markdown_to_html, CmarkBlockKind,
-    CmarkInlineKind,
+    parse_cmark_gfm_ast, render_markdown_to_html, CmarkBlockKind, CmarkInlineKind,
 };
 use std::fs;
 use std::path::PathBuf;
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct UpstreamSpecExample {
+    example: usize,
+    section: String,
+    start_line: usize,
+    end_line: usize,
+    extensions: Vec<String>,
+    markdown: String,
+    html: String,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum SpecParseState {
+    Outside,
+    Markdown,
+    Html,
+}
+
+fn parse_upstream_spec_txt(spec_text: &str) -> Vec<UpstreamSpecExample> {
+    const FENCE: &str = "````````````````````````````````";
+    const OPEN_PREFIX: &str = "```````````````````````````````` example";
+
+    let mut start_line = 0usize;
+    let mut example_number = 0usize;
+    let mut markdown_lines: Vec<&str> = Vec::new();
+    let mut html_lines: Vec<&str> = Vec::new();
+    let mut state = SpecParseState::Outside;
+    let mut extensions: Vec<String> = Vec::new();
+    let mut section = String::new();
+    let mut examples = Vec::new();
+
+    for (idx, raw_line) in spec_text.split_inclusive('\n').enumerate() {
+        let line_number = idx + 1;
+        let stripped = raw_line.trim();
+        if let Some(after) = stripped.strip_prefix(OPEN_PREFIX) {
+            state = SpecParseState::Markdown;
+            extensions = after.split_whitespace().map(str::to_string).collect();
+            continue;
+        }
+        if stripped == FENCE {
+            state = SpecParseState::Outside;
+            example_number += 1;
+            if !extensions.iter().any(|ext| ext == "disabled") {
+                examples.push(UpstreamSpecExample {
+                    example: example_number,
+                    section: section.clone(),
+                    start_line,
+                    end_line: line_number,
+                    extensions: extensions.clone(),
+                    markdown: markdown_lines.concat().replace('→', "\t"),
+                    html: html_lines.concat().replace('→', "\t"),
+                });
+            }
+            start_line = 0;
+            markdown_lines.clear();
+            html_lines.clear();
+            continue;
+        }
+        match state {
+            SpecParseState::Markdown if stripped == "." => state = SpecParseState::Html,
+            SpecParseState::Html if stripped == "." => {}
+            SpecParseState::Markdown => {
+                if start_line == 0 {
+                    start_line = line_number - 1;
+                }
+                markdown_lines.push(raw_line);
+            }
+            SpecParseState::Html => html_lines.push(raw_line),
+            SpecParseState::Outside => {
+                if let Some(heading) = parse_spec_heading(raw_line) {
+                    section = heading.to_string();
+                }
+            }
+        }
+    }
+
+    examples
+}
+
+fn parse_spec_heading(raw_line: &str) -> Option<&str> {
+    let hashes = raw_line.bytes().take_while(|&b| b == b'#').count();
+    if hashes > 0 && raw_line[hashes..].starts_with(' ') {
+        Some(raw_line[hashes + 1..].trim())
+    } else {
+        None
+    }
+}
 
 fn spec_file_path(filename: &str) -> PathBuf {
     let mut candidates = vec![
