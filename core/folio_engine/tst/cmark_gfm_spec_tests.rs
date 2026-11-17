@@ -241,3 +241,26 @@ Here is a [reference link][ref] and a [shortcut] link.
     assert_ne!(tasks[0].flags & 16, 0);
     assert_eq!(tasks[1].flags & 16, 0);
 }
+
+#[test]
+fn test_cmark_gfm_ast_extended_autolink_columns_match_source() {
+    let md = "\
+1. **Onboarding.** In https://example.com/#/, onboard.
+   then www.example.com/a end
+
+> c https://example.com/q d
+";
+    let ast = parse_cmark_gfm_ast(md);
+    let lines: Vec<&str> = md.lines().collect();
+    let links: Vec<_> = ast
+        .inlines
+        .iter()
+        .filter(|i| i.kind == CmarkInlineKind::Link)
+        .collect();
+    assert_eq!(links.len(), 3);
+    for link in links {
+        let line = lines[link.start_line as usize - 1];
+        let source = &line[link.start_column as usize - 1..link.end_column as usize];
+        assert_eq!(source, link.literal);
+    }
+}
