@@ -159,6 +159,7 @@ _PERF_TESTS = [
 ]
 
 _EDITOR_TESTS = [
+    "Tests/FolioTests/AutolinkRangeTests.swift",
     "Tests/FolioTests/BehaviorSpecTests.swift",
     "Tests/FolioTests/DiagramImageRendererTests.swift",
     "Tests/FolioTests/DrawCullingTests.swift",

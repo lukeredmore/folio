@@ -91,7 +91,7 @@ pub fn parse_cmark_gfm_ast(markdown: &str) -> CmarkAstAnalysis {
             );
 
             if !visit_cmark_block_node(node, type_str, pos, &raw_lines, &mut blocks) {
-                visit_cmark_inline_node(node, type_str, pos, &mut inlines);
+                visit_cmark_inline_node(node, type_str, pos, &raw_lines, &mut inlines);
             }
         }
 
@@ -284,6 +284,7 @@ unsafe fn visit_cmark_inline_node(
     node: *mut CmarkNode,
     type_str: &str,
     pos: (u32, u32, u32, u32),
+    raw_lines: &[&str],
     inlines: &mut Vec<CmarkInlineSpan>,
 ) {
     let (kind, url, literal) = match type_str {
@@ -312,13 +313,39 @@ unsafe fn visit_cmark_inline_node(
         }
         _ => return,
     };
+    let start_column = if kind == CmarkInlineKind::Link {
+        extension_autolink_start_column(raw_lines, pos, &literal).unwrap_or(pos.1)
+    } else {
+        pos.1
+    };
     inlines.push(CmarkInlineSpan {
         kind,
         start_line: pos.0,
-        start_column: pos.1,
+        start_column,
         end_line: pos.2,
         end_column: pos.3,
         url,
         literal,
     });
+}
+
+/// Corrects the start column of a GFM extended autolink (a bare URL or `www.` link).
+/// cmark-gfm sets it from the offset in the paragraph text, which ignores container
+/// prefixes and earlier paragraph lines. Its end column is correct, and the link text
+/// is the exact source, so the start is the end minus the text length.
+fn extension_autolink_start_column(
+    raw_lines: &[&str],
+    (start_line, _, end_line, end_column): (u32, u32, u32, u32),
+    literal: &str,
+) -> Option<u32> {
+    if start_line != end_line || !(literal.contains("://") || literal.starts_with("www.")) {
+        return None;
+    }
+    let line = raw_lines.get(usize::try_from(start_line).ok()?.checked_sub(1)?)?;
+    let end = usize::try_from(end_column).ok()?;
+    let start = end.checked_sub(literal.len())?;
+    if line.as_bytes().get(start..end)? != literal.as_bytes() {
+        return None;
+    }
+    u32::try_from(start + 1).ok()
 }
