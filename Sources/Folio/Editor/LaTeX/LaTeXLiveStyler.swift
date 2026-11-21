@@ -306,7 +306,7 @@ public enum LaTeXLiveStyler {
         fileURL: URL?
     ) -> MarkdownDocumentAnalysis {
         let codeFont = theme.codeFont(size: effectiveBaseSize * 0.92)
-        let boldFont = NSFontManager.shared.convert(codeFont, toHaveTrait: .boldFontMask)
+        let boldFont = FontGDEFSanitizer.convert(codeFont, toHaveTrait: .boldFontMask)
         let fullRange = NSRange(location: 0, length: fullLength)
         storage.addAttributes([.font: codeFont, MKey.noSpellCheck: true], range: fullRange)
 

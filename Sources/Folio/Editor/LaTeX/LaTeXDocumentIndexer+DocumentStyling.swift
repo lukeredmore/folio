@@ -162,7 +162,7 @@ extension LaTeXDocumentIndex {
         if let mono = documentStyle.monoFontFamily, !mono.isEmpty,
             let custom = NSFont(name: mono, size: size)
         {
-            return custom
+            return FontGDEFSanitizer.sanitize(custom)
         }
         return fallbackTheme.codeFont(size: size)
     }

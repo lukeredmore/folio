@@ -429,8 +429,8 @@ extension LaTeXStylePass {
             }
             let bold = next.bold != previous.bold ? next.bold : traits.contains(.boldFontMask)
             let italic = next.italic != previous.italic ? next.italic : traits.contains(.italicFontMask)
-            font = bold ? manager.convert(font, toHaveTrait: .boldFontMask) : manager.convert(font, toNotHaveTrait: .boldFontMask)
-            font = italic ? manager.convert(font, toHaveTrait: .italicFontMask) : manager.convert(font, toNotHaveTrait: .italicFontMask)
+            font = bold ? FontGDEFSanitizer.convert(font, toHaveTrait: .boldFontMask) : FontGDEFSanitizer.convert(font, toNotHaveTrait: .boldFontMask)
+            font = italic ? FontGDEFSanitizer.convert(font, toHaveTrait: .italicFontMask) : FontGDEFSanitizer.convert(font, toNotHaveTrait: .italicFontMask)
             storage.addAttribute(.font, value: font, range: subrange)
         }
     }
@@ -523,9 +523,8 @@ extension LaTeXStylePass {
         } else {
             font = NSFont(descriptor: baseFont.fontDescriptor, size: size) ?? baseFont
         }
-        let manager = NSFontManager.shared
-        if style.bold { font = manager.convert(font, toHaveTrait: .boldFontMask) }
-        if style.italic { font = manager.convert(font, toHaveTrait: .italicFontMask) }
+        if style.bold { font = FontGDEFSanitizer.convert(font, toHaveTrait: .boldFontMask) }
+        if style.italic { font = FontGDEFSanitizer.convert(font, toHaveTrait: .italicFontMask) }
         return font
     }
 
