@@ -25,6 +25,7 @@ struct LaTeXTransparentMacro: Equatable, Sendable {
         let plainArguments = Array(repeating: "x", count: argumentCount)
         let plainBody = LaTeXMacroExpander.substituteArguments(plainArguments, into: body)
         guard LaTeXProseMacroExpander.render(plainBody, macros: macros) == nil else { return nil }
+        if LaTeXLayoutLine.printsNothing(plainBody, macros: macros) { return nil }
         var separators: [Int: [LaTeXProseSegment]] = [:]
         if argumentCount > 1 {
             for number in 2...argumentCount {

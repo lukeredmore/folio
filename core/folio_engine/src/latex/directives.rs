@@ -196,14 +196,14 @@ fn scan_document_directive(
 ) -> Option<Option<usize>> {
     use LatexDirectiveKind as K;
     let result = match cmd {
-        "documentclass" => push_opt_and_brace(
+        "documentclass" | "LoadClass" => push_opt_and_brace(
             text,
             after,
             (K::DocumentClass, false, cmd),
-            ArgText::Raw,
+            ArgText::Trimmed,
             out,
         ),
-        "usepackage" if is_preamble => {
+        "usepackage" | "RequirePackage" if is_preamble => {
             push_opt_and_brace(text, after, (K::UsePackage, false, cmd), ArgText::Raw, out)
         }
         "part" | "chapter" | "section" | "sectiontitle" | "subsection" | "subsubsection"
@@ -365,7 +365,39 @@ fn try_scan_preamble_style(
             );
             Some(a3)
         }
+        "colorlet" => {
+            let (s1, e1, a1) = read_balanced_braces(bytes, after)?;
+            let (s2, e2, a2) = read_balanced_braces(bytes, a1)?;
+            push_item(
+                out,
+                LatexDirectiveKind::DefineColor,
+                false,
+                cmd,
+                "",
+                (text[s1..e1].trim(), "colorlet", text[s2..e2].trim()),
+            );
+            Some(a2)
+        }
         _ => None,
+    }
+}
+
+fn infer_heading_level(size_rank: u32, has_bold: bool, has_rule: bool) -> u32 {
+    match (size_rank, has_bold, has_rule) {
+        (1, true, _) => 1,
+        (2, true, _) | (2, _, true) => 2,
+        (3, true, true) => 2,
+        (3, true, false) => 3,
+        _ => 0,
+    }
+}
+
+fn size_rank_for_cmd(cmd: &str) -> u32 {
+    match cmd {
+        "Huge" | "huge" => 1,
+        "LARGE" => 2,
+        "Large" | "large" => 3,
+        _ => 0,
     }
 }
 
@@ -379,6 +411,7 @@ pub fn analyze_macro_template(active: &str, body_placeholder: &str) -> MacroTemp
     let bytes = active.as_bytes();
     let (mut color_name, mut prefix_label, mut vspace_list, mut heading_level, mut i) =
         (String::new(), String::new(), Vec::new(), 0u32, 0usize);
+    let (mut size_rank, mut has_bold, mut has_rule) = (0u32, false, false);
     while i < bytes.len() {
         let Some((cmd, after)) = read_control_word(active, i) else {
             i += 1;
@@ -387,15 +420,23 @@ pub fn analyze_macro_template(active: &str, body_placeholder: &str) -> MacroTemp
         let p = after + usize::from(bytes.get(after) == Some(&b'*'));
         if matches!(cmd, "color" | "textcolor") && color_name.is_empty() {
             if let Some((s, e, next)) = read_balanced_braces(bytes, after) {
-                color_name = active[s..e].to_string();
+                color_name = active[s..e].trim().to_string();
                 i = next;
                 continue;
             }
-        } else if cmd == "textbf" && shows_body && prefix_label.is_empty() && i < ph_pos {
+        } else if cmd == "textbf" {
             if let Some((s, e, next)) = read_balanced_braces(bytes, after) {
-                prefix_label = active[s..e].to_string();
-                i = next;
-                continue;
+                let inner = &active[s..e];
+                if shows_body
+                    && prefix_label.is_empty()
+                    && i < ph_pos
+                    && (body_placeholder.is_empty() || !inner.contains(body_placeholder))
+                {
+                    prefix_label = inner.to_string();
+                    i = next;
+                    continue;
+                }
+                has_bold = true;
             }
         } else if cmd == "vspace" {
             if let Some((s, e, next)) = read_balanced_braces(bytes, p) {
@@ -403,6 +444,20 @@ pub fn analyze_macro_template(active: &str, body_placeholder: &str) -> MacroTemp
                 i = next;
                 continue;
             }
+        } else if size_rank_for_cmd(cmd) > 0 {
+            let rank = size_rank_for_cmd(cmd);
+            size_rank = if size_rank == 0 {
+                rank
+            } else {
+                size_rank.min(rank)
+            };
+        } else if matches!(cmd, "bfseries" | "bf") {
+            has_bold = true;
+        } else if matches!(
+            cmd,
+            "rule" | "hrule" | "hdashrule" | "titlerule" | "hrulefill"
+        ) {
+            has_rule = true;
         } else if shows_body
             && heading_level == 0
             && bytes.get(skip_ascii_ws(bytes, p)) == Some(&b'{')
@@ -416,6 +471,9 @@ pub fn analyze_macro_template(active: &str, body_placeholder: &str) -> MacroTemp
             };
         }
         i = after;
+    }
+    if shows_body && heading_level == 0 {
+        heading_level = infer_heading_level(size_rank, has_bold, has_rule);
     }
     MacroTemplateAnalysis {
         shows_body,

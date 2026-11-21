@@ -176,6 +176,7 @@ _LATEX_TESTS = [
     "Tests/FolioTests/LaTeXArrayAlternativesTests.swift",
     "Tests/FolioTests/LaTeXBasicTeXRenderingTests.swift",
     "Tests/FolioTests/LaTeXBlockStyleCacheInputTests.swift",
+    "Tests/FolioTests/LaTeXCustomClassCVTests.swift",
     "Tests/FolioTests/LaTeXDefParameterTests.swift",
     "Tests/FolioTests/LaTeXLayoutCommandTests.swift",
     "Tests/FolioTests/LaTeXMasterDetectionTests.swift",

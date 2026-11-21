@@ -105,7 +105,7 @@ enum LaTeXRenderDump {
             let text = lines.map { runs in
                 runs.map { run -> String in
                     switch run {
-                    case let .text(text, font, underline, offset):
+                    case let .text(text, font, _, underline, offset):
                         let tags = fontTags(font, underline: underline, offset: offset)
                         return tags.isEmpty ? text : "‹\(tags):\(text)›"
                     case let .math(latex, _, offset):

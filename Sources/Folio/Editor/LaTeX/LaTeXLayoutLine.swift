@@ -125,15 +125,37 @@ struct LaTeXLayoutLine: Equatable {
             idx = after
             if name == "begin" || name == "end" {
                 readEnvironment(isBegin: name == "begin")
+            } else if name == "textcolor" {
+                idx = skipBrackets(from: idx, limit: 1)
+                idx = skipBraces(from: idx, limit: 1)
+                let probe = LaTeXMacroExpander.skipSpaces(chars, from: idx)
+                if let (body, afterBody) = LaTeXMacroExpander.readBracedGroup(chars, at: probe) {
+                    let inner = LaTeXLayoutLine.analyze(body, macros: macros, wrappers: wrappers, nesting: nesting + 1)
+                    if inner.isLayoutOnly {
+                        for effect in inner.effects { record(effect) }
+                        if inner.drawsRule { drawsRule = true }
+                    } else if !body.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                        sawContent = true
+                    }
+                    idx = afterBody
+                } else {
+                    sawContent = true
+                }
             } else if let entry = LaTeXLayoutCommands.entries[name] {
                 readLayoutCommand(name, entry)
             } else if LaTeXLayoutCommands.definitionCommands.contains(name) {
                 if !skipDefinition(name) { sawContent = true }
             } else if let def = macros["\\\(name)"],
-                let effects = LaTeXLayoutLine.userLayoutEffects(for: def, macros: macros, nesting: nesting)
+                let analysis = LaTeXLayoutLine.userLayoutAnalysis(for: def, macros: macros, nesting: nesting)
             {
-                for effect in effects { record(effect) }
+                for effect in analysis.effects { record(effect) }
+                if analysis.drawsRule { drawsRule = true }
                 if idx + 1 < chars.count && chars[idx] == "{" && chars[idx + 1] == "}" { idx += 2 }
+            } else if let def = macros["\\\(name)"],
+                LaTeXLayoutLine.isPureMultiArgSetter(def, macros: macros),
+                let (_, afterArgs) = LaTeXMacroExpander.readArguments(for: def, in: chars, from: idx)
+            {
+                idx = afterArgs
             } else if let end = registerAssignmentEnd(name, from: idx) {
                 idx = end
             } else {
@@ -210,8 +232,12 @@ struct LaTeXLayoutLine: Equatable {
                     record(.declaration(declaration))
                 }
             case .rule:
-                let sizes = arguments.map { LaTeXLength.parse($0)?.resolvedPoints(baseSize: 10) ?? 1 }
-                if name == "hrule" || !sizes.contains(0) { drawsRule = true }
+                if name == "hrule" || name == "hrulefill" {
+                    drawsRule = true
+                } else {
+                    let sizes = arguments.map { LaTeXLength.parse($0)?.resolvedPoints(baseSize: 10) ?? 1 }
+                    if !sizes.contains(0) { drawsRule = true }
+                }
             }
         }
 
@@ -329,18 +355,46 @@ struct LaTeXLayoutLine: Equatable {
         macros: [String: LaTeXMacroDefinition],
         nesting: Int = 0
     ) -> [LaTeXFlowEffect]? {
+        userLayoutAnalysis(for: def, macros: macros, nesting: nesting)?.effects
+    }
+
+    static func userLayoutAnalysis(
+        for def: LaTeXMacroDefinition,
+        macros: [String: LaTeXMacroDefinition],
+        nesting: Int = 0
+    ) -> (effects: [LaTeXFlowEffect], drawsRule: Bool)? {
         guard nesting <= maxNesting, def.argCount == 0, def.parameterText == nil, !def.isEnvironment,
             def.operatorText == nil
         else { return nil }
         if let decl = def.fontDeclaration {
-            return [.declaration(.customFont(decl))]
+            return ([.declaration(.customFont(decl))], false)
         }
         let code = LaTeXLiveStyler.maskedComments(def.replacement)
         if code.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-            return []
+            return ([], false)
         }
         let analyzed = analyze(code, macros: macros, wrappers: LaTeXLayoutCommands.flowWrapperEnvironments, nesting: nesting + 1)
-        return analyzed.isLayoutOnly ? analyzed.effects : nil
+        return analyzed.isLayoutOnly ? (analyzed.effects, analyzed.drawsRule) : nil
+    }
+
+    /// True when a macro taking 2+ arguments only stores those arguments into internal `\@...`
+    /// variables (for example `\photo{diameter}{image}`), so standalone calls fold without leaking
+    /// raw dimensions.
+    static func isPureMultiArgSetter(_ def: LaTeXMacroDefinition, macros: [String: LaTeXMacroDefinition]) -> Bool {
+        guard def.argCount >= 2, def.parameterText == nil, !def.isEnvironment, def.operatorText == nil,
+            def.replacement.contains("\\def\\@") || def.replacement.contains("\\gdef\\@")
+        else { return false }
+        let plainArgs = Array(repeating: "x", count: def.argCount)
+        let plainBody = LaTeXMacroExpander.substituteArguments(plainArgs, into: def.replacement)
+        return analyze(LaTeXLiveStyler.maskedComments(plainBody), macros: macros, wrappers: LaTeXLayoutCommands.flowWrapperEnvironments, nesting: 1)
+            .isLayoutOnly
+    }
+
+    /// True when a zero-argument macro builds a document/CV header using internal setter
+    /// variables (`\@name`, `\@title`, `\@tagline`), so its standalone call renders as a divider.
+    static func isHeaderBuilderMacro(_ def: LaTeXMacroDefinition) -> Bool {
+        def.argCount == 0 && def.parameterText == nil && !def.isEnvironment
+            && (def.replacement.contains("\\@name") || def.replacement.contains("\\@title"))
     }
 
     /// True when the macro body `body` prints nothing: it renders to blank text, or it holds only

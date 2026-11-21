@@ -2,16 +2,35 @@ import Foundation
 
 /// How the prose renderer handles one built-in text-mode command.
 private enum LaTeXProseCommand: Sendable {
+    enum NumComparison: Sendable {
+        case greater
+        case equal
+        case less
+    }
+
     /// Renders one argument with the changed style.
     case style(@Sendable (inout LaTeXProseStyle) -> Void)
     /// Changes the style until the enclosing group ends.
     case declaration(@Sendable (inout LaTeXProseStyle) -> Void)
     /// Skips `braces` arguments, then up to `brackets` optional arguments, and renders the next
     /// argument unchanged.
-    case wrapper(braces: Int, brackets: Int)
+    case wrapper(braces: Int, brackets: Int, appendSpace: Bool = false)
     /// Consumes up to `brackets` optional arguments and `braces` arguments, and renders nothing.
     case drop(brackets: Int, braces: Int)
     case symbol(String)
+    case par
+    case hspace
+    case url
+    case href
+    case color
+    case textcolor
+    case ifstrequal
+    case ifblank(trimmed: Bool)
+    case ifdef(checkEmpty: Bool)
+    case ifnum(NumComparison)
+    case foreachLoop
+    case beginGroup
+    case endGroup
     case math
     case fontFamily
     case fontSeries
@@ -20,6 +39,50 @@ private enum LaTeXProseCommand: Sendable {
     /// Skips a TeX integer such as `-5`, as `\penalty` takes.
     case integer
 }
+
+private let iconSymbols: [String: String] = [
+    "faAt": "@",
+    "faEnvelope": "✉",
+    "faEnvelopeO": "✉",
+    "faPhone": "☎",
+    "faMobile": "☎",
+    "faMapMarker": "📍",
+    "faMapPin": "📍",
+    "faCalendar": "📅",
+    "faCalendarO": "📅",
+    "faChain": "🔗",
+    "faLink": "🔗",
+    "faGlobe": "🌐",
+    "faHome": "⌂",
+    "faLinkedin": "in",
+    "faLinkedinSquare": "in",
+    "faTwitter": "𝕏",
+    "faGithub": "⌘",
+    "faGithubAlt": "⌘",
+    "faCircle": "●",
+    "faCircleO": "○",
+    "faBook": "📖",
+    "faFileText": "📄",
+    "faFileTextO": "📄",
+    "faGroup": "👥",
+    "faUsers": "👥",
+    "faGraduationCap": "🎓",
+    "faUniversity": "🎓",
+    "faInstitution": "🎓",
+    "faBriefcase": "💼",
+    "faTrophy": "🏆",
+    "faAward": "🏆",
+    "faStar": "★",
+    "faStarO": "☆",
+    "faCheck": "✓",
+    "faCogs": "⚙",
+    "faCog": "⚙",
+    "faWrench": "⚙",
+    "faCode": "⟨/⟩",
+    "faInfoCircle": "ℹ",
+    "aiOrcid": "iD",
+    "orcid": "iD"
+]
 
 private let proseCommands: [String: LaTeXProseCommand] = {
     var table: [String: LaTeXProseCommand] = [
@@ -96,23 +159,40 @@ private let proseCommands: [String: LaTeXProseCommand] = {
             resetFont(&$0)
         },
         "normalfont": .declaration { resetFont(&$0) },
+        "normalcolor": .declaration { $0.colorName = nil },
         "text": .wrapper(braces: 0, brackets: 0),
         "mbox": .wrapper(braces: 0, brackets: 0),
         "hbox": .wrapper(braces: 0, brackets: 0),
         "fbox": .wrapper(braces: 0, brackets: 0),
-        "makebox": .wrapper(braces: 0, brackets: 2),
-        "framebox": .wrapper(braces: 0, brackets: 2),
+        "makebox": .wrapper(braces: 0, brackets: 2, appendSpace: true),
+        "framebox": .wrapper(braces: 0, brackets: 2, appendSpace: true),
         "raisebox": .wrapper(braces: 1, brackets: 2),
-        "textcolor": .wrapper(braces: 1, brackets: 0),
         "colorbox": .wrapper(braces: 1, brackets: 0),
+        "textcolor": .textcolor,
+        "color": .color,
+        "url": .url,
+        "href": .href,
+        "par": .par,
+        "hspace": .hspace,
+        "ifstrequal": .ifstrequal,
+        "ifblank": .ifblank(trimmed: true),
+        "ifstrempty": .ifblank(trimmed: false),
+        "ifdef": .ifdef(checkEmpty: false),
+        "ifdefempty": .ifdef(checkEmpty: true),
+        "ifnumgreater": .ifnum(.greater),
+        "ifnumequal": .ifnum(.equal),
+        "ifnumless": .ifnum(.less),
+        "foreach": .foreachLoop,
+        "begingroup": .beginGroup,
+        "endgroup": .endGroup,
         "index": .drop(brackets: 0, braces: 1),
         "label": .drop(brackets: 0, braces: 1),
-        "hspace": .drop(brackets: 0, braces: 1),
         "phantom": .drop(brackets: 0, braces: 1),
         "hphantom": .drop(brackets: 0, braces: 1),
         "vphantom": .drop(brackets: 0, braces: 1),
-        "color": .drop(brackets: 1, braces: 1),
         "rule": .drop(brackets: 1, braces: 2),
+        "marginpar": .drop(brackets: 1, braces: 1),
+        "afterpage": .drop(brackets: 0, braces: 1),
         "fontsize": .drop(brackets: 0, braces: 2),
         "setlength": .drop(brackets: 0, braces: 2),
         "addtolength": .drop(brackets: 0, braces: 2),
@@ -134,7 +214,8 @@ private let proseCommands: [String: LaTeXProseCommand] = {
     }
     let ignored = [
         "selectfont", "boldmath", "unboldmath", "unskip", "relax", "nobreak", "strut", "leavevmode",
-        "ignorespaces", "protect", "noindent", "null", "smash"
+        "ignorespaces", "protect", "noindent", "null", "smash", "smallskip", "medskip", "bigskip",
+        "raggedright", "raggedleft", "centering", "arraybackslash"
     ]
     for name in ignored {
         table[name] = .symbol("")
@@ -149,6 +230,9 @@ private let proseCommands: [String: LaTeXProseCommand] = {
     ]
     for (name, text) in symbols.merging(documentNames, uniquingKeysWith: { first, _ in first }) {
         table[name] = .symbol(text)
+    }
+    for (name, glyph) in iconSymbols {
+        table[name] = .symbol(glyph)
     }
     return table
 }()
@@ -211,6 +295,7 @@ extension LaTeXProseMacroExpander {
     /// "Contents" for `\contentsname` or "©" for `\copyright`. Nil for other commands.
     static func builtinText(forCommand name: String) -> String? {
         if let text = documentNames[name] { return text }
+        if let icon = iconSymbols[name] { return icon }
         guard proseLineSymbols.contains(name), case .symbol(let text)? = proseCommands[name] else { return nil }
         return text
     }
@@ -247,10 +332,22 @@ extension LaTeXProseMacroExpander.Renderer {
             if let updated = nestedStyle { style = updated }
             return end
         }
-        guard let command = proseCommands[String(word.dropFirst())] else { return nil }
+        let cmdBase = String(word.dropFirst())
+        guard let command = proseCommands[cmdBase] else {
+            if Self.isIconControlWord(cmdBase) {
+                emit("•", style: style)
+                return LaTeXMacroExpander.skipSpaces(chars, from: hasStar ? afterWord + 1 : afterWord)
+            }
+            return nil
+        }
         // TeX skips the spaces after a control word.
         let after = LaTeXMacroExpander.skipSpaces(chars, from: hasStar ? afterWord + 1 : afterWord)
         return renderBuiltin(command, chars, after: after, style: &style, depth: depth)
+    }
+
+    private static func isIconControlWord(_ name: String) -> Bool {
+        guard (name.hasPrefix("fa") || name.hasPrefix("ai")), name.count > 2 else { return false }
+        return name[name.index(name.startIndex, offsetBy: 2)].isUppercase
     }
 
     private mutating func renderBuiltin(
@@ -269,7 +366,7 @@ extension LaTeXProseMacroExpander.Renderer {
         case .declaration(let change):
             change(&style)
             return start
-        case .wrapper(let braces, let brackets):
+        case .wrapper(let braces, let brackets, let appendSpace):
             var idx = start
             for _ in 0..<braces {
                 guard let (_, end) = readArgument(chars, at: idx) else { return nil }
@@ -278,7 +375,13 @@ extension LaTeXProseMacroExpander.Renderer {
             idx = skipBrackets(chars, from: idx, limit: brackets)
             guard let (arg, end) = readArgument(chars, at: idx) else { return nil }
             var argStyle = style
-            return render(Array(arg), style: &argStyle, depth: depth) ? end : nil
+            guard render(Array(arg), style: &argStyle, depth: depth) else { return nil }
+            if appendSpace && hasVisibleTextOnCurrentLine {
+                var spaceStyle = LaTeXProseStyle()
+                spaceStyle.sizeScale = style.sizeScale
+                emit("\u{2003}", style: spaceStyle)
+            }
+            return end
         case .drop(let brackets, let braces):
             var idx = skipBrackets(chars, from: start, limit: brackets)
             for _ in 0..<braces {
@@ -288,6 +391,117 @@ extension LaTeXProseMacroExpander.Renderer {
             return idx
         case .symbol(let text):
             if !text.isEmpty { emit(text, style: style) }
+            return start
+        case .par:
+            appendParagraphBreak()
+            return start
+        case .hspace:
+            var idx = start
+            if idx < chars.count && chars[idx] == "*" { idx = LaTeXMacroExpander.skipSpaces(chars, from: idx + 1) }
+            guard let (arg, end) = readArgument(chars, at: idx) else { return nil }
+            if hasVisibleTextOnCurrentLine, let pts = LaTeXLength.parse(arg)?.resolvedPoints(baseSize: 10), pts > 0 {
+                var spaceStyle = LaTeXProseStyle()
+                spaceStyle.sizeScale = style.sizeScale
+                emit(pts >= 12.0 ? "\u{2003}" : " ", style: spaceStyle)
+            }
+            return end
+        case .url:
+            guard let (rawURL, end) = readRawBracedGroup(chars, at: start) else { return nil }
+            var urlStyle = style
+            urlStyle.monospace = true
+            urlStyle.underline = true
+            if urlStyle.colorName == nil { urlStyle.colorName = "accent" }
+            emit(rawURL.trimmingCharacters(in: .whitespacesAndNewlines), style: urlStyle)
+            return end
+        case .href:
+            guard let (_, afterURL) = readRawBracedGroup(chars, at: start),
+                let (label, end) = readArgument(chars, at: LaTeXMacroExpander.skipSpaces(chars, from: afterURL))
+            else { return nil }
+            var linkStyle = style
+            linkStyle.underline = true
+            if linkStyle.colorName == nil { linkStyle.colorName = "accent" }
+            return render(Array(label), style: &linkStyle, depth: depth) ? end : nil
+        case .color:
+            var idx = start
+            let hasModel: Bool
+            let afterOpt = skipBrackets(chars, from: idx, limit: 1)
+            hasModel = afterOpt != idx
+            idx = afterOpt
+            guard let (spec, end) = readArgument(chars, at: idx) else { return nil }
+            if !hasModel {
+                let name = spec.trimmingCharacters(in: .whitespacesAndNewlines)
+                style.colorName = name == "normalcolor" ? nil : name
+            }
+            return end
+        case .textcolor:
+            var idx = start
+            let afterOpt = skipBrackets(chars, from: idx, limit: 1)
+            let hasModel = afterOpt != idx
+            idx = afterOpt
+            guard let (spec, afterSpec) = readArgument(chars, at: idx),
+                let (body, end) = readArgument(chars, at: LaTeXMacroExpander.skipSpaces(chars, from: afterSpec))
+            else { return nil }
+            var argStyle = style
+            if !hasModel {
+                argStyle.colorName = spec.trimmingCharacters(in: .whitespacesAndNewlines)
+            }
+            return render(Array(body), style: &argStyle, depth: depth) ? end : nil
+        case .ifstrequal:
+            guard let (lhs, a1) = readArgument(chars, at: start),
+                let (rhs, a2) = readArgument(chars, at: LaTeXMacroExpander.skipSpaces(chars, from: a1)),
+                let (thenB, a3) = readArgument(chars, at: LaTeXMacroExpander.skipSpaces(chars, from: a2)),
+                let (elseB, end) = readArgument(chars, at: LaTeXMacroExpander.skipSpaces(chars, from: a3))
+            else { return nil }
+            let branch = lhs.trimmingCharacters(in: .whitespacesAndNewlines) == rhs.trimmingCharacters(in: .whitespacesAndNewlines) ? thenB : elseB
+            return render(Array(branch), style: &style, depth: depth) ? end : nil
+        case .ifblank(let trimmed):
+            guard let (arg, a1) = readArgument(chars, at: start),
+                let (thenB, a2) = readArgument(chars, at: LaTeXMacroExpander.skipSpaces(chars, from: a1)),
+                let (elseB, end) = readArgument(chars, at: LaTeXMacroExpander.skipSpaces(chars, from: a2))
+            else { return nil }
+            let isBlank = trimmed ? arg.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty : arg.isEmpty
+            let branch = isBlank ? thenB : elseB
+            return render(Array(branch), style: &style, depth: depth) ? end : nil
+        case .ifdef(let checkEmpty):
+            let probe = LaTeXMacroExpander.skipSpaces(chars, from: start)
+            guard let (cmdName, a1) = LaTeXMacroExpander.readMacroNameArg(chars, at: probe),
+                let (thenB, a2) = readArgument(chars, at: LaTeXMacroExpander.skipSpaces(chars, from: a1)),
+                let (elseB, end) = readArgument(chars, at: LaTeXMacroExpander.skipSpaces(chars, from: a2))
+            else { return nil }
+            let def = macros[cmdName]
+            let cond: Bool
+            if checkEmpty {
+                cond = def?.replacement.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ?? true
+            } else {
+                cond = def != nil
+            }
+            let branch = cond ? thenB : elseB
+            return render(Array(branch), style: &style, depth: depth) ? end : nil
+        case .ifnum(let op):
+            guard let (lhsStr, a1) = readArgument(chars, at: start),
+                let (rhsStr, a2) = readArgument(chars, at: LaTeXMacroExpander.skipSpaces(chars, from: a1)),
+                let (thenB, a3) = readArgument(chars, at: LaTeXMacroExpander.skipSpaces(chars, from: a2)),
+                let (elseB, end) = readArgument(chars, at: LaTeXMacroExpander.skipSpaces(chars, from: a3)),
+                let lhs = Int(lhsStr.trimmingCharacters(in: .whitespacesAndNewlines)),
+                let rhs = Int(rhsStr.trimmingCharacters(in: .whitespacesAndNewlines))
+            else { return nil }
+            let matched: Bool
+            switch op {
+            case .greater: matched = lhs > rhs
+            case .equal: matched = lhs == rhs
+            case .less: matched = lhs < rhs
+            }
+            let branch = matched ? thenB : elseB
+            return render(Array(branch), style: &style, depth: depth) ? end : nil
+        case .foreachLoop:
+            return renderForeachLoop(chars, from: start, style: &style, depth: depth)
+        case .beginGroup:
+            groupStack.append(style)
+            return start
+        case .endGroup:
+            if !groupStack.isEmpty {
+                style = groupStack.removeLast()
+            }
             return start
         case .math:
             guard let (arg, end) = readArgument(chars, at: start) else { return nil }
@@ -306,6 +520,82 @@ extension LaTeXProseMacroExpander.Renderer {
             while idx < chars.count && chars[idx].isNumber { idx += 1 }
             return idx > digits ? idx : nil
         }
+    }
+
+    private func readRawBracedGroup(_ chars: [Character], at start: Int) -> (String, Int)? {
+        let open = LaTeXMacroExpander.skipSpaces(chars, from: start)
+        guard open < chars.count, chars[open] == "{" else { return nil }
+        var depth = 0
+        var idx = open
+        while idx < chars.count {
+            if chars[idx] == "{" {
+                depth += 1
+            } else if chars[idx] == "}" {
+                depth -= 1
+                if depth == 0 {
+                    return (String(chars[(open + 1)..<idx]), idx + 1)
+                }
+            }
+            idx += 1
+        }
+        return nil
+    }
+
+    private mutating func renderForeachLoop(
+        _ chars: [Character],
+        from start: Int,
+        style: inout LaTeXProseStyle,
+        depth: Int
+    ) -> Int? {
+        let varStart = LaTeXMacroExpander.skipSpaces(chars, from: start)
+        guard varStart < chars.count, chars[varStart] == "\\" else { return nil }
+        let (varName, afterVar) = LaTeXMacroExpander.readControlWord(chars, at: varStart)
+        guard varName.count > 1 else { return nil }
+        var idx = LaTeXMacroExpander.skipSpaces(chars, from: afterVar)
+        guard idx + 1 < chars.count, chars[idx] == "i", chars[idx + 1] == "n" else { return nil }
+        idx = LaTeXMacroExpander.skipSpaces(chars, from: idx + 2)
+        guard let (rawList, afterList) = LaTeXMacroExpander.readBracedGroup(chars, at: idx) else { return nil }
+        idx = LaTeXMacroExpander.skipSpaces(chars, from: afterList)
+        guard let (body, end) = LaTeXMacroExpander.readBracedGroup(chars, at: idx) else { return nil }
+        let items = Self.expandForeachItems(rawList)
+        for item in items {
+            let expanded = Self.substituteLoopVar(varName, with: item, in: body)
+            expandedBudget -= expanded.count
+            guard expandedBudget >= 0, render(Array(expanded), style: &style, depth: depth) else { return nil }
+        }
+        return end
+    }
+
+    private static func expandForeachItems(_ rawList: String) -> [String] {
+        let parts = rawList.split(separator: ",").map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+        if parts.count == 3, parts[1] == "...", let start = Int(parts[0]), let end = Int(parts[2]) {
+            if start <= end {
+                return (start...end).prefix(32).map(String.init)
+            }
+            return stride(from: start, through: end, by: -1).prefix(32).map(String.init)
+        }
+        return Array(parts.prefix(32))
+    }
+
+    private static func substituteLoopVar(_ varName: String, with value: String, in body: String) -> String {
+        let bodyChars = Array(body)
+        let needle = Array(varName)
+        var result: [Character] = []
+        var i = 0
+        while i < bodyChars.count {
+            if i + needle.count <= bodyChars.count && Array(bodyChars[i..<(i + needle.count)]) == needle {
+                let nextIdx = i + needle.count
+                let followedByLetter = nextIdx < bodyChars.count && (bodyChars[nextIdx].isLetter || bodyChars[nextIdx] == "@")
+                if !followedByLetter {
+                    result += value
+                    i = nextIdx
+                    continue
+                }
+            }
+            result.append(bodyChars[i])
+            i += 1
+        }
+        return String(result)
     }
 
     private mutating func renderControlSymbol(_ chars: [Character], at idx: Int, style: LaTeXProseStyle) -> Int? {

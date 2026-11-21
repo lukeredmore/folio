@@ -100,6 +100,7 @@ extension LaTeXDocumentIndexer {
         docMacros.merge(docIndex.extraMacros) { current, _ in current }
         if !sourceCodeMode {
             docMacros.merge(project.inheritedMacros) { current, _ in current }
+            docMacros.merge(project.classAndPackageMacros) { current, _ in current }
         }
         docIndex.documentMacros = docMacros
 

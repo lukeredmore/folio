@@ -28,18 +28,30 @@ extension LaTeXStylePass {
         let prefixLabel: String?
         let vspacePoints: CGFloat?
         let headingLevel: Int?
+        let suppressUnderline: Bool
+        let isBold: Bool
+        let isItalic: Bool
 
         var hasBlockFormatting: Bool {
-            !showsBody || color != nil || prefixLabel != nil || vspacePoints != nil || headingLevel != nil
+            !showsBody || color != nil || prefixLabel != nil || vspacePoints != nil || headingLevel != nil || isBold || isItalic
         }
     }
 
     func analyzeMacroTemplate(def: LaTeXMacroDefinition, optArg: String?) -> ResolvedMacroTemplate {
         var active = Self.evaluateConditionalsInTeX(def.replacement, conditionals: docIndex.documentStyle.conditionals)
-        if def.argCount >= 2 {
+        var inferredFromSetter = false
+        var suppressHeadingFromSetter = false
+        if def.argCount == 1, def.parameterText == nil,
+            let setterVar = Self.setterVariableTarget(in: active),
+            let headerSnippet = findHeaderSnippet(forSetterVar: setterVar)
+        {
+            active = headerSnippet.replacingOccurrences(of: setterVar, with: "#1")
+            inferredFromSetter = true
+            suppressHeadingFromSetter = (setterVar == "\\@personalinfo")
+        } else if def.argCount >= 2 {
             active = active.replacingOccurrences(of: "#1", with: optArg ?? (def.defaultFirstArg ?? ""))
         }
-        let bodyPlaceholder = "#\(def.argCount)"
+        let bodyPlaceholder = def.argCount >= 2 ? "#\(def.argCount)" : "#1"
         let analysis = active.withCString { activePtr in
             bodyPlaceholder.withCString { phPtr in
                 ot_engine_analyze_macro_template(activePtr, phPtr)
@@ -49,7 +61,7 @@ extension LaTeXStylePass {
 
         let colorName = analysis.color_name.map { String(cString: $0) } ?? ""
         let resolvedColor: NSColor? =
-            colorName.isEmpty
+            (colorName.isEmpty || suppressHeadingFromSetter)
             ? nil
             : docIndex.resolveColor(named: colorName, fallbackTheme: theme)
 
@@ -68,15 +80,49 @@ extension LaTeXStylePass {
                 }
             }
         }
-        let headingLevel: Int? = analysis.heading_level > 0 ? Int(analysis.heading_level) : nil
+        let headingLevel: Int? = (!suppressHeadingFromSetter && analysis.heading_level > 0) ? Int(analysis.heading_level) : nil
+        let isItalic =
+            analysis.shows_body && headingLevel == nil && !suppressHeadingFromSetter
+            && (active.contains("\\textit{\(bodyPlaceholder)}") || active.contains("\\emph{\(bodyPlaceholder)}")
+                || active.contains("\\itshape"))
+        let isBold =
+            analysis.shows_body && headingLevel == nil && !suppressHeadingFromSetter && prefixLabel == nil
+            && (active.contains("\\textbf{\(bodyPlaceholder)}") || active.contains("\\bfseries"))
 
         return ResolvedMacroTemplate(
             showsBody: analysis.shows_body,
             color: resolvedColor,
             prefixLabel: prefixLabel,
             vspacePoints: vspacePt,
-            headingLevel: headingLevel
+            headingLevel: headingLevel,
+            suppressUnderline: inferredFromSetter,
+            isBold: isBold,
+            isItalic: isItalic
         )
+    }
+
+    private static func setterVariableTarget(in replacement: String) -> String? {
+        let trimmed = LaTeXLexer.stripLineComment(replacement).trimmingCharacters(in: .whitespacesAndNewlines)
+        for prefix in ["\\def", "\\gdef"] where trimmed.hasPrefix(prefix) {
+            let rest = trimmed.dropFirst(prefix.count).trimmingCharacters(in: .whitespaces)
+            guard rest.hasPrefix("\\@") else { continue }
+            let name = String(rest.prefix { $0 == "\\" || $0 == "@" || $0.isLetter })
+            let afterName = rest.dropFirst(name.count).trimmingCharacters(in: .whitespaces)
+            if afterName == "{#1}" {
+                return name
+            }
+        }
+        return nil
+    }
+
+    private func findHeaderSnippet(forSetterVar variable: String) -> String? {
+        for def in docIndex.documentMacros.values where LaTeXLayoutLine.isHeaderBuilderMacro(def) {
+            guard def.replacement.contains(variable) else { continue }
+            for rawLine in def.replacement.components(separatedBy: "\n") where rawLine.contains(variable) {
+                return rawLine
+            }
+        }
+        return nil
     }
 
     private static func supportsMacroBlockShape(_ def: LaTeXMacroDefinition) -> Bool {
@@ -180,6 +226,7 @@ extension LaTeXStylePass {
         contentRange: NSRange,
         lineText: String,
         trimmedLine: String,
+        lineNumber: Int,
         isActiveLine: Bool
     ) -> (nextIndex: Int, lineDelta: Int)? {
         guard trimmedLine.hasPrefix("\\") else { return nil }
@@ -205,9 +252,16 @@ extension LaTeXStylePass {
         let tpl = analyzeMacroTemplate(def: def, optArg: optArg)
 
         if closeBraceLoc < NSMaxRange(lineRange) {
-            let callStart = contentRange.location + lineText.utf16.prefix { $0 == 0x20 || $0 == 0x09 }.count
-            let callText = nsString.substring(with: NSRange(location: callStart, length: NSMaxRange(contentRange) - callStart))
-            if LaTeXProseMacroExpander.expandCall(source: callText, macros: docMacros) != nil { return nil }
+            let afterCloseRange = NSRange(location: closeBraceLoc + 1, length: max(0, NSMaxRange(contentRange) - (closeBraceLoc + 1)))
+            let afterCloseCode =
+                afterCloseRange.length > 0
+                ? LaTeXLexer.stripLineComment(nsString.substring(with: afterCloseRange)).trimmingCharacters(in: .whitespaces)
+                : ""
+            if tpl.headingLevel == nil || !afterCloseCode.isEmpty {
+                let callStart = contentRange.location + lineText.utf16.prefix { $0 == 0x20 || $0 == 0x09 }.count
+                let callText = nsString.substring(with: NSRange(location: callStart, length: NSMaxRange(contentRange) - callStart))
+                if LaTeXProseMacroExpander.expandCall(source: callText, macros: docMacros) != nil { return nil }
+            }
             let dimFactor: CGFloat = (focusMode && !isActiveLine) ? 0.30 : 1.0
             if !tpl.showsBody {
                 styleCollapsedOrDimmedConditionalLine(
@@ -222,7 +276,19 @@ extension LaTeXStylePass {
             let openRange = NSRange(location: contentRange.location, length: (openBraceLoc + 1) - contentRange.location)
             let innerRange = NSRange(location: openBraceLoc + 1, length: max(0, closeBraceLoc - (openBraceLoc + 1)))
             let closeRange = NSRange(location: closeBraceLoc, length: max(0, NSMaxRange(contentRange) - closeBraceLoc))
-            let lineFont = applyMacroHeadingStyle(level: tpl.headingLevel, color: tpl.color, range: lineRange, isActive: isActiveLine, dimFactor: dimFactor)
+            let lineFont = applyMacroTemplateFontStyle(tpl, range: lineRange, isActive: isActiveLine, dimFactor: dimFactor)
+            if let headingLevel = tpl.headingLevel, !tpl.suppressUnderline {
+                let titleText = LaTeXDocumentIndexer.cleanTeXInlineText(nsString.substring(with: innerRange))
+                if !titleText.isEmpty {
+                    headings.append(
+                        OutlineHeading(
+                            level: headingLevel,
+                            title: titleText,
+                            characterLocation: lineRange.location,
+                            lineNumber: lineNumber
+                        ))
+                }
+            }
             if let c = tpl.color { storage.addAttribute(MKey.customColor, value: c, range: lineRange) }
             styleInlineContent(
                 range: innerRange,
@@ -283,7 +349,7 @@ extension LaTeXStylePass {
             return (NSMaxRange(fullBlockRange), lineCount)
         }
 
-        let lineFont = applyMacroHeadingStyle(level: tpl.headingLevel, color: tpl.color, range: fullBlockRange, isActive: isBlockActive, dimFactor: blockDim)
+        let lineFont = applyMacroTemplateFontStyle(tpl, range: fullBlockRange, isActive: isBlockActive, dimFactor: blockDim)
         if let c = tpl.color { storage.addAttribute(MKey.customColor, value: c, range: fullBlockRange) }
 
         let openPrefixRange = NSRange(location: contentRange.location, length: (openBraceLoc + 1) - contentRange.location)
@@ -392,30 +458,36 @@ extension LaTeXStylePass {
         return (NSMaxRange(fullBlockRange), lineCount)
     }
 
-    private mutating func applyMacroHeadingStyle(
-        level: Int?,
-        color: NSColor?,
+    private mutating func applyMacroTemplateFontStyle(
+        _ tpl: ResolvedMacroTemplate,
         range: NSRange,
         isActive: Bool,
         dimFactor: CGFloat
     ) -> NSFont {
-        guard let level else { return baseFont }
-        let lineFont = docIndex.headingFont(level: level, scale: typography.fontSizeScale, baseSize: effectiveBaseSize, fallbackTheme: theme)
-        let pStyle = NSMutableParagraphStyle()
-        pStyle.lineSpacing = max(2.0, typography.lineSpacing * 0.7)
-        pStyle.paragraphSpacingBefore = level == 1 ? 16.0 : (level == 2 ? 12.0 : 8.0)
-        pStyle.paragraphSpacing = level <= 2 ? 10.0 : 6.0
-        pStyle.tailIndent = effectiveContainerWidth
-        storage.addAttributes(
-            [
-                .font: lineFont,
-                .foregroundColor: (color ?? theme.headingNSColor).withAlphaComponent(dimFactor),
-                .paragraphStyle: pStyle
-            ], range: range)
-        if level <= 2 && prettyMode && !isActive {
-            decorations.append(LineDecoration(lineRange: range, kind: .headingUnderline(level: level)))
+        if let level = tpl.headingLevel {
+            let lineFont = docIndex.headingFont(level: level, scale: typography.fontSizeScale, baseSize: effectiveBaseSize, fallbackTheme: theme)
+            let pStyle = NSMutableParagraphStyle()
+            pStyle.lineSpacing = max(2.0, typography.lineSpacing * 0.7)
+            pStyle.paragraphSpacingBefore = level == 1 ? 16.0 : (level == 2 ? 12.0 : 8.0)
+            pStyle.paragraphSpacing = level <= 2 ? 10.0 : 6.0
+            pStyle.tailIndent = effectiveContainerWidth
+            storage.addAttributes(
+                [
+                    .font: lineFont,
+                    .foregroundColor: (tpl.color ?? theme.headingNSColor).withAlphaComponent(dimFactor),
+                    .paragraphStyle: pStyle
+                ], range: range)
+            if level <= 2 && !tpl.suppressUnderline && prettyMode && !isActive {
+                decorations.append(LineDecoration(lineRange: range, kind: .headingUnderline(level: level)))
+            }
+            return lineFont
         }
-        return lineFont
+        guard tpl.isBold || tpl.isItalic else { return baseFont }
+        var font = baseFont
+        if tpl.isBold { font = FontGDEFSanitizer.convert(font, toHaveTrait: .boldFontMask) }
+        if tpl.isItalic { font = FontGDEFSanitizer.convert(font, toHaveTrait: .italicFontMask) }
+        storage.addAttribute(.font, value: font, range: range)
+        return font
     }
 
     private mutating func styleMacroOpenLineOrSpan(
@@ -474,6 +546,9 @@ extension LaTeXStylePass {
             if curTrim.isEmpty {
                 let adv = styleBlankLineBlock(lineRange: curLR, isActiveLine: curAct, limit: interiorEnd)
                 cur = min(interiorEnd, adv.nextIndex)
+            } else if curTrim.hasPrefix("%") {
+                let adv = styleCommentBlock(lineRange: curLR, contentRange: curCR, isActiveLine: curAct, limit: interiorEnd)
+                cur = min(interiorEnd, adv.nextIndex)
             } else if curTrim.hasPrefix("\\[") || curTrim.hasPrefix("$$") {
                 let closeTok = curTrim.hasPrefix("\\[") ? "\\]" : "$$"
                 let adv = styleDisplayMathBlock(
@@ -489,6 +564,14 @@ extension LaTeXStylePass {
                 )
                 cur = min(interiorEnd, adv.nextIndex)
             } else {
+                if !curAct && prettyMode {
+                    let indent = curText.utf16.prefix { $0 == 0x20 || $0 == 0x09 }.count
+                    if indent > 0 {
+                        MarkdownLiveStyler.collapseWhitespaceRange(
+                            in: storage, range: NSRange(location: curCR.location, length: indent)
+                        )
+                    }
+                }
                 styleInlineContent(
                     range: curCR,
                     lineRange: curLR,

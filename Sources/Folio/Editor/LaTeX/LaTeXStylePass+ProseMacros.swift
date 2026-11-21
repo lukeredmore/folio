@@ -340,12 +340,16 @@ extension LaTeXStylePass {
         lineFont: NSFont,
         dimFactor: CGFloat
     ) {
-        if let parts = Self.plainLines(segments) {
-            stylePlainInlineText(parts, fullRange: range, lineFont: lineFont, dimFactor: dimFactor)
-            return
-        }
         let currentFont = (storage.attribute(.font, at: range.location, effectiveRange: nil) as? NSFont) ?? lineFont
-        let lines = Self.richTextLines(segments, baseFont: currentFont, docIndex: docIndex, theme: theme)
+        let wrapWidth = max(180.0, effectiveContainerWidth - 16.0)
+        if let parts = Self.plainLines(segments) {
+            let maxPlainW = parts.map { ceil(($0 as NSString).size(withAttributes: [.font: currentFont]).width) }.max() ?? 0
+            if maxPlainW <= wrapWidth {
+                stylePlainInlineText(parts, fullRange: range, lineFont: lineFont, dimFactor: dimFactor)
+                return
+            }
+        }
+        let lines = Self.richTextLines(segments, baseFont: currentFont, docIndex: docIndex, theme: theme, maxWidth: wrapWidth)
         let widths = lines.map { $0.reduce(0.0) { $0 + Self.richRunWidth($1) } }
         guard let maxWidth = widths.max(), maxWidth > 0 else {
             MarkdownLiveStyler.collapseWhitespaceRange(in: storage, range: range)
@@ -605,7 +609,8 @@ extension LaTeXStylePass {
         _ segments: [LaTeXProseSegment],
         baseFont: NSFont,
         docIndex: LaTeXDocumentIndex,
-        theme: EditorTheme
+        theme: EditorTheme,
+        maxWidth: CGFloat? = nil
     ) -> [[LaTeXInlineRichRun]] {
         var lines: [[LaTeXInlineRichRun]] = [[]]
         for segment in segments {
@@ -616,14 +621,117 @@ extension LaTeXStylePass {
                 guard !(lines[lines.count - 1].isEmpty && text == " ") else { continue }
                 let font = proseFont(for: style, baseFont: baseFont, docIndex: docIndex, theme: theme)
                 let shown = style.smallCaps ? text.uppercased() : text
+                let runColor = style.colorName.map { docIndex.resolveColor(named: $0, fallbackTheme: theme) }
                 lines[lines.count - 1].append(
-                    .text(shown, font: font, underline: style.underline, baselineOffset: scriptOffset(style, baseFont: baseFont)))
+                    .text(
+                        shown,
+                        font: font,
+                        color: runColor,
+                        underline: style.underline,
+                        baselineOffset: scriptOffset(style, baseFont: baseFont)
+                    ))
             case let .math(latex, style):
                 let size = baseFont.pointSize * style.sizeScale * (style.script == .none ? 1.0 : 0.7)
                 lines[lines.count - 1].append(.math(latex: latex, fontSize: size, baselineOffset: scriptOffset(style, baseFont: baseFont)))
             }
         }
-        return lines
+        guard let maxWidth, maxWidth > 0 else { return lines }
+        return wrapRichTextLines(lines, maxWidth: maxWidth)
+    }
+
+    private static func wrapRichTextLines(_ lines: [[LaTeXInlineRichRun]], maxWidth: CGFloat) -> [[LaTeXInlineRichRun]] {
+        var wrapped: [[LaTeXInlineRichRun]] = []
+        for line in lines {
+            let total = line.reduce(0.0) { $0 + richRunWidth($1) }
+            if total <= maxWidth || line.isEmpty {
+                wrapped.append(line)
+                continue
+            }
+            var currentLine: [LaTeXInlineRichRun] = []
+            var currentWidth: CGFloat = 0
+            for run in line {
+                switch run {
+                case let .math(latex, fontSize, offset):
+                    let w = richRunWidth(run)
+                    if !currentLine.isEmpty && currentWidth + w > maxWidth {
+                        wrapped.append(currentLine)
+                        currentLine = []
+                        currentWidth = 0
+                    }
+                    currentLine.append(.math(latex: latex, fontSize: fontSize, baselineOffset: offset))
+                    currentWidth += w
+                case let .text(text, font, color, underline, offset):
+                    for piece in splitWrappingPieces(text, font: font, maxWidth: maxWidth) {
+                        let w = (piece as NSString).size(withAttributes: [.font: font]).width
+                        if currentLine.isEmpty && piece.trimmingCharacters(in: .whitespaces).isEmpty {
+                            continue
+                        }
+                        if !currentLine.isEmpty && currentWidth + w > maxWidth {
+                            wrapped.append(currentLine)
+                            currentLine = []
+                            currentWidth = 0
+                            if piece.trimmingCharacters(in: .whitespaces).isEmpty {
+                                continue
+                            }
+                        }
+                        let cleaned = currentLine.isEmpty ? String(piece.drop(while: { $0 == " " })) : piece
+                        guard !cleaned.isEmpty else { continue }
+                        let cleanedW = (cleaned as NSString).size(withAttributes: [.font: font]).width
+                        if case let .text(prevText, prevFont, prevColor, prevUnderline, prevOffset)? = currentLine.last,
+                            prevFont == font && prevColor == color && prevUnderline == underline && prevOffset == offset
+                        {
+                            currentLine[currentLine.count - 1] = .text(
+                                prevText + cleaned, font: font, color: color, underline: underline, baselineOffset: offset
+                            )
+                        } else {
+                            currentLine.append(.text(cleaned, font: font, color: color, underline: underline, baselineOffset: offset))
+                        }
+                        currentWidth += cleanedW
+                    }
+                }
+            }
+            if !currentLine.isEmpty {
+                wrapped.append(currentLine)
+            }
+        }
+        return wrapped.isEmpty ? [[]] : wrapped
+    }
+
+    private static func splitWrappingPieces(_ text: String, font: NSFont, maxWidth: CGFloat) -> [String] {
+        var words: [String] = []
+        var current = ""
+        for ch in text {
+            if ch == " " || ch == "\u{2003}" {
+                if !current.isEmpty {
+                    words.append(current)
+                    current = ""
+                }
+                words.append(String(ch))
+            } else {
+                current.append(ch)
+            }
+        }
+        if !current.isEmpty { words.append(current) }
+        var pieces: [String] = []
+        for word in words {
+            let w = (word as NSString).size(withAttributes: [.font: font]).width
+            if w <= maxWidth || word.count <= 1 {
+                pieces.append(word)
+                continue
+            }
+            var chunk = ""
+            for ch in word {
+                let candidate = chunk + String(ch)
+                if !chunk.isEmpty && (candidate as NSString).size(withAttributes: [.font: font]).width > maxWidth {
+                    pieces.append(chunk)
+                    chunk = String(ch)
+                } else {
+                    chunk = candidate
+                }
+            }
+            if !chunk.isEmpty { pieces.append(chunk) }
+        }
+        return pieces
     }
 
     static func proseFont(for style: LaTeXProseStyle, baseFont: NSFont, docIndex: LaTeXDocumentIndex, theme: EditorTheme) -> NSFont {
@@ -669,7 +777,7 @@ extension LaTeXStylePass {
 
     static func richRunWidth(_ run: LaTeXInlineRichRun) -> CGFloat {
         switch run {
-        case let .text(text, font, _, _):
+        case let .text(text, font, _, _, _):
             return (text as NSString).size(withAttributes: [.font: font]).width
         case let .math(latex, fontSize, _):
             return LaTeXMathRenderer.layoutLatex(latex, baseFontSize: fontSize, isDisplayStyle: false).width
@@ -681,7 +789,7 @@ extension LaTeXStylePass {
         var descent = -fallback.descender
         for run in runs {
             switch run {
-            case let .text(_, font, _, offset):
+            case let .text(_, font, _, _, offset):
                 ascent = max(ascent, font.ascender + offset)
                 descent = max(descent, -font.descender - offset)
             case let .math(latex, fontSize, offset):
@@ -696,7 +804,7 @@ extension LaTeXStylePass {
     static func richTextLineStep(_ lines: [[LaTeXInlineRichRun]]) -> CGFloat {
         var step: CGFloat = 0
         for run in lines.joined() {
-            if case let .text(_, font, _, _) = run {
+            if case let .text(_, font, _, _, _) = run {
                 step = max(step, ceil((font.ascender - font.descender) * 1.10))
             } else if case let .math(_, fontSize, _) = run {
                 step = max(step, ceil(fontSize * 1.3))
