@@ -20,6 +20,7 @@ struct LaTeXFlowState: Equatable, Hashable, Sendable {
     var style: LaTeXProseStyle { frames[frames.count - 1].style }
     var alignment: NSTextAlignment? { frames[frames.count - 1].alignment }
     var isDefault: Bool { style == LaTeXProseStyle() && alignment == nil }
+    var hasOpenBraceGroup: Bool { frames.dropFirst().contains { $0.environment == nil } }
 
     /// Applies `effects` in order. `documentFontSize` is the class option size in points, which
     /// `\fontsize` is relative to.
@@ -71,6 +72,8 @@ struct LaTeXFlowState: Equatable, Hashable, Sendable {
             style.sizeScale = min(3.0, max(0.5, points / max(1.0, documentFontSize)))
         case let .fontSelection(command, value):
             LaTeXProseMacroExpander.applyFontSelection(command, value: value, to: &style)
+        case .customFont(let decl):
+            LaTeXProseMacroExpander.applyCustomFont(decl, to: &style)
         case .alignment:
             break
         }

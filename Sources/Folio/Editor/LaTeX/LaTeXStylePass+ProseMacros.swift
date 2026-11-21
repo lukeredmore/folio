@@ -18,6 +18,7 @@ extension LaTeXStylePass {
         var transparentCalls: [Int: TransparentCall] = [:]
         var hiddenCommands: [Int: NSRange] = [:]
         var hiddenRanges: [NSRange] = []
+        var hfillRanges: [NSRange] = []
         var declarations: [(location: Int, declaration: LaTeXFlowDeclaration)] = []
 
         func hidesSpan(at index: Int, location: Int) -> Bool {
@@ -46,6 +47,37 @@ extension LaTeXStylePass {
             guard !plan.hidesSpan(at: idx, location: docLoc), let cmdPtr = spans[idx].cmd else { continue }
             let name = String(cString: cmdPtr)
             if let (def, consumesStar) = LaTeXProseMacroExpander.definition(forCall: name, in: macros) {
+                if def.argCount == 0 && def.parameterText == nil,
+                    let effects = LaTeXLayoutLine.userLayoutEffects(for: def, macros: macros)
+                {
+                    let span = spans[idx]
+                    let openLen = Int(span.open_len)
+                    let fullLen = Int(span.full_len)
+                    var length = openLen
+                    if fullLen != openLen,
+                        loc + openLen + 1 < lineText.length,
+                        lineText.character(at: loc + openLen) == 0x7B,
+                        lineText.character(at: loc + openLen + 1) == 0x7D
+                    {
+                        length = fullLen
+                    } else {
+                        while loc + length < lineText.length && [0x20, 0x09].contains(lineText.character(at: loc + length)) {
+                            length += 1
+                        }
+                    }
+                    let range = NSRange(location: docLoc, length: length)
+                    plan.hiddenCommands[idx] = range
+                    plan.coveredRanges.append((idx, range))
+                    var declares = false
+                    for case .declaration(let declaration) in effects {
+                        plan.declarations.append((NSMaxRange(range), declaration))
+                        declares = true
+                    }
+                    if declares {
+                        hideEnclosingDeclarationBracesIfNeeded(at: loc, baseLoc: baseLoc, lineText: lineText, into: &plan)
+                    }
+                    continue
+                }
                 if let expansion = LaTeXProseMacroExpander.expandCall(source: lineText.substring(from: loc), macros: macros) {
                     let range = NSRange(location: docLoc, length: expansion.consumedLength)
                     plan.expansions[idx] = (range, expansion.segments)
@@ -101,15 +133,48 @@ extension LaTeXStylePass {
         let range = NSRange(location: docLoc, length: String(chars[0..<end]).utf16.count)
         plan.hiddenCommands[index] = range
         plan.coveredRanges.append((index, range))
+        if name == "hfill" {
+            plan.hfillRanges.append(range)
+        }
         var declares = false
         for case .declaration(let declaration) in command.effects {
             plan.declarations.append((NSMaxRange(range), declaration))
             declares = true
         }
-        if declares, loc > 0, lineText.character(at: loc - 1) == 0x7B {
-            let close = LaTeXLexer.groupEnd(in: lineText, from: loc)
-            plan.hiddenRanges.append(NSRange(location: docLoc - 1, length: 1))
-            if close < lineText.length { plan.hiddenRanges.append(NSRange(location: baseLoc + close, length: 1)) }
+        if declares {
+            hideEnclosingDeclarationBracesIfNeeded(at: loc, baseLoc: baseLoc, lineText: lineText, into: &plan)
+        }
+    }
+
+    private static func hideEnclosingDeclarationBracesIfNeeded(
+        at loc: Int,
+        baseLoc: Int,
+        lineText: NSString,
+        into plan: inout ProseMacroPlan
+    ) {
+        var openProbe = loc - 1
+        while openProbe >= 0 && (lineText.character(at: openProbe) == 0x20 || lineText.character(at: openProbe) == 0x09) {
+            openProbe -= 1
+        }
+        guard openProbe >= 0, lineText.character(at: openProbe) == 0x7B else { return }
+        var backslashes = 0
+        var prev = openProbe - 1
+        while prev >= 0 && lineText.character(at: prev) == 0x5C {
+            backslashes += 1
+            prev -= 1
+        }
+        guard backslashes % 2 == 0 else { return }
+
+        let openRange = NSRange(location: baseLoc + openProbe, length: loc - openProbe)
+        if !plan.hiddenRanges.contains(openRange) {
+            plan.hiddenRanges.append(openRange)
+        }
+        let close = LaTeXLexer.groupEnd(in: lineText, from: loc)
+        if close < lineText.length {
+            let closeRange = NSRange(location: baseLoc + close, length: 1)
+            if !plan.hiddenRanges.contains(closeRange) {
+                plan.hiddenRanges.append(closeRange)
+            }
         }
     }
 
@@ -400,7 +465,7 @@ extension LaTeXStylePass {
         storage.addAttribute(.paragraphStyle, value: style, range: range)
     }
 
-    private func restyleFonts(
+    func restyleFonts(
         range: NSRange,
         from previous: LaTeXProseStyle,
         to next: LaTeXProseStyle,
@@ -411,27 +476,47 @@ extension LaTeXStylePass {
         let manager = NSFontManager.shared
         let docIndex = self.docIndex
         let theme = self.theme
+        let baseKern = typography.characterSpacing
         storage.enumerateAttributes(in: range, options: []) { attrs, subrange, _ in
             if attrs[MKey.collapsed] != nil || attrs[MKey.inlineMathSpan] != nil || (attrs[.foregroundColor] as? NSColor) == NSColor.clear {
                 return
             }
             var font = (attrs[.font] as? NSFont) ?? lineFont
             let traits = manager.traits(of: font)
-            let size = next.sizeScale != previous.sizeScale ? unscaledSize * next.sizeScale : font.pointSize
-            if next.monospace != previous.monospace || next.sans != previous.sans {
-                var family = LaTeXProseStyle()
-                family.monospace = next.monospace
-                family.sans = next.sans
-                let sizedBase = NSFont(descriptor: lineFont.fontDescriptor, size: size) ?? lineFont
-                font = Self.proseFont(for: family, baseFont: sizedBase, docIndex: docIndex, theme: theme)
-            } else if size != font.pointSize {
-                font = NSFont(descriptor: font.fontDescriptor, size: size) ?? font
+            var size = next.sizeScale != previous.sizeScale ? unscaledSize * next.sizeScale : font.pointSize
+            if next.smallCaps != previous.smallCaps {
+                size = next.smallCaps ? size * 0.82 : (size / 0.82)
             }
             let bold = next.bold != previous.bold ? next.bold : traits.contains(.boldFontMask)
             let italic = next.italic != previous.italic ? next.italic : traits.contains(.italicFontMask)
-            font = bold ? FontGDEFSanitizer.convert(font, toHaveTrait: .boldFontMask) : FontGDEFSanitizer.convert(font, toNotHaveTrait: .boldFontMask)
-            font = italic ? FontGDEFSanitizer.convert(font, toHaveTrait: .italicFontMask) : FontGDEFSanitizer.convert(font, toNotHaveTrait: .italicFontMask)
+            if next.monospace != previous.monospace || next.sans != previous.sans || next.fontFamily != previous.fontFamily {
+                var family = LaTeXProseStyle()
+                family.monospace = next.monospace
+                family.sans = next.sans
+                family.fontFamily = next.fontFamily
+                family.bold = bold
+                family.italic = italic
+                let sizedBase = NSFont(descriptor: lineFont.fontDescriptor, size: size) ?? lineFont
+                font = Self.proseFont(for: family, baseFont: sizedBase, docIndex: docIndex, theme: theme)
+            } else {
+                if size != font.pointSize {
+                    font = NSFont(descriptor: font.fontDescriptor, size: size) ?? font
+                }
+                font = bold ? FontGDEFSanitizer.convert(font, toHaveTrait: .boldFontMask) : FontGDEFSanitizer.convert(font, toNotHaveTrait: .boldFontMask)
+                font = italic ? FontGDEFSanitizer.convert(font, toHaveTrait: .italicFontMask) : FontGDEFSanitizer.convert(font, toNotHaveTrait: .italicFontMask)
+            }
             storage.addAttribute(.font, value: font, range: subrange)
+            if next.letterSpaceEm != previous.letterSpaceEm || next.smallCaps != previous.smallCaps {
+                let kern: CGFloat
+                if next.letterSpaceEm != 0 {
+                    kern = font.pointSize * next.letterSpaceEm
+                } else if next.smallCaps {
+                    kern = max(baseKern, 0.6)
+                } else {
+                    kern = baseKern
+                }
+                storage.addAttribute(.kern, value: kern, range: subrange)
+            }
         }
     }
 
@@ -515,11 +600,27 @@ extension LaTeXStylePass {
         var size = baseFont.pointSize * style.sizeScale
         if style.script != .none { size *= 0.7 }
         if style.smallCaps { size *= 0.82 }
+        if let customFamily = style.fontFamily, !customFamily.isEmpty {
+            return EditorTheme.resolveFont(
+                familySpec: customFamily,
+                size: size,
+                bold: style.bold,
+                italic: style.italic,
+                semibold: false
+            )
+        }
         var font: NSFont
         if style.monospace {
             font = docIndex.codeFont(size: size * 0.92, fallbackTheme: theme)
         } else if style.sans {
-            font = NSFont(name: docIndex.documentStyle.sansFontFamily ?? "Helvetica Neue", size: size) ?? NSFont.systemFont(ofSize: size)
+            font = EditorTheme.resolveFont(
+                familySpec: docIndex.documentStyle.sansFontFamily ?? "Helvetica Neue",
+                size: size,
+                bold: style.bold,
+                italic: style.italic,
+                semibold: false
+            )
+            return font
         } else {
             font = NSFont(descriptor: baseFont.fontDescriptor, size: size) ?? baseFont
         }

@@ -27,10 +27,10 @@ fn push_item(
 
 fn read_opt_and_brace(text: &str, pos: usize) -> Option<(&str, &str, usize)> {
     let bytes = text.as_bytes();
-    let (mut p, mut opt) = (pos, "");
+    let (mut p, mut opt) = (skip_hspace(bytes, pos), "");
     if let Some((os, oe, after_o)) = read_bracket_group(bytes, p) {
         opt = &text[os..oe];
-        p = after_o;
+        p = skip_hspace(bytes, after_o);
     }
     let (as_, ae, after_a) = read_balanced_braces(bytes, p)?;
     Some((opt, &text[as_..ae], after_a))
@@ -288,7 +288,11 @@ fn try_scan_preamble_style(
     let bytes = text.as_bytes();
     match cmd {
         "setmainfont" | "setsansfont" | "setmonofont" => {
-            let (opt, f, next) = read_opt_and_brace(text, after)?;
+            let (opt, f, mut next) = read_opt_and_brace(text, after)?;
+            let probe = skip_hspace(bytes, next);
+            if let Some((_, _, after_trailing)) = read_bracket_group(bytes, probe) {
+                next = after_trailing;
+            }
             push_item(
                 out,
                 LatexDirectiveKind::SetFont,

@@ -107,7 +107,10 @@ public final class MarkdownLiveStyler {
         "\\providecommand",
         "\\DeclareMathOperator",
         "\\def",
-        "environment{"
+        "environment{",
+        "fontfamily",
+        "fontface",
+        "\\let"
     ]
 
     @discardableResult

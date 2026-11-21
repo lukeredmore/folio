@@ -24,6 +24,8 @@ struct LaTeXProseStyle: Hashable, Sendable {
     var script = Script.none
     var sizeScale: CGFloat = 1.0
     var letterCase = LetterCase.asIs
+    var fontFamily: String?
+    var letterSpaceEm: CGFloat = 0
 }
 
 /// One piece of an expanded prose macro: styled text, inline math, or a `\\` line break.
@@ -63,7 +65,9 @@ enum LaTeXProseMacroExpander {
     ) -> LaTeXProseExpansion? {
         let chars = Array(source)
         var renderer = Renderer(macros: macros, limits: limits)
-        guard let end = renderer.expandUserMacro(chars, at: 0, style: nil, depth: 0) else { return nil }
+        var unusedStyle: LaTeXProseStyle?
+        guard let end = renderer.expandUserMacro(chars, at: 0, style: &unusedStyle, depth: 0) else { return nil }
+        guard !renderer.segments.isEmpty else { return nil }
         return LaTeXProseExpansion(
             consumedLength: String(chars[0..<end]).utf16.count,
             segments: renderer.segments
@@ -128,7 +132,7 @@ extension LaTeXProseMacroExpander {
         mutating func expandUserMacro(
             _ chars: [Character],
             at start: Int,
-            style: LaTeXProseStyle?,
+            style: inout LaTeXProseStyle?,
             depth: Int
         ) -> Int? {
             let (word, afterWord) = LaTeXMacroExpander.readControlWord(chars, at: start)
@@ -139,6 +143,17 @@ extension LaTeXProseMacroExpander {
                 let (def, consumesStar) = LaTeXProseMacroExpander.definition(forCall: callName, in: macros)
             else { return nil }
             var end = consumesStar ? afterWord + 1 : afterWord
+            if let fontDecl = def.fontDeclaration {
+                guard var activeStyle = style else { return nil }
+                LaTeXProseMacroExpander.applyCustomFont(fontDecl, to: &activeStyle)
+                style = activeStyle
+                if end + 1 < chars.count && chars[end] == "{" && chars[end + 1] == "}" {
+                    end += 2
+                } else if !hasStar {
+                    end = LaTeXMacroExpander.skipSpaces(chars, from: end)
+                }
+                return end
+            }
             guard let (args, afterArgs) = LaTeXMacroExpander.readArguments(for: def, in: chars, from: end) else { return nil }
             end = afterArgs
             let takesNoArguments = def.argCount == 0 && def.parameterText == nil && !consumesStar
@@ -159,6 +174,9 @@ extension LaTeXProseMacroExpander {
             guard expandedBudget >= 0 else { return nil }
             var bodyStyle = style ?? LaTeXProseStyle()
             guard render(Array(body), style: &bodyStyle, depth: depth + 1) else { return nil }
+            if takesNoArguments && style != nil {
+                style = bodyStyle
+            }
             return end
         }
 

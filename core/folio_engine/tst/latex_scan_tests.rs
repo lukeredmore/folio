@@ -244,3 +244,56 @@ fn test_inline_math_continues_across_one_line_break() {
     );
     assert!(inline_math("$a\n").is_empty());
 }
+
+#[test]
+fn test_dashes_ties_and_extended_style_commands() {
+    let text =
+        r"2021--2022 --- note~1 ---- \texttt{--flag ~} \url{https://example.com/~u--v} $a - -b$";
+    let quotes: Vec<(String, String)> = scan_latex_inlines(text)
+        .into_iter()
+        .filter(|s| s.kind == LatexInlineSpanKind::TexQuote)
+        .map(|s| {
+            let span_slice = slice(text, s.full_loc, s.full_len);
+            (s.cmd, span_slice)
+        })
+        .collect();
+    assert_eq!(
+        quotes,
+        vec![
+            ("--".to_string(), "--".to_string()),
+            ("---".to_string(), "---".to_string()),
+            ("~".to_string(), "~".to_string()),
+        ]
+    );
+
+    let styles = r"\textsl{sl} \textup{up} \textmd{md} \textnormal{n} \uline{u} \textsuperscript{2} \textsubscript{i}";
+    let style_cmds: Vec<String> = scan_latex_inlines(styles)
+        .into_iter()
+        .filter(|s| s.kind == LatexInlineSpanKind::StyleCmd)
+        .map(|s| s.cmd)
+        .collect();
+    assert_eq!(
+        style_cmds,
+        [
+            "textsl",
+            "textup",
+            "textmd",
+            "textnormal",
+            "uline",
+            "textsuperscript",
+            "textsubscript"
+        ]
+    );
+}
+
+#[test]
+fn test_includegraphics_with_trailing_linebreak_or_comment() {
+    let g1 = classify_latex_line(r"\includegraphics[scale=0.5]{signature.png}\\");
+    assert_eq!(g1.kind, LatexLineKind::IncludeGraphics);
+    assert_eq!(g1.arg1, "signature.png");
+    assert_eq!(g1.opt_arg, "scale=0.5");
+
+    let g2 = classify_latex_line(r"\includegraphics{fig.pdf} % comment");
+    assert_eq!(g2.kind, LatexLineKind::IncludeGraphics);
+    assert_eq!(g2.arg1, "fig.pdf");
+}

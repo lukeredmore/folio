@@ -145,7 +145,7 @@ struct LaTeXStylePass {
                 advance = styleMultiLineCallBlock(
                     NSRange(location: lineRange.location, length: blockEnd - lineRange.location),
                     lineFont: flowFont,
-                    flowStyle: flow.style
+                    flow: flow
                 )
                 recordsBlockActivity = true
             } else if let blockAdvance = tryStyleBlockOrEnvironment(
@@ -162,13 +162,21 @@ struct LaTeXStylePass {
                 recordsBlockActivity = true
             } else {
                 styleFlowParagraph(lineRange: lineRange, font: flowFont, flow: flow)
+                if !isActive && prettyMode {
+                    let indent = lineText.utf16.prefix { $0 == 0x20 || $0 == 0x09 }.count
+                    if indent > 0 {
+                        MarkdownLiveStyler.collapseWhitespaceRange(
+                            in: storage, range: NSRange(location: contentRange.location, length: indent)
+                        )
+                    }
+                }
                 styleInlineContent(
                     range: contentRange,
                     lineRange: lineRange,
                     lineFont: flowFont,
                     isActiveLine: isActive,
                     dimFactor: dimFactor,
-                    flowStyle: flow.style
+                    flow: flow
                 )
                 advance = (NSMaxRange(lineRange), 1)
             }
@@ -912,6 +920,9 @@ struct LaTeXStylePass {
     private func styleFlowParagraph(lineRange: NSRange, font: NSFont, flow: LaTeXFlowState) {
         guard !flow.isDefault else { return }
         if font != baseFont { storage.addAttribute(.font, value: font, range: lineRange) }
+        if flow.style.letterSpaceEm != 0 {
+            storage.addAttribute(.kern, value: font.pointSize * flow.style.letterSpaceEm, range: lineRange)
+        }
         guard let alignment = flow.alignment,
             let existing = storage.attribute(.paragraphStyle, at: lineRange.location, effectiveRange: nil) as? NSParagraphStyle,
             let style = existing.mutableCopy() as? NSMutableParagraphStyle

@@ -98,6 +98,162 @@ extension LaTeXMacroExpander {
         return (definition, afterEnd)
     }
 
+    /// Parses `fontspec` declarations: `\newfontfamily\cmd[opts]{Font}[opts]` and `\newfontface`.
+    static func parseFontspecDefinition(
+        cmd: String,
+        _ chars: [Character],
+        after start: Int
+    ) -> (LaTeXMacroDefinition, Int)? {
+        var idx = skipBlank(chars, from: start)
+        guard let (rawName, afterName) = readMacroNameArg(chars, at: idx) else { return nil }
+        idx = skipBlank(chars, from: afterName)
+        var leadingOpt: String?
+        if let (opt, afterOpt) = readBracketGroup(chars, at: idx) {
+            leadingOpt = opt
+            idx = skipBlank(chars, from: afterOpt)
+        }
+        guard let (rawFamily, afterFamily) = readBracedGroup(chars, at: idx) else { return nil }
+        idx = skipSpaces(chars, from: afterFamily)
+        var trailingOpt: String?
+        if let (opt, afterOpt) = readBracketGroup(chars, at: idx) {
+            trailingOpt = opt
+            idx = afterOpt
+        }
+        let family = rawFamily.trimmingCharacters(in: .whitespacesAndNewlines)
+        let options = [leadingOpt, trailingOpt].compactMap { $0 }.joined(separator: ",")
+        let declaration = parseFontspecDeclaration(
+            family: family,
+            options: options,
+            isFontFace: cmd.hasSuffix("fontface")
+        )
+        return (
+            LaTeXMacroDefinition(
+                name: rawName,
+                argCount: 0,
+                replacement: "",
+                fontDeclaration: declaration
+            ),
+            idx
+        )
+    }
+
+    /// Parses `\let\endfoo=\endlist` or `\let\endfoo\endbar` into `"foo"`, returning the index
+    /// after the target token.
+    static func parseEndEnvironmentAlias(_ chars: [Character], at start: Int) -> (String, Int)? {
+        let (cmd, afterCmd) = readControlWord(chars, at: start)
+        guard cmd == "\\let" else { return nil }
+        var idx = skipSpaces(chars, from: afterCmd)
+        guard let (rawName, afterName) = readMacroNameArg(chars, at: idx),
+            rawName.hasPrefix("\\end")
+        else { return nil }
+        let envName = String(rawName.dropFirst(4))
+        guard !envName.isEmpty else { return nil }
+        idx = skipSpaces(chars, from: afterName)
+        if idx < chars.count && chars[idx] == "=" {
+            idx = skipSpaces(chars, from: idx + 1)
+        }
+        guard idx < chars.count else { return nil }
+        let afterTarget = chars[idx] == "\\" ? readControlWord(chars, at: idx).1 : idx + 1
+        return (envName, afterTarget)
+    }
+
+    private static func parseFontspecDeclaration(
+        family: String,
+        options: String,
+        isFontFace: Bool
+    ) -> LaTeXFontDeclaration {
+        var decl = LaTeXFontDeclaration(fontFamily: family.isEmpty ? nil : family)
+        for pair in splitCommaRespectingBraces(options) {
+            guard let eqIdx = pair.firstIndex(of: "=") else { continue }
+            let rawKey = String(pair[..<eqIdx]).trimmingCharacters(in: .whitespacesAndNewlines)
+            let rawValue = String(pair[pair.index(after: eqIdx)...]).trimmingCharacters(in: .whitespacesAndNewlines)
+            let key = stripOuterBraces(rawKey).lowercased()
+            let value = stripOuterBraces(rawValue)
+            let lowerValue = value.lowercased()
+
+            switch key {
+            case "scale":
+                if let scale = Double(value), scale >= 0.4, scale <= 4.0 {
+                    decl.sizeScale = CGFloat(scale)
+                }
+            case "uprightfont", "font":
+                if containsAnyWord(lowerValue, ["bold", "semibold", "demibold", "heavy", "black"]) {
+                    decl.bold = true
+                } else if containsAnyWord(lowerValue, ["light", "thin", "regular", "roman", "book"]) {
+                    decl.bold = false
+                }
+                if containsAnyWord(lowerValue, ["italic", "oblique"]) {
+                    decl.italic = true
+                }
+            case "series", "fontseries":
+                if ["b", "bx", "sb", "bold", "semibold"].contains(lowerValue) {
+                    decl.bold = true
+                } else if ["m", "l", "regular", "light"].contains(lowerValue) {
+                    decl.bold = false
+                }
+            case "shape", "fontshape":
+                if ["it", "sl", "italic", "slanted"].contains(lowerValue) {
+                    decl.italic = true
+                } else if ["n", "up", "upright"].contains(lowerValue) {
+                    decl.italic = false
+                } else if ["sc", "smallcaps"].contains(lowerValue) {
+                    decl.smallCaps = true
+                }
+            case "letters":
+                if lowerValue.contains("smallcaps") {
+                    decl.smallCaps = true
+                }
+            case "letterspace":
+                if let ls = Double(value) {
+                    decl.letterSpaceEm = min(0.5, max(-0.2, CGFloat(ls) / 100.0))
+                }
+            default:
+                break
+            }
+        }
+        if isFontFace {
+            let lowerFamily = family.lowercased()
+            if decl.bold == nil && containsAnyWord(lowerFamily, ["bold", "semibold", "demibold", "heavy", "black"]) {
+                decl.bold = true
+            }
+            if decl.italic == nil && containsAnyWord(lowerFamily, ["italic", "oblique"]) {
+                decl.italic = true
+            }
+        }
+        return decl
+    }
+
+    private static func splitCommaRespectingBraces(_ text: String) -> [String] {
+        guard !text.isEmpty else { return [] }
+        var parts: [String] = []
+        var current = ""
+        var depth = 0
+        for ch in text {
+            if ch == "{" {
+                depth += 1
+            } else if ch == "}" && depth > 0 {
+                depth -= 1
+            } else if ch == "," && depth == 0 {
+                parts.append(current)
+                current = ""
+                continue
+            }
+            current.append(ch)
+        }
+        parts.append(current)
+        return parts
+    }
+
+    private static func stripOuterBraces(_ text: String) -> String {
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard trimmed.hasPrefix("{"), trimmed.hasSuffix("}"), trimmed.count >= 2 else { return trimmed }
+        return String(trimmed.dropFirst().dropLast()).trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private static func containsAnyWord(_ text: String, _ candidates: [String]) -> Bool {
+        candidates.contains { text.contains($0) }
+    }
+
     /// Skips spaces and `%` comments, which macro files put between definition parts.
     private static func skipBlank(_ chars: [Character], from start: Int) -> Int {
         var idx = skipSpaces(chars, from: start)

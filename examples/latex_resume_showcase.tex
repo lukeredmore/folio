@@ -1,0 +1,63 @@
+\documentclass{article}
+\usepackage{fontspec}
+\setmainfont{Helvetica Neue}
+\usepackage[fontsize=12pt]{fontsize}
+\usepackage[letterpaper, margin=0.5in]{geometry}
+\pagestyle{empty}
+
+\usepackage{setspace}
+\setstretch{0.9}
+
+\newfontfamily\name{Helvetica Neue}[Scale={1.8}, UprightFont={*-bold}]
+\newfontfamily\sechead{Helvetica Neue}[Scale={0.92}, UprightFont={*-bold}, LetterSpace={10}]
+\newfontfamily\subhead{Helvetica Neue}[UprightFont={*-Bold}]
+\newfontfamily\subsubhead{Helvetica Neue}[Scale={0.92}, UprightFont={*-Bold}]
+\newfontfamily\detail{Helvetica Neue}[Scale={0.92}]
+\newfontfamily\info{Helvetica Neue}[Scale={0.92}]
+
+\usepackage{enumitem}
+\newenvironment{itemize*}
+    {\begin{spacing}{0}
+    \setlist{nolistsep}
+    \begin{itemize}[topsep=3pt, leftmargin=*]
+    \setlength{\itemsep}{4pt}}
+    {\end{itemize} \end{spacing} \vspace{1em}}
+
+\usepackage{hyperref}
+
+\begin{document}
+\noindent
+\vspace{-1em}
+\begin{center}
+{\name Jordan Vance}\\
+\vspace{0.5em}
+{\info
+San Francisco, CA |
+\href{tel:4155550142}{415.555.0142} |
+\href{mailto:jordan.vance@example.com}{jordan.vance@example.com} |
+\href{https://github.com/folio-demo}{github.com/folio-demo}}
+\rule{\textwidth}{.4pt}
+\end{center}
+\raggedright
+\section*{Education}
+{\subhead Meridian Institute of Technology} \hfill {\detail Cambridge, MA}\\
+{\detail GPA: 3.96, B.S. in Computer Science} \hfill {\detail May 2025}\\
+\begin{spacing}{1}
+	Focus: Systems Engineering, Distributed Storage, and Programming Languages\\
+\end{spacing}
+
+\section*{Experience}
+{\subhead Northstar Labs} \hfill {\detail San Francisco, CA}\\
+{\subsubhead Systems Software Engineer} \hfill {\detail Summer 2023 -- Present}\\
+\emph{Storage Engine --- Core Runtime}
+\begin{itemize*}
+	\item Built an incremental layout cache that keeps keystroke latency under 2~ms across 10,000-line documents
+	\item Added native \textsf{fontspec} typography, classic {\bf bold} and {\it italic} switches, and \texttt{--flag} preservation
+	\item Coordinated multi-region deployments across \textsuperscript{1}US and \textsubscript{2}EU clusters with \uline{zero downtime}
+\end{itemize*}
+
+\section*{Skills}
+\begin{spacing}{1}
+Rust, Swift, C++, TypeScript, \LaTeX, Distributed Systems, OpenType Layout\\
+\end{spacing}
+\end{document}
