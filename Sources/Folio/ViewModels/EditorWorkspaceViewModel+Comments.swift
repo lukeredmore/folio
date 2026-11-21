@@ -235,16 +235,41 @@ extension EditorWorkspaceViewModel {
 
     private func flushOccludedInspectorLayoutIfNeeded(in window: NSWindow?, wasVisible: Bool) {
         guard let window, wasVisible != isCommentsSidebarVisible else { return }
-        // AppKit skips `displayIfNeeded()` on occluded windows, leaving SwiftUI's `.inspector`
-        // safe-area inset change uncommitted to the detail `GeometryReader` until an explicit display.
-        DispatchQueue.main.async { [weak window] in
-            guard let window else { return }
+        // AppKit skips `displayIfNeeded()` and stalls `CVDisplayLink` inspector split animations
+        // on occluded/sleeping-display windows, leaving `.inspector` safe-area insets uncommitted.
+        DispatchQueue.main.async { [weak self, weak window] in
+            guard let self, let window else { return }
             window.layoutIfNeeded()
-            if !window.occlusionState.contains(.visible) {
+            guard !window.occlusionState.contains(.visible) else { return }
+            window.display()
+            window.layoutIfNeeded()
+            DispatchQueue.main.async { [weak self, weak window] in
+                guard let self, let window, !window.occlusionState.contains(.visible) else { return }
+                let targetCollapsed = !self.isCommentsSidebarVisible
+                if let contentView = window.contentView {
+                    Self.commitOccludedInspectorSplitItems(in: contentView, targetCollapsed: targetCollapsed)
+                }
+                window.layoutIfNeeded()
                 window.display()
                 window.layoutIfNeeded()
                 window.display()
             }
+        }
+    }
+
+    private static func commitOccludedInspectorSplitItems(in view: NSView, targetCollapsed: Bool) {
+        if let splitView = view as? NSSplitView,
+            let controller = splitView.delegate as? NSSplitViewController
+        {
+            for item in controller.splitViewItems where item.behavior == .inspector {
+                item.isCollapsed = !targetCollapsed
+                splitView.layoutSubtreeIfNeeded()
+                item.isCollapsed = targetCollapsed
+                splitView.layoutSubtreeIfNeeded()
+            }
+        }
+        for child in view.subviews {
+            commitOccludedInspectorSplitItems(in: child, targetCollapsed: targetCollapsed)
         }
     }
 
