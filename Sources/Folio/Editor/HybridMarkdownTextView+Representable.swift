@@ -14,6 +14,13 @@ public struct HybridMarkdownEditorRepresentable: NSViewRepresentable {
         Coordinator(viewModel: viewModel)
     }
 
+    private func applyTheme(_ theme: EditorTheme, to scrollView: NSScrollView, textView: HybridMarkdownTextView) {
+        scrollView.backgroundColor = theme.editorBackgroundNSColor
+        textView.backgroundColor = theme.editorBackgroundNSColor
+        textView.insertionPointColor = theme.linkNSColor
+        textView.currentTheme = theme
+    }
+
     public func makeNSView(context: Context) -> NSScrollView {
         let scrollView = NSScrollView()
         scrollView.automaticallyAdjustsContentInsets = false
@@ -76,7 +83,10 @@ public struct HybridMarkdownEditorRepresentable: NSViewRepresentable {
         textView.setSelectedRange(initialRange)
         context.coordinator.lastKnownTextHash = viewModel.markdownText.hashValue
         context.coordinator.isProgrammaticUpdate = false
+        applyTheme(viewModel.theme, to: scrollView, textView: textView)
         textView.typographySettings = viewModel.typography
+        textView.isTypewriterMode = viewModel.typewriterMode
+        textView.isSourceCodeMode = viewModel.sourceCodeMode
         context.coordinator.updateInsets(for: scrollView, textView: textView, theme: viewModel.theme)
         context.coordinator.restyle(textView: textView)
         textView.scrollRangeToVisible(initialRange)
@@ -128,11 +138,10 @@ public struct HybridMarkdownEditorRepresentable: NSViewRepresentable {
         let currentConfiguration = Coordinator.SyncedStyleConfiguration(viewModel: viewModel)
         let previousConfiguration = context.coordinator.lastSyncedConfiguration
 
-        if previousConfiguration?.theme != currentConfiguration.theme {
-            scrollView.backgroundColor = currentConfiguration.theme.editorBackgroundNSColor
-            textView.backgroundColor = currentConfiguration.theme.editorBackgroundNSColor
-            textView.insertionPointColor = currentConfiguration.theme.linkNSColor
-            textView.currentTheme = currentConfiguration.theme
+        if previousConfiguration?.theme != currentConfiguration.theme
+            || textView.currentTheme != currentConfiguration.theme
+        {
+            applyTheme(currentConfiguration.theme, to: scrollView, textView: textView)
         }
         if previousConfiguration?.typography != currentConfiguration.typography {
             textView.typographySettings = currentConfiguration.typography

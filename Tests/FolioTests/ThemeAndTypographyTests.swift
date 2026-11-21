@@ -1,4 +1,5 @@
 import AppKit
+import SwiftUI
 import XCTest
 @testable import FolioEditor
 @testable import FolioEditorTestSupport
@@ -300,5 +301,110 @@ final class ThemeAndTypographyTests: XCTestCase {
         XCTAssertNotNil(vm.theme.bodyFont(size: 16))
         XCTAssertNotNil(vm.theme.headingFont(level: 1))
         XCTAssertNotNil(vm.theme.codeFont(size: 14))
+    }
+
+    @MainActor
+    func testInitialEditorRepresentableMountSyncsRestoredThemeWithoutRoundTrip() throws {
+        let testDefaults = isolatedDefaults()
+
+        let setupVM = makeIsolatedViewModel(defaults: testDefaults)
+        setupVM.appearanceMode = .dark
+        setupVM.theme.headingFontFamily = "System Serif"
+        setupVM.saveCurrentTheme()
+        setupVM.typewriterMode = true
+        setupVM.sourceCodeMode = false
+
+        let restoredVM = makeIsolatedViewModel(defaults: testDefaults)
+        restoredVM.markdownText = "# Guide\n\nRun `bazel test //...` now:\n\n```bash\nMAIN_REPO_ROOT=1\n```\n"
+
+        let hostingView = NSHostingView(rootView: HybridMarkdownEditorRepresentable(viewModel: restoredVM))
+        let window = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 900, height: 600),
+            styleMask: [.titled, .resizable],
+            backing: .buffered,
+            defer: false
+        )
+        window.isReleasedWhenClosed = false
+        window.colorSpace = .sRGB
+        window.contentView = hostingView
+        window.orderFront(nil)
+        defer {
+            window.orderOut(nil)
+            window.contentView = nil
+        }
+
+        hostingView.layoutSubtreeIfNeeded()
+        RunLoop.current.run(until: Date().addingTimeInterval(0.05))
+        hostingView.layoutSubtreeIfNeeded()
+
+        let textView = try XCTUnwrap(restoredVM.activeTextView)
+        let scrollView = try XCTUnwrap(textView.enclosingScrollView)
+
+        XCTAssertEqual(textView.currentTheme, restoredVM.theme)
+        XCTAssertTrue(textView.currentTheme.isDark)
+        XCTAssertEqual(
+            ThemeColorRGBA(nsColor: textView.backgroundColor).hexString,
+            restoredVM.theme.editorBackground.hexString
+        )
+        XCTAssertEqual(
+            ThemeColorRGBA(nsColor: scrollView.backgroundColor).hexString,
+            restoredVM.theme.editorBackground.hexString
+        )
+        XCTAssertEqual(
+            ThemeColorRGBA(nsColor: textView.insertionPointColor).hexString,
+            restoredVM.theme.link.hexString
+        )
+        XCTAssertEqual(textView.currentTheme.codeBackground, EditorTheme.daylight.darkPalette.codeBackground)
+        XCTAssertTrue(textView.isTypewriterMode)
+        XCTAssertFalse(textView.isSourceCodeMode)
+
+        func samplePaddingColor(in view: HybridMarkdownTextView) throws -> ThemeColorRGBA {
+            let width = max(1, Int(view.bounds.width))
+            let height = max(1, Int(view.bounds.height))
+            let rep = try XCTUnwrap(
+                NSBitmapImageRep(
+                    bitmapDataPlanes: nil,
+                    pixelsWide: width,
+                    pixelsHigh: height,
+                    bitsPerSample: 8,
+                    samplesPerPixel: 4,
+                    hasAlpha: true,
+                    isPlanar: false,
+                    colorSpaceName: .deviceRGB,
+                    bytesPerRow: 0,
+                    bitsPerPixel: 0
+                )?.retagging(with: .sRGB)
+            )
+            view.cacheDisplay(in: view.bounds, to: rep)
+            var pixel = [Int](repeating: 0, count: 4)
+            rep.getPixel(&pixel, atX: min(width - 1, 10), y: min(height - 1, 10))
+            return ThemeColorRGBA(
+                r: Double(pixel[0]) / 255.0,
+                g: Double(pixel[1]) / 255.0,
+                b: Double(pixel[2]) / 255.0,
+                a: Double(pixel[3]) / 255.0
+            )
+        }
+
+        let initialColor = try samplePaddingColor(in: textView)
+        let expectedBg = restoredVM.theme.editorBackground
+        XCTAssertEqual(initialColor.r, expectedBg.r, accuracy: 0.02)
+        XCTAssertEqual(initialColor.g, expectedBg.g, accuracy: 0.02)
+        XCTAssertEqual(initialColor.b, expectedBg.b, accuracy: 0.02)
+
+        restoredVM.selectTheme(.parchment)
+        hostingView.layoutSubtreeIfNeeded()
+        RunLoop.current.run(until: Date().addingTimeInterval(0.05))
+        hostingView.layoutSubtreeIfNeeded()
+        let parchmentColor = try samplePaddingColor(in: textView)
+        XCTAssertNotEqual(parchmentColor.hexString, initialColor.hexString)
+
+        restoredVM.selectTheme(id: "Daylight")
+        hostingView.layoutSubtreeIfNeeded()
+        RunLoop.current.run(until: Date().addingTimeInterval(0.05))
+        hostingView.layoutSubtreeIfNeeded()
+
+        let roundTripColor = try samplePaddingColor(in: textView)
+        XCTAssertEqual(initialColor.hexString, roundTripColor.hexString)
     }
 }
