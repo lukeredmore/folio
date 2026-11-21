@@ -97,7 +97,7 @@ extension LaTeXStylePass {
 
         let baseLoc = effectiveRange.location
         let lineSubNS = lineSub as NSString
-        var crossLineReversions: [(start: Int, from: LaTeXProseStyle, to: LaTeXProseStyle)] = []
+        var crossLineReversions: [(braceLoc: Int, start: Int, from: LaTeXProseStyle, to: LaTeXProseStyle)] = []
         if needsCrossLineCloseBrace {
             crossLineReversions = styleCrossLineClosingBraces(
                 in: lineSubNS,
@@ -108,6 +108,7 @@ extension LaTeXStylePass {
             )
         }
 
+        let showTokens = isActiveLine || !prettyMode
         if let scanRes = lineSub.withCString({ ot_engine_scan_latex_inlines($0) }) {
             defer { ot_engine_free_latex_inlines(scanRes) }
             let count = Int(scanRes.pointee.span_count)
@@ -118,7 +119,7 @@ extension LaTeXStylePass {
                     baseLoc: baseLoc,
                     lineText: lineSubNS,
                     macros: docIndex.documentMacros,
-                    enabled: prettyMode && !isActiveLine
+                    expandMacros: !showTokens
                 )
 
                 styleContainerSpans(
@@ -197,9 +198,16 @@ extension LaTeXStylePass {
                         MarkdownLiveStyler.styleSyntaxToken(
                             in: storage,
                             range: fullRange,
-                            isActiveLine: isActiveLine || !prettyMode,
+                            isActiveLine: showTokens,
                             theme: theme,
                             dimFactor: dimFactor
+                        )
+                    case 5...9 where showTokens:
+                        MarkdownLiveStyler.styleSyntaxToken(
+                            in: storage, range: openRange, isActiveLine: true, theme: theme, dimFactor: dimFactor
+                        )
+                        MarkdownLiveStyler.styleSyntaxToken(
+                            in: storage, range: closeRange, isActiveLine: true, theme: theme, dimFactor: dimFactor
                         )
                     case 12 where plan.transparentCalls[idx] != nil:
                         if let call = plan.transparentCalls[idx] {
@@ -208,7 +216,17 @@ extension LaTeXStylePass {
                     case 12 where plan.hiddenCommands[idx] != nil:
                         if let hidden = plan.hiddenCommands[idx] {
                             storage.addAttribute(MKey.noSpellCheck, value: true, range: hidden)
-                            MarkdownLiveStyler.collapseWhitespaceRange(in: storage, range: hidden)
+                            if showTokens {
+                                MarkdownLiveStyler.styleSyntaxToken(
+                                    in: storage,
+                                    range: trimmedSyntaxTokenRange(hidden),
+                                    isActiveLine: true,
+                                    theme: theme,
+                                    dimFactor: dimFactor
+                                )
+                            } else {
+                                MarkdownLiveStyler.collapseWhitespaceRange(in: storage, range: hidden)
+                            }
                         }
                     case 12:
                         styleProseMacroSpan(
@@ -216,7 +234,7 @@ extension LaTeXStylePass {
                             expansion: plan.expansions[idx],
                             baseLoc: baseLoc,
                             lineFont: lineFont,
-                            showTokens: isActiveLine || !prettyMode,
+                            showTokens: showTokens,
                             dimFactor: dimFactor
                         )
                     case 10, 11, 13, 14:
@@ -235,12 +253,22 @@ extension LaTeXStylePass {
                     }
                 }
                 for hidden in plan.hiddenRanges {
-                    MarkdownLiveStyler.collapseWhitespaceRange(in: storage, range: hidden)
+                    if showTokens {
+                        MarkdownLiveStyler.styleSyntaxToken(
+                            in: storage,
+                            range: trimmedSyntaxTokenRange(hidden),
+                            isActiveLine: true,
+                            theme: theme,
+                            dimFactor: dimFactor
+                        )
+                    } else {
+                        MarkdownLiveStyler.collapseWhitespaceRange(in: storage, range: hidden)
+                    }
                 }
-                if prettyMode && !isActiveLine {
+                if !showTokens {
                     styleControlSymbols(text: lineSubNS, baseLoc: baseLoc, lineFont: lineFont)
                 }
-                if prettyMode && !isActiveLine && !plan.hfillRanges.isEmpty {
+                if !showTokens && !plan.hfillRanges.isEmpty {
                     applyHFillSpans(plan.hfillRanges, in: effectiveRange, lineRange: lineRange, lineFont: lineFont)
                 }
             }
@@ -250,7 +278,7 @@ extension LaTeXStylePass {
             let unscaledSize = lineFont.pointSize / max(0.01, flowStyle.sizeScale)
             let rangeEnd = NSMaxRange(effectiveRange)
             for (index, reversion) in crossLineReversions.enumerated() {
-                let end = index + 1 < crossLineReversions.count ? crossLineReversions[index + 1].start : rangeEnd
+                let end = index + 1 < crossLineReversions.count ? crossLineReversions[index + 1].braceLoc : rangeEnd
                 guard end > reversion.start else { continue }
                 restyleFonts(
                     range: NSRange(location: reversion.start, length: end - reversion.start),
@@ -261,6 +289,16 @@ extension LaTeXStylePass {
                 )
             }
         }
+    }
+
+    private func trimmedSyntaxTokenRange(_ range: NSRange) -> NSRange {
+        var end = min(NSMaxRange(range), nsString.length)
+        while end > range.location {
+            let ch = nsString.character(at: end - 1)
+            guard ch == 0x20 || ch == 0x09 else { break }
+            end -= 1
+        }
+        return NSRange(location: range.location, length: max(0, end - range.location))
     }
 
     private func maskLineComments(range: NSRange, hide: Bool) -> String {
@@ -369,7 +407,7 @@ extension LaTeXStylePass {
             MarkdownLiveStyler.applyFontTraitToVisibleCharacters(in: storage, range: innerRange, trait: .boldFontMask, fallbackFont: lineFont)
         case "textmd":
             applyTransformedFontToVisibleCharacters(in: innerRange, fallbackFont: lineFont) {
-                NSFontManager.shared.convert($0, toNotHaveTrait: .boldFontMask)
+                FontGDEFSanitizer.convert($0, toNotHaveTrait: .boldFontMask)
             }
         case "textit", "textsl":
             MarkdownLiveStyler.applyFontTraitToVisibleCharacters(in: storage, range: innerRange, trait: .italicFontMask, fallbackFont: lineFont)
@@ -377,12 +415,12 @@ extension LaTeXStylePass {
             applyTransformedFontToVisibleCharacters(in: innerRange, fallbackFont: lineFont) { currentFont in
                 let isItalic = NSFontManager.shared.traits(of: currentFont).contains(.italicFontMask)
                 return isItalic
-                    ? NSFontManager.shared.convert(currentFont, toNotHaveTrait: .italicFontMask)
-                    : NSFontManager.shared.convert(currentFont, toHaveTrait: .italicFontMask)
+                    ? FontGDEFSanitizer.convert(currentFont, toNotHaveTrait: .italicFontMask)
+                    : FontGDEFSanitizer.convert(currentFont, toHaveTrait: .italicFontMask)
             }
         case "textup":
             applyTransformedFontToVisibleCharacters(in: innerRange, fallbackFont: lineFont) {
-                NSFontManager.shared.convert($0, toNotHaveTrait: .italicFontMask)
+                FontGDEFSanitizer.convert($0, toNotHaveTrait: .italicFontMask)
             }
         case "underline", "uline":
             MarkdownLiveStyler.applyAttributesToVisibleCharacters(
@@ -649,6 +687,9 @@ extension LaTeXStylePass {
             if openRange.length > 0 {
                 MarkdownLiveStyler.styleSyntaxToken(in: storage, range: openRange, isActiveLine: showTokens, theme: theme, dimFactor: dimFactor)
             }
+            if closeRange.length > 0 {
+                MarkdownLiveStyler.styleSyntaxToken(in: storage, range: closeRange, isActiveLine: showTokens, theme: theme, dimFactor: dimFactor)
+            }
         case 13:
             let isMonospace = isMonospaceSpan(at: fullRange.location)
             if showTokens || isMonospace {
@@ -704,10 +745,10 @@ extension LaTeXStylePass {
         flow: LaTeXFlowState,
         isActiveLine: Bool,
         dimFactor: CGFloat
-    ) -> [(start: Int, from: LaTeXProseStyle, to: LaTeXProseStyle)] {
+    ) -> [(braceLoc: Int, start: Int, from: LaTeXProseStyle, to: LaTeXProseStyle)] {
         var frames = flow.frames
         var localDepth = 0
-        var reversions: [(start: Int, from: LaTeXProseStyle, to: LaTeXProseStyle)] = []
+        var reversions: [(braceLoc: Int, start: Int, from: LaTeXProseStyle, to: LaTeXProseStyle)] = []
         let length = lineSub.length
         var idx = 0
         while idx < length {
@@ -768,7 +809,7 @@ extension LaTeXStylePass {
                         )
                     }
                     if closedFrame.style != enclosingFrame.style && idx + 1 < length {
-                        reversions.append((start: baseLoc + idx + 1, from: closedFrame.style, to: enclosingFrame.style))
+                        reversions.append((braceLoc: baseLoc + idx, start: baseLoc + idx + 1, from: closedFrame.style, to: enclosingFrame.style))
                     }
                 }
             }
