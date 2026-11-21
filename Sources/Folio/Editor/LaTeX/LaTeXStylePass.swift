@@ -354,15 +354,17 @@ struct LaTeXStylePass {
     mutating func styleCommentBlock(
         lineRange: NSRange,
         contentRange: NSRange,
-        isActiveLine: Bool
+        isActiveLine: Bool,
+        limit: Int? = nil
     ) -> (nextIndex: Int, lineDelta: Int) {
+        let scanLimit = limit ?? fullLength
         var commentLines: [(lineRange: NSRange, contentRange: NSRange, isActive: Bool)] = [
             (lineRange, contentRange, isActiveLine)
         ]
         var pendingBlankLines: [(lineRange: NSRange, contentRange: NSRange, isActive: Bool)] = []
         var scanIndex = NSMaxRange(lineRange)
 
-        while scanIndex < fullLength {
+        while scanIndex < scanLimit {
             let nextLR = nsString.lineRange(for: NSRange(location: scanIndex, length: 0))
             let nextCR = MarkdownLiveStyler.strippedLineContentRange(nsString: nsString, lineRange: nextLR)
             let nextTrimmed = nsString.substring(with: nextCR).trimmingCharacters(in: .whitespaces)
@@ -386,7 +388,7 @@ struct LaTeXStylePass {
 
         let endChar = commentLines.last.map { NSMaxRange($0.lineRange) } ?? NSMaxRange(lineRange)
         let fullBlockRange = NSRange(location: lineRange.location, length: endChar - lineRange.location)
-        let readEnd = scanIndex < fullLength ? NSMaxRange(nsString.lineRange(for: NSRange(location: scanIndex, length: 0))) : fullLength
+        let readEnd = scanIndex < scanLimit ? NSMaxRange(nsString.lineRange(for: NSRange(location: scanIndex, length: 0))) : scanLimit
         noteContext(NSRange(location: lineRange.location, length: readEnd - lineRange.location))
         if fullBlockRange.length > lineRange.length {
             resetAttributes(range: NSRange(location: NSMaxRange(lineRange), length: fullBlockRange.length - lineRange.length))
@@ -464,7 +466,8 @@ struct LaTeXStylePass {
             }
         }
 
-        if trimmedLine == "\\maketitle" || LaTeXLexer.stripLineComment(trimmedLine).trimmingCharacters(in: .whitespaces) == "\\maketitle" {
+        let strippedCode = LaTeXLexer.stripLineComment(trimmedLine).trimmingCharacters(in: .whitespaces)
+        if trimmedLine == "\\maketitle" || strippedCode == "\\maketitle" || isHeaderBuilderCallLine(strippedCode) {
             styleRuleLine(lineRange: lineRange, contentRange: contentRange, isActive: isActiveLine, dimFactor: dimFactor)
             return (NSMaxRange(lineRange), 1)
         }
@@ -493,30 +496,26 @@ struct LaTeXStylePass {
             let cmd = cls.cmd.map { String(cString: $0) } ?? ""
             if cls.kind == 5 && cls.close_len > 0 && (cmd == "input" || cmd == "include") {
                 let relPath = cls.arg1.map { String(cString: $0) } ?? ""
-                let resolvedURL =
-                    docIndex.inputURLs[relPath] ?? LaTeXDocumentIndexer.defaultTeXFileURL(path: relPath, baseDirectoryURL: baseDirectoryURL)
-                storage.addAttribute(MKey.noSpellCheck, value: true, range: lineRange)
-                if !isActiveLine && prettyMode {
-                    let pStyle = NSMutableParagraphStyle()
-                    pStyle.minimumLineHeight = 34.0
-                    pStyle.maximumLineHeight = 34.0
-                    pStyle.tailIndent = effectiveContainerWidth
-                    storage.addAttributes(
-                        [
-                            .font: NSFont.systemFont(ofSize: 10.0),
-                            .foregroundColor: NSColor.clear,
-                            .paragraphStyle: pStyle
-                        ], range: lineRange)
-                    decorations.append(
-                        LineDecoration(
-                            lineRange: lineRange,
-                            kind: .latexInputCard(path: relPath, resolvedURL: resolvedURL, lineRange: lineRange, dimFactor: dimFactor)
-                        ))
-                } else {
-                    MarkdownLiveStyler.highlightLaTeXSource(in: storage, range: contentRange, theme: theme, dimFactor: dimFactor)
-                }
+                styleInputCard(
+                    relPath: relPath,
+                    lineRange: lineRange,
+                    contentRange: contentRange,
+                    isActiveLine: isActiveLine,
+                    dimFactor: dimFactor
+                )
                 return (NSMaxRange(lineRange), 1)
             }
+        }
+
+        if let sidebarPath = resolveSidebarInputTarget(code: strippedCode) {
+            styleInputCard(
+                relPath: sidebarPath,
+                lineRange: lineRange,
+                contentRange: contentRange,
+                isActiveLine: isActiveLine,
+                dimFactor: dimFactor
+            )
+            return (NSMaxRange(lineRange), 1)
         }
 
         if trimmedLine.hasPrefix("$$") || trimmedLine.hasPrefix("\\[") {
@@ -575,6 +574,7 @@ struct LaTeXStylePass {
             contentRange: contentRange,
             lineText: lineText,
             trimmedLine: trimmedLine,
+            lineNumber: lineNumber,
             isActiveLine: isActiveLine
         ) {
             return macroAdv
@@ -589,6 +589,87 @@ struct LaTeXStylePass {
             dimFactor: dimFactor,
             flow: flow
         )
+    }
+
+    private mutating func styleInputCard(
+        relPath: String,
+        lineRange: NSRange,
+        contentRange: NSRange,
+        isActiveLine: Bool,
+        dimFactor: CGFloat
+    ) {
+        let resolvedURL =
+            docIndex.inputURLs[relPath] ?? LaTeXDocumentIndexer.defaultTeXFileURL(path: relPath, baseDirectoryURL: baseDirectoryURL)
+        storage.addAttribute(MKey.noSpellCheck, value: true, range: lineRange)
+        if !isActiveLine && prettyMode {
+            let pStyle = NSMutableParagraphStyle()
+            pStyle.minimumLineHeight = 34.0
+            pStyle.maximumLineHeight = 34.0
+            pStyle.tailIndent = effectiveContainerWidth
+            storage.addAttributes(
+                [
+                    .font: NSFont.systemFont(ofSize: 10.0),
+                    .foregroundColor: NSColor.clear,
+                    .paragraphStyle: pStyle
+                ], range: lineRange)
+            decorations.append(
+                LineDecoration(
+                    lineRange: lineRange,
+                    kind: .latexInputCard(path: relPath, resolvedURL: resolvedURL, lineRange: lineRange, dimFactor: dimFactor)
+                ))
+        } else {
+            MarkdownLiveStyler.highlightLaTeXSource(in: storage, range: contentRange, theme: theme, dimFactor: dimFactor)
+        }
+    }
+
+    private func isHeaderBuilderCallLine(_ strippedCode: String) -> Bool {
+        guard strippedCode.hasPrefix("\\") else { return false }
+        let chars = Array(strippedCode)
+        let (word, afterWord) = LaTeXMacroExpander.readControlWord(chars, at: 0)
+        guard let def = docIndex.documentMacros[word], LaTeXLayoutLine.isHeaderBuilderMacro(def) else { return false }
+        let rest = String(chars[afterWord...]).trimmingCharacters(in: .whitespaces)
+        return rest.isEmpty || rest == "{}"
+    }
+
+    private func resolveSidebarInputTarget(code: String) -> String? {
+        guard code.hasPrefix("\\") else { return nil }
+        let chars = Array(code)
+        let (word, afterWord) = LaTeXMacroExpander.readControlWord(chars, at: 0)
+        guard let def = docIndex.documentMacros[word],
+            !def.isEnvironment,
+            def.operatorText == nil,
+            def.argCount >= 1,
+            def.replacement.contains("\\input") || def.replacement.contains("\\addsidebar")
+        else { return nil }
+        guard let (args, end) = LaTeXMacroExpander.readArguments(for: def, in: chars, from: afterWord),
+            end == chars.count
+        else { return nil }
+        var body = LaTeXMacroExpander.substituteArguments(args, into: def.replacement)
+        for _ in 0..<2 {
+            let clean = LaTeXLexer.stripLineComment(body).trimmingCharacters(in: .whitespacesAndNewlines)
+            if let range = clean.range(of: "\\input{") {
+                let afterOpen = range.upperBound
+                if let close = clean[afterOpen...].firstIndex(of: "}") {
+                    let target = String(clean[afterOpen..<close]).trimmingCharacters(in: .whitespaces)
+                    if !target.isEmpty {
+                        let withoutInput = clean.replacingCharacters(in: range.lowerBound...close, with: "")
+                            .replacingOccurrences(of: "\\ifstrequal", with: "\\@ifstrequal")
+                        if !withoutInput.contains("\\LARGE") && !withoutInput.contains("\\Large")
+                            && !withoutInput.contains("\\Huge") && !withoutInput.contains("\\huge")
+                            && !withoutInput.contains("\\rule")
+                            && (withoutInput.contains("\\marginpar") || withoutInput.contains("\\afterpage"))
+                        {
+                            return target
+                        }
+                    }
+                    return nil
+                }
+            }
+            let (expanded, _) = LaTeXMacroExpander.expandMacrosOnce(in: body, macros: docIndex.documentMacros, maxUTF8Bytes: 4096)
+            if expanded == body { break }
+            body = expanded
+        }
+        return nil
     }
 
     private mutating func styleSectionLine(

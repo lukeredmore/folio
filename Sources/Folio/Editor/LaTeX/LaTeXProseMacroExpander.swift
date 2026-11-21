@@ -26,6 +26,7 @@ struct LaTeXProseStyle: Hashable, Sendable {
     var letterCase = LetterCase.asIs
     var fontFamily: String?
     var letterSpaceEm: CGFloat = 0
+    var colorName: String?
 }
 
 /// One piece of an expanded prose macro: styled text, inline math, or a `\\` line break.
@@ -67,6 +68,7 @@ enum LaTeXProseMacroExpander {
         var renderer = Renderer(macros: macros, limits: limits)
         var unusedStyle: LaTeXProseStyle?
         guard let end = renderer.expandUserMacro(chars, at: 0, style: &unusedStyle, depth: 0) else { return nil }
+        renderer.trimTrailingWhitespaceAndBreaks()
         guard !renderer.segments.isEmpty else { return nil }
         return LaTeXProseExpansion(
             consumedLength: String(chars[0..<end]).utf16.count,
@@ -116,6 +118,8 @@ extension LaTeXProseMacroExpander {
         /// Output so far. `emit` merges adjacent text with the same style, so the segment cap
         /// counts style runs, not characters.
         var segments: [LaTeXProseSegment] = []
+        /// Stack of `\begingroup` styles active inside the current `render` scope.
+        var groupStack: [LaTeXProseStyle] = []
         /// How many math segments enclose this renderer. Text macros inside math are rendered by
         /// a nested renderer, and this bounds the nesting.
         let mathNesting: Int
@@ -183,6 +187,12 @@ extension LaTeXProseMacroExpander {
         /// Renders `chars` with `style`. Declarations change `style`, so they last until the
         /// enclosing group ends, as in TeX.
         mutating func render(_ chars: [Character], style: inout LaTeXProseStyle, depth: Int) -> Bool {
+            let savedStackCount = groupStack.count
+            defer {
+                while groupStack.count > savedStackCount {
+                    groupStack.removeLast()
+                }
+            }
             var idx = 0
             while idx < chars.count {
                 guard segments.count <= limits.maxSegments else { return false }
@@ -224,7 +234,21 @@ extension LaTeXProseMacroExpander {
             if ch.isWhitespace {
                 var p = idx
                 while p < chars.count && chars[p].isWhitespace { p += 1 }
-                emit(" ", style: style)
+                if case .lineBreak? = segments.last {
+                } else {
+                    emit(" ", style: style)
+                }
+                return p
+            }
+            if matches("http://", chars, at: idx) || matches("https://", chars, at: idx) {
+                var p = idx
+                while p < chars.count && !chars[p].isWhitespace && chars[p] != "}" && chars[p] != "]" && chars[p] != ">" {
+                    p += 1
+                }
+                var urlStyle = style
+                urlStyle.underline = true
+                if urlStyle.colorName == nil { urlStyle.colorName = "accent" }
+                emit(String(chars[idx..<p]), style: urlStyle)
                 return p
             }
             let ligatures: [(String, String)] = [("---", "—"), ("--", "–"), ("``", "“"), ("''", "”"), ("`", "‘"), ("'", "’"), ("~", "\u{00A0}")]
@@ -240,6 +264,20 @@ extension LaTeXProseMacroExpander {
             let p = Array(pattern)
             guard idx + p.count <= chars.count else { return false }
             return Array(chars[idx..<(idx + p.count)]) == p
+        }
+
+        var hasVisibleTextOnCurrentLine: Bool {
+            for segment in segments.reversed() {
+                switch segment {
+                case .lineBreak:
+                    return false
+                case let .text(text, _):
+                    if !text.trimmingCharacters(in: .whitespaces).isEmpty { return true }
+                case .math:
+                    return true
+                }
+            }
+            return false
         }
 
         mutating func emit(_ text: String, style: LaTeXProseStyle) {
@@ -279,6 +317,34 @@ extension LaTeXProseMacroExpander {
 
         mutating func appendLineBreak() {
             segments.append(.lineBreak)
+        }
+
+        mutating func appendParagraphBreak() {
+            guard hasVisibleTextOnCurrentLine else { return }
+            while case let .text(text, _)? = segments.last,
+                text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            {
+                segments.removeLast()
+            }
+            segments.append(.lineBreak)
+        }
+
+        mutating func trimTrailingWhitespaceAndBreaks() {
+            while let last = segments.last {
+                switch last {
+                case .lineBreak:
+                    segments.removeLast()
+                case let .text(text, _):
+                    let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+                    if trimmed.isEmpty {
+                        segments.removeLast()
+                    } else {
+                        return
+                    }
+                case .math:
+                    return
+                }
+            }
         }
     }
 }

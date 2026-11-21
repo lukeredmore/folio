@@ -9,6 +9,10 @@ struct LaTeXProjectSnapshot: Sendable {
     var master: LaTeXMasterResolution?
     /// Macros from the master file and its preamble inputs.
     var inheritedMacros: [String: LaTeXMacroDefinition] = [:]
+    /// Macros from local `.cls` and `.sty` files referenced by this document or its master.
+    var classAndPackageMacros: [String: LaTeXMacroDefinition] = [:]
+    /// Preamble/style text from loaded `.cls`, `.sty`, or master files applied before this file's preamble.
+    var inheritedStylePreamble: String = ""
     /// Resolved files of the document's own `\input` paths.
     var inputURLs: [String: URL] = [:]
     /// Macros of each of the document's own `\input` paths.
@@ -21,6 +25,7 @@ struct LaTeXProjectSnapshot: Sendable {
 
     func hasSameContent(as other: LaTeXProjectSnapshot) -> Bool {
         signature == other.signature && master == other.master && inheritedMacros == other.inheritedMacros
+            && classAndPackageMacros == other.classAndPackageMacros && inheritedStylePreamble == other.inheritedStylePreamble
             && inputURLs == other.inputURLs && inputMacros == other.inputMacros && bibEntries == other.bibEntries
     }
 
@@ -30,7 +35,7 @@ struct LaTeXProjectSnapshot: Sendable {
             return true
         }
         let ext = standardizedFileURL.pathExtension.lowercased()
-        if ext == "tex" || ext == "bib" {
+        if ext == "tex" || ext == "bib" || ext == "cls" || ext == "sty" {
             let parentPath = standardizedFileURL.deletingLastPathComponent().path
             if watchedDirectories.contains(parentPath) {
                 return true
@@ -158,16 +163,48 @@ package enum LaTeXProjectContext {
         var resolver = LaTeXProjectResolver(fileSystem: fileSystem, limits: limits, cache: factsCache)
         var snapshot = LaTeXProjectSnapshot(signature: signature)
         let baseDirectory = key.baseDirectoryURL ?? key.fileURL?.deletingLastPathComponent()
+        var styleChunks: [String] = []
         if let fileURL = key.fileURL, let master = resolver.resolveMaster(for: fileURL, signature: signature) {
             snapshot.master = master
-            snapshot.inheritedMacros = resolver.inheritedMacros(from: master.url, excluding: fileURL)
+            let inherited = resolver.inheritedContext(from: master.url, excluding: fileURL)
+            snapshot.inheritedMacros = inherited.macros
+            snapshot.classAndPackageMacros = inherited.classAndPackageMacros
+            if !inherited.stylePreamble.isEmpty {
+                styleChunks.append(inherited.stylePreamble)
+            }
         }
         guard let baseDirectory else {
+            snapshot.inheritedStylePreamble = styleChunks.joined(separator: "\n")
             snapshot.dependencyPaths = resolver.dependencyPaths
             snapshot.watchedDirectories = resolver.watchedDirectories
             return snapshot
         }
         let masterDirectory = snapshot.master?.url.deletingLastPathComponent()
+        if signature.documentClassName != nil || !signature.packageNames.isEmpty {
+            var styleDirectories = [baseDirectory]
+            if let masterDirectory, masterDirectory != baseDirectory {
+                styleDirectories.append(masterDirectory)
+            }
+            var styleVisited: Set<String> = []
+            if let fileURL = key.fileURL { styleVisited.insert(fileURL.standardizedFileURL.path) }
+            if let masterURL = snapshot.master?.url { styleVisited.insert(masterURL.standardizedFileURL.path) }
+            var ownClassAndPackageMacros: [String: LaTeXMacroDefinition] = [:]
+            var ownStyleChunks: [String] = []
+            resolver.collectClassAndPackages(
+                classNames: signature.documentClassName.map { [$0] } ?? [],
+                packageNames: signature.packageNames,
+                directories: styleDirectories,
+                depth: 0,
+                visited: &styleVisited,
+                macros: &ownClassAndPackageMacros,
+                styleChunks: &ownStyleChunks
+            )
+            snapshot.classAndPackageMacros.merge(ownClassAndPackageMacros) { _, new in new }
+            if !ownStyleChunks.isEmpty {
+                styleChunks.append(contentsOf: ownStyleChunks)
+            }
+        }
+        snapshot.inheritedStylePreamble = styleChunks.joined(separator: "\n")
         for path in signature.inputPaths where snapshot.inputURLs[path] == nil {
             var resolvedURL = resolver.resolveTeXPath(path, in: baseDirectory)
             if resolvedURL == nil, let masterDirectory {

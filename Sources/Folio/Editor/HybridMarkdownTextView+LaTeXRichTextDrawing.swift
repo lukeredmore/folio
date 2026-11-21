@@ -21,7 +21,6 @@ extension HybridMarkdownTextView {
         let startX = origin.x + lineFrag.minX + glyphLoc.x
         let customColor =
             self.textStorage?.attribute(MarkdownLiveStyler.customColorAttributeKey, at: spanRange.location, effectiveRange: nil) as? NSColor
-        let textColor = (customColor ?? currentTheme.textNSColor).withAlphaComponent(dimFactor)
         let mathColor = (customColor ?? currentTheme.headingNSColor).withAlphaComponent(dimFactor)
         let lineStep = LaTeXLiveStyler.richTextLineStep(lines)
 
@@ -30,8 +29,9 @@ extension HybridMarkdownTextView {
             let lineBaseline = baselineY + CGFloat(lineIndex) * lineStep
             for run in runs {
                 switch run {
-                case let .text(text, font, underline, offset):
-                    var attrs: [NSAttributedString.Key: Any] = [.font: font, .foregroundColor: textColor]
+                case let .text(text, font, runColor, underline, offset):
+                    let resolvedColor = (runColor ?? customColor ?? currentTheme.textNSColor).withAlphaComponent(dimFactor)
+                    var attrs: [NSAttributedString.Key: Any] = [.font: font, .foregroundColor: resolvedColor]
                     if underline { attrs[.underlineStyle] = NSUnderlineStyle.single.rawValue }
                     let ns = text as NSString
                     ns.draw(at: NSPoint(x: x, y: lineBaseline - offset - font.ascender), withAttributes: attrs)

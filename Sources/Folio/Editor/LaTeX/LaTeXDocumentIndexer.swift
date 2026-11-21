@@ -172,6 +172,7 @@ enum LaTeXDocumentIndexer {
         var currentContext: (kind: String, number: String, title: String, loc: Int)
         var signature: LaTeXProjectSignature
         var capturedCheckpoint: PreambleScanCheckpoint?
+        var preambleCondStack: [(cond: Bool, inElse: Bool)] = []
 
         if let cp = reusableCheckpoint,
             fullLength >= cp.prefixUTF16Length,
@@ -193,6 +194,9 @@ enum LaTeXDocumentIndexer {
         } else {
             idx = LaTeXDocumentIndex()
             idx.inputURLs = project.inputURLs
+            if !project.inheritedStylePreamble.isEmpty {
+                applyStylePreamble(project.inheritedStylePreamble, into: &idx.documentStyle)
+            }
             masterDirectives = []
             charIndex = 0
             inPreamble = true
@@ -221,13 +225,29 @@ enum LaTeXDocumentIndexer {
                 idx.endDocumentLineRange = lineRange
             }
 
-            if inPreamble
+            var preambleBranchActive = true
+            if inPreamble {
+                if let condVal = LaTeXStylePass.parseIfDirective(trimmed, conditionals: idx.documentStyle.conditionals) {
+                    preambleCondStack.append((condVal, false))
+                    preambleBranchActive = false
+                } else if LaTeXStylePass.isElseDirective(trimmed), !preambleCondStack.isEmpty {
+                    preambleCondStack[preambleCondStack.count - 1].inElse = true
+                    preambleBranchActive = false
+                } else if LaTeXStylePass.isFiDirective(trimmed), !preambleCondStack.isEmpty {
+                    preambleCondStack.removeLast()
+                    preambleBranchActive = false
+                } else {
+                    preambleBranchActive = preambleCondStack.allSatisfy { $0.inElse ? !$0.cond : $0.cond }
+                }
+            }
+
+            if inPreamble && preambleBranchActive
                 && (trimmed.hasPrefix("\\newcommand") || trimmed.hasPrefix("\\renewcommand")
                     || trimmed.hasPrefix("\\DeclareMathOperator") || trimmed.hasPrefix("\\def\\")
-                    || trimmed.hasPrefix("\\providecommand") || trimmed.hasPrefix("\\newfontfamily")
-                    || trimmed.hasPrefix("\\renewfontfamily") || trimmed.hasPrefix("\\providefontfamily")
-                    || trimmed.hasPrefix("\\newfontface") || trimmed.hasPrefix("\\renewfontface")
-                    || trimmed.hasPrefix("\\providefontface"))
+                    || trimmed.hasPrefix("\\providecommand") || trimmed.hasPrefix("\\DeclareRobustCommand")
+                    || trimmed.hasPrefix("\\newfontfamily") || trimmed.hasPrefix("\\renewfontfamily")
+                    || trimmed.hasPrefix("\\providefontfamily") || trimmed.hasPrefix("\\newfontface")
+                    || trimmed.hasPrefix("\\renewfontface") || trimmed.hasPrefix("\\providefontface"))
             {
                 idx.macroCount += 1
             }
@@ -271,7 +291,7 @@ enum LaTeXDocumentIndexer {
                 masterDirectives.append(directive)
             }
 
-            if line.contains("\\") {
+            if line.contains("\\") && (!inPreamble || preambleBranchActive) {
                 applyScannedDirectives(
                     in: line,
                     lineLocation: lineRange.location,

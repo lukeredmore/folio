@@ -1,0 +1,67 @@
+\PassOptionsToPackage{dvipsnames}{xcolor}
+\documentclass[10pt,a4paper,ragged2e]{altacv_showcase}
+
+\ifxetexorluatex
+  \setmainfont{Georgia}
+\else
+  \usepackage[default]{lato}
+\fi
+
+\definecolor{InkPrimary}{HTML}{000000}
+\definecolor{InkAccent}{HTML}{1F5B8C}
+\definecolor{InkEmphasis}{HTML}{231F20}
+\definecolor{InkBody}{HTML}{4D4D4F}
+
+\colorlet{heading}{InkPrimary}
+\colorlet{accent}{InkAccent}
+\colorlet{emphasis}{InkEmphasis}
+\colorlet{body}{InkBody}
+
+\renewcommand{\itemmarker}{{\small\textbullet}}
+\renewcommand{\ratingmarker}{\faCircle}
+
+\begin{document}
+\name{Elena Rostova}
+\tagline{Computational Physicist & Document Systems Researcher}
+\personalinfo{%
+  % Contact details displayed below tagline
+  \email{elena.rostova@example.edu}
+  \phone{+1 617-555-0194}
+  \location{Cambridge, MA}
+  \homepage{\url{https://example.edu/~erostova}}
+}
+
+\begin{fullwidth}
+\makecvheader
+\end{fullwidth}
+
+\cvsection[latex_cv_sidebar]{Education}
+
+\cvevent{Ph.D. in Computational Physics}{Meridian Institute of Technology}{September 2021 -- Ongoing}{Cambridge, MA}{}{}
+\begin{itemize}
+  \item Dissertation: Fast Symplectic Integrators on Unstructured Meshes
+  \item Advisor: Prof. Henrique Barros
+\end{itemize}
+
+\divider
+
+\cvevent{B.S. in Physics & Applied Mathematics}{University of Northbridge}{September 2017 -- May 2021}{Northbridge, UK}{}{}
+\begin{itemize}
+  \item First Class Honors; Undergraduate Thesis on Spectral Boundary Solvers
+\end{itemize}
+
+\cvsection{Publications \& Talks}
+
+\begin{fullwidth}
+\cvevent{An Introduction to Structured \LaTeX\ Typesetting}{Summer School in Scientific Computing}{July 2024}{Cambridge, MA}{\url{https://example.edu/~erostova/talks/latex_notes.html}}{\url{https://example.edu/~erostova/pdf/Typesetting_Poster.pdf}}
+Hands-on workshop covering OpenType math fonts, custom class macros, and reproducible scientific writing.
+
+\divider
+
+\cvevent{Adaptive Wavelet Solvers for Hyperbolic Systems}{Rostova, E.; Barros, H. \emph{et al.}}{March 2024 -- Ongoing}{Boston, MA}{https://example.edu/~erostova/papers/wavelets_2024.html}{}
+Extended our finite-volume benchmark suite with multi-resolution error estimators and zero-allocation inner loops.
+\end{fullwidth}
+
+\addnextpagesidebar[-1ex]{latex_cv_sidebar}
+
+\end{document}

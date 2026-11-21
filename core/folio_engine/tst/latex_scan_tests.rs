@@ -297,3 +297,45 @@ fn test_includegraphics_with_trailing_linebreak_or_comment() {
     assert_eq!(g2.kind, LatexLineKind::IncludeGraphics);
     assert_eq!(g2.arg1, "fig.pdf");
 }
+
+#[test]
+fn test_class_package_colorlet_and_cv_heading_template() {
+    let cls_d = scan_latex_directives(r"\LoadClass{extarticle}", true);
+    assert_eq!(cls_d.len(), 1);
+    assert_eq!(cls_d[0].kind, LatexDirectiveKind::DocumentClass);
+    assert_eq!(cls_d[0].cmd, "LoadClass");
+    assert_eq!(cls_d[0].arg1, "extarticle");
+
+    let pkg_d = scan_latex_directives(r"\RequirePackage[margin=2cm]{geometry, xcolor}", true);
+    assert_eq!(pkg_d.len(), 1);
+    assert_eq!(pkg_d[0].kind, LatexDirectiveKind::UsePackage);
+    assert_eq!(pkg_d[0].cmd, "RequirePackage");
+    assert_eq!(pkg_d[0].opt_arg, "margin=2cm");
+    assert_eq!(pkg_d[0].arg1, "geometry, xcolor");
+
+    let col_d = scan_latex_directives(r"\colorlet{accent}{blue!70!black}", true);
+    assert_eq!(col_d.len(), 1);
+    assert_eq!(col_d[0].kind, LatexDirectiveKind::DefineColor);
+    assert_eq!(col_d[0].cmd, "colorlet");
+    assert_eq!(col_d[0].arg1, "accent");
+    assert_eq!(col_d[0].arg2, "colorlet");
+    assert_eq!(col_d[0].arg3, "blue!70!black");
+
+    let cvsec = analyze_macro_template(
+        r"\bigskip\ifstrequal{}{}{}{\marginpar{\input{}}}\{\color{heading}\LARGE\bfseries{#2}}\\[-1ex]{\color{heading}\rule{\linewidth}{2pt}\par}\medskip",
+        "#2",
+    );
+    assert!(cvsec.shows_body);
+    assert_eq!(cvsec.heading_level, 2);
+    assert_eq!(cvsec.color_name, "heading");
+    assert!(cvsec.prefix_label.is_empty());
+
+    let cvsub = analyze_macro_template(
+        r"\smallskip{\color{emphasis}\large\bfseries{#1}\par}\medskip",
+        "#1",
+    );
+    assert!(cvsub.shows_body);
+    assert_eq!(cvsub.heading_level, 3);
+    assert_eq!(cvsub.color_name, "emphasis");
+    assert!(cvsub.prefix_label.is_empty());
+}

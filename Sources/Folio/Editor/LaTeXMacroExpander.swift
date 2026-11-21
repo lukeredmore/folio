@@ -135,6 +135,7 @@ public enum LaTeXMacroExpander {
             text.contains("\\newcommand")
                 || text.contains("\\renewcommand")
                 || text.contains("\\providecommand")
+                || text.contains("\\DeclareRobustCommand")
                 || text.contains("\\DeclareMathOperator")
                 || text.contains("\\def")
                 || text.contains("environment{")
@@ -195,7 +196,7 @@ public enum LaTeXMacroExpander {
     ) -> (LaTeXMacroDefinition, Int)? {
         let (cmd, afterCmd) = readControlWord(chars, at: start)
         switch cmd {
-        case "\\newcommand", "\\renewcommand", "\\providecommand":
+        case "\\newcommand", "\\renewcommand", "\\providecommand", "\\DeclareRobustCommand":
             var idx = skipSpaces(chars, from: afterCmd)
             if idx < chars.count && chars[idx] == "*" { idx = skipSpaces(chars, from: idx + 1) }
             guard let (rawName, afterName) = readMacroNameArg(chars, at: idx) else { return nil }
