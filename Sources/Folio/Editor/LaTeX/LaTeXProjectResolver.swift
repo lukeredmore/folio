@@ -99,6 +99,26 @@ struct LaTeXProjectResolver {
         return parsed
     }
 
+    struct InheritedContext {
+        var macros: [String: LaTeXMacroDefinition] = [:]
+        var classAndPackageMacros: [String: LaTeXMacroDefinition] = [:]
+        var stylePreamble: String = ""
+    }
+
+    /// Resolves a `.cls` or `.sty` file in `directories`, checking `name` with the extension added
+    /// when missing.
+    mutating func resolveStyleFile(named name: String, ext: String, in directories: [URL]) -> URL? {
+        let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return nil }
+        let suffix = ".\(ext.lowercased())"
+        let candidateName = trimmed.lowercased().hasSuffix(suffix) ? trimmed : "\(trimmed).\(ext)"
+        for directory in directories {
+            let url = directory.appendingPathComponent(candidateName).standardizedFileURL
+            dependencyPaths.insert(url.path)
+            if fileSystem.stamp(url) != nil { return url }
+        }
+        return nil
+    }
     /// Resolves `path` in `directory` as TeX does: `path.tex` first, unless `path` ends in `.tex`.
     mutating func resolveTeXPath(_ path: String, in directory: URL) -> URL? {
         let trimmed = path.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -152,10 +172,20 @@ struct LaTeXProjectResolver {
             let candidates = fileSystem.listDirectory(searchDirectory)
                 .filter { $0.pathExtension.lowercased() == "tex" && $0.path != child.path }
                 .prefix(limits.maxDirectoryEntries)
+            var fallbackCandidates: [(url: URL, facts: LaTeXFileFacts)] = []
             for candidate in candidates {
                 guard let facts = facts(for: candidate), facts.declaresDocumentClass else { continue }
                 let candidateDirectory = candidate.deletingLastPathComponent()
                 if facts.includeTargets.contains(where: { Self.target($0, in: candidateDirectory, names: child) }) {
+                    return (candidate, rule)
+                }
+                if !facts.bracketAndBraceTokens.isEmpty {
+                    fallbackCandidates.append((candidate, facts))
+                }
+            }
+            for (candidate, facts) in fallbackCandidates {
+                let candidateDirectory = candidate.deletingLastPathComponent()
+                if facts.bracketAndBraceTokens.contains(where: { Self.target($0, in: candidateDirectory, names: child) }) {
                     return (candidate, rule)
                 }
             }
@@ -173,14 +203,101 @@ struct LaTeXProjectResolver {
     /// Macros from the master's preamble and, recursively, from the files its preamble inputs.
     /// Later definitions win. `\input` paths resolve against the master's directory, as in TeX.
     mutating func inheritedMacros(from master: URL, excluding child: URL) -> [String: LaTeXMacroDefinition] {
-        guard let masterFacts = facts(for: master) else { return [:] }
-        var macros = masterFacts.preambleMacros
-        var visited: Set<String> = [master.path, child.standardizedFileURL.path]
-        collectMacros(
-            includes: masterFacts.preambleIncludeTargets, root: master.deletingLastPathComponent(), depth: 1,
-            visited: &visited, into: &macros
+        inheritedContext(from: master, excluding: child).macros
+    }
+
+    /// Macros, local `.cls`/`.sty` definitions, and style preamble inherited from a master file.
+    mutating func inheritedContext(from master: URL, excluding child: URL) -> InheritedContext {
+        guard let masterFacts = facts(for: master) else { return InheritedContext() }
+        var context = InheritedContext()
+        context.macros = masterFacts.preambleMacros
+        let masterDirectory = master.deletingLastPathComponent()
+        var styleVisited: Set<String> = [master.path, child.standardizedFileURL.path]
+        var styleChunks: [String] = []
+        collectClassAndPackages(
+            classNames: masterFacts.classNames,
+            packageNames: masterFacts.packageNames,
+            directories: [masterDirectory],
+            depth: 1,
+            visited: &styleVisited,
+            macros: &context.classAndPackageMacros,
+            styleChunks: &styleChunks
         )
-        return macros
+        styleChunks.append(masterFacts.stylePreambleText)
+        context.stylePreamble = styleChunks.joined(separator: "\n")
+        var includeVisited: Set<String> = [master.path, child.standardizedFileURL.path]
+        collectMacros(
+            includes: masterFacts.preambleIncludeTargets,
+            root: masterDirectory,
+            depth: 1,
+            visited: &includeVisited,
+            into: &context.macros
+        )
+        return context
+    }
+
+    /// Resolves local `.cls` and `.sty` dependencies recursively, recording their macros and style
+    /// directives in load order.
+    mutating func collectClassAndPackages(
+        classNames: [String],
+        packageNames: [String],
+        directories: [URL],
+        depth: Int,
+        visited: inout Set<String>,
+        macros: inout [String: LaTeXMacroDefinition],
+        styleChunks: inout [String]
+    ) {
+        guard depth <= limits.maxIncludeDepth else { return }
+        for className in classNames {
+            guard let url = resolveStyleFile(named: className, ext: "cls", in: directories),
+                visited.insert(url.path).inserted,
+                let classFacts = facts(for: url)
+            else { continue }
+            let searchDirs = [url.deletingLastPathComponent()] + directories.filter { $0 != url.deletingLastPathComponent() }
+            collectClassAndPackages(
+                classNames: classFacts.classNames,
+                packageNames: classFacts.packageNames,
+                directories: searchDirs,
+                depth: depth + 1,
+                visited: &visited,
+                macros: &macros,
+                styleChunks: &styleChunks
+            )
+            styleChunks.append(classFacts.stylePreambleText)
+            macros.merge(classFacts.allMacros) { _, new in new }
+            collectMacros(
+                includes: classFacts.preambleIncludeTargets,
+                root: url.deletingLastPathComponent(),
+                depth: depth + 1,
+                visited: &visited,
+                into: &macros
+            )
+        }
+        for packageName in packageNames {
+            guard let url = resolveStyleFile(named: packageName, ext: "sty", in: directories),
+                visited.insert(url.path).inserted,
+                let pkgFacts = facts(for: url)
+            else { continue }
+            let searchDirs = [url.deletingLastPathComponent()] + directories.filter { $0 != url.deletingLastPathComponent() }
+            collectClassAndPackages(
+                classNames: [],
+                packageNames: pkgFacts.packageNames,
+                directories: searchDirs,
+                depth: depth + 1,
+                visited: &visited,
+                macros: &macros,
+                styleChunks: &styleChunks
+            )
+            styleChunks.append(pkgFacts.stylePreambleText)
+            macros.merge(pkgFacts.allMacros) { _, new in new }
+            collectMacros(
+                includes: pkgFacts.preambleIncludeTargets,
+                root: url.deletingLastPathComponent(),
+                depth: depth + 1,
+                visited: &visited,
+                into: &macros
+            )
+        }
     }
 
     /// Macros of one input file and of the files it inputs.

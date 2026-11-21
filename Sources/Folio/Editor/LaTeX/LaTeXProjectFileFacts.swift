@@ -36,6 +36,10 @@ enum LaTeXMasterDirective: Hashable, Sendable {
 /// The parts of an open document that decide which project files it needs. When these change,
 /// the project snapshot is refreshed off the restyle path.
 struct LaTeXProjectSignature: Hashable, Sendable {
+    /// `\documentclass` argument in the preamble, if any.
+    var documentClassName: String?
+    /// `\usepackage` arguments in the preamble, in source order.
+    var packageNames: [String] = []
     /// `\input` and `\include` arguments in the preamble, in source order.
     var inputPaths: [String] = []
     /// `\bibliography` and `\addbibresource` files.
@@ -48,10 +52,19 @@ struct LaTeXProjectSignature: Hashable, Sendable {
 struct LaTeXFileFacts: Sendable {
     let masterDirective: LaTeXMasterDirective?
     let declaresDocumentClass: Bool
+    /// `\documentclass{...}` and `\LoadClass{...}` arguments in order.
+    let classNames: [String]
+    /// `\usepackage{...}` and `\RequirePackage{...}` arguments in preamble/class/style order.
+    let packageNames: [String]
     /// `\input{...}` and `\include{...}` arguments anywhere outside comments.
     let includeTargets: [String]
     /// The same, before `\begin{document}`.
     let preambleIncludeTargets: [String]
+    /// Simple relative-path-like tokens appearing in `[...]` or `{...}` outside comments,
+    /// used as a fallback to match sidebar inputs such as `\cvsection[page1sidebar]{...}`.
+    let bracketAndBraceTokens: Set<String>
+    /// Text before `\begin{document}`, or the full text when no `\begin{document}` exists.
+    let stylePreambleText: String
     /// Macros defined before `\begin{document}`, or in the whole file when it has none.
     let preambleMacros: [String: LaTeXMacroDefinition]
     let allMacros: [String: LaTeXMacroDefinition]
@@ -59,8 +72,11 @@ struct LaTeXFileFacts: Sendable {
     static func parse(_ text: String) -> LaTeXFileFacts {
         var directives: [LaTeXMasterDirective] = []
         var declaresClass = false
+        var classNames: [String] = []
+        var packageNames: [String] = []
         var includes: [String] = []
         var preambleIncludes: [String] = []
+        var tokens: Set<String> = []
         var preambleEnd: String.Index?
         var inPreamble = true
         var lineStart = text.startIndex
@@ -72,18 +88,39 @@ struct LaTeXFileFacts: Sendable {
                 preambleEnd = lineStart
             }
             if code.contains("\\documentclass") { declaresClass = true }
+            if inPreamble {
+                if code.contains("\\documentclass") || code.contains("\\LoadClass") {
+                    classNames += bracedArguments(forAnyOf: ["\\documentclass", "\\LoadClass"], in: code)
+                }
+                if code.contains("\\usepackage") || code.contains("\\RequirePackage") {
+                    for arg in bracedArguments(forAnyOf: ["\\usepackage", "\\RequirePackage"], in: code) {
+                        for pkg in arg.split(separator: ",") {
+                            let trimmed = pkg.trimmingCharacters(in: .whitespaces)
+                            if !trimmed.isEmpty { packageNames.append(trimmed) }
+                        }
+                    }
+                }
+            }
             let targets = includeArguments(in: code)
             includes += targets
             if inPreamble { preambleIncludes += targets }
+            if !inPreamble && (code.contains("[") || code.contains("{")) {
+                tokens.formUnion(candidateReferenceTokens(in: code))
+            }
             lineStart = text.index(line.endIndex, offsetBy: line.endIndex < text.endIndex ? 1 : 0)
         }
+        let stylePreamble = preambleEnd.map { String(text[..<$0]) } ?? text
         let all = LaTeXMacroExpander.extractDocumentMacros(from: text)
         let preamble = preambleEnd.map { LaTeXMacroExpander.extractDocumentMacros(from: String(text[..<$0])) } ?? all
         return LaTeXFileFacts(
             masterDirective: LaTeXMasterDirective.preferred(directives),
             declaresDocumentClass: declaresClass,
+            classNames: classNames,
+            packageNames: packageNames,
             includeTargets: includes,
             preambleIncludeTargets: preambleIncludes,
+            bracketAndBraceTokens: tokens,
+            stylePreambleText: stylePreamble,
             preambleMacros: preamble,
             allMacros: all
         )
@@ -108,5 +145,52 @@ struct LaTeXFileFacts: Sendable {
             }
         }
         return found.sorted { $0.0 < $1.0 }.map(\.1)
+    }
+
+    private static func bracedArguments(forAnyOf commands: [String], in code: Substring) -> [String] {
+        var found: [(String.Index, String)] = []
+        for command in commands {
+            var search = code.startIndex
+            while let match = code.range(of: command, range: search..<code.endIndex) {
+                var pos = match.upperBound
+                while pos < code.endIndex && (code[pos] == " " || code[pos] == "\t") { pos = code.index(after: pos) }
+                if pos < code.endIndex && code[pos] == "*" { pos = code.index(after: pos) }
+                while pos < code.endIndex && (code[pos] == " " || code[pos] == "\t") { pos = code.index(after: pos) }
+                if pos < code.endIndex && code[pos] == "[", let closeBracket = code[pos...].firstIndex(of: "]") {
+                    pos = code.index(after: closeBracket)
+                    while pos < code.endIndex && (code[pos] == " " || code[pos] == "\t") { pos = code.index(after: pos) }
+                }
+                if pos < code.endIndex && code[pos] == "{",
+                    let closeBrace = code[code.index(after: pos)...].firstIndex(of: "}")
+                {
+                    let arg = code[code.index(after: pos)..<closeBrace].trimmingCharacters(in: .whitespaces)
+                    if !arg.isEmpty { found.append((match.lowerBound, arg)) }
+                    search = code.index(after: closeBrace)
+                } else {
+                    search = match.upperBound
+                }
+            }
+        }
+        return found.sorted { $0.0 < $1.0 }.map(\.1)
+    }
+
+    private static func candidateReferenceTokens(in code: Substring) -> [String] {
+        var tokens: [String] = []
+        let delimiters: [(Character, Character)] = [("[", "]"), ("{", "}")]
+        for (open, close) in delimiters {
+            var idx = code.startIndex
+            while let openIdx = code[idx...].firstIndex(of: open) {
+                let afterOpen = code.index(after: openIdx)
+                guard let closeIdx = code[afterOpen...].firstIndex(of: close) else { break }
+                let token = code[afterOpen..<closeIdx].trimmingCharacters(in: .whitespaces)
+                if !token.isEmpty && token.count <= 64
+                    && !token.contains(where: { $0.isWhitespace || $0 == "\\" || $0 == "=" || $0 == "," || $0 == "{" || $0 == "[" })
+                {
+                    tokens.append(token)
+                }
+                idx = code.index(after: closeIdx)
+            }
+        }
+        return tokens
     }
 }

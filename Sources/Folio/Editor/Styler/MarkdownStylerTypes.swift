@@ -127,7 +127,7 @@ public enum BlockDecorationKind: Equatable {
 
 /// One run of a `latexInlineRichText` decoration. Offsets move the run's baseline up.
 public enum LaTeXInlineRichRun: Equatable {
-    case text(String, font: NSFont, underline: Bool, baselineOffset: CGFloat)
+    case text(String, font: NSFont, color: NSColor? = nil, underline: Bool, baselineOffset: CGFloat)
     case math(latex: String, fontSize: CGFloat, baselineOffset: CGFloat)
 }
 

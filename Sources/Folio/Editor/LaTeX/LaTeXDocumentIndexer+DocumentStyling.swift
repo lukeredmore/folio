@@ -71,7 +71,15 @@ public struct LaTeXDocumentStyle: Equatable {
     public var parindent: LaTeXLength?
     public var parskip: LaTeXLength?
     public var customColors: [String: ThemeColorRGBA] = [:]
-    public var conditionals: [String: Bool] = ["true": true, "false": false]
+    public var conditionals: [String: Bool] = [
+        "true": true,
+        "false": false,
+        "xetex": true,
+        "luatex": true,
+        "xetexorluatex": true,
+        "pdftex": false,
+        "tex4ht": false
+    ]
 
     public init() {}
 
@@ -198,40 +206,38 @@ extension LaTeXDocumentIndex {
     public func resolveColor(named rawName: String, fallbackTheme: EditorTheme) -> NSColor {
         let name = rawName.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !name.isEmpty else { return fallbackTheme.linkNSColor }
-        if let custom = documentStyle.customColors[name] {
-            return custom.nsColor
-        }
-        let baseName = name.split(separator: "!").first.map(String.init) ?? name
-        if let customBase = documentStyle.customColors[baseName] {
-            return customBase.nsColor
-        }
-        switch baseName.lowercased() {
-        case "red", "brickred", "crimson", "maroon":
-            return NSColor(srgbRed: 0.78, green: 0.14, blue: 0.16, alpha: 1.0)
-        case "blue", "navyblue", "royalblue", " midnightblue":
-            return NSColor(srgbRed: 0.0, green: 0.35, blue: 0.72, alpha: 1.0)
-        case "green", "forestgreen", "olive", "darkgreen":
-            return NSColor(srgbRed: 0.12, green: 0.52, blue: 0.22, alpha: 1.0)
-        case "teal", "cyan":
-            return NSColor(srgbRed: 0.0, green: 0.50, blue: 0.55, alpha: 1.0)
-        case "orange", "burntorange":
-            return NSColor(srgbRed: 0.85, green: 0.42, blue: 0.06, alpha: 1.0)
-        case "purple", "violet", "magenta", "plum":
-            return NSColor(srgbRed: 0.52, green: 0.18, blue: 0.68, alpha: 1.0)
-        case "brown", "sepia":
-            return NSColor(srgbRed: 0.48, green: 0.28, blue: 0.14, alpha: 1.0)
-        case "darkgray", "darkgrey":
-            return NSColor(srgbRed: 0.30, green: 0.30, blue: 0.32, alpha: 1.0)
-        case "gray", "grey":
-            return NSColor(srgbRed: 0.50, green: 0.50, blue: 0.52, alpha: 1.0)
-        case "black":
+        if name.lowercased() == "black" {
             return fallbackTheme.textNSColor
-        case let other where other.contains("gray") || other.contains("grey"):
-            // Unknown grays, such as a cover color that a file outside the project defines.
-            return NSColor(srgbRed: 0.62, green: 0.62, blue: 0.64, alpha: 1.0)
-        default:
+        }
+        guard let rgba = LaTeXDocumentIndexer.resolveColorExpression(name, customColors: documentStyle.customColors) else {
+            let lower = name.split(separator: "!").first.map { $0.lowercased() } ?? name.lowercased()
+            if lower.contains("gray") || lower.contains("grey") {
+                return NSColor(srgbRed: 0.62, green: 0.62, blue: 0.64, alpha: 1.0)
+            }
             return fallbackTheme.linkNSColor
         }
+        return Self.adaptColorForTheme(rgba, fallbackTheme: fallbackTheme)
+    }
+
+    private static func adaptColorForTheme(_ rgba: ThemeColorRGBA, fallbackTheme: EditorTheme) -> NSColor {
+        guard fallbackTheme.isDark else { return rgba.nsColor }
+        let luminance = 0.2126 * rgba.r + 0.7152 * rgba.g + 0.0722 * rgba.b
+        guard luminance < 0.32 else { return rgba.nsColor }
+        let chroma = max(rgba.r, max(rgba.g, rgba.b)) - min(rgba.r, min(rgba.g, rgba.b))
+        if chroma < 0.12 {
+            if luminance < 0.10 {
+                return fallbackTheme.textNSColor
+            }
+            let level = min(0.86, 0.72 + (luminance - 0.10) * 0.55)
+            return NSColor(srgbRed: level, green: level, blue: level + 0.01, alpha: 1.0)
+        }
+        let srgb = rgba.nsColor
+        var hue: CGFloat = 0
+        var saturation: CGFloat = 0
+        var brightness: CGFloat = 0
+        var alpha: CGFloat = 1
+        srgb.getHue(&hue, saturation: &saturation, brightness: &brightness, alpha: &alpha)
+        return NSColor(hue: hue, saturation: min(saturation, 0.80), brightness: max(brightness, 0.72), alpha: alpha)
     }
 
     /// True when a blank block adds no space, because a section, glue, or the body start is
@@ -282,6 +288,8 @@ extension LaTeXDocumentIndex {
             || trimmed == "\\begin{itemize}" || trimmed == "\\end{itemize}"
             || trimmed == "\\begin{itemize*}" || trimmed == "\\end{itemize*}"
             || trimmed == "\\begin{enumerate}" || trimmed == "\\end{enumerate}"
+            || trimmed == "\\begin{fullwidth}" || trimmed == "\\end{fullwidth}"
+            || trimmed == "\\divider" || trimmed == "\\sidedivider" || trimmed == "\\makecvheader"
             || trimmed.hasPrefix("\\begin{spacing}") || trimmed == "\\end{spacing}"
         {
             return true
@@ -289,6 +297,7 @@ extension LaTeXDocumentIndex {
         if trimmed.hasPrefix("\\section") || trimmed.hasPrefix("\\subsection")
             || trimmed.hasPrefix("\\subsubsection") || trimmed.hasPrefix("\\chapter")
             || trimmed.hasPrefix("\\part") || trimmed.hasPrefix("\\sectiontitle")
+            || trimmed.hasPrefix("\\cvsection") || trimmed.hasPrefix("\\cvsubsection")
         {
             return true
         }

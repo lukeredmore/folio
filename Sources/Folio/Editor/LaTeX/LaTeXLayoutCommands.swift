@@ -62,23 +62,30 @@ enum LaTeXLayoutCommands {
             "bigskip", "clearpage", "newpage", "cleardoublepage", "protect", "relax", "unskip", "null", "leavevmode", "strut",
             "selectfont", "boldmath", "unboldmath", "makeatletter", "makeatother", "tableofcontents", "listoffigures",
             "listoftables", "nopagebreak", "allowbreak", "nobreak", "frenchspacing", "nonfrenchspacing", "sloppy", "fussy",
-            "printindex", "appendix", "mainmatter", "frontmatter", "backmatter", "recalctypearea", "normalcolor"
+            "printindex", "appendix", "mainmatter", "frontmatter", "backmatter", "recalctypearea", "normalcolor",
+            "begingroup", "endgroup", "arraybackslash"
         ]
         for name in invisible { table[name] = Entry(kind: .invisible) }
-        for name in ["linebreak", "pagebreak"] { table[name] = Entry(kind: .invisible, brackets: 1) }
+        for name in ["linebreak", "pagebreak", "printbibliography"] { table[name] = Entry(kind: .invisible, brackets: 1) }
         let oneArgument = [
             "vspace", "hspace", "pagestyle", "thispagestyle", "markright", "pagenumbering", "newcounter", "stepcounter",
             "refstepcounter", "enlargethispage", "linespread", "color", "pagecolor", "addvspace", "hyphenation", "label", "index",
-            "addcontentsline"
+            "addcontentsline", "nocite", "afterpage", "AtBeginDocument", "AtEndDocument", "usetikzlibrary", "addbibresource"
         ]
         for name in oneArgument { table[name] = Entry(kind: .invisible, braces: 1) }
         table["addcontentsline"] = Entry(kind: .invisible, braces: 3)
         table["color"] = Entry(kind: .invisible, brackets: 1, braces: 1)
-        let twoArguments = ["markboth", "setlength", "addtolength", "settowidth", "settoheight", "settodepth", "setcounter", "addtocounter"]
+        table["marginpar"] = Entry(kind: .invisible, brackets: 1, braces: 1)
+        let twoArguments = [
+            "markboth", "setlength", "addtolength", "settowidth", "settoheight", "settodepth", "setcounter", "addtocounter",
+            "PassOptionsToPackage", "PassOptionsToClass"
+        ]
         for name in twoArguments { table[name] = Entry(kind: .invisible, braces: 2) }
         for name in ["kern", "hskip", "vskip", "mkern", "mskip", "penalty"] { table[name] = Entry(kind: .invisible, dimension: true) }
         table["rule"] = Entry(kind: .rule, brackets: 1, braces: 2)
+        table["hdashrule"] = Entry(kind: .rule, brackets: 1, braces: 3)
         table["hrule"] = Entry(kind: .rule)
+        table["hrulefill"] = Entry(kind: .rule)
         table["vrule"] = Entry(kind: .invisible)
         let declarations = [
             "rmfamily", "sffamily", "ttfamily", "mdseries", "bfseries", "itshape", "upshape", "slshape", "scshape", "normalfont",
