@@ -37,10 +37,9 @@ extension LaTeXStylePass {
         baseLoc: Int,
         lineText: NSString,
         macros: [String: LaTeXMacroDefinition],
-        enabled: Bool
+        expandMacros: Bool
     ) -> ProseMacroPlan {
         var plan = ProseMacroPlan()
-        guard enabled else { return plan }
         for idx in 0..<spans.count where spans[idx].kind == 12 {
             let loc = Int(spans[idx].full_loc)
             let docLoc = baseLoc + loc
@@ -50,6 +49,11 @@ extension LaTeXStylePass {
                 if def.argCount == 0 && def.parameterText == nil,
                     let effects = LaTeXLayoutLine.userLayoutEffects(for: def, macros: macros)
                 {
+                    let hasDeclaration = effects.contains {
+                        if case .declaration = $0 { return true }
+                        return false
+                    }
+                    guard hasDeclaration || expandMacros else { continue }
                     let span = spans[idx]
                     let openLen = Int(span.open_len)
                     let fullLen = Int(span.full_len)
@@ -78,6 +82,7 @@ extension LaTeXStylePass {
                     }
                     continue
                 }
+                guard expandMacros else { continue }
                 if let expansion = LaTeXProseMacroExpander.expandCall(source: lineText.substring(from: loc), macros: macros) {
                     let range = NSRange(location: docLoc, length: expansion.consumedLength)
                     plan.expansions[idx] = (range, expansion.segments)
@@ -93,7 +98,9 @@ extension LaTeXStylePass {
                 }
                 continue
             }
-            planBuiltinCandidate(spans[idx], index: idx, name: name, baseLoc: baseLoc, lineText: lineText, into: &plan)
+            planBuiltinCandidate(
+                spans[idx], index: idx, name: name, baseLoc: baseLoc, lineText: lineText, expandMacros: expandMacros, into: &plan
+            )
         }
         return plan
     }
@@ -104,12 +111,20 @@ extension LaTeXStylePass {
         name: String,
         baseLoc: Int,
         lineText: NSString,
+        expandMacros: Bool,
         into plan: inout ProseMacroPlan
     ) {
         let loc = Int(span.full_loc)
         let docLoc = baseLoc + loc
         if let text = LaTeXProseMacroExpander.builtinText(forCommand: name) {
-            var length = span.full_len == span.open_len ? Int(span.full_len) : Int(span.open_len)
+            let baseLen = span.full_len == span.open_len ? Int(span.full_len) : Int(span.open_len)
+            guard expandMacros else {
+                let range = NSRange(location: docLoc, length: baseLen)
+                plan.hiddenCommands[index] = range
+                plan.coveredRanges.append((index, range))
+                return
+            }
+            var length = baseLen
             while loc + length < lineText.length && [0x20, 0x09].contains(lineText.character(at: loc + length)) { length += 1 }
             let range = NSRange(location: docLoc, length: length)
             plan.expansions[index] = (range, [.text(text, LaTeXProseStyle())])
@@ -121,7 +136,22 @@ extension LaTeXStylePass {
         let window = NSRange(location: loc, length: min(lineText.length - loc, 4000))
         let chars = Array(lineText.substring(with: window))
         if let shape = builtinWrapperShapes[name] {
-            if let call = builtinWrapperCall(chars, shape: shape, docLoc: docLoc) { plan.transparentCalls[index] = call }
+            if let call = builtinWrapperCall(chars, shape: shape, docLoc: docLoc) {
+                if expandMacros {
+                    plan.transparentCalls[index] = call
+                } else if let firstArg = call.arguments.first ?? nil {
+                    let openSyntax = NSRange(
+                        location: call.nameRange.location,
+                        length: max(0, firstArg.content.location - call.nameRange.location)
+                    )
+                    let closeSyntax = NSRange(
+                        location: NSMaxRange(firstArg.content),
+                        length: max(0, NSMaxRange(firstArg.raw) - NSMaxRange(firstArg.content))
+                    )
+                    plan.hiddenRanges.append(openSyntax)
+                    plan.hiddenRanges.append(closeSyntax)
+                }
+            }
             return
         }
         let command = LaTeXLayoutLine.readCommand(chars, at: 0, macros: [:])
@@ -133,7 +163,7 @@ extension LaTeXStylePass {
         let range = NSRange(location: docLoc, length: String(chars[0..<end]).utf16.count)
         plan.hiddenCommands[index] = range
         plan.coveredRanges.append((index, range))
-        if name == "hfill" {
+        if expandMacros && name == "hfill" {
             plan.hfillRanges.append(range)
         }
         var declares = false

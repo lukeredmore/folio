@@ -253,37 +253,25 @@ extension HybridMarkdownTextView {
                 mathBox.drawBox(drawX, baselineY, mathColor)
 
             case let .inlineCode(codeRange, codeFontSize, dimFactor):
-                let codeGlyphs = layoutManager.glyphRange(forCharacterRange: codeRange, actualCharacterRange: nil)
-                guard codeGlyphs.location != NSNotFound, codeGlyphs.length > 0 else { continue }
-                let baselineOffset = (self.textStorage?.attribute(.baselineOffset, at: codeRange.location, effectiveRange: nil) as? CGFloat) ?? 0.0
-                let codeFont = currentTheme.codeFont(size: codeFontSize)
+                let pillRects = Self.inlineCodePillRects(
+                    for: codeRange,
+                    codeFontSize: codeFontSize,
+                    in: self.textStorage,
+                    layoutManager: layoutManager,
+                    textContainer: textContainer,
+                    origin: origin,
+                    fallbackTheme: currentTheme
+                )
+                guard !pillRects.isEmpty else { continue }
                 currentTheme.codeBackgroundNSColor.withAlphaComponent(dimFactor).setFill()
-
-                // Draw one pill per line fragment so a code span that wraps does not cover both lines.
-                var glyphIndex = codeGlyphs.location
-                while glyphIndex < NSMaxRange(codeGlyphs) {
-                    var fragmentGlyphs = NSRange()
-                    let lineFrag = layoutManager.lineFragmentRect(forGlyphAt: glyphIndex, effectiveRange: &fragmentGlyphs)
-                    let pieceGlyphs = NSIntersectionRange(fragmentGlyphs, codeGlyphs)
-                    guard pieceGlyphs.length > 0 else { break }
-                    var pieceRect = layoutManager.boundingRect(forGlyphRange: pieceGlyphs, in: textContainer)
-                    pieceRect.origin.x += origin.x
-                    let glyphLoc = layoutManager.location(forGlyphAt: pieceGlyphs.location)
-                    let baselineY = origin.y + lineFrag.minY + glyphLoc.y - baselineOffset
-                    let pillRect = NSRect(
-                        x: pieceRect.minX - 3.0,
-                        y: baselineY - codeFont.ascender - 2.0,
-                        width: pieceRect.width + 6.0,
-                        height: codeFont.ascender + abs(codeFont.descender) + 4.0
-                    )
+                for pillRect in pillRects {
                     NSBezierPath(roundedRect: pillRect, xRadius: 4.0, yRadius: 4.0).fill()
-                    glyphIndex = NSMaxRange(pieceGlyphs)
                 }
 
             case let .kbdPill(kbdRange, kbdFontSize, dimFactor):
                 let kbdGlyphs = layoutManager.glyphRange(forCharacterRange: kbdRange, actualCharacterRange: nil)
                 guard kbdGlyphs.location != NSNotFound else { continue }
-                var kbdRect = layoutManager.boundingRect(forGlyphRange: kbdGlyphs, in: textContainer)
+                var kbdRect = Self.enclosingGlyphRect(forGlyphRange: kbdGlyphs, in: layoutManager, textContainer: textContainer)
                 kbdRect.origin.x += origin.x
                 kbdRect.origin.y += origin.y
 
@@ -291,7 +279,9 @@ extension HybridMarkdownTextView {
                 let glyphLoc = layoutManager.location(forGlyphAt: kbdGlyphs.location)
                 let baselineOffset = (self.textStorage?.attribute(.baselineOffset, at: kbdRange.location, effectiveRange: nil) as? CGFloat) ?? 0.0
                 let baselineY = origin.y + lineFrag.minY + glyphLoc.y - baselineOffset
-                let kbdFont = currentTheme.codeFont(size: kbdFontSize)
+                let kbdFont =
+                    (self.textStorage?.attribute(.font, at: kbdRange.location, effectiveRange: nil) as? NSFont)
+                    ?? currentTheme.codeFont(size: kbdFontSize)
                 let pillTop = baselineY - kbdFont.ascender - 2.5
                 let pillHeight = kbdFont.ascender + abs(kbdFont.descender) + 5.0
                 let pillRect = NSRect(
@@ -331,5 +321,62 @@ extension HybridMarkdownTextView {
                 )
             }
         }
+    }
+
+    package static func enclosingGlyphRect(
+        forGlyphRange glyphRange: NSRange,
+        in layoutManager: NSLayoutManager,
+        textContainer: NSTextContainer
+    ) -> NSRect {
+        var result = NSRect.null
+        layoutManager.enumerateEnclosingRects(
+            forGlyphRange: glyphRange,
+            withinSelectedGlyphRange: NSRange(location: NSNotFound, length: 0),
+            in: textContainer
+        ) { enclosing, _ in
+            guard !enclosing.isEmpty else { return }
+            result = result.isNull ? enclosing : result.union(enclosing)
+        }
+        return result.isNull ? layoutManager.boundingRect(forGlyphRange: glyphRange, in: textContainer) : result
+    }
+
+    package static func inlineCodePillRects(
+        for codeRange: NSRange,
+        codeFontSize: CGFloat,
+        in textStorage: NSTextStorage?,
+        layoutManager: NSLayoutManager,
+        textContainer: NSTextContainer,
+        origin: NSPoint,
+        fallbackTheme: EditorTheme
+    ) -> [NSRect] {
+        let codeGlyphs = layoutManager.glyphRange(forCharacterRange: codeRange, actualCharacterRange: nil)
+        guard codeGlyphs.location != NSNotFound, codeGlyphs.length > 0 else { return [] }
+        let baselineOffset = (textStorage?.attribute(.baselineOffset, at: codeRange.location, effectiveRange: nil) as? CGFloat) ?? 0.0
+        let codeFont =
+            (textStorage?.attribute(.font, at: codeRange.location, effectiveRange: nil) as? NSFont)
+            ?? fallbackTheme.codeFont(size: codeFontSize)
+
+        var rects: [NSRect] = []
+        // Draw one pill per line fragment so a code span that wraps does not cover both lines.
+        var glyphIndex = codeGlyphs.location
+        while glyphIndex < NSMaxRange(codeGlyphs) {
+            var fragmentGlyphs = NSRange()
+            let lineFrag = layoutManager.lineFragmentRect(forGlyphAt: glyphIndex, effectiveRange: &fragmentGlyphs)
+            let pieceGlyphs = NSIntersectionRange(fragmentGlyphs, codeGlyphs)
+            guard pieceGlyphs.length > 0 else { break }
+            var pieceRect = enclosingGlyphRect(forGlyphRange: pieceGlyphs, in: layoutManager, textContainer: textContainer)
+            pieceRect.origin.x += origin.x
+            let glyphLoc = layoutManager.location(forGlyphAt: pieceGlyphs.location)
+            let baselineY = origin.y + lineFrag.minY + glyphLoc.y - baselineOffset
+            rects.append(
+                NSRect(
+                    x: pieceRect.minX - 3.0,
+                    y: baselineY - codeFont.ascender - 2.0,
+                    width: pieceRect.width + 6.0,
+                    height: codeFont.ascender + abs(codeFont.descender) + 4.0
+                ))
+            glyphIndex = NSMaxRange(pieceGlyphs)
+        }
+        return rects
     }
 }

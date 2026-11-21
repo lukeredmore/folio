@@ -586,7 +586,8 @@ struct LaTeXStylePass {
             lineText: lineText,
             trimmedLine: trimmedLine,
             isActiveLine: isActiveLine,
-            dimFactor: dimFactor
+            dimFactor: dimFactor,
+            flow: flow
         )
     }
 
@@ -729,7 +730,8 @@ struct LaTeXStylePass {
         lineText: String,
         trimmedLine: String,
         isActiveLine: Bool,
-        dimFactor: CGFloat
+        dimFactor: CGFloat,
+        flow: LaTeXFlowState
     ) -> (nextIndex: Int, lineDelta: Int)? {
         if let endEnv = LaTeXDocumentIndexer.parseEndEnvironment(trimmedLine),
             Self.foldOnlyWrapperEnvironments.contains(endEnv)
@@ -789,12 +791,14 @@ struct LaTeXStylePass {
                 MarkdownLiveStyler.styleSyntaxToken(in: storage, range: itemTokenRange, isActiveLine: true, theme: theme, dimFactor: dimFactor)
             }
 
+            let itemFont = flow.isDefault ? baseFont : Self.proseFont(for: flow.style, baseFont: baseFont, docIndex: docIndex, theme: theme)
             styleInlineContent(
                 range: bodyRange,
                 lineRange: lineRange,
-                lineFont: baseFont,
+                lineFont: itemFont,
                 isActiveLine: isActiveLine,
-                dimFactor: dimFactor
+                dimFactor: dimFactor,
+                flow: flow
             )
             return (NSMaxRange(lineRange), 1)
         }

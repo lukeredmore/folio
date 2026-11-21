@@ -377,4 +377,205 @@ final class LaTeXBasicTeXRenderingTests: XCTestCase {
             }
         }
     }
+
+    func testActiveLineDeclarationsKeepFormattingAndDeemphasizeControlTokens() throws {
+        let preamble = #"""
+            \newfontfamily\name{Helvetica Neue}[Scale={1.8}, UprightFont={*-bold}]
+            \newfontfamily\subhead{Helvetica Neue}[UprightFont={*-Bold}]
+            """#
+        let itemLine = "\t\\item Added native \\textsf{fontspec} typography, classic {\\bf bold} and {\\it italic} switches, and \\texttt{--flag} preservation"
+        let headerLine = #"{\subhead Northstar Labs} \hfill {\name Jordan Vance}"#
+        let nestedLine = #"{\bf \textsf{nested}}"#
+        let doc = LaTeXStyledDocument.document(
+            preamble: preamble,
+            body: "\(itemLine)\n\(headerLine)\n\(nestedLine)"
+        )
+        let ns = doc as NSString
+        let expectedTokenColor = EditorTheme.daylight.markdownTokenNSColor.withAlphaComponent(0.85)
+        let manager = NSFontManager.shared
+
+        func styleWithCursor(on substring: String) -> NSTextStorage {
+            let loc = ns.range(of: substring).location
+            XCTAssertNotEqual(loc, NSNotFound, "Missing line anchor: \(substring)")
+            let storage = NSTextStorage(string: doc)
+            _ = LaTeXLiveStyler.applyStyles(
+                to: storage,
+                theme: .daylight,
+                sourceCodeMode: false,
+                prettyMode: true,
+                focusMode: false,
+                selectedRange: NSRange(location: loc, length: 0),
+                containerWidth: 900
+            )
+            return storage
+        }
+
+        func assertSyntaxToken(
+            _ storage: NSTextStorage,
+            substring: String,
+            on line: String,
+            rangeOffset: Int = 0,
+            lengthOverride: Int? = nil
+        ) throws {
+            let lineRange = ns.range(of: line)
+            XCTAssertNotEqual(lineRange.location, NSNotFound, "Missing line: \(line)")
+            let found = ns.range(of: substring, options: [], range: lineRange)
+            XCTAssertNotEqual(found.location, NSNotFound, "Missing syntax substring: \(substring)")
+            let targetRange = NSRange(location: found.location + rangeOffset, length: lengthOverride ?? (found.length - rangeOffset))
+            for idx in targetRange.location..<NSMaxRange(targetRange) {
+                XCTAssertNil(
+                    storage.attribute(MarkdownLiveStyler.collapsedTokenAttributeKey, at: idx, effectiveRange: nil),
+                    "Token must stay visible on active line: \(substring)"
+                )
+                let tokenFont = try XCTUnwrap(storage.attribute(.font, at: idx, effectiveRange: nil) as? NSFont)
+                XCTAssertTrue(tokenFont.isFixedPitch, "Token must use fixed-pitch font: \(substring)")
+                XCTAssertFalse(manager.traits(of: tokenFont).contains(.boldFontMask), "Token must not inherit bold: \(substring)")
+                let fg = try XCTUnwrap(storage.attribute(.foregroundColor, at: idx, effectiveRange: nil) as? NSColor)
+                XCTAssertEqual(fg, expectedTokenColor, "Token must be deemphasized: \(substring)")
+            }
+        }
+
+        func assertSeparatingSpace(_ storage: NSTextStorage, after substring: String, on line: String) throws {
+            let lineRange = ns.range(of: line)
+            XCTAssertNotEqual(lineRange.location, NSNotFound, "Missing line: \(line)")
+            let found = ns.range(of: substring, options: [], range: lineRange)
+            XCTAssertNotEqual(found.location, NSNotFound, "Missing space context: \(substring)")
+            let spaceLoc = NSMaxRange(found) - 1
+            XCTAssertNil(
+                storage.attribute(MarkdownLiveStyler.collapsedTokenAttributeKey, at: spaceLoc, effectiveRange: nil),
+                "Space after token must remain visible: \(substring)"
+            )
+            let fg = storage.attribute(.foregroundColor, at: spaceLoc, effectiveRange: nil) as? NSColor
+            XCTAssertNotEqual(fg, expectedTokenColor, "Space after token should remain normal prose space: \(substring)")
+        }
+
+        // Line 1: item with \textsf, {\bf bold}, {\it italic}, and \texttt
+        let itemStorage = styleWithCursor(on: itemLine)
+        let normalFont = try font(in: itemStorage, substring: "Added native")
+        let itemRange = ns.range(of: itemLine)
+        let boldLoc = ns.range(of: "bold}", options: [], range: itemRange).location
+        let boldFont = try XCTUnwrap(itemStorage.attribute(.font, at: boldLoc, effectiveRange: nil) as? NSFont)
+        let italicFont = try font(in: itemStorage, substring: "italic}")
+        XCTAssertTrue(manager.traits(of: boldFont).contains(.boldFontMask))
+        XCTAssertTrue(manager.traits(of: italicFont).contains(.italicFontMask))
+        XCTAssertEqual(boldFont.pointSize, normalFont.pointSize, accuracy: 0.5)
+        try assertSyntaxToken(itemStorage, substring: #"{\bf"#, on: itemLine)
+        try assertSyntaxToken(itemStorage, substring: "bold}", on: itemLine, rangeOffset: 4, lengthOverride: 1)
+        try assertSyntaxToken(itemStorage, substring: #"{\it"#, on: itemLine)
+        try assertSyntaxToken(itemStorage, substring: "italic}", on: itemLine, rangeOffset: 6, lengthOverride: 1)
+        try assertSeparatingSpace(itemStorage, after: #"{\bf "#, on: itemLine)
+        try assertSeparatingSpace(itemStorage, after: #"{\it "#, on: itemLine)
+
+        // Line 2: header with {\subhead ...}, \hfill, and {\name ...}
+        let headerStorage = styleWithCursor(on: headerLine)
+        let subheadFont = try font(in: headerStorage, substring: "Northstar Labs")
+        let nameFont = try font(in: headerStorage, substring: "Jordan Vance")
+        XCTAssertTrue(manager.traits(of: subheadFont).contains(.boldFontMask))
+        XCTAssertTrue(manager.traits(of: nameFont).contains(.boldFontMask))
+        XCTAssertEqual(nameFont.pointSize, EditorTheme.daylight.baseFontSize * 1.8, accuracy: 0.5)
+        try assertSyntaxToken(headerStorage, substring: #"{\subhead"#, on: headerLine)
+        try assertSyntaxToken(headerStorage, substring: #"\hfill"#, on: headerLine)
+        try assertSyntaxToken(headerStorage, substring: #"{\name"#, on: headerLine)
+
+        // Line 3: nested declaration + container command {\bf \textsf{nested}}
+        let nestedStorage = styleWithCursor(on: nestedLine)
+        let nestedFont = try font(in: nestedStorage, substring: "nested")
+        XCTAssertTrue(manager.traits(of: nestedFont).contains(.boldFontMask))
+        XCTAssertFalse(nestedFont.isFixedPitch)
+        try assertSyntaxToken(nestedStorage, substring: #"{\bf"#, on: nestedLine)
+        try assertSyntaxToken(nestedStorage, substring: #"\textsf{"#, on: nestedLine)
+        try assertSyntaxToken(nestedStorage, substring: "nested}}", on: nestedLine, rangeOffset: 6, lengthOverride: 2)
+    }
+
+    func testInlineCodePillDoesNotShiftLeftUnderTightLineHeight() throws {
+        let tex = #"""
+            \documentclass{article}
+            \usepackage[fontsize=12pt]{fontsize}
+            \usepackage{setspace}
+            \setstretch{0.9}
+            \begin{document}
+            \begin{itemize}
+            	\item Added native \textsf{fontspec} typography, classic {\bf bold} and {\it italic} switches, and \texttt{--flag} preservation
+            	\item Following item line
+            \end{itemize}
+            \end{document}
+            """#
+        let ns = tex as NSString
+        let flagRange = ns.range(of: "--flag")
+        let openBraceRange = NSRange(location: flagRange.location - 1, length: 1)
+        let andRange = ns.range(of: "and \\texttt")
+        let andWordRange = NSRange(location: andRange.location, length: 3)
+        let followingLoc = ns.range(of: "Following item line").location
+
+        for (label, cursorLoc) in [("active", flagRange.location), ("inactive", followingLoc)] {
+            let storage = NSTextStorage(string: tex)
+            let layoutManager = WideBlockLayoutManager()
+            let delegate = SoftLineBreakLayoutDelegate()
+            layoutManager.delegate = delegate
+            storage.addLayoutManager(layoutManager)
+            let container = WideBlockTextContainer(containerSize: NSSize(width: 720, height: 2000))
+            container.lineFragmentPadding = 0
+            layoutManager.addTextContainer(container)
+
+            let analysis = LaTeXLiveStyler.applyStyles(
+                to: storage,
+                theme: .daylight,
+                sourceCodeMode: false,
+                prettyMode: true,
+                focusMode: false,
+                selectedRange: NSRange(location: cursorLoc, length: 0),
+                containerWidth: 720
+            )
+            layoutManager.ensureLayout(for: container)
+
+            let codeDecorations = analysis.decorations.compactMap { dec -> (NSRange, CGFloat)? in
+                if case let .inlineCode(range, fontSize, _) = dec.kind {
+                    return (range, fontSize)
+                }
+                return nil
+            }
+            XCTAssertEqual(codeDecorations.count, 1, label)
+            let (codeRange, codeFontSize) = try XCTUnwrap(codeDecorations.first)
+            XCTAssertEqual(codeRange, flagRange, label)
+
+            let pillRects = HybridMarkdownTextView.inlineCodePillRects(
+                for: codeRange,
+                codeFontSize: codeFontSize,
+                in: storage,
+                layoutManager: layoutManager,
+                textContainer: container,
+                origin: .zero,
+                fallbackTheme: .daylight
+            )
+            XCTAssertEqual(pillRects.count, 1, label)
+            let pillRect = try XCTUnwrap(pillRects.first)
+
+            let flagGlyphs = layoutManager.glyphRange(forCharacterRange: flagRange, actualCharacterRange: nil)
+            let flagEnclosing = HybridMarkdownTextView.enclosingGlyphRect(
+                forGlyphRange: flagGlyphs,
+                in: layoutManager,
+                textContainer: container
+            )
+            XCTAssertEqual(pillRect.minX, flagEnclosing.minX - 3.0, accuracy: 0.05, label)
+            XCTAssertEqual(pillRect.maxX, flagEnclosing.maxX + 3.0, accuracy: 0.05, label)
+
+            if label == "active" {
+                let openGlyphs = layoutManager.glyphRange(forCharacterRange: openBraceRange, actualCharacterRange: nil)
+                let openEnclosing = HybridMarkdownTextView.enclosingGlyphRect(
+                    forGlyphRange: openGlyphs,
+                    in: layoutManager,
+                    textContainer: container
+                )
+                XCTAssertGreaterThan(pillRect.minX, openEnclosing.midX, "Active-line pill must not cover opening brace '{'")
+            } else {
+                let andGlyphs = layoutManager.glyphRange(forCharacterRange: andWordRange, actualCharacterRange: nil)
+                let andEnclosing = HybridMarkdownTextView.enclosingGlyphRect(
+                    forGlyphRange: andGlyphs,
+                    in: layoutManager,
+                    textContainer: container
+                )
+                XCTAssertGreaterThan(pillRect.minX, andEnclosing.maxX, "Inactive-line pill must not touch preceding 'and'")
+            }
+        }
+    }
 }
