@@ -1,4 +1,5 @@
 import AppKit
+import CoreText
 import SwiftUI
 import XCTest
 @testable import FolioEditor
@@ -406,5 +407,309 @@ final class ThemeAndTypographyTests: XCTestCase {
 
         let roundTripColor = try samplePaddingColor(in: textView)
         XCTAssertEqual(initialColor.hexString, roundTripColor.hexString)
+    }
+
+    func testBrokenGDEFSanitizationFixesBacktickOverlapAndPreservesCombiningMarks() throws {
+        let regularURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent("GdfM2-Regular-\(UUID().uuidString).ttf")
+        let boldURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent("GdfM2-Bold-\(UUID().uuidString).ttf")
+        let format1URL = FileManager.default.temporaryDirectory
+            .appendingPathComponent("GdfM1-Regular-\(UUID().uuidString).ttf")
+
+        let format2Data = try Self.buildBrokenGDEFMenloSFNT(sourcePostScriptName: "Menlo-Regular", familyName: "GdfM2", gdefFormat: 2)
+        let format2BoldData = try Self.buildBrokenGDEFMenloSFNT(sourcePostScriptName: "Menlo-Bold", familyName: "GdfM2", gdefFormat: 2)
+        let format1Data = try Self.buildBrokenGDEFMenloSFNT(sourcePostScriptName: "Menlo-Regular", familyName: "GdfM1", gdefFormat: 1)
+
+        try format2Data.write(to: regularURL)
+        try format2BoldData.write(to: boldURL)
+        try format1Data.write(to: format1URL)
+
+        defer {
+            CTFontManagerUnregisterFontsForURL(regularURL as CFURL, .process, nil)
+            CTFontManagerUnregisterFontsForURL(boldURL as CFURL, .process, nil)
+            CTFontManagerUnregisterFontsForURL(format1URL as CFURL, .process, nil)
+            try? FileManager.default.removeItem(at: regularURL)
+            try? FileManager.default.removeItem(at: boldURL)
+            try? FileManager.default.removeItem(at: format1URL)
+        }
+
+        for url in [regularURL, boldURL, format1URL] {
+            var regError: Unmanaged<CFError>?
+            XCTAssertTrue(
+                CTFontManagerRegisterFontsForURL(url as CFURL, .process, &regError),
+                "Failed to register test font \(url.lastPathComponent): \(String(describing: regError?.takeRetainedValue()))"
+            )
+        }
+
+        // 1. Confirm unsanitized CTLine collapses ```bash to x == 0 for the first 4 glyphs.
+        let rawDesc = try XCTUnwrap(CTFontManagerCreateFontDescriptorFromData(format2Data as CFData))
+        let rawCTFont = CTFontCreateWithFontDescriptor(rawDesc, 14.0, nil)
+        let rawLine = CTLineCreateWithAttributedString(NSAttributedString(string: "```bash", attributes: [.font: rawCTFont]))
+        let rawRuns = try XCTUnwrap(CTLineGetGlyphRuns(rawLine) as? [CTRun])
+        var rawPositions = [CGPoint](repeating: .zero, count: CTRunGetGlyphCount(rawRuns[0]))
+        CTRunGetPositions(rawRuns[0], CFRange(location: 0, length: 0), &rawPositions)
+        XCTAssertEqual(rawPositions[0].x, 0.0, accuracy: 0.01)
+        XCTAssertEqual(rawPositions[3].x, 0.0, accuracy: 0.01)
+
+        // 2. Test both Format 1 and Format 2 sanitized code fonts in MarkdownLiveStyler + NSLayoutManager.
+        for family in ["GdfM1", "GdfM2"] {
+            var theme = EditorTheme.daylight
+            theme.codeFontFamily = family
+            theme.baseFontSize = 16.0
+
+            let sample = "```bash\nMAIN_REPO_ROOT\n```\n\nDo **not** modify `${MAIN_REPO_ROOT}` (`main`).\n"
+            let nsSample = sample as NSString
+            let inlineLineRange = nsSample.range(of: "Do **not** modify `${MAIN_REPO_ROOT}` (`main`).")
+            let storage = NSTextStorage(string: sample)
+            let layoutManager = NSLayoutManager()
+            let textContainer = NSTextContainer(size: NSSize(width: 720, height: 2000))
+            layoutManager.addTextContainer(textContainer)
+            storage.addLayoutManager(layoutManager)
+
+            let analysis = MarkdownLiveStyler.applyStyles(
+                to: storage,
+                theme: theme,
+                sourceCodeMode: false,
+                focusMode: false,
+                selectedRange: NSRange(location: inlineLineRange.location + 20, length: 0)
+            )
+            layoutManager.ensureLayout(for: textContainer)
+
+            // Verify fenced code block opening (```bash) and closing (```) advances.
+            let openRange = nsSample.range(of: "```bash")
+            let openGlyphs = layoutManager.glyphRange(forCharacterRange: openRange, actualCharacterRange: nil)
+            XCTAssertEqual(openGlyphs.length, 7)
+            for i in 0..<(openGlyphs.length - 1) {
+                let x0 = layoutManager.location(forGlyphAt: openGlyphs.location + i).x
+                let x1 = layoutManager.location(forGlyphAt: openGlyphs.location + i + 1).x
+                XCTAssertGreaterThan(x1 - x0, 5.0, "\(family) opening fence glyph \(i) collapsed")
+            }
+
+            let closeRange = nsSample.range(of: "\n```\n")
+            let closeTicksRange = NSRange(location: closeRange.location + 1, length: 3)
+            let closeGlyphs = layoutManager.glyphRange(forCharacterRange: closeTicksRange, actualCharacterRange: nil)
+            XCTAssertEqual(closeGlyphs.length, 3)
+            for i in 0..<(closeGlyphs.length - 1) {
+                let x0 = layoutManager.location(forGlyphAt: closeGlyphs.location + i).x
+                let x1 = layoutManager.location(forGlyphAt: closeGlyphs.location + i + 1).x
+                XCTAssertGreaterThan(x1 - x0, 5.0, "\(family) closing fence glyph \(i) collapsed")
+            }
+
+            // Verify active inline-code line (`${MAIN_REPO_ROOT}` (`main`)) has monotonic spacing and non-overlapping pill bounds.
+            let tailRange = nsSample.range(of: "}` (`main`)")
+            let tailGlyphs = layoutManager.glyphRange(forCharacterRange: tailRange, actualCharacterRange: nil)
+            XCTAssertEqual(tailGlyphs.length, tailRange.length)
+            for i in 0..<(tailGlyphs.length - 1) {
+                let x0 = layoutManager.location(forGlyphAt: tailGlyphs.location + i).x
+                let x1 = layoutManager.location(forGlyphAt: tailGlyphs.location + i + 1).x
+                XCTAssertGreaterThan(x1 - x0, 3.0, "\(family) inline-code glyph \(i) collapsed")
+            }
+
+            let parenSpanRange = nsSample.range(of: "(`main`)")
+            let openParenGlyph = layoutManager.glyphIndexForCharacter(at: parenSpanRange.location)
+            let openParenX = layoutManager.location(forGlyphAt: openParenGlyph).x
+            let closeParenGlyph = layoutManager.glyphIndexForCharacter(at: NSMaxRange(parenSpanRange) - 1)
+            let closeParenX = layoutManager.location(forGlyphAt: closeParenGlyph).x
+
+            let mainRange = nsSample.range(of: "`main`")
+            let innerMainRange = NSRange(location: mainRange.location + 1, length: 4)
+            XCTAssertTrue(
+                analysis.decorations.contains(where: {
+                    if case let .inlineCode(decRange, _, _) = $0.kind {
+                        return decRange == innerMainRange
+                    }
+                    return false
+                }))
+            let mainGlyphs = layoutManager.glyphRange(forCharacterRange: innerMainRange, actualCharacterRange: nil)
+            let mainRect = layoutManager.boundingRect(forGlyphRange: mainGlyphs, in: textContainer)
+            let pillMinX = mainRect.minX - 3.0
+            let pillMaxX = mainRect.maxX + 3.0
+            XCTAssertGreaterThan(pillMinX, openParenX + 2.0, "\(family) pill overlaps '('")
+            XCTAssertLessThan(pillMaxX, closeParenX - 2.0, "\(family) pill swallows ')'")
+
+            // Verify true combining mark U+0300 stays zero-width.
+            let codeFont = theme.codeFont(size: 14.0)
+            let monoWidth = ("m" as NSString).size(withAttributes: [.font: codeFont]).width
+            let combiningStorage = NSTextStorage(string: "x\u{0300}a", attributes: [.font: codeFont])
+            let combiningLM = NSLayoutManager()
+            let combiningTC = NSTextContainer(size: NSSize(width: 400, height: 200))
+            combiningLM.addTextContainer(combiningTC)
+            combiningStorage.addLayoutManager(combiningLM)
+            combiningLM.ensureLayout(for: combiningTC)
+            let xPos = combiningLM.location(forGlyphAt: 0).x
+            let aPos = combiningLM.location(forGlyphAt: 2).x
+            XCTAssertEqual(aPos - xPos, monoWidth, accuracy: 0.5, "\(family) expected U+0300 to stay zero-advance")
+        }
+
+        // 3. Bold trait conversion via FontGDEFSanitizer preserves both bold trait and backtick advance.
+        var boldTheme = EditorTheme.daylight
+        boldTheme.codeFontFamily = "GdfM2"
+        let regularSanitized = boldTheme.codeFont(size: 14.0)
+        let boldSanitized = FontGDEFSanitizer.convert(regularSanitized, toHaveTrait: .boldFontMask)
+        XCTAssertTrue(boldSanitized.fontDescriptor.symbolicTraits.contains(.bold))
+
+        let boldStorage = NSTextStorage(string: "```bash", attributes: [.font: boldSanitized])
+        let boldLM = NSLayoutManager()
+        let boldTC = NSTextContainer(size: NSSize(width: 400, height: 200))
+        boldLM.addTextContainer(boldTC)
+        boldStorage.addLayoutManager(boldLM)
+        boldLM.ensureLayout(for: boldTC)
+        for i in 0..<6 {
+            let x0 = boldLM.location(forGlyphAt: i).x
+            let x1 = boldLM.location(forGlyphAt: i + 1).x
+            XCTAssertGreaterThan(x1 - x0, 5.0, "bold converted backtick glyph \(i) collapsed")
+        }
+    }
+
+    private static func buildBrokenGDEFMenloSFNT(
+        sourcePostScriptName: String,
+        familyName: String,
+        gdefFormat: UInt16
+    ) throws -> Data {
+        precondition(familyName.utf8.count == 5)
+        let sourceFont = try XCTUnwrap(NSFont(name: sourcePostScriptName, size: 14.0))
+        let ctFont = sourceFont as CTFont
+
+        var uni: [UniChar] = [0x0060, 0x0300]
+        var gids: [CGGlyph] = [0, 0]
+        CTFontGetGlyphsForCharacters(ctFont, &uni, &gids, 2)
+        let backtickGid = gids[0]
+        let combiningGid = gids[1]
+        XCTAssertNotEqual(backtickGid, 0)
+        XCTAssertNotEqual(combiningGid, 0)
+
+        let keepTags: [String] = ["OS/2", "cmap", "glyf", "head", "hhea", "hmtx", "loca", "maxp", "name", "post"]
+        var tables: [(tag: UInt32, bytes: [UInt8])] = []
+        for tagStr in keepTags {
+            let utf8 = Array(tagStr.utf8)
+            let tag = (UInt32(utf8[0]) << 24) | (UInt32(utf8[1]) << 16) | (UInt32(utf8[2]) << 8) | UInt32(utf8[3])
+            let tableData = try XCTUnwrap(CTFontCopyTable(ctFont, CTFontTableTag(tag), []) as Data?)
+            var bytes = [UInt8](tableData)
+            if tagStr == "name" {
+                replaceBytes(&bytes, needle: Array("Menlo".utf8), replacement: Array(familyName.utf8))
+                let menloUTF16: [UInt8] = [0, 0x4D, 0, 0x65, 0, 0x6E, 0, 0x6C, 0, 0x6F]
+                var replUTF16: [UInt8] = Array(repeating: 0, count: 10)
+                for (i, b) in familyName.utf8.enumerated() {
+                    replUTF16[i * 2 + 1] = b
+                }
+                replaceBytes(&bytes, needle: menloUTF16, replacement: replUTF16)
+            } else if tagStr == "head" {
+                for j in 8..<12 { bytes[j] = 0 }
+            }
+            tables.append((tag, bytes))
+        }
+
+        func append16(_ out: inout [UInt8], _ value: UInt16) {
+            out.append(UInt8(value >> 8))
+            out.append(UInt8(value & 0xFF))
+        }
+        func append32(_ out: inout [UInt8], _ value: UInt32) {
+            append16(&out, UInt16(value >> 16))
+            append16(&out, UInt16(value & 0xFFFF))
+        }
+
+        var gdef: [UInt8] = [0, 1, 0, 0, 0, 12, 0, 0, 0, 0, 0, 0]
+        if gdefFormat == 1 {
+            let minGid = min(backtickGid, combiningGid)
+            let maxGid = max(backtickGid, combiningGid)
+            append16(&gdef, 1)
+            append16(&gdef, minGid)
+            append16(&gdef, maxGid - minGid + 1)
+            for gid in minGid...maxGid {
+                append16(&gdef, (gid == backtickGid || gid == combiningGid) ? 3 : 1)
+            }
+        } else {
+            let firstGid = min(backtickGid, combiningGid)
+            let secondGid = max(backtickGid, combiningGid)
+            append16(&gdef, 2)
+            append16(&gdef, 2)
+            for gid in [firstGid, secondGid] {
+                append16(&gdef, gid)
+                append16(&gdef, gid)
+                append16(&gdef, 3)
+            }
+        }
+        tables.append((UInt32(kCTFontTableGDEF), gdef))
+
+        let gpos: [UInt8] = [
+            0, 1, 0, 0, 0, 10, 0, 28, 0, 30,
+            0, 1, 0x44, 0x46, 0x4C, 0x54, 0, 8,
+            0, 4, 0, 0,
+            0, 0, 0xFF, 0xFF, 0, 0,
+            0, 0,
+            0, 0
+        ]
+        tables.append((UInt32(kCTFontTableGPOS), gpos))
+
+        tables.sort { $0.tag < $1.tag }
+        let numTables = UInt16(tables.count)
+        var searchRange: UInt16 = 16
+        var entrySelector: UInt16 = 0
+        while searchRange * 2 <= numTables * 16 {
+            searchRange *= 2
+            entrySelector += 1
+        }
+        let rangeShift = numTables * 16 - searchRange
+
+        func checksum(_ bytes: [UInt8]) -> UInt32 {
+            var sum: UInt32 = 0
+            var idx = 0
+            while idx < bytes.count {
+                let b0 = UInt32(bytes[idx]) << 24
+                let b1 = (idx + 1 < bytes.count ? UInt32(bytes[idx + 1]) : 0) << 16
+                let b2 = (idx + 2 < bytes.count ? UInt32(bytes[idx + 2]) : 0) << 8
+                let b3 = (idx + 3 < bytes.count ? UInt32(bytes[idx + 3]) : 0)
+                sum = sum &+ (b0 | b1 | b2 | b3)
+                idx += 4
+            }
+            return sum
+        }
+
+        var sfnt: [UInt8] = []
+        append32(&sfnt, 0x0001_0000)
+        append16(&sfnt, numTables)
+        append16(&sfnt, searchRange)
+        append16(&sfnt, entrySelector)
+        append16(&sfnt, rangeShift)
+
+        var offset = 12 + Int(numTables) * 16
+        var headOffset = 0
+        for table in tables {
+            if table.tag == UInt32(kCTFontTableHead) {
+                headOffset = offset
+            }
+            append32(&sfnt, table.tag)
+            append32(&sfnt, checksum(table.bytes))
+            append32(&sfnt, UInt32(offset))
+            append32(&sfnt, UInt32(table.bytes.count))
+            offset += (table.bytes.count + 3) & ~3
+        }
+        for table in tables {
+            sfnt.append(contentsOf: table.bytes)
+            let pad = (4 - (table.bytes.count % 4)) % 4
+            if pad > 0 {
+                sfnt.append(contentsOf: repeatElement(UInt8(0), count: pad))
+            }
+        }
+        let adjustment = 0xB1B0_AFBA &- checksum(sfnt)
+        sfnt[headOffset + 8] = UInt8((adjustment >> 24) & 0xFF)
+        sfnt[headOffset + 9] = UInt8((adjustment >> 16) & 0xFF)
+        sfnt[headOffset + 10] = UInt8((adjustment >> 8) & 0xFF)
+        sfnt[headOffset + 11] = UInt8(adjustment & 0xFF)
+        return Data(sfnt)
+    }
+
+    private static func replaceBytes(_ haystack: inout [UInt8], needle: [UInt8], replacement: [UInt8]) {
+        precondition(needle.count == replacement.count)
+        var i = 0
+        while i + needle.count <= haystack.count {
+            if Array(haystack[i..<(i + needle.count)]) == needle {
+                haystack.replaceSubrange(i..<(i + needle.count), with: replacement)
+                i += needle.count
+            } else {
+                i += 1
+            }
+        }
     }
 }

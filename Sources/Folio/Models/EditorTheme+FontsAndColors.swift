@@ -201,9 +201,9 @@ extension EditorTheme {
         if italic { traits.insert(.italicFontMask) }
 
         if !traits.isEmpty {
-            return NSFontManager.shared.convert(resolvedFont, toHaveTrait: traits)
+            return FontGDEFSanitizer.sanitize(NSFontManager.shared.convert(resolvedFont, toHaveTrait: traits))
         }
-        return resolvedFont
+        return FontGDEFSanitizer.sanitize(resolvedFont)
     }
 
     public func bodyFont(size: CGFloat, bold: Bool = false, italic: Bool = false, semibold: Bool = false) -> NSFont {
@@ -269,7 +269,7 @@ extension EditorTheme {
             ?? NSFontManager.shared.font(withFamily: trimmed, traits: [], weight: 5, size: targetSize)
             ?? NSFont(descriptor: NSFontDescriptor(fontAttributes: [.family: trimmed]), size: targetSize)
         {
-            return customFont
+            return FontGDEFSanitizer.sanitize(customFont)
         }
         return NSFont.monospacedSystemFont(ofSize: targetSize, weight: .regular)
     }

@@ -412,7 +412,7 @@ extension MarkdownLiveStyler {
                 return
             }
             let currentFont = (attrs[.font] as? NSFont) ?? fallbackFont
-            let converted = NSFontManager.shared.convert(currentFont, toHaveTrait: trait)
+            let converted = FontGDEFSanitizer.convert(currentFont, toHaveTrait: trait)
             storage.addAttribute(.font, value: converted, range: subrange)
         }
     }
