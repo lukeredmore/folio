@@ -16,7 +16,7 @@ extension LaTeXMacroExpander {
         while i < chars.count {
             if chars[i] == "\\" {
                 let (cmd, afterCmd) = readControlWord(chars, at: i)
-                if let def = macros[cmd], def.operatorText == nil,
+                if let def = macros[cmd], def.operatorText == nil, def.fontDeclaration == nil, !def.isEnvironment,
                     let (args, end) = readArguments(for: def, in: chars, from: afterCmd)
                 {
                     let callUTF8 = chars[i..<end].reduce(0) { $0 + $1.utf8.count }

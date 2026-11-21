@@ -55,11 +55,27 @@ pub fn scan_latex_inlines(text: &str) -> Vec<LatexInlineSpan> {
         u16: &u16,
     };
     let mut out = Vec::new();
-    scan_range(&ctx, 0, bytes.len(), &mut out);
+    scan_range(&ctx, 0, bytes.len(), false, &mut out);
     out
 }
 
-fn scan_range(ctx: &InlineScanCtx<'_>, start: usize, end: usize, out: &mut Vec<LatexInlineSpan>) {
+fn is_escaped(bytes: &[u8], i: usize) -> bool {
+    let mut backslashes = 0usize;
+    let mut p = i;
+    while p > 0 && bytes[p - 1] == b'\\' {
+        backslashes += 1;
+        p -= 1;
+    }
+    backslashes % 2 == 1
+}
+
+fn scan_range(
+    ctx: &InlineScanCtx<'_>,
+    start: usize,
+    end: usize,
+    in_monospace: bool,
+    out: &mut Vec<LatexInlineSpan>,
+) {
     let mut i = start;
     while i < end {
         let b = ctx.bytes[i];
@@ -69,11 +85,12 @@ fn scan_range(ctx: &InlineScanCtx<'_>, start: usize, end: usize, out: &mut Vec<L
                 continue;
             }
         } else if b == b'{' {
-            if let Some(next_i) = try_scan_braced(ctx, i, end, out) {
+            if let Some(next_i) = try_scan_braced(ctx, i, end, in_monospace, out) {
                 i = next_i;
                 continue;
             }
-        } else if (b == b'`' || b == b'\'') && i + 1 < end && ctx.bytes[i + 1] == b {
+        } else if !in_monospace && (b == b'`' || b == b'\'') && i + 1 < end && ctx.bytes[i + 1] == b
+        {
             out.push(make_span(
                 ctx.u16,
                 LatexInlineSpanKind::TexQuote,
@@ -85,8 +102,44 @@ fn scan_range(ctx: &InlineScanCtx<'_>, start: usize, end: usize, out: &mut Vec<L
             ));
             i += 2;
             continue;
+        } else if !in_monospace && b == b'-' && !is_escaped(ctx.bytes, i) {
+            let mut run_end = i + 1;
+            while run_end < end && ctx.bytes[run_end] == b'-' {
+                run_end += 1;
+            }
+            let run_len = run_end - i;
+            if run_len == 2 || run_len == 3 {
+                let cmd = if run_len == 3 { "---" } else { "--" };
+                out.push(make_span(
+                    ctx.u16,
+                    LatexInlineSpanKind::TexQuote,
+                    (i, run_end),
+                    (i, run_end),
+                    (i, i),
+                    (i, i),
+                    (cmd, ""),
+                ));
+                i = run_end;
+                continue;
+            }
+            if run_len >= 4 {
+                i = run_end;
+                continue;
+            }
+        } else if !in_monospace && b == b'~' && !is_escaped(ctx.bytes, i) {
+            out.push(make_span(
+                ctx.u16,
+                LatexInlineSpanKind::TexQuote,
+                (i, i + 1),
+                (i, i + 1),
+                (i, i),
+                (i, i),
+                ("~", ""),
+            ));
+            i += 1;
+            continue;
         } else if b == b'\\' {
-            if let Some(next_i) = try_scan_backslash(ctx, i, end, out) {
+            if let Some(next_i) = try_scan_backslash(ctx, i, end, in_monospace, out) {
                 i = next_i;
                 continue;
             }
@@ -146,6 +199,7 @@ fn try_scan_braced(
     ctx: &InlineScanCtx<'_>,
     i: usize,
     end: usize,
+    in_monospace: bool,
     out: &mut Vec<LatexInlineSpan>,
 ) -> Option<usize> {
     let bytes = ctx.bytes;
@@ -170,7 +224,7 @@ fn try_scan_braced(
                 (close_b, after_close),
                 (cmd, opt_color),
             ));
-            scan_range(ctx, p, close_b, out);
+            scan_range(ctx, p, close_b, in_monospace, out);
             return Some(after_close);
         }
     } else if cmd == "color" {
@@ -191,7 +245,7 @@ fn try_scan_braced(
                 (close_b, after_close),
                 ("color", &ctx.text[cs..ce]),
             ));
-            scan_range(ctx, p, close_b, out);
+            scan_range(ctx, p, close_b, in_monospace, out);
             return Some(after_close);
         }
     }
@@ -202,6 +256,7 @@ fn try_scan_backslash(
     ctx: &InlineScanCtx<'_>,
     i: usize,
     end: usize,
+    in_monospace: bool,
     out: &mut Vec<LatexInlineSpan>,
 ) -> Option<usize> {
     let bytes = ctx.bytes;
@@ -257,7 +312,7 @@ fn try_scan_backslash(
         return Some(i + 2);
     }
     let (cmd, after_cmd) = read_control_word(ctx.text, i)?;
-    try_scan_cmd(ctx, i, cmd, after_cmd, end, out)
+    try_scan_cmd(ctx, i, cmd, after_cmd, end, in_monospace, out)
 }
 
 fn try_scan_cmd(
@@ -266,10 +321,11 @@ fn try_scan_cmd(
     cmd: &str,
     after: usize,
     end: usize,
+    in_monospace: bool,
     out: &mut Vec<LatexInlineSpan>,
 ) -> Option<usize> {
     let bytes = &ctx.bytes[..end];
-    if let Some(next) = scan_argument_cmd(ctx, bytes, (i, cmd, after), out) {
+    if let Some(next) = scan_argument_cmd(ctx, bytes, (i, cmd, after), in_monospace, out) {
         return Some(next);
     }
     if let Some(next) = scan_bare_cmd(ctx, bytes, (i, cmd, after), out) {
@@ -303,6 +359,7 @@ fn scan_argument_cmd(
     ctx: &InlineScanCtx<'_>,
     bytes: &[u8],
     (i, cmd, after): (usize, &str, usize),
+    in_monospace: bool,
     out: &mut Vec<LatexInlineSpan>,
 ) -> Option<usize> {
     use LatexInlineSpanKind as K;
@@ -344,7 +401,7 @@ fn scan_argument_cmd(
                 K::ColorGroup
             };
             out.push(braced_span(ctx, kind, i, arg, (cmd, &text[s1..e1])));
-            scan_range(ctx, s2, e2, out);
+            scan_range(ctx, s2, e2, in_monospace, out);
             Some(a2)
         }
         "url" => {
@@ -353,10 +410,11 @@ fn scan_argument_cmd(
             Some(next)
         }
         "textbf" | "textit" | "emph" | "underline" | "texttt" | "textsc" | "footnote"
-        | "textrm" | "textsf" => {
+        | "textrm" | "textsf" | "textsl" | "textup" | "textmd" | "textnormal" | "uline"
+        | "textsuperscript" | "textsubscript" => {
             let arg @ (ts, te, next) = read_balanced_braces(bytes, after)?;
             out.push(braced_span(ctx, K::StyleCmd, i, arg, (cmd, "")));
-            scan_range(ctx, ts, te, out);
+            scan_range(ctx, ts, te, in_monospace || cmd == "texttt", out);
             Some(next)
         }
         _ => None,

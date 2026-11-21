@@ -1,4 +1,30 @@
+import CoreGraphics
 import Foundation
+
+public struct LaTeXFontDeclaration: Equatable, Hashable, Sendable {
+    public var fontFamily: String?
+    public var sizeScale: CGFloat?
+    public var bold: Bool?
+    public var italic: Bool?
+    public var smallCaps: Bool?
+    public var letterSpaceEm: CGFloat?
+
+    public init(
+        fontFamily: String? = nil,
+        sizeScale: CGFloat? = nil,
+        bold: Bool? = nil,
+        italic: Bool? = nil,
+        smallCaps: Bool? = nil,
+        letterSpaceEm: CGFloat? = nil
+    ) {
+        self.fontFamily = fontFamily
+        self.sizeScale = sizeScale
+        self.bold = bold
+        self.italic = italic
+        self.smallCaps = smallCaps
+        self.letterSpaceEm = letterSpaceEm
+    }
+}
 
 public struct LaTeXMacroDefinition: Equatable, Hashable, Sendable {
     public let name: String
@@ -13,6 +39,8 @@ public struct LaTeXMacroDefinition: Equatable, Hashable, Sendable {
     /// `replacement` is the begin code, and `environmentEnd` is the end code.
     public let isEnvironment: Bool
     public let environmentEnd: String?
+    /// Font specification for `fontspec` `\newfontfamily` / `\newfontface` declarations.
+    public let fontDeclaration: LaTeXFontDeclaration?
 
     public init(
         name: String,
@@ -23,7 +51,8 @@ public struct LaTeXMacroDefinition: Equatable, Hashable, Sendable {
         operatorHasLimits: Bool = false,
         parameterText: LaTeXParameterText? = nil,
         isEnvironment: Bool = false,
-        environmentEnd: String? = nil
+        environmentEnd: String? = nil,
+        fontDeclaration: LaTeXFontDeclaration? = nil
     ) {
         self.name = name
         self.argCount = argCount
@@ -34,6 +63,7 @@ public struct LaTeXMacroDefinition: Equatable, Hashable, Sendable {
         self.parameterText = parameterText
         self.isEnvironment = isEnvironment
         self.environmentEnd = environmentEnd
+        self.fontDeclaration = fontDeclaration
     }
 
     /// Dictionary key of a user-defined environment. It cannot collide with a control word.
@@ -108,11 +138,15 @@ public enum LaTeXMacroExpander {
                 || text.contains("\\DeclareMathOperator")
                 || text.contains("\\def")
                 || text.contains("environment{")
+                || text.contains("fontfamily")
+                || text.contains("fontface")
+                || text.contains("\\let")
         else {
             return text
         }
         let chars = Array(text)
         var out = ""
+        var endAliases: Set<String> = []
         var i = 0
         while i < chars.count {
             if chars[i] == "\\", let (def, nextIdx) = parseDefinition(chars, at: i) {
@@ -120,10 +154,37 @@ public enum LaTeXMacroExpander {
                 i = nextIdx
                 while i < chars.count && (chars[i] == " " || chars[i] == "\t") { i += 1 }
                 if i < chars.count && chars[i] == "\n" { i += 1 }
+            } else if chars[i] == "\\", let (endName, nextIdx) = parseEndEnvironmentAlias(chars, at: i) {
+                endAliases.insert(endName)
+                i = nextIdx
+                while i < chars.count && (chars[i] == " " || chars[i] == "\t") { i += 1 }
+                if i < chars.count && chars[i] == "\n" { i += 1 }
             } else {
                 out.append(chars[i])
                 i += 1
             }
+        }
+        for (key, def) in macros where key.hasPrefix("\\") {
+            let envName = String(key.dropFirst())
+            guard !envName.isEmpty,
+                !envName.hasPrefix("end"),
+                !def.isEnvironment,
+                def.operatorText == nil,
+                def.fontDeclaration == nil,
+                endAliases.contains(envName) || macros["\\end\(envName)"] != nil,
+                macros[LaTeXMacroDefinition.environmentKey(envName)] == nil
+            else {
+                continue
+            }
+            macros[LaTeXMacroDefinition.environmentKey(envName)] = LaTeXMacroDefinition(
+                name: LaTeXMacroDefinition.environmentKey(envName),
+                argCount: def.argCount,
+                defaultFirstArg: def.defaultFirstArg,
+                replacement: def.replacement,
+                parameterText: def.parameterText,
+                isEnvironment: true,
+                environmentEnd: macros["\\end\(envName)"]?.replacement
+            )
         }
         return out
     }
@@ -195,6 +256,10 @@ public enum LaTeXMacroExpander {
 
         case "\\newenvironment", "\\renewenvironment":
             return parseEnvironmentDefinition(chars, after: afterCmd)
+
+        case "\\newfontfamily", "\\renewfontfamily", "\\providefontfamily",
+            "\\newfontface", "\\renewfontface", "\\providefontface":
+            return parseFontspecDefinition(cmd: cmd, chars, after: afterCmd)
 
         default:
             return nil

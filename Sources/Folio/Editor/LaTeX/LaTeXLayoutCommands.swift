@@ -9,6 +9,7 @@ enum LaTeXFlowDeclaration: Equatable, Hashable, Sendable {
     case fontSize(CGFloat)
     /// `\fontfamily`, `\fontseries`, or `\fontshape` with its value.
     case fontSelection(command: String, value: String)
+    case customFont(LaTeXFontDeclaration)
     case alignment(NSTextAlignment)
 }
 
@@ -49,7 +50,9 @@ enum LaTeXLayoutCommands {
     /// Environments whose `\begin` and `\end` lines Folio folds while it styles the lines between
     /// them as usual.
     static let flowWrapperEnvironments: Set<String> = [
-        "titlepage", "minipage", "multicols", "multicols*", "flushleft", "flushright", "raggedright", "samepage"
+        "titlepage", "minipage", "multicols", "multicols*", "flushleft", "flushright", "raggedright", "samepage",
+        "spacing", "singlespace", "singlespace*", "onehalfspace", "onehalfspace*", "doublespace", "doublespace*",
+        "sloppypar", "landscape", "raggedleft", "adjustwidth", "adjustwidth*"
     ]
 
     static let entries: [String: Entry] = {
@@ -79,6 +82,7 @@ enum LaTeXLayoutCommands {
         table["vrule"] = Entry(kind: .invisible)
         let declarations = [
             "rmfamily", "sffamily", "ttfamily", "mdseries", "bfseries", "itshape", "upshape", "slshape", "scshape", "normalfont",
+            "bf", "it", "rm", "sf", "tt", "sc", "sl",
             "em", "tiny", "scriptsize", "footnotesize", "small", "normalsize", "large", "Large", "LARGE", "huge", "Huge",
             "centering", "raggedleft", "raggedright"
         ]
@@ -93,6 +97,7 @@ enum LaTeXLayoutCommands {
     static let definitionCommands: Set<String> = [
         "newcommand", "renewcommand", "providecommand", "DeclareRobustCommand", "def", "gdef", "edef", "xdef", "let",
         "newenvironment", "renewenvironment", "newlength", "newcount", "newdimen", "newskip", "newtoks", "newbox", "newif",
+        "newfontfamily", "renewfontfamily", "providefontfamily", "newfontface", "renewfontface", "providefontface",
         "advance", "multiply", "divide", "global"
     ]
 

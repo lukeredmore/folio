@@ -540,7 +540,7 @@ extension LaTeXStylePass {
     mutating func styleMultiLineCallBlock(
         _ blockRange: NSRange,
         lineFont: NSFont,
-        flowStyle: LaTeXProseStyle
+        flow: LaTeXFlowState
     ) -> (nextIndex: Int, lineDelta: Int) {
         let firstLine = nsString.lineRange(for: NSRange(location: blockRange.location, length: 0))
         if blockRange.length > firstLine.length {
@@ -564,7 +564,7 @@ extension LaTeXStylePass {
                     lineFont: lineFont,
                     isActiveLine: true,
                     dimFactor: dimFactor,
-                    flowStyle: flowStyle
+                    flow: flow
                 )
             }
             return (NSMaxRange(blockRange), lines.count)
@@ -590,7 +590,7 @@ extension LaTeXStylePass {
             lineFont: lineFont,
             isActiveLine: false,
             dimFactor: dimFactor,
-            flowStyle: flowStyle
+            flow: flow
         )
         for lineRange in lines.dropFirst() {
             let newline = lineRange.location - 1

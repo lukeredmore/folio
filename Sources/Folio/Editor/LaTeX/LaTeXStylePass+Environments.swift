@@ -335,11 +335,32 @@ extension LaTeXStylePass {
             : (isAbstract ? docIndex.bodyFont(size: effectiveBaseSize * 0.95, fallbackTheme: theme) : baseFont)
         let indent: CGFloat = isAbstract ? 28.0 : (isQuote ? 20.0 : 18.0)
 
+        let firstIsPure =
+            envLines.first.map {
+                splitEnvironmentBoundaryTokens(
+                    in: $0.contentRange,
+                    envName: envName,
+                    isFirst: true,
+                    isLast: envLines.count == 1,
+                    allowLabelOnly: true
+                ).isPureBoundary
+            } ?? true
+
         for (i, el) in envLines.enumerated() {
             let isFirst = (i == 0)
             let isLast = (i == envLines.count - 1 && envLines.count > 1)
+            let boundarySplit =
+                (isFirst || isLast)
+                ? splitEnvironmentBoundaryTokens(
+                    in: el.contentRange,
+                    envName: envName,
+                    isFirst: isFirst,
+                    isLast: isLast || envLines.count == 1,
+                    allowLabelOnly: true
+                )
+                : nil
 
-            if (isFirst || isLast) && !el.isActive && prettyMode {
+            if let boundarySplit, boundarySplit.isPureBoundary && !el.isActive && prettyMode {
                 let headerHeight: CGFloat =
                     isFirst
                     ? (isAbstract ? 26.0 : (isTheoremOrProof ? 26.0 : 6.0))
@@ -379,9 +400,39 @@ extension LaTeXStylePass {
                     .paragraphStyle: pStyle
                 ], range: el.lineRange)
 
-            if (isFirst || isLast) && (el.isActive || !prettyMode) {
-                storage.addAttribute(MKey.noSpellCheck, value: true, range: el.lineRange)
-                MarkdownLiveStyler.highlightLaTeXSource(in: storage, range: el.contentRange, theme: theme, dimFactor: blockDim)
+            if let boundarySplit {
+                if boundarySplit.isPureBoundary {
+                    storage.addAttribute(MKey.noSpellCheck, value: true, range: el.lineRange)
+                    MarkdownLiveStyler.highlightLaTeXSource(in: storage, range: el.contentRange, theme: theme, dimFactor: blockDim)
+                } else {
+                    if let beginRange = boundarySplit.beginRange {
+                        storage.addAttribute(MKey.noSpellCheck, value: true, range: beginRange)
+                        MarkdownLiveStyler.styleSyntaxToken(
+                            in: storage,
+                            range: beginRange,
+                            isActiveLine: el.isActive || !prettyMode,
+                            theme: theme,
+                            dimFactor: blockDim
+                        )
+                    }
+                    if let endRange = boundarySplit.endRange {
+                        storage.addAttribute(MKey.noSpellCheck, value: true, range: endRange)
+                        MarkdownLiveStyler.styleSyntaxToken(
+                            in: storage,
+                            range: endRange,
+                            isActiveLine: el.isActive || !prettyMode,
+                            theme: theme,
+                            dimFactor: blockDim
+                        )
+                    }
+                    styleInlineContent(
+                        range: boundarySplit.proseRange,
+                        lineRange: el.lineRange,
+                        lineFont: bodyFont,
+                        isActiveLine: el.isActive,
+                        dimFactor: blockDim
+                    )
+                }
             } else {
                 styleInlineContent(
                     range: el.contentRange,
@@ -397,7 +448,7 @@ extension LaTeXStylePass {
             }
         }
 
-        let showHeader = !(envLines.first?.isActive ?? false) && prettyMode
+        let showHeader = !(envLines.first?.isActive ?? false) && prettyMode && firstIsPure
         if isAbstract {
             decorations.append(
                 LineDecoration(
@@ -435,8 +486,20 @@ extension LaTeXStylePass {
         let wrappers = LaTeXLayoutCommands.flowWrapperEnvironments.union(["center"])
 
         for (i, el) in envLines.enumerated() {
-            let isBoundary = (i == 0 || (i == envLines.count - 1 && envLines.count > 1))
-            if isBoundary {
+            let isFirst = (i == 0)
+            let isLast = (i == envLines.count - 1)
+            let boundarySplit =
+                (isFirst || isLast)
+                ? splitEnvironmentBoundaryTokens(
+                    in: el.contentRange,
+                    envName: "center",
+                    isFirst: isFirst,
+                    isLast: isLast,
+                    allowLabelOnly: false
+                )
+                : nil
+
+            if let boundarySplit, boundarySplit.isPureBoundary {
                 styleBoundaryLine(
                     lineRange: el.lineRange,
                     contentRange: el.contentRange,
@@ -445,7 +508,9 @@ extension LaTeXStylePass {
                 )
                 continue
             }
-            let trimmed = el.text.trimmingCharacters(in: .whitespacesAndNewlines)
+            let effectiveContentRange = boundarySplit?.proseRange ?? el.contentRange
+            let effectiveText = nsString.substring(with: effectiveContentRange)
+            let trimmed = effectiveText.trimmingCharacters(in: .whitespacesAndNewlines)
             var isDirective = false
             if let val = Self.parseIfDirective(trimmed, conditionals: docIndex.documentStyle.conditionals) {
                 condStack.append((val, false))
@@ -494,23 +559,48 @@ extension LaTeXStylePass {
                 flow.style == LaTeXProseStyle()
                 ? baseFont
                 : Self.proseFont(for: flow.style, baseFont: baseFont, docIndex: docIndex, theme: theme)
-            storage.addAttributes(
-                [
-                    .font: lineFont,
-                    .foregroundColor: theme.textNSColor.withAlphaComponent(blockDim),
-                    .paragraphStyle: pStyle
-                ], range: el.lineRange)
+            var lineAttrs: [NSAttributedString.Key: Any] = [
+                .font: lineFont,
+                .foregroundColor: theme.textNSColor.withAlphaComponent(blockDim),
+                .paragraphStyle: pStyle
+            ]
+            if flow.style.letterSpaceEm != 0 {
+                lineAttrs[.kern] = lineFont.pointSize * flow.style.letterSpaceEm
+            }
+            storage.addAttributes(lineAttrs, range: el.lineRange)
+            if let beginRange = boundarySplit?.beginRange {
+                storage.addAttribute(MKey.noSpellCheck, value: true, range: beginRange)
+                MarkdownLiveStyler.styleSyntaxToken(
+                    in: storage,
+                    range: beginRange,
+                    isActiveLine: el.isActive || !prettyMode,
+                    theme: theme,
+                    dimFactor: blockDim
+                )
+            }
+            if let endRange = boundarySplit?.endRange {
+                storage.addAttribute(MKey.noSpellCheck, value: true, range: endRange)
+                MarkdownLiveStyler.styleSyntaxToken(
+                    in: storage,
+                    range: endRange,
+                    isActiveLine: el.isActive || !prettyMode,
+                    theme: theme,
+                    dimFactor: blockDim
+                )
+            }
             if !el.isActive && prettyMode {
-                let indent = el.text.prefix { $0 == " " || $0 == "\t" }.utf16.count
-                MarkdownLiveStyler.collapseWhitespaceRange(in: storage, range: NSRange(location: el.contentRange.location, length: indent))
+                let indent = effectiveText.prefix { $0 == " " || $0 == "\t" }.utf16.count
+                MarkdownLiveStyler.collapseWhitespaceRange(
+                    in: storage, range: NSRange(location: effectiveContentRange.location, length: indent)
+                )
             }
             styleInlineContent(
-                range: el.contentRange,
+                range: effectiveContentRange,
                 lineRange: el.lineRange,
                 lineFont: lineFont,
                 isActiveLine: el.isActive,
                 dimFactor: blockDim,
-                flowStyle: flow.style
+                flow: flow
             )
             flow.apply(layout.effects, documentFontSize: documentFontSize)
         }
@@ -698,5 +788,90 @@ extension LaTeXStylePass {
         LaTeXBlockStyleCache.collapseInternalNewlines(
             in: storage, nsString: nsString, range: NSRange(location: runStart, length: runEnd - runStart)
         )
+    }
+
+    private func splitEnvironmentBoundaryTokens(
+        in contentRange: NSRange,
+        envName: String,
+        isFirst: Bool,
+        isLast: Bool,
+        allowLabelOnly: Bool
+    ) -> (beginRange: NSRange?, endRange: NSRange?, proseRange: NSRange, isPureBoundary: Bool) {
+        let lineStr = nsString.substring(with: contentRange)
+        let lineNS = lineStr as NSString
+        let stripped = LaTeXLexer.stripLineComment(lineStr)
+        let strippedLen = stripped.utf16.count
+        var proseStart = 0
+        var proseEnd = strippedLen
+        var beginRange: NSRange?
+        var endRange: NSRange?
+
+        if isFirst {
+            var p = 0
+            while p < strippedLen && (lineNS.character(at: p) == 0x20 || lineNS.character(at: p) == 0x09) {
+                p += 1
+            }
+            let beginToken = "\\begin{\(envName)}"
+            let beginLen = (beginToken as NSString).length
+            if p + beginLen <= strippedLen, lineNS.substring(with: NSRange(location: p, length: beginLen)) == beginToken {
+                var after = p + beginLen
+                let tailStart = String.Index(utf16Offset: after, in: stripped)
+                let tailChars = Array(stripped[tailStart...])
+                let afterSkip = LaTeXMacroExpander.skipSpaces(tailChars, from: 0)
+                if afterSkip < tailChars.count && tailChars[afterSkip] == "[",
+                    let (_, afterBracket) = LaTeXMacroExpander.readBracketGroup(tailChars, at: afterSkip)
+                {
+                    after += String(tailChars[0..<afterBracket]).utf16.count
+                }
+                var afterSpace = after
+                while afterSpace < strippedLen && (lineNS.character(at: afterSpace) == 0x20 || lineNS.character(at: afterSpace) == 0x09) {
+                    afterSpace += 1
+                }
+                beginRange = NSRange(location: contentRange.location, length: afterSpace)
+                proseStart = afterSpace
+            }
+        }
+
+        if isLast {
+            var trimEnd = strippedLen
+            while trimEnd > proseStart && (lineNS.character(at: trimEnd - 1) == 0x20 || lineNS.character(at: trimEnd - 1) == 0x09) {
+                trimEnd -= 1
+            }
+            let endToken = "\\end{\(envName)}"
+            let endLen = (endToken as NSString).length
+            if trimEnd - proseStart >= endLen,
+                lineNS.substring(with: NSRange(location: trimEnd - endLen, length: endLen)) == endToken
+            {
+                var beforeEnd = trimEnd - endLen
+                while beforeEnd > proseStart && (lineNS.character(at: beforeEnd - 1) == 0x20 || lineNS.character(at: beforeEnd - 1) == 0x09) {
+                    beforeEnd -= 1
+                }
+                endRange = NSRange(location: contentRange.location + beforeEnd, length: contentRange.length - beforeEnd)
+                proseEnd = beforeEnd
+            }
+        }
+
+        let remaining = lineNS.substring(with: NSRange(location: proseStart, length: max(0, proseEnd - proseStart)))
+            .trimmingCharacters(in: .whitespaces)
+        var isPureBoundary = remaining.isEmpty
+        if !isPureBoundary && allowLabelOnly && remaining.hasPrefix("\\label") {
+            let chars = Array(remaining)
+            var idx = 0
+            while idx < chars.count {
+                let (word, after) = LaTeXMacroExpander.readControlWord(chars, at: idx)
+                guard word == "\\label",
+                    let (_, afterGroup) = LaTeXMacroExpander.readBracedGroup(chars, at: LaTeXMacroExpander.skipSpaces(chars, from: after))
+                else { break }
+                idx = LaTeXMacroExpander.skipSpaces(chars, from: afterGroup)
+            }
+            isPureBoundary = (idx == chars.count)
+        }
+
+        let proseLimit = endRange == nil ? contentRange.length : proseEnd
+        let proseRange = NSRange(
+            location: contentRange.location + proseStart,
+            length: max(0, proseLimit - proseStart)
+        )
+        return (beginRange, endRange, proseRange, isPureBoundary)
     }
 }

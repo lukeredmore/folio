@@ -68,6 +68,33 @@ private let proseCommands: [String: LaTeXProseCommand] = {
             $0.sans = false
             $0.monospace = false
         },
+        "bf": .declaration {
+            resetFont(&$0)
+            $0.bold = true
+        },
+        "it": .declaration {
+            resetFont(&$0)
+            $0.italic = true
+        },
+        "sl": .declaration {
+            resetFont(&$0)
+            $0.italic = true
+        },
+        "sc": .declaration {
+            resetFont(&$0)
+            $0.smallCaps = true
+        },
+        "tt": .declaration {
+            resetFont(&$0)
+            $0.monospace = true
+        },
+        "sf": .declaration {
+            resetFont(&$0)
+            $0.sans = true
+        },
+        "rm": .declaration {
+            resetFont(&$0)
+        },
         "normalfont": .declaration { resetFont(&$0) },
         "text": .wrapper(braces: 0, brackets: 0),
         "mbox": .wrapper(braces: 0, brackets: 0),
@@ -157,6 +184,29 @@ extension LaTeXProseMacroExpander {
         Renderer.applyFontSelection(command, value: value.trimmingCharacters(in: .whitespaces), to: &style)
     }
 
+    static func applyCustomFont(_ decl: LaTeXFontDeclaration, to style: inout LaTeXProseStyle) {
+        if let family = decl.fontFamily, !family.isEmpty {
+            style.fontFamily = family
+            style.monospace = false
+            style.sans = false
+        }
+        if let scale = decl.sizeScale {
+            style.sizeScale = scale
+        }
+        if let bold = decl.bold {
+            style.bold = bold
+        }
+        if let italic = decl.italic {
+            style.italic = italic
+        }
+        if let smallCaps = decl.smallCaps {
+            style.smallCaps = smallCaps
+        }
+        if let letterSpaceEm = decl.letterSpaceEm {
+            style.letterSpaceEm = letterSpaceEm
+        }
+    }
+
     /// The text that a built-in command without arguments prints in a prose line, such as
     /// "Contents" for `\contentsname` or "©" for `\copyright`. Nil for other commands.
     static func builtinText(forCommand name: String) -> String? {
@@ -172,6 +222,8 @@ private func resetFont(_ style: inout LaTeXProseStyle) {
     style.monospace = false
     style.sans = false
     style.smallCaps = false
+    style.fontFamily = nil
+    style.letterSpaceEm = 0
 }
 
 extension LaTeXProseMacroExpander.Renderer {
@@ -190,7 +242,10 @@ extension LaTeXProseMacroExpander.Renderer {
         let hasStar = afterWord < chars.count && chars[afterWord] == "*"
         let callName = String(word.dropFirst()) + (hasStar ? "*" : "")
         if LaTeXProseMacroExpander.definition(forCall: callName, in: macros) != nil {
-            return expandUserMacro(chars, at: idx, style: style, depth: depth)
+            var nestedStyle: LaTeXProseStyle? = style
+            let end = expandUserMacro(chars, at: idx, style: &nestedStyle, depth: depth)
+            if let updated = nestedStyle { style = updated }
+            return end
         }
         guard let command = proseCommands[String(word.dropFirst())] else { return nil }
         // TeX skips the spaces after a control word.

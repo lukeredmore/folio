@@ -32,7 +32,7 @@ pub fn classify_latex_line(line: &str) -> LatexLineClassification {
     let u16 = build_byte_to_utf16_table(line);
     match cmd {
         "hline" | "toprule" | "midrule" | "bottomrule"
-            if skip_hspace(bytes, after_cmd) == bytes.len() =>
+            if trailing_line_end(line, bytes, after_cmd).is_some() =>
         {
             return LatexLineClassification {
                 kind: LatexLineKind::TableRule,
@@ -42,7 +42,7 @@ pub fn classify_latex_line(line: &str) -> LatexLineClassification {
         }
         "cline" => {
             if let Some((s, e, after_b)) = read_balanced_braces(bytes, after_cmd) {
-                if skip_hspace(bytes, after_b) == bytes.len() {
+                if trailing_line_end(line, bytes, after_b).is_some() {
                     return LatexLineClassification {
                         kind: LatexLineKind::TableRule,
                         cmd: "cline".to_string(),
@@ -108,6 +108,27 @@ fn classify_item(
     empty_classification()
 }
 
+fn trailing_line_end(line: &str, bytes: &[u8], pos: usize) -> Option<usize> {
+    let mut p = skip_hspace(bytes, pos);
+    if bytes.get(p..p + 2) == Some(b"\\\\") {
+        p += 2;
+        if bytes.get(p) == Some(&b'*') {
+            p += 1;
+        }
+        p = skip_hspace(bytes, p);
+        if let Some((_, _, after_b)) = read_bracket_group(bytes, p) {
+            p = skip_hspace(bytes, after_b);
+        }
+    }
+    if p == bytes.len() {
+        Some(line.trim_end_matches([' ', '\t']).len())
+    } else if bytes[p] == b'%' {
+        Some(bytes.len())
+    } else {
+        None
+    }
+}
+
 fn classify_graphics(
     line: &str,
     bytes: &[u8],
@@ -117,7 +138,8 @@ fn classify_graphics(
 ) -> Option<LatexLineClassification> {
     let (has_opt_arg, opt_r, opt_arg, p) = read_opt(line, bytes, after_cmd);
     let (s, e, after_b) = read_balanced_braces(bytes, p)?;
-    (skip_hspace(bytes, after_b) == bytes.len()).then(|| LatexLineClassification {
+    let close_end = trailing_line_end(line, bytes, after_b)?;
+    Some(LatexLineClassification {
         kind: LatexLineKind::IncludeGraphics,
         has_opt_arg,
         open_loc: u16[start],
@@ -127,7 +149,7 @@ fn classify_graphics(
         body_loc: u16[s],
         body_len: u16[e].saturating_sub(u16[s]),
         close_loc: u16[e],
-        close_len: u16[after_b].saturating_sub(u16[e]),
+        close_len: u16[close_end].saturating_sub(u16[e]),
         cmd: "includegraphics".to_string(),
         opt_arg,
         arg1: line[s..e].to_string(),

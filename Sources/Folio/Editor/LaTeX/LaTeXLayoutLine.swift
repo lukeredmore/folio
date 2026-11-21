@@ -129,7 +129,10 @@ struct LaTeXLayoutLine: Equatable {
                 readLayoutCommand(name, entry)
             } else if LaTeXLayoutCommands.definitionCommands.contains(name) {
                 if !skipDefinition(name) { sawContent = true }
-            } else if isInvisibleUserMacro(name) {
+            } else if let def = macros["\\\(name)"],
+                let effects = LaTeXLayoutLine.userLayoutEffects(for: def, macros: macros, nesting: nesting)
+            {
+                for effect in effects { record(effect) }
                 if idx + 1 < chars.count && chars[idx] == "{" && chars[idx + 1] == "}" { idx += 2 }
             } else if let end = registerAssignmentEnd(name, from: idx) {
                 idx = end
@@ -172,6 +175,11 @@ struct LaTeXLayoutLine: Equatable {
             } else if name.hasPrefix("multicols") {
                 idx = skipBraces(from: idx, limit: 1)
                 idx = skipBrackets(from: idx, limit: 1)
+            } else if name == "spacing" {
+                idx = skipBraces(from: idx, limit: 1)
+            } else if name == "adjustwidth" || name == "adjustwidth*" {
+                idx = skipBrackets(from: idx, limit: 1)
+                idx = skipBraces(from: idx, limit: 2)
             } else if !wrappers.contains(name) {
                 sawContent = true
             }
@@ -220,6 +228,13 @@ struct LaTeXLayoutLine: Equatable {
                 guard skipRequiredBraces(1) else { return false }
                 idx = skipBrackets(from: idx, limit: 2)
                 return skipRequiredBraces(2)
+            case "newfontfamily", "renewfontfamily", "providefontfamily",
+                "newfontface", "renewfontface", "providefontface":
+                guard skipControlSequenceArgument() else { return false }
+                idx = skipBrackets(from: idx, limit: 1)
+                guard skipRequiredBraces(1) else { return false }
+                idx = skipBrackets(from: idx, limit: 1)
+                return true
             case "def", "gdef", "edef", "xdef":
                 guard skipControlSequenceArgument() else { return false }
                 while idx < chars.count && chars[idx] != "{" {
@@ -288,15 +303,6 @@ struct LaTeXLayoutLine: Equatable {
             return position
         }
 
-        /// A user macro without arguments whose expansion prints nothing, such as a hook that a
-        /// paper-size file may redefine to `\clearpage`.
-        private func isInvisibleUserMacro(_ name: String) -> Bool {
-            guard let def = macros["\\\(name)"], def.argCount == 0, def.parameterText == nil, !def.isEnvironment,
-                def.operatorText == nil
-            else { return false }
-            return LaTeXLayoutLine.printsNothing(def.replacement, macros: macros, nesting: nesting + 1)
-        }
-
         /// The end of `=value` after a register name, as in `\ITtab=3em`, or nil.
         private func registerAssignmentEnd(_ name: String, from start: Int) -> Int? {
             let probe = LaTeXMacroExpander.skipSpaces(chars, from: start)
@@ -314,6 +320,27 @@ struct LaTeXLayoutLine: Equatable {
             guard position + pattern.count <= chars.count else { return false }
             return Array(chars[position..<(position + pattern.count)]) == pattern
         }
+    }
+
+    /// Layout and font effects of a zero-argument user macro whose expansion prints nothing, or
+    /// nil when the macro prints text/math or cannot be analyzed.
+    static func userLayoutEffects(
+        for def: LaTeXMacroDefinition,
+        macros: [String: LaTeXMacroDefinition],
+        nesting: Int = 0
+    ) -> [LaTeXFlowEffect]? {
+        guard nesting <= maxNesting, def.argCount == 0, def.parameterText == nil, !def.isEnvironment,
+            def.operatorText == nil
+        else { return nil }
+        if let decl = def.fontDeclaration {
+            return [.declaration(.customFont(decl))]
+        }
+        let code = LaTeXLiveStyler.maskedComments(def.replacement)
+        if code.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            return []
+        }
+        let analyzed = analyze(code, macros: macros, wrappers: LaTeXLayoutCommands.flowWrapperEnvironments, nesting: nesting + 1)
+        return analyzed.isLayoutOnly ? analyzed.effects : nil
     }
 
     /// True when the macro body `body` prints nothing: it renders to blank text, or it holds only

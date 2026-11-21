@@ -65,7 +65,8 @@ extension LaTeXProseMacroExpander.Renderer {
             return nil
         }
         var nested = LaTeXProseMacroExpander.Renderer(macros: macros, limits: limits, mathNesting: mathNesting + 1)
-        guard let end = nested.expandUserMacro(chars, at: idx, style: nil, depth: 0) else { return nil }
+        var unusedStyle: LaTeXProseStyle?
+        guard let end = nested.expandUserMacro(chars, at: idx, style: &unusedStyle, depth: 0) else { return nil }
         var text = ""
         for segment in nested.segments {
             switch segment {

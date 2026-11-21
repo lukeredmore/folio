@@ -280,7 +280,9 @@ extension LaTeXDocumentIndex {
             || trimmed == "\\begin{document}" || trimmed == "\\end{document}"
             || trimmed == "\\begin{center}" || trimmed == "\\end{center}"
             || trimmed == "\\begin{itemize}" || trimmed == "\\end{itemize}"
+            || trimmed == "\\begin{itemize*}" || trimmed == "\\end{itemize*}"
             || trimmed == "\\begin{enumerate}" || trimmed == "\\end{enumerate}"
+            || trimmed.hasPrefix("\\begin{spacing}") || trimmed == "\\end{spacing}"
         {
             return true
         }

@@ -224,7 +224,10 @@ enum LaTeXDocumentIndexer {
             if inPreamble
                 && (trimmed.hasPrefix("\\newcommand") || trimmed.hasPrefix("\\renewcommand")
                     || trimmed.hasPrefix("\\DeclareMathOperator") || trimmed.hasPrefix("\\def\\")
-                    || trimmed.hasPrefix("\\providecommand"))
+                    || trimmed.hasPrefix("\\providecommand") || trimmed.hasPrefix("\\newfontfamily")
+                    || trimmed.hasPrefix("\\renewfontfamily") || trimmed.hasPrefix("\\providefontfamily")
+                    || trimmed.hasPrefix("\\newfontface") || trimmed.hasPrefix("\\renewfontface")
+                    || trimmed.hasPrefix("\\providefontface"))
             {
                 idx.macroCount += 1
             }

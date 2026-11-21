@@ -168,6 +168,19 @@ extension LaTeXDocumentIndexer {
             if style.sansFontFamily == nil { style.sansFontFamily = "Helvetica Neue" }
         case "courier", "tgcursor", "inconsolata":
             if style.monoFontFamily == nil { style.monoFontFamily = "Menlo" }
+        case "fontsize":
+            if let opts = options {
+                for part in opts.split(separator: ",") {
+                    let opt = part.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+                    if opt.hasPrefix("fontsize="), opt.hasSuffix("pt") {
+                        let numStr = String(opt.dropFirst("fontsize=".count).dropLast(2))
+                            .trimmingCharacters(in: .whitespaces)
+                        if let ptVal = Double(numStr), ptVal >= 8.0, ptVal <= 24.0 {
+                            style.documentFontSizePt = CGFloat(ptVal)
+                        }
+                    }
+                }
+            }
         case "parskip":
             if style.parindent == nil { style.parindent = .points(0.0) }
             if style.parskip == nil { style.parskip = .em(0.6) }
