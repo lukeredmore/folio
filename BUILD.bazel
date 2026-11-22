@@ -36,6 +36,7 @@ _FOLIO_MODELS_SRCS = glob(
     "Sources/Folio/Services/FolioCLIManager.swift",
     "Sources/Folio/Services/FolioCLIManager+Arguments.swift",
     "Sources/Folio/Services/FolioCLIManager+LauncherScript.swift",
+    "Sources/Folio/Services/FolioProcessLimits.swift",
     "Sources/Folio/Services/RemoteHostHistory.swift",
     "Sources/Folio/Services/RemoteWorkspaceManager+Delete.swift",
     "Sources/Folio/Services/RemoteWorkspaceManager+DirectoryListing.swift",
@@ -203,6 +204,7 @@ _WORKSPACE_TESTS = [
     "Tests/FolioTests/SoftLineBreakTests.swift",
     "Tests/FolioTests/ThemeAndTypographyTests.swift",
     "Tests/FolioTests/WorkspaceFileDeletionTests.swift",
+    "Tests/FolioTests/WorkspaceFileWatcherLimitsTests.swift",
 ]
 
 # Shared test fixtures and assertions for editor/styler/LaTeX tests. Compiled once and cached.

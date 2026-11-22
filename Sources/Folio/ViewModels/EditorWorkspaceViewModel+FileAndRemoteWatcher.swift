@@ -256,7 +256,8 @@ extension EditorWorkspaceViewModel {
 
     static let maxWatchedWorkspaceDirectories = 256
 
-    func recordWatchedWorkspaceDirectory(_ url: URL, activeKeys: inout Set<String>) {
+    @discardableResult
+    func recordWatchedWorkspaceDirectory(_ url: URL, activeKeys: inout Set<String>) -> Bool {
         workspaceFileWatcher.recordWatchedWorkspaceDirectory(
             url,
             activeKeys: &activeKeys,
