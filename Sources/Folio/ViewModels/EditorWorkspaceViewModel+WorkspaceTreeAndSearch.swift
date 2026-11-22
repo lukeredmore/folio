@@ -40,7 +40,7 @@ extension EditorWorkspaceViewModel {
     public func reloadWorkspaceTree() {
         var flatList: [WorkspaceFileNode] = []
         var combinedRoots: [WorkspaceFileNode] = []
-        var activeWatchedDirectoryKeys: Set<String> = []
+        var watchedDirectoryCandidates: [(depth: Int, url: URL)] = []
 
         for folderURL in sidebarLocalFolderURLs {
             let children = scanDirectory(
@@ -51,7 +51,7 @@ extension EditorWorkspaceViewModel {
                     filter: localSidebarFilters[folderURL.standardizedFileURL.path] ?? SidebarRootFilter()
                 ),
                 flatAccumulator: &flatList,
-                watchedDirectoryKeys: &activeWatchedDirectoryKeys
+                watchedDirectoryCandidates: &watchedDirectoryCandidates
             )
             combinedRoots.append(
                 WorkspaceFileNode(
@@ -75,7 +75,7 @@ extension EditorWorkspaceViewModel {
                         relativePath: "",
                         scope: SidebarScanScope(remoteMountID: mount.id, filter: remoteWorkspaceManager.sidebarFilter(for: mount.id)),
                         flatAccumulator: &flatList,
-                        watchedDirectoryKeys: &activeWatchedDirectoryKeys
+                        watchedDirectoryCandidates: &watchedDirectoryCandidates
                     ) ?? []
                 let rootNode = WorkspaceFileNode(
                     url: mirrorDir,
@@ -118,6 +118,41 @@ extension EditorWorkspaceViewModel {
             }
         }
 
+        let prioritizedCandidates = watchedDirectoryCandidates.sorted { $0.depth < $1.depth }
+        var candidateEntries: [(key: String, url: URL)] = []
+        candidateEntries.reserveCapacity(prioritizedCandidates.count)
+        var seenCandidateKeys: Set<String> = []
+        for candidate in prioritizedCandidates {
+            guard !POSIXWorkspaceFileWatcher.isSystemTemporaryRootDirectory(candidate.url),
+                !candidate.url.path.contains(".runfiles")
+            else {
+                continue
+            }
+            let key = candidate.url.resolvingSymlinksInPath().standardizedFileURL.path
+            if seenCandidateKeys.insert(key).inserted {
+                candidateEntries.append((key: key, url: candidate.url))
+            }
+        }
+
+        pruneWatchedWorkspaceDirectories(keeping: seenCandidateKeys)
+
+        var activeWatchedDirectoryKeys: Set<String> = []
+        for (index, entry) in candidateEntries.enumerated() {
+            if !recordWatchedWorkspaceDirectory(entry.url, activeKeys: &activeWatchedDirectoryKeys) {
+                let currentlyWatched = workspaceFileWatcher.watchedDirectoryKeys
+                var evictableKeys = candidateEntries[(index + 1)...]
+                    .reversed()
+                    .map(\.key)
+                    .filter { currentlyWatched.contains($0) }
+                while !evictableKeys.isEmpty {
+                    let victimKey = evictableKeys.removeFirst()
+                    workspaceFileWatcher.releaseWatchedWorkspaceDirectory(forKey: victimKey)
+                    if recordWatchedWorkspaceDirectory(entry.url, activeKeys: &activeWatchedDirectoryKeys) {
+                        break
+                    }
+                }
+            }
+        }
         pruneWatchedWorkspaceDirectories(keeping: activeWatchedDirectoryKeys)
 
         let sortedRoots = sortNodesArray(combinedRoots, by: fileSortOrder)
@@ -136,13 +171,13 @@ extension EditorWorkspaceViewModel {
         relativePath: String,
         scope: SidebarScanScope,
         flatAccumulator: inout [WorkspaceFileNode],
-        watchedDirectoryKeys: inout Set<String>
+        watchedDirectoryCandidates: inout [(depth: Int, url: URL)]
     ) -> [WorkspaceFileNode] {
         let remoteMountID = scope.remoteMountID
         if remoteMountID == nil {
             let depth = relativePath.isEmpty ? 0 : relativePath.split(separator: "/").count
             guard depth < 4 else { return [] }
-            recordWatchedWorkspaceDirectory(url, activeKeys: &watchedDirectoryKeys)
+            watchedDirectoryCandidates.append((depth: depth, url: url))
         }
         let fm = FileManager.default
         guard
@@ -176,7 +211,7 @@ extension EditorWorkspaceViewModel {
                         relativePath: itemRelativePath,
                         scope: scope,
                         flatAccumulator: &flatAccumulator,
-                        watchedDirectoryKeys: &watchedDirectoryKeys
+                        watchedDirectoryCandidates: &watchedDirectoryCandidates
                     )
                 } else {
                     children = scanDirectory(
@@ -184,7 +219,7 @@ extension EditorWorkspaceViewModel {
                         relativePath: itemRelativePath,
                         scope: scope,
                         flatAccumulator: &flatAccumulator,
-                        watchedDirectoryKeys: &watchedDirectoryKeys
+                        watchedDirectoryCandidates: &watchedDirectoryCandidates
                     )
                 }
                 if let children, !children.isEmpty {
@@ -229,7 +264,7 @@ extension EditorWorkspaceViewModel {
         relativePath: String,
         scope: SidebarScanScope,
         flatAccumulator: inout [WorkspaceFileNode],
-        watchedDirectoryKeys: inout Set<String>
+        watchedDirectoryCandidates: inout [(depth: Int, url: URL)]
     ) -> [WorkspaceFileNode]? {
         let placeholder = [
             WorkspaceFileNode(
@@ -251,7 +286,7 @@ extension EditorWorkspaceViewModel {
             relativePath: relativePath,
             scope: scope,
             flatAccumulator: &flatAccumulator,
-            watchedDirectoryKeys: &watchedDirectoryKeys
+            watchedDirectoryCandidates: &watchedDirectoryCandidates
         )
         if !children.isEmpty { return children }
         return remoteWorkspaceManager.hasListedRemoteDirectory(at: url) ? nil : placeholder

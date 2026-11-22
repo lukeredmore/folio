@@ -442,17 +442,33 @@ public final class EditorWorkspaceViewModel: ObservableObject, HybridMarkdownWor
     @Published public internal(set) var isActiveDocumentWindow: Bool = false
     var isApplyingSharedPreference: Bool = false
 
-    let workspaceFileWatcher = POSIXWorkspaceFileWatcher()
+    let workspaceFileWatcher: POSIXWorkspaceFileWatcher
     var parentDirWatchDescriptor: Int32 { workspaceFileWatcher.parentDirectoryDescriptor }
     var watchedFileInode: UInt64 { workspaceFileWatcher.watchedFileInode }
     var folderWatchEntries: Set<String> { workspaceFileWatcher.watchedDirectoryKeys }
     nonisolated(unsafe) var externalHighlightClearTask: Task<Void, Never>?
 
-    public init(
+    public convenience init(
         remoteWorkspaceManager: RemoteWorkspaceManager? = nil,
         userDefaults: UserDefaults? = nil,
         documentWindow: DocumentWindowContext? = nil,
         windowRegistry: DocumentWindowRegistry? = nil
+    ) {
+        self.init(
+            remoteWorkspaceManager: remoteWorkspaceManager,
+            userDefaults: userDefaults,
+            documentWindow: documentWindow,
+            windowRegistry: windowRegistry,
+            workspaceFileWatcher: POSIXWorkspaceFileWatcher()
+        )
+    }
+
+    init(
+        remoteWorkspaceManager: RemoteWorkspaceManager? = nil,
+        userDefaults: UserDefaults? = nil,
+        documentWindow: DocumentWindowContext? = nil,
+        windowRegistry: DocumentWindowRegistry? = nil,
+        workspaceFileWatcher: POSIXWorkspaceFileWatcher
     ) {
         let resolvedDefaults = userDefaults ?? remoteWorkspaceManager?.userDefaults ?? .standard
         let manager = remoteWorkspaceManager ?? RemoteWorkspaceManager(userDefaults: resolvedDefaults)
@@ -461,6 +477,7 @@ public final class EditorWorkspaceViewModel: ObservableObject, HybridMarkdownWor
         self.documentWindow = documentWindow
         self.windowRegistry = windowRegistry
         self.undoTimelineStore = windowRegistry?.undoTimelineStore ?? UndoTimelineStore()
+        self.workspaceFileWatcher = workspaceFileWatcher
         self.markdownText = Self.defaultWelcomeDocument
         restoreStateOnInit(resolvedDefaults: resolvedDefaults, manager: manager)
         observeTerminationForPendingAutoSave()

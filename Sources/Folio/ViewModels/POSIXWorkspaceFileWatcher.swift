@@ -1,21 +1,207 @@
 import Darwin
+import FolioModels
 import Foundation
 
-private struct WatchedDirectoryEntry {
+private struct DirectoryWatchSubscriber {
+    let onChanged: @MainActor () -> Void
+    let onInvalidated: @Sendable () -> Void
+}
+
+private struct SharedDirectoryEntry {
     let source: DispatchSourceFileSystemObject
     let descriptor: Int32
     let inode: UInt64
+    var subscribers: [UUID: DirectoryWatchSubscriber]
+}
+
+final class SharedDirectoryWatchHub: @unchecked Sendable {
+    static let shared = SharedDirectoryWatchHub()
+
+    private let lock = NSLock()
+    let maxProcessDirectories: Int
+    let reservedDescriptorHeadroom: Int
+    let softOpenFileLimitProvider: @Sendable () -> Int
+    private var entries: [String: SharedDirectoryEntry] = [:]
+
+    init(
+        maxProcessDirectories: Int = 512,
+        reservedDescriptorHeadroom: Int = FolioProcessLimits.reservedDescriptorHeadroom,
+        softOpenFileLimitProvider: @escaping @Sendable () -> Int = { FolioProcessLimits.currentSoftOpenFileLimit() }
+    ) {
+        self.maxProcessDirectories = maxProcessDirectories
+        self.reservedDescriptorHeadroom = reservedDescriptorHeadroom
+        self.softOpenFileLimitProvider = softOpenFileLimitProvider
+    }
+
+    var activeDescriptorCount: Int {
+        lock.lock()
+        defer { lock.unlock() }
+        return entries.count
+    }
+
+    func activeDescriptorKeys() -> Set<String> {
+        lock.lock()
+        defer { lock.unlock() }
+        return Set(entries.keys)
+    }
+
+    func subscribe(
+        watcherID: UUID,
+        key: String,
+        url: URL,
+        currentInode: UInt64,
+        onChanged: @escaping @MainActor () -> Void,
+        onInvalidated: @escaping @Sendable () -> Void
+    ) -> Bool {
+        let subscriber = DirectoryWatchSubscriber(onChanged: onChanged, onInvalidated: onInvalidated)
+        var staleSource: DispatchSourceFileSystemObject?
+        var inheritedSubscribers: [UUID: DirectoryWatchSubscriber] = [:]
+        let maxAllowedDescriptor: Int32
+        let effectiveMaxDirectories: Int
+
+        lock.lock()
+        let softLimit = max(32, softOpenFileLimitProvider())
+        effectiveMaxDirectories = min(maxProcessDirectories, max(16, softLimit - reservedDescriptorHeadroom))
+        maxAllowedDescriptor = Int32(clamping: max(16, softLimit - reservedDescriptorHeadroom))
+
+        if var existing = entries[key] {
+            if existing.inode == currentInode {
+                existing.subscribers[watcherID] = subscriber
+                entries[key] = existing
+                lock.unlock()
+                return true
+            }
+            entries.removeValue(forKey: key)
+            staleSource = existing.source
+            inheritedSubscribers = existing.subscribers
+        }
+        let atCapacity = entries.count >= effectiveMaxDirectories
+        lock.unlock()
+
+        staleSource?.cancel()
+        guard !atCapacity else { return false }
+
+        let dirFD = open(url.path, O_EVTONLY)
+        guard dirFD >= 0 else { return false }
+        if dirFD >= maxAllowedDescriptor {
+            close(dirFD)
+            return false
+        }
+
+        lock.lock()
+        if var existing = entries[key], existing.inode == currentInode {
+            existing.subscribers[watcherID] = subscriber
+            entries[key] = existing
+            lock.unlock()
+            close(dirFD)
+            return true
+        }
+        if entries.count >= effectiveMaxDirectories {
+            lock.unlock()
+            close(dirFD)
+            return false
+        }
+
+        let source = DispatchSource.makeFileSystemObjectSource(
+            fileDescriptor: dirFD,
+            eventMask: [.write, .rename, .extend, .attrib, .delete, .link, .revoke],
+            queue: .main
+        )
+        source.setEventHandler { [weak self, weak source] in
+            let flags = source?.data ?? []
+            self?.handleDirectoryEvent(forKey: key, source: source, flags: flags)
+        }
+        source.setCancelHandler {
+            close(dirFD)
+        }
+
+        var mergedSubscribers = inheritedSubscribers
+        mergedSubscribers[watcherID] = subscriber
+        entries[key] = SharedDirectoryEntry(
+            source: source,
+            descriptor: dirFD,
+            inode: currentInode,
+            subscribers: mergedSubscribers
+        )
+        lock.unlock()
+        source.resume()
+        return true
+    }
+
+    func unsubscribe(watcherID: UUID, keys: some Sequence<String>) {
+        var sourcesToCancel: [DispatchSourceFileSystemObject] = []
+        lock.lock()
+        for key in keys {
+            guard var entry = entries[key] else { continue }
+            entry.subscribers.removeValue(forKey: watcherID)
+            if entry.subscribers.isEmpty {
+                entries.removeValue(forKey: key)
+                sourcesToCancel.append(entry.source)
+            } else {
+                entries[key] = entry
+            }
+        }
+        lock.unlock()
+        for source in sourcesToCancel {
+            source.cancel()
+        }
+    }
+
+    private func handleDirectoryEvent(
+        forKey key: String,
+        source: DispatchSourceFileSystemObject?,
+        flags: DispatchSource.FileSystemEvent
+    ) {
+        let subscribers: [DirectoryWatchSubscriber]
+        let invalidatedSource: DispatchSourceFileSystemObject?
+        lock.lock()
+        guard let entry = entries[key], let source, entry.source === source else {
+            lock.unlock()
+            return
+        }
+        subscribers = Array(entry.subscribers.values)
+        if flags.contains(.delete) || flags.contains(.rename) || flags.contains(.revoke) {
+            entries.removeValue(forKey: key)
+            invalidatedSource = entry.source
+        } else {
+            invalidatedSource = nil
+        }
+        lock.unlock()
+
+        if let invalidatedSource {
+            for subscriber in subscribers {
+                subscriber.onInvalidated()
+            }
+            invalidatedSource.cancel()
+        }
+        MainActor.assumeIsolated {
+            for subscriber in subscribers {
+                subscriber.onChanged()
+            }
+        }
+    }
 }
 
 final class POSIXWorkspaceFileWatcher: @unchecked Sendable {
+    private static let didEnsureProcessLimits: Void = {
+        FolioProcessLimits.raiseOpenFileLimitIfNeeded()
+    }()
+
+    private let watcherID = UUID()
+    private let directoryWatchHub: SharedDirectoryWatchHub
     private let lock = NSLock()
     private var fileWatchSource: DispatchSourceFileSystemObject?
     private var parentDirWatchSource: DispatchSourceFileSystemObject?
     private var fileWatchDescriptor: Int32 = -1
     private var parentDirWatchDescriptor: Int32 = -1
     private var currentWatchedFileInode: UInt64 = 0
-    private var folderWatchEntries: [String: WatchedDirectoryEntry] = [:]
+    private var watchedDirectoryKeySet: Set<String> = []
     private var pendingFolderWatchReloadWorkItem: DispatchWorkItem?
+
+    init(directoryWatchHub: SharedDirectoryWatchHub = .shared) {
+        _ = Self.didEnsureProcessLimits
+        self.directoryWatchHub = directoryWatchHub
+    }
 
     deinit {
         stopAll()
@@ -36,7 +222,7 @@ final class POSIXWorkspaceFileWatcher: @unchecked Sendable {
     var watchedDirectoryKeys: Set<String> {
         lock.lock()
         defer { lock.unlock() }
-        return Set(folderWatchEntries.keys)
+        return watchedDirectoryKeySet
     }
 
     static func isSystemTemporaryRootDirectory(_ url: URL) -> Bool {
@@ -151,81 +337,67 @@ final class POSIXWorkspaceFileWatcher: @unchecked Sendable {
         parentSource?.cancel()
     }
 
+    @discardableResult
     func recordWatchedWorkspaceDirectory(
         _ url: URL,
         activeKeys: inout Set<String>,
         maxDirectories: Int,
         onDirectoryChanged: @escaping @MainActor () -> Void
-    ) {
-        guard !Self.isSystemTemporaryRootDirectory(url), !url.path.contains(".runfiles") else { return }
+    ) -> Bool {
+        guard !Self.isSystemTemporaryRootDirectory(url), !url.path.contains(".runfiles") else { return true }
         let key = url.resolvingSymlinksInPath().standardizedFileURL.path
-        guard !activeKeys.contains(key) else { return }
+        guard !activeKeys.contains(key) else { return true }
         let currentInode = Self.fileInode(for: url)
-        guard currentInode != 0 else { return }
+        guard currentInode != 0 else { return true }
 
-        var staleSource: DispatchSourceFileSystemObject?
         lock.lock()
-        if let existing = folderWatchEntries[key] {
-            if existing.inode == currentInode {
-                lock.unlock()
-                activeKeys.insert(key)
-                return
-            }
-            staleSource = existing.source
-            folderWatchEntries.removeValue(forKey: key)
-        }
-        let atCapacity = folderWatchEntries.count >= maxDirectories
+        let atPerWatcherCapacity = !watchedDirectoryKeySet.contains(key) && watchedDirectoryKeySet.count >= maxDirectories
         lock.unlock()
-        staleSource?.cancel()
-        guard !atCapacity else { return }
+        guard !atPerWatcherCapacity else { return false }
 
-        let dirFD = open(url.path, O_EVTONLY)
-        guard dirFD >= 0 else { return }
-
-        let source = DispatchSource.makeFileSystemObjectSource(
-            fileDescriptor: dirFD,
-            eventMask: [.write, .rename, .extend, .attrib, .delete, .link, .revoke],
-            queue: .main
+        let subscribed = directoryWatchHub.subscribe(
+            watcherID: watcherID,
+            key: key,
+            url: url,
+            currentInode: currentInode,
+            onChanged: onDirectoryChanged,
+            onInvalidated: { [weak self] in
+                self?.handleInvalidatedDirectory(forKey: key)
+            }
         )
-        source.setEventHandler { [weak self, weak source] in
-            let flags = source?.data ?? []
-            if flags.contains(.delete) || flags.contains(.rename) || flags.contains(.revoke) {
-                self?.removeWatchedDirectory(forKey: key)
-            }
-            MainActor.assumeIsolated {
-                onDirectoryChanged()
-            }
-        }
-        source.setCancelHandler {
-            close(dirFD)
-        }
+        guard subscribed else { return false }
 
         lock.lock()
-        folderWatchEntries[key] = WatchedDirectoryEntry(source: source, descriptor: dirFD, inode: currentInode)
+        watchedDirectoryKeySet.insert(key)
         lock.unlock()
-        source.resume()
         activeKeys.insert(key)
+        return true
     }
 
-    private func removeWatchedDirectory(forKey key: String) {
+    func releaseWatchedWorkspaceDirectory(forKey key: String) {
         lock.lock()
-        let removed = folderWatchEntries.removeValue(forKey: key)
+        let removed = watchedDirectoryKeySet.remove(key) != nil
         lock.unlock()
-        removed?.source.cancel()
+        if removed {
+            directoryWatchHub.unsubscribe(watcherID: watcherID, keys: [key])
+        }
+    }
+
+    private func handleInvalidatedDirectory(forKey key: String) {
+        lock.lock()
+        watchedDirectoryKeySet.remove(key)
+        lock.unlock()
     }
 
     func pruneWatchedWorkspaceDirectories(keeping activeKeys: Set<String>) {
         lock.lock()
-        let staleKeys = folderWatchEntries.keys.filter { !activeKeys.contains($0) }
-        var removedSources: [DispatchSourceFileSystemObject] = []
+        let staleKeys = watchedDirectoryKeySet.filter { !activeKeys.contains($0) }
         for key in staleKeys {
-            if let entry = folderWatchEntries.removeValue(forKey: key) {
-                removedSources.append(entry.source)
-            }
+            watchedDirectoryKeySet.remove(key)
         }
         lock.unlock()
-        for source in removedSources {
-            source.cancel()
+        if !staleKeys.isEmpty {
+            directoryWatchHub.unsubscribe(watcherID: watcherID, keys: staleKeys)
         }
     }
 
@@ -261,12 +433,12 @@ final class POSIXWorkspaceFileWatcher: @unchecked Sendable {
         lock.lock()
         let pendingWork = pendingFolderWatchReloadWorkItem
         pendingFolderWatchReloadWorkItem = nil
-        let entries = Array(folderWatchEntries.values)
-        folderWatchEntries.removeAll()
+        let keys = Array(watchedDirectoryKeySet)
+        watchedDirectoryKeySet.removeAll()
         lock.unlock()
         pendingWork?.cancel()
-        for entry in entries {
-            entry.source.cancel()
+        if !keys.isEmpty {
+            directoryWatchHub.unsubscribe(watcherID: watcherID, keys: keys)
         }
     }
 

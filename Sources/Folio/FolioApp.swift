@@ -220,6 +220,7 @@ public struct FolioApp: App {
     private let registry = DocumentWindowRegistry.shared
 
     public init() {
+        FolioProcessLimits.raiseOpenFileLimitIfNeeded()
         FolioCLIManager.handleImmediateCLIFlagsIfNeeded()
         NSApplication.shared.setActivationPolicy(.regular)
         NSApplication.shared.applicationIconImage = FolioBrandIcon.makeCurrentAppIconImage(pixelSize: 512)
