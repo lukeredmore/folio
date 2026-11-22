@@ -319,8 +319,16 @@ extension LaTeXMacroExpander {
         return (spans, idx)
     }
 
+    private static let structuralBlockCommands: Set<String> = [
+        "\\begin", "\\end", "\\item", "\\section", "\\subsection", "\\subsubsection", "\\chapter", "\\part",
+        "\\par", "\\newpage", "\\clearpage"
+    ]
+
     private static func readUndelimitedArgument(_ chars: [Character], at idx: Int) -> LaTeXArgumentSpan? {
         guard idx < chars.count, chars[idx] != "}", let (value, after) = readMacroArgument(chars, at: idx) else { return nil }
+        if chars[idx] == "\\", structuralBlockCommands.contains(value) {
+            return nil
+        }
         let content = chars[idx] == "{" ? (idx + 1)..<(after - 1) : idx..<after
         return LaTeXArgumentSpan(raw: idx..<after, content: content, value: value)
     }

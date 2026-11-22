@@ -120,6 +120,8 @@ extension LaTeXProseMacroExpander {
         var segments: [LaTeXProseSegment] = []
         /// Stack of `\begingroup` styles active inside the current `render` scope.
         var groupStack: [LaTeXProseStyle] = []
+        /// Stack of enclosing inline `tabular`/`tabularx` base styles for `&` cell separators.
+        var tabularStack: [LaTeXProseStyle] = []
         /// How many math segments enclose this renderer. Text macros inside math are rendered by
         /// a nested renderer, and this bounds the nesting.
         let mathNesting: Int
@@ -158,7 +160,10 @@ extension LaTeXProseMacroExpander {
                 }
                 return end
             }
-            guard let (args, afterArgs) = LaTeXMacroExpander.readArguments(for: def, in: chars, from: end) else { return nil }
+            guard
+                let (args, afterArgs) = LaTeXMacroExpander.readArguments(for: def, in: chars, from: end)
+                    ?? Self.readArgumentsPaddingGuardedTrailingOptionals(for: def, in: chars, from: end)
+            else { return nil }
             end = afterArgs
             let takesNoArguments = def.argCount == 0 && def.parameterText == nil && !consumesStar
             if takesNoArguments && style == nil && end + 1 < chars.count && chars[end] == "{" && chars[end + 1] == "}" {
@@ -173,7 +178,8 @@ extension LaTeXProseMacroExpander {
                 guard expandedBudget >= 0, renderArrayAlternatives(layout, args: args, style: style ?? LaTeXProseStyle(), depth: depth) else { return nil }
                 return end
             }
-            let body = LaTeXMacroExpander.substituteArguments(args, into: def.replacement)
+            let sanitizedArgs = Self.sanitizeArguments(args, forReplacement: def.replacement)
+            let body = LaTeXMacroExpander.substituteArguments(sanitizedArgs, into: def.replacement)
             expandedBudget -= body.count
             guard expandedBudget >= 0 else { return nil }
             var bodyStyle = style ?? LaTeXProseStyle()
@@ -188,9 +194,13 @@ extension LaTeXProseMacroExpander {
         /// enclosing group ends, as in TeX.
         mutating func render(_ chars: [Character], style: inout LaTeXProseStyle, depth: Int) -> Bool {
             let savedStackCount = groupStack.count
+            let savedTabularCount = tabularStack.count
             defer {
                 while groupStack.count > savedStackCount {
                     groupStack.removeLast()
+                }
+                while tabularStack.count > savedTabularCount {
+                    tabularStack.removeLast()
                 }
             }
             var idx = 0
@@ -214,7 +224,12 @@ extension LaTeXProseMacroExpander {
                 guard let (inner, after) = LaTeXMacroExpander.readBracedGroup(chars, at: idx) else { return nil }
                 var groupStyle = style
                 return render(Array(inner), style: &groupStyle, depth: depth) ? after : nil
-            case "}", "#", "&", "^", "_":
+            case "&":
+                guard let tableBaseStyle = tabularStack.last else { return nil }
+                style = tableBaseStyle
+                emit(hasVisibleTextOnCurrentLine ? "\u{2003}" : "\u{2003}\u{2002}", style: style)
+                return LaTeXMacroExpander.skipSpaces(chars, from: idx + 1)
+            case "}", "#", "^", "_":
                 return nil
             case "$":
                 return readDollarMath(chars, at: idx, style: style)
@@ -240,9 +255,9 @@ extension LaTeXProseMacroExpander {
                 }
                 return p
             }
-            if matches("http://", chars, at: idx) || matches("https://", chars, at: idx) {
+            if matches("http://", chars, at: idx) || matches("https://", chars, at: idx) || matches("www.", chars, at: idx) {
                 var p = idx
-                while p < chars.count && !chars[p].isWhitespace && chars[p] != "}" && chars[p] != "]" && chars[p] != ">" {
+                while p < chars.count && Self.isBareURLCharacter(chars[p]) {
                     p += 1
                 }
                 var urlStyle = style
@@ -345,6 +360,246 @@ extension LaTeXProseMacroExpander {
                     return
                 }
             }
+        }
+
+        private static func readArgumentsPaddingGuardedTrailingOptionals(
+            for def: LaTeXMacroDefinition,
+            in chars: [Character],
+            from start: Int
+        ) -> (args: [String], end: Int)? {
+            guard def.argCount >= 2, def.parameterText == nil else { return nil }
+            var idx = start
+            var args: [String] = []
+            if let defaultOpt = def.defaultFirstArg {
+                let probe = LaTeXMacroExpander.skipSpaces(chars, from: idx)
+                if let (optVal, afterOpt) = LaTeXMacroExpander.readBracketGroup(chars, at: probe) {
+                    args.append(optVal)
+                    idx = afterOpt
+                } else {
+                    args.append(defaultOpt)
+                }
+            }
+            var suppliedBracedCount = 0
+            while args.count < def.argCount {
+                let probe = LaTeXMacroExpander.skipSpaces(chars, from: idx)
+                guard let (value, after) = LaTeXMacroExpander.readBracedGroup(chars, at: probe) else { break }
+                args.append(value)
+                suppliedBracedCount += 1
+                idx = after
+            }
+            let trailingProbe = LaTeXMacroExpander.skipSpaces(chars, from: idx)
+            guard suppliedBracedCount >= 1,
+                args.count < def.argCount,
+                trailingProbe >= chars.count || chars[trailingProbe] != "{"
+            else {
+                return nil
+            }
+            for paramNumber in (args.count + 1)...def.argCount {
+                guard isParameterGuardedForEmpty(paramNumber, in: def.replacement) else { return nil }
+            }
+            while args.count < def.argCount {
+                args.append("")
+            }
+            return (args, idx)
+        }
+
+        private static func isParameterGuardedForEmpty(_ paramNumber: Int, in replacement: String) -> Bool {
+            let needle = "#\(paramNumber)"
+            return replacement.contains("\\ifstrequal{\(needle)}{}{")
+                || replacement.contains("\\ifblank{\(needle)}{")
+                || replacement.contains("\\ifstrempty{\(needle)}{")
+        }
+
+        private static func sanitizeArguments(_ args: [String], forReplacement replacement: String) -> [String] {
+            let escapeAmpersand = !hasUnwrappedAlignmentAmpersand(replacement)
+            let escapeUnderscore = !replacement.contains("$") && !replacement.contains("\\(") && !replacement.contains("\\ensuremath")
+            guard escapeAmpersand || escapeUnderscore else { return args }
+            return args.map { arg in
+                guard (escapeAmpersand && arg.contains("&")) || (escapeUnderscore && arg.contains("_")) else {
+                    return arg
+                }
+                return sanitizeArgument(arg, escapeAmpersand: escapeAmpersand, escapeUnderscore: escapeUnderscore)
+            }
+        }
+
+        private static func hasUnwrappedAlignmentAmpersand(_ replacement: String) -> Bool {
+            guard replacement.contains("&") else { return false }
+            let chars = Array(replacement)
+            var alignmentDepth = 0
+            var idx = 0
+            while idx < chars.count {
+                let ch = chars[idx]
+                if ch == "%" {
+                    while idx < chars.count && chars[idx] != "\n" { idx += 1 }
+                    continue
+                }
+                if ch == "$" {
+                    idx += 1
+                    while idx < chars.count {
+                        if chars[idx] == "\\" {
+                            idx += 2
+                            continue
+                        }
+                        if chars[idx] == "$" {
+                            idx += 1
+                            break
+                        }
+                        idx += 1
+                    }
+                    continue
+                }
+                if ch == "\\" {
+                    if idx + 1 < chars.count && chars[idx + 1] == "(" {
+                        idx += 2
+                        while idx + 1 < chars.count && !(chars[idx] == "\\" && chars[idx + 1] == ")") {
+                            idx += chars[idx] == "\\" ? 2 : 1
+                        }
+                        idx = min(chars.count, idx + 2)
+                        continue
+                    }
+                    let (word, afterWord) = LaTeXMacroExpander.readControlWord(chars, at: idx)
+                    if (word == "\\begin" || word == "\\end"),
+                        let (envName, afterEnv) = LaTeXMacroExpander.readBracedGroup(chars, at: LaTeXMacroExpander.skipSpaces(chars, from: afterWord))
+                    {
+                        if isAlignmentEnvironmentName(envName) {
+                            alignmentDepth += word == "\\begin" ? 1 : -1
+                            alignmentDepth = max(0, alignmentDepth)
+                        }
+                        idx = afterEnv
+                        continue
+                    }
+                    idx = max(idx + 1, afterWord)
+                    continue
+                }
+                if ch == "&" && alignmentDepth == 0 {
+                    return true
+                }
+                idx += 1
+            }
+            return false
+        }
+
+        private static func isAlignmentEnvironmentName(_ name: String) -> Bool {
+            name.hasPrefix("tabular") || name == "array" || name.hasPrefix("align") || name.hasPrefix("flalign")
+                || name.hasSuffix("matrix") || name == "cases"
+        }
+
+        private static func sanitizeArgument(_ arg: String, escapeAmpersand: Bool, escapeUnderscore: Bool) -> String {
+            let chars = Array(arg)
+            var out: [Character] = []
+            out.reserveCapacity(chars.count + 4)
+            var alignmentDepth = 0
+            var idx = 0
+            while idx < chars.count {
+                let ch = chars[idx]
+                if ch == "\\" {
+                    guard idx + 1 < chars.count else {
+                        out.append(ch)
+                        break
+                    }
+                    let next = chars[idx + 1]
+                    if !next.isLetter && next != "@" {
+                        if next == "(" {
+                            out.append(ch)
+                            out.append(next)
+                            idx += 2
+                            while idx < chars.count {
+                                if chars[idx] == "\\" && idx + 1 < chars.count && chars[idx + 1] == ")" {
+                                    out.append("\\")
+                                    out.append(")")
+                                    idx += 2
+                                    break
+                                }
+                                out.append(chars[idx])
+                                idx += 1
+                            }
+                            continue
+                        }
+                        out.append(ch)
+                        out.append(next)
+                        idx += 2
+                        continue
+                    }
+                    let (word, afterWord) = LaTeXMacroExpander.readControlWord(chars, at: idx)
+                    if word == "\\url" || word == "\\href" || word == "\\ensuremath" {
+                        out.append(contentsOf: word)
+                        let probe = LaTeXMacroExpander.skipSpaces(chars, from: afterWord)
+                        if let (group, afterGroup) = LaTeXMacroExpander.readBracedGroup(chars, at: probe) {
+                            out.append(contentsOf: chars[afterWord..<probe])
+                            out.append("{")
+                            out.append(contentsOf: group)
+                            out.append("}")
+                            idx = afterGroup
+                            continue
+                        }
+                        idx = afterWord
+                        continue
+                    }
+                    if (word == "\\begin" || word == "\\end"),
+                        let (envName, afterEnv) = LaTeXMacroExpander.readBracedGroup(chars, at: LaTeXMacroExpander.skipSpaces(chars, from: afterWord))
+                    {
+                        if isAlignmentEnvironmentName(envName) {
+                            alignmentDepth += word == "\\begin" ? 1 : -1
+                            alignmentDepth = max(0, alignmentDepth)
+                        }
+                        out.append(contentsOf: chars[idx..<afterEnv])
+                        idx = afterEnv
+                        continue
+                    }
+                    out.append(contentsOf: word)
+                    idx = afterWord
+                    continue
+                }
+                if ch == "$" {
+                    out.append(ch)
+                    idx += 1
+                    while idx < chars.count {
+                        let mathCh = chars[idx]
+                        out.append(mathCh)
+                        if mathCh == "\\" && idx + 1 < chars.count {
+                            idx += 1
+                            out.append(chars[idx])
+                            idx += 1
+                            continue
+                        }
+                        idx += 1
+                        if mathCh == "$" { break }
+                    }
+                    continue
+                }
+                if matchPrefix("http://", chars, at: idx) || matchPrefix("https://", chars, at: idx) || matchPrefix("www.", chars, at: idx) {
+                    while idx < chars.count && isBareURLCharacter(chars[idx]) {
+                        out.append(chars[idx])
+                        idx += 1
+                    }
+                    continue
+                }
+                if ch == "&" && escapeAmpersand && alignmentDepth == 0 {
+                    out.append("\\")
+                    out.append("&")
+                    idx += 1
+                    continue
+                }
+                if ch == "_" && escapeUnderscore && alignmentDepth == 0 {
+                    out.append("\\")
+                    out.append("_")
+                    idx += 1
+                    continue
+                }
+                out.append(ch)
+                idx += 1
+            }
+            return String(out)
+        }
+
+        private static func matchPrefix(_ prefix: String, _ chars: [Character], at idx: Int) -> Bool {
+            let p = Array(prefix)
+            guard idx + p.count <= chars.count else { return false }
+            return Array(chars[idx..<(idx + p.count)]) == p
+        }
+
+        private static func isBareURLCharacter(_ ch: Character) -> Bool {
+            !ch.isWhitespace && ch != "}" && ch != "{" && ch != "\\" && ch != "]" && ch != ">" && ch != "$" && ch != "%"
         }
     }
 }

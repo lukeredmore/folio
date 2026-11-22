@@ -38,6 +38,11 @@ private enum LaTeXProseCommand: Sendable {
     case dimension
     /// Skips a TeX integer such as `-5`, as `\penalty` takes.
     case integer
+    case beginEnv
+    case endEnv
+    case multirow
+    case tikzInline
+    case tikzNode
 }
 
 private let iconSymbols: [String: String] = [
@@ -203,7 +208,15 @@ private let proseCommands: [String: LaTeXProseCommand] = {
         "fontshape": .fontShape,
         "hskip": .dimension,
         "kern": .dimension,
-        "penalty": .integer
+        "penalty": .integer,
+        "begin": .beginEnv,
+        "end": .endEnv,
+        "multirow": .multirow,
+        "multicolumn": .wrapper(braces: 2, brackets: 0),
+        "cline": .drop(brackets: 0, braces: 1),
+        "cmidrule": .drop(brackets: 1, braces: 1),
+        "tikz": .tikzInline,
+        "node": .tikzNode
     ]
     let sizes: [(String, Double)] = [
         ("tiny", 0.7), ("scriptsize", 0.75), ("footnotesize", 0.85), ("small", 0.92), ("normalsize", 1.0),
@@ -215,7 +228,7 @@ private let proseCommands: [String: LaTeXProseCommand] = {
     let ignored = [
         "selectfont", "boldmath", "unboldmath", "unskip", "relax", "nobreak", "strut", "leavevmode",
         "ignorespaces", "protect", "noindent", "null", "smash", "smallskip", "medskip", "bigskip",
-        "raggedright", "raggedleft", "centering", "arraybackslash"
+        "raggedright", "raggedleft", "centering", "arraybackslash", "hline", "toprule", "midrule", "bottomrule"
     ]
     for name in ignored {
         table[name] = .symbol("")
@@ -322,7 +335,7 @@ extension LaTeXProseMacroExpander.Renderer {
     ) -> Int? {
         guard idx + 1 < chars.count else { return nil }
         let next = chars[idx + 1]
-        guard next.isLetter || next == "@" else { return renderControlSymbol(chars, at: idx, style: style) }
+        guard next.isLetter || next == "@" else { return renderControlSymbol(chars, at: idx, style: &style) }
         let (word, afterWord) = LaTeXMacroExpander.readControlWord(chars, at: idx)
         let hasStar = afterWord < chars.count && chars[afterWord] == "*"
         let callName = String(word.dropFirst()) + (hasStar ? "*" : "")
@@ -519,7 +532,78 @@ extension LaTeXProseMacroExpander.Renderer {
             let digits = idx
             while idx < chars.count && chars[idx].isNumber { idx += 1 }
             return idx > digits ? idx : nil
+        case .beginEnv:
+            guard let (envName, afterEnv) = readRawBracedGroup(chars, at: start),
+                envName == "tabular" || envName == "tabularx" || envName == "tabular*"
+            else { return nil }
+            var idx = afterEnv
+            if envName == "tabularx" || envName == "tabular*" {
+                guard let (_, afterWidth) = readArgument(chars, at: idx) else { return nil }
+                idx = afterWidth
+            }
+            idx = skipBrackets(chars, from: idx, limit: 1)
+            guard let (_, afterCols) = readRawBracedGroup(chars, at: idx) else { return nil }
+            tabularStack.append(style)
+            return LaTeXMacroExpander.skipSpaces(chars, from: afterCols)
+        case .endEnv:
+            guard let (envName, afterEnv) = readRawBracedGroup(chars, at: start),
+                envName == "tabular" || envName == "tabularx" || envName == "tabular*",
+                let restoredStyle = tabularStack.popLast()
+            else { return nil }
+            style = restoredStyle
+            appendParagraphBreak()
+            return afterEnv
+        case .multirow:
+            var idx = skipBrackets(chars, from: start, limit: 1)
+            guard let (_, afterRows) = readArgument(chars, at: idx) else { return nil }
+            idx = skipBrackets(chars, from: afterRows, limit: 1)
+            guard let (_, afterWidth) = readArgument(chars, at: idx) else { return nil }
+            idx = skipBrackets(chars, from: afterWidth, limit: 1)
+            guard let (text, end) = readArgument(chars, at: idx) else { return nil }
+            var cellStyle = style
+            return render(Array(text), style: &cellStyle, depth: depth) ? end : nil
+        case .tikzInline:
+            return skipBrackets(chars, from: start, limit: 1)
+        case .tikzNode:
+            let idx = Self.skipTikzNodeModifiers(chars, from: start)
+            guard let (content, end) = readArgument(chars, at: idx) else { return nil }
+            var tagStyle = style
+            tagStyle.bold = true
+            if tagStyle.colorName == nil { tagStyle.colorName = "accent" }
+            emit("[", style: tagStyle)
+            guard render(Array(content), style: &tagStyle, depth: depth) else { return nil }
+            emit("]", style: tagStyle)
+            let semi = LaTeXMacroExpander.skipSpaces(chars, from: end)
+            if semi < chars.count && chars[semi] == ";" {
+                return semi + 1
+            }
+            return end
         }
+    }
+
+    private static func skipTikzNodeModifiers(_ chars: [Character], from start: Int) -> Int {
+        var idx = start
+        while idx < chars.count {
+            let probe = LaTeXMacroExpander.skipSpaces(chars, from: idx)
+            guard probe < chars.count else { return probe }
+            if let (_, afterBracket) = LaTeXMacroExpander.readBracketGroup(chars, at: probe) {
+                idx = afterBracket
+            } else if chars[probe] == "(", let closeParen = chars[probe...].firstIndex(of: ")") {
+                idx = closeParen + 1
+            } else if probe + 1 < chars.count, chars[probe] == "a", chars[probe + 1] == "t",
+                probe + 2 >= chars.count || !chars[probe + 2].isLetter
+            {
+                let afterAt = LaTeXMacroExpander.skipSpaces(chars, from: probe + 2)
+                if afterAt < chars.count, chars[afterAt] == "(", let closeParen = chars[afterAt...].firstIndex(of: ")") {
+                    idx = closeParen + 1
+                } else {
+                    return probe
+                }
+            } else {
+                return probe
+            }
+        }
+        return idx
     }
 
     private func readRawBracedGroup(_ chars: [Character], at start: Int) -> (String, Int)? {
@@ -598,10 +682,13 @@ extension LaTeXProseMacroExpander.Renderer {
         return String(result)
     }
 
-    private mutating func renderControlSymbol(_ chars: [Character], at idx: Int, style: LaTeXProseStyle) -> Int? {
+    private mutating func renderControlSymbol(_ chars: [Character], at idx: Int, style: inout LaTeXProseStyle) -> Int? {
         let symbol = chars[idx + 1]
         switch symbol {
         case "\\":
+            if let tableBaseStyle = tabularStack.last {
+                style = tableBaseStyle
+            }
             appendLineBreak()
             var p = idx + 2
             if p < chars.count && chars[p] == "*" { p += 1 }

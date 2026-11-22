@@ -113,7 +113,15 @@
 }
 
 \newcommand{\cvachievement}[3]{%
-  {\Large\color{accent}#1}\hspace{0.5em}\textbf{\textcolor{emphasis}{#2}} -- #3\par\smallskip
+  \begin{tabularx}{\linewidth}{@{}p{2em} @{\hspace{1ex}} >{\raggedright\arraybackslash}X@{}}
+  \multirow{2}{*}{\Large\color{accent}#1} & \bfseries\textcolor{emphasis}{#2}\\
+  & #3
+  \end{tabularx}%
+  \smallskip
+}
+
+\newcommand{\cvtag}[1]{%
+  \tikz[baseline]\node[anchor=base,draw=body!30,rounded corners,inner xsep=1ex,inner ysep=0.75ex,text height=1.5ex,text depth=.25ex]{#1};
 }
 
 \newcommand{\cvskill}[2]{%
