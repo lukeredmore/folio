@@ -785,8 +785,15 @@ extension LaTeXStylePass {
     }
 
     private static func needsFollowingLines(_ chars: [Character], call: CallStart, macros: [String: LaTeXMacroDefinition]) -> Bool {
-        guard let end = callEnd(chars, call: call, macros: macros) else { return true }
-        return call.definition?.parameterText != nil && end >= chars.count
+        if let end = callEnd(chars, call: call, macros: macros) {
+            return call.definition?.parameterText != nil && end >= chars.count
+        }
+        if call.definition != nil,
+            LaTeXProseMacroExpander.expandCall(source: String(chars[call.position...]), macros: macros) != nil
+        {
+            return false
+        }
+        return true
     }
 
     private static func callEnd(_ chars: [Character], call: CallStart, macros: [String: LaTeXMacroDefinition]) -> Int? {

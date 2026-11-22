@@ -124,7 +124,15 @@ final class LaTeXCustomClassCVTests: XCTestCase {
         }
 
         \newcommand{\cvachievement}[3]{%
-          {\Large\color{accent}#1}\hspace{0.5em}\textbf{\textcolor{emphasis}{#2}} -- #3\par\smallskip
+          \begin{tabularx}{\linewidth}{@{}p{2em} @{\hspace{1ex}} >{\raggedright\arraybackslash}X@{}}
+          \multirow{2}{*}{\Large\color{accent}#1} & \bfseries\textcolor{emphasis}{#2}\\
+          & #3
+          \end{tabularx}%
+          \smallskip
+        }
+
+        \newcommand{\cvtag}[1]{%
+          \tikz[baseline]\node[anchor=base,draw=body!30,rounded corners,inner xsep=1ex,inner ysep=0.75ex,text height=1.5ex,text depth=.25ex]{#1};
         }
 
         \newcommand{\cvskill}[2]{%
@@ -376,19 +384,100 @@ final class LaTeXCustomClassCVTests: XCTestCase {
             "latex_cv_class_showcase.tex",
             companions: ["altacv_showcase.cls", "latex_cv_sidebar.tex"]
         )
-        let (_, analysis) = try LaTeXProjectFixtures.style(showcaseURL, cursorLine: 0, width: 900)
+        let (storage, analysis) = try LaTeXProjectFixtures.style(showcaseURL, cursorLine: 0, width: 900)
         XCTAssertEqual(analysis.headings.map(\.title), ["Education", "Publications & Talks"])
-        let rich = analysis.decorations.compactMap { dec -> String? in
-            guard case let .latexInlineRichText(lines, _, _) = dec.kind else { return nil }
-            return lines.map { $0.compactMap { if case let .text(t, _, _, _, _) = $0 { return t } else { return nil } }.joined() }.joined(separator: "\n")
-        }.joined(separator: "\n")
-        XCTAssertTrue(rich.contains("Ph.D. in Computational Physics"))
-        XCTAssertTrue(rich.contains("Meridian Institute of Technology"))
-        XCTAssertTrue(rich.contains("@ elena.rostova@example.edu"))
-        XCTAssertTrue(rich.contains("https://example.edu/~erostova"))
+        let dump = LaTeXRenderDump.dump(storage, decorations: analysis.decorations)
+        for expectedText in [
+            "Ph.D. in Computational Physics",
+            "Meridian Institute of Technology",
+            "B.S. in Physics & Applied Mathematics",
+            "University of Northbridge",
+            "An Introduction to Structured",
+            "Adaptive Wavelet Solvers for Hyperbolic Systems",
+            "@ elena.rostova@example.edu",
+            "https://example.edu/~erostova"
+        ] {
+            XCTAssertTrue(dump.contains(expectedText), "Missing rendered showcase text: \(expectedText)\nDump:\n\(dump)")
+        }
+        for rawMacro in ["\\cvevent", "\\cvsection", "\\personalinfo", "\\makecvheader"] {
+            XCTAssertFalse(dump.contains(rawMacro), "Unrendered raw macro \(rawMacro) found in showcase dump:\n\(dump)")
+        }
 
         let sidebarURL = showcaseURL.deletingLastPathComponent().appendingPathComponent("latex_cv_sidebar.tex")
-        let (_, sidebarAnalysis) = try LaTeXProjectFixtures.style(sidebarURL, cursorLine: 0, width: 900)
-        XCTAssertEqual(sidebarAnalysis.headings.map(\.title), ["Research Interests", "Links & Honors", "Teaching", "Languages"])
+        let (sidebarStorage, sidebarAnalysis) = try LaTeXProjectFixtures.style(sidebarURL, cursorLine: 0, width: 900)
+        XCTAssertEqual(sidebarAnalysis.headings.map(\.title), ["Research Interests", "Links & Honors", "Teaching", "Languages", "Skills"])
+        let sidebarDump = LaTeXRenderDump.dump(sidebarStorage, decorations: sidebarAnalysis.decorations)
+        for expectedSidebarText in [
+            "Curriculum Vitae Summary",
+            "Outstanding Graduate Research Fellow",
+            "Mathematical Methods in Physics I",
+            "[C++20]",
+            "[CUDA]",
+            "[MPI]",
+            "[Rust]"
+        ] {
+            XCTAssertTrue(sidebarDump.contains(expectedSidebarText), "Missing rendered sidebar text: \(expectedSidebarText)\nDump:\n\(sidebarDump)")
+        }
+        for rawSidebarMacro in ["\\cvachievement", "\\cvsideevent", "\\cvskill", "\\cvtag"] {
+            XCTAssertFalse(sidebarDump.contains(rawSidebarMacro), "Unrendered raw sidebar macro \(rawSidebarMacro) found:\n\(sidebarDump)")
+        }
+    }
+
+    func testCVMacrosHandleUnescapedAmpersandsUnderscoresUrlsAndShortEventCalls() throws {
+        let dir = try makeTemporaryDirectory("AltaCVEdgeCases")
+        let extraClass =
+            altaCVClassSource() + "\n" + #"""
+                \newcommand{\githubsymbol}{\faGithub}
+                \newcommand{\github}[1]{\printinfo{\githubsymbol}{#1}}
+                """#
+        let doc = #"""
+            \documentclass[10pt,a4paper,ragged2e]{altacv}
+            \begin{document}
+            \name{Elena Rostova}
+            \tagline{Physics & Computation}
+            \personalinfo{%
+              \email{elena_rostova@example.edu}
+              \github{github.com/elena_rostova}
+              \homepage{www.example.edu/cv_2026.pdf}
+            }
+            \begin{fullwidth}
+            \makecvheader
+            \end{fullwidth}
+            \cvsection{Education}
+            \cvevent{B.S. in Physics & Applied Mathematics}{University of Northbridge}{September 2017 -- May 2021}{Northbridge, UK}{}{}
+            \cvevent{Job Title 1}{Company 1}{Month 20XX -- Ongoing}{Location}
+            \begin{itemize}
+              \item Built spectral solvers
+            \end{itemize}
+            \cvachievement{\faTrophy}{Best Paper Award}{Journal of Computational Physics}
+            \cvtag{Swift_6} \cvtag{C++20}
+            \end{document}
+            """#
+        try LaTeXProjectFixtures.write(["altacv.cls": extraClass, "cv.tex": doc], in: dir)
+        let cvURL = dir.appendingPathComponent("cv.tex")
+        let (storage, analysis) = try LaTeXProjectFixtures.style(cvURL, cursorLine: 0, width: 900)
+        let dump = LaTeXRenderDump.dump(storage, decorations: analysis.decorations)
+
+        for expectedText in [
+            "Physics & Computation",
+            "@ elena_rostova@example.edu",
+            "⌘ github.com/elena_rostova",
+            "🔗 ‹u:www.example.edu/cv_2026.pdf›",
+            "B.S. in Physics & Applied Mathematics",
+            "University of Northbridge",
+            "Job Title 1",
+            "Company 1",
+            "Built spectral solvers",
+            "Best Paper Award",
+            "Journal of Computational Physics",
+            "[Swift_6]",
+            "[C++20]"
+        ] {
+            XCTAssertTrue(dump.contains(expectedText), "Expected rendered text '\(expectedText)' missing from dump:\n\(dump)")
+        }
+
+        for rawMacro in ["\\cvevent", "\\personalinfo", "\\makecvheader", "\\cvachievement", "\\cvtag", "\\begin{itemize}"] {
+            XCTAssertFalse(dump.contains(rawMacro), "Unexpected raw source '\(rawMacro)' in dump:\n\(dump)")
+        }
     }
 }
