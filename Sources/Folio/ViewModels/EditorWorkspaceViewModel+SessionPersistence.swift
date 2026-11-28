@@ -141,16 +141,7 @@ extension EditorWorkspaceViewModel {
             self.localSidebarFilters = [:]
         }
 
-        if !undoTimelineStore.hasLoaded {
-            if let savedTimelinesData = resolvedDefaults.data(forKey: Self.undoTimelinesDefaultsKey),
-                let decodedTimelines = try? JSONDecoder().decode([String: DocumentUndoTimeline].self, from: savedTimelinesData)
-            {
-                self.perFileUndoTimelines = decodedTimelines
-            } else {
-                self.perFileUndoTimelines = [:]
-            }
-            undoTimelineStore.hasLoaded = true
-        }
+        undoTimelineStore.loadIfNeeded(from: resolvedDefaults, defaultsKey: Self.undoTimelinesDefaultsKey)
 
         if let savedRecentPaths = resolvedDefaults.stringArray(forKey: Self.recentFilePathsDefaultsKey) {
             let fm = FileManager.default

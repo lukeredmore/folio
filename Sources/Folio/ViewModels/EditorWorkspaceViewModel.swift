@@ -452,14 +452,16 @@ public final class EditorWorkspaceViewModel: ObservableObject, HybridMarkdownWor
         remoteWorkspaceManager: RemoteWorkspaceManager? = nil,
         userDefaults: UserDefaults? = nil,
         documentWindow: DocumentWindowContext? = nil,
-        windowRegistry: DocumentWindowRegistry? = nil
+        windowRegistry: DocumentWindowRegistry? = nil,
+        undoTimelineStore: UndoTimelineStore? = nil
     ) {
         self.init(
             remoteWorkspaceManager: remoteWorkspaceManager,
             userDefaults: userDefaults,
             documentWindow: documentWindow,
             windowRegistry: windowRegistry,
-            workspaceFileWatcher: POSIXWorkspaceFileWatcher()
+            workspaceFileWatcher: POSIXWorkspaceFileWatcher(),
+            undoTimelineStore: undoTimelineStore
         )
     }
 
@@ -468,7 +470,8 @@ public final class EditorWorkspaceViewModel: ObservableObject, HybridMarkdownWor
         userDefaults: UserDefaults? = nil,
         documentWindow: DocumentWindowContext? = nil,
         windowRegistry: DocumentWindowRegistry? = nil,
-        workspaceFileWatcher: POSIXWorkspaceFileWatcher
+        workspaceFileWatcher: POSIXWorkspaceFileWatcher,
+        undoTimelineStore: UndoTimelineStore? = nil
     ) {
         let resolvedDefaults = userDefaults ?? remoteWorkspaceManager?.userDefaults ?? .standard
         let manager = remoteWorkspaceManager ?? RemoteWorkspaceManager(userDefaults: resolvedDefaults)
@@ -476,7 +479,7 @@ public final class EditorWorkspaceViewModel: ObservableObject, HybridMarkdownWor
         self.remoteWorkspaceManager = manager
         self.documentWindow = documentWindow
         self.windowRegistry = windowRegistry
-        self.undoTimelineStore = windowRegistry?.undoTimelineStore ?? UndoTimelineStore()
+        self.undoTimelineStore = undoTimelineStore ?? windowRegistry?.undoTimelineStore ?? UndoTimelineStore()
         self.workspaceFileWatcher = workspaceFileWatcher
         self.markdownText = Self.defaultWelcomeDocument
         restoreStateOnInit(resolvedDefaults: resolvedDefaults, manager: manager)
