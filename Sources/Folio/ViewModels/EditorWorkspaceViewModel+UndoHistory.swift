@@ -50,7 +50,7 @@ extension EditorWorkspaceViewModel {
         }
     }
 
-    static let maxPersistedUndoEntriesPerFile = 100
+    static let maxPersistedUndoEntriesPerFile = UndoTimelineStore.maxPersistedEntriesPerFile
 
     func persistUndoTimelines() {
         guard !isRestoringState else { return }
@@ -58,19 +58,7 @@ extension EditorWorkspaceViewModel {
         let span = EditorPerfPhase.undoPersist.begin()
         defer { span.end() }
         hasUnpersistedUndoChanges = false
-        var boundedTimelines: [String: DocumentUndoTimeline] = [:]
-        boundedTimelines.reserveCapacity(perFileUndoTimelines.count)
-        for (key, timeline) in perFileUndoTimelines {
-            let undoSlice = timeline.undoStack.suffix(Self.maxPersistedUndoEntriesPerFile)
-            let redoSlice = timeline.redoStack.suffix(Self.maxPersistedUndoEntriesPerFile)
-            boundedTimelines[key] = DocumentUndoTimeline(
-                undoStack: Array(undoSlice),
-                redoStack: Array(redoSlice)
-            )
-        }
-        if let encoded = try? JSONEncoder().encode(boundedTimelines) {
-            userDefaults.set(encoded, forKey: Self.undoTimelinesDefaultsKey)
-        }
+        undoTimelineStore.persist(to: userDefaults, defaultsKey: Self.undoTimelinesDefaultsKey)
     }
 
     func schedulePersistUndoTimelines() {

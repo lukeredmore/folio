@@ -43,16 +43,25 @@ public enum FolioProcessLimits {
             desired: desiredSoftOpenFileLimit
         ) {
             var updated = rlimit(rlim_cur: target, rlim_max: limit.rlim_max)
-            if setrlimit(RLIMIT_NOFILE, &updated) != 0,
-                let fallback = targetSoftOpenFileLimit(
-                    currentSoft: limit.rlim_cur,
-                    hardLimit: limit.rlim_max,
-                    kernelMaxPerProc: kernelCap,
-                    desired: rlim_t(OPEN_MAX)
-                )
-            {
-                var conservative = rlimit(rlim_cur: fallback, rlim_max: limit.rlim_max)
-                _ = setrlimit(RLIMIT_NOFILE, &conservative)
+            if setrlimit(RLIMIT_NOFILE, &updated) != 0 {
+                let originalSoft = limit.rlim_cur
+                var requested =
+                    targetSoftOpenFileLimit(
+                        currentSoft: originalSoft,
+                        hardLimit: limit.rlim_max,
+                        kernelMaxPerProc: kernelCap,
+                        desired: rlim_t(OPEN_MAX)
+                    ) ?? target
+                while requested > originalSoft {
+                    var candidate = rlimit(rlim_cur: requested, rlim_max: limit.rlim_max)
+                    if setrlimit(RLIMIT_NOFILE, &candidate) == 0 {
+                        break
+                    }
+                    if errno != EINVAL || requested <= originalSoft + 1 {
+                        break
+                    }
+                    requested = originalSoft + (requested - originalSoft) / 2
+                }
             }
         }
         return currentSoftOpenFileLimit()

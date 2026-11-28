@@ -42,6 +42,10 @@ public struct FolioAppIdentity: Equatable, Sendable {
         applicationSupportDirectory(in: applicationSupport).appendingPathComponent("cli_open_requests.txt")
     }
 
+    public func undoTimelinesFileURL(in applicationSupport: URL) -> URL {
+        applicationSupportDirectory(in: applicationSupport).appendingPathComponent("undo_timelines.json")
+    }
+
     public func remoteMirrorRootURL(in caches: URL) -> URL {
         caches.appendingPathComponent(scopedName("FolioRemoteMirrors"), isDirectory: true)
     }
